@@ -1,9 +1,20 @@
-# Render Blueprint: New > Blueprint > pick this repo/branch. Database is Supabase (external), so no Render Postgres.
-# Every secret is `sync: false`: Render asks for it in the dashboard; nothing sensitive lives in git.
+# Render Blueprint. Database is Supabase (external). Secrets live in ONE env group (ri-secrets) shared by all services;
+# values are entered in the Render dashboard and never stored in git. Region matches Supabase (Frankfurt, EU data).
+envVarGroups:
+  - name: ri-secrets
+    envVars:
+      - {key: DATABASE_URL, sync: false}               # Supabase SESSION-pooler connection string
+      - {key: RI_GOOGLE_CLIENT_ID, sync: false}        # Google OAuth Web client ID (public value)
+      - {key: RI_BOOTSTRAP_ADMIN_EMAILS, sync: false}  # comma-separated; created as admin by `ri.cli seed`
+      - {key: EXA_API_KEY, value: ""}                  # set later; paid use also needs a budget cap (default 0)
+      - {key: ANTHROPIC_API_KEY, value: ""}            # set later
+      - {key: PIPEDRIVE_API_TOKEN, value: ""}          # set later (read-only token)
+      - {key: PIPEDRIVE_WEBHOOK_SECRET, value: ""}     # set later
 services:
   - type: web
     name: ri-api
     runtime: docker
+    region: frankfurt
     dockerfilePath: ./Dockerfile
     healthCheckPath: /readyz
     autoDeploy: false          # deploy deliberately, not on every push
@@ -13,19 +24,13 @@ services:
       - {key: RI_OUTBOUND_ENABLED, value: "false"}
       - {key: RI_PAID_ENRICHMENT_ENABLED, value: "false"}
       - {key: RI_AUTH_MODE, value: oidc}
-      - {key: DATABASE_URL, sync: false}            # Supabase SESSION-pooler string
-      - {key: RI_GOOGLE_CLIENT_ID, sync: false}      # Google OAuth Web client ID (public value)
       - {key: RI_ALLOWED_EMAIL_DOMAIN, value: thecodest.co}
-      - {key: RI_BOOTSTRAP_ADMIN_EMAILS, sync: false} # comma-separated; created as admin by `ri.cli seed`
-      - {key: GOOGLE_APPLICATION_CREDENTIALS, value: /etc/secrets/google_sa.json}   # upload as a Render Secret File
-      - {key: EXA_API_KEY, sync: false}
-      - {key: ANTHROPIC_API_KEY, sync: false}
       - {key: PIPEDRIVE_DOMAIN, value: thecodestltd}
-      - {key: PIPEDRIVE_API_TOKEN, sync: false}
-      - {key: PIPEDRIVE_WEBHOOK_SECRET, sync: false}
+      - {fromGroup: ri-secrets}
   - type: worker
     name: ri-worker
     runtime: docker
+    region: frankfurt
     dockerfilePath: ./Dockerfile
     dockerCommand: python -m ri.cli worker
     autoDeploy: false
@@ -33,6 +38,7 @@ services:
   - type: cron
     name: ri-scheduler
     runtime: docker
+    region: frankfurt
     dockerfilePath: ./Dockerfile
     dockerCommand: python -m ri.cli schedule
     schedule: "*/5 * * * *"
