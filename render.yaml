@@ -14,9 +14,9 @@ services:
       - {key: RI_PAID_ENRICHMENT_ENABLED, value: "false"}
       - {key: RI_AUTH_MODE, value: oidc}
       - {key: DATABASE_URL, sync: false}            # Supabase SESSION-pooler string
-      - {key: RI_OIDC_ISSUER, sync: false}
-      - {key: RI_OIDC_AUDIENCE, sync: false}
-      - {key: RI_OIDC_JWKS_URL, sync: false}
+      - {key: RI_GOOGLE_CLIENT_ID, sync: false}      # Google OAuth Web client ID (public value)
+      - {key: RI_ALLOWED_EMAIL_DOMAIN, value: thecodest.co}
+      - {key: RI_BOOTSTRAP_ADMIN_EMAILS, sync: false} # comma-separated; created as admin by `ri.cli seed`
       - {key: GOOGLE_APPLICATION_CREDENTIALS, value: /etc/secrets/google_sa.json}   # upload as a Render Secret File
       - {key: EXA_API_KEY, sync: false}
       - {key: ANTHROPIC_API_KEY, sync: false}

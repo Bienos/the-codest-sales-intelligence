@@ -276,3 +276,21 @@ def test_unanswered_items_stay_on_today_across_reloads_accepted_unchanged_leaves
     hid = first[0]
     assert c.post(f"/api/hypotheses/{hid}/decision", json={"decision": "accepted"}, headers=h("bdm")).status_code == 200
     assert hid not in ids() and len(ids()) == len(first) - 1       # accepted + unchanged => active work, not a new development
+
+
+def test_google_signin_defaults_domain_allowlist_and_email_verified(monkeypatch):
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from fastapi import HTTPException
+    monkeypatch.setenv("RI_ENV", "production"); monkeypatch.setenv("RI_AUTH_MODE", "oidc")
+    monkeypatch.setenv("RI_GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com"); monkeypatch.setenv("RI_ALLOWED_EMAIL_DOMAIN", "thecodest.co")
+    s = Settings.from_env()                                              # production validation passes with only the client ID
+    assert s.oidc_jwks_url == "https://www.googleapis.com/oauth2/v3/certs" and s.oidc_audience == "cid.apps.googleusercontent.com"
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    v = TokenVerifier(s, key_resolver=lambda t: key.public_key())
+    def tok(**kw):
+        return jwt.encode({"email": "a@thecodest.co", "email_verified": True, "iss": "accounts.google.com", "aud": "cid.apps.googleusercontent.com", "exp": int(time.time()) + 60, **kw}, key, algorithm="RS256")
+    assert v.email_for(tok()) == "a@thecodest.co"
+    assert v.email_for(tok(iss="https://accounts.google.com")) == "a@thecodest.co"             # both Google issuer spellings
+    for bad in (tok(email_verified=False), tok(email="x@other.com"), tok(aud="someone-elses-client")):
+        with pytest.raises(HTTPException):
+            v.email_for(bad)

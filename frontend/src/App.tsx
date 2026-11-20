@@ -9,14 +9,34 @@ import Admin from "./pages/Admin";
 
 type Me = { email: string; role: string; permissions: string[] };
 
+declare global { interface Window { google?: any } }
+
 function Login({ onDone }: { onDone: () => void }) {
+  const [cfg, setCfg] = useState<any>(null);
   const [t, setT] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => { fetch("/api/config").then((r) => r.json()).then(setCfg).catch(() => setErr("Cannot reach the server.")); }, []);
+  useEffect(() => {
+    if (!cfg?.google_client_id) return;
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client"; s.async = true;
+    s.onload = () => {
+      window.google.accounts.id.initialize({ client_id: cfg.google_client_id, callback: (r: any) => { setToken(r.credential); onDone(); } });
+      window.google.accounts.id.renderButton(document.getElementById("g-btn"), { theme: "outline", size: "large", text: "signin_with" });
+    };
+    s.onerror = () => setErr("Google Sign-In could not be loaded.");
+    document.head.appendChild(s);
+    return () => { s.remove(); };
+  }, [cfg]);
   return (
     <div className="main">
-      <h2>Sign in</h2>
-      <p className="sub">Production uses your organisation's SSO via the authenticating proxy. For a development environment, paste a signed development token.</p>
-      <div className="row"><input aria-label="Development token" type="password" value={t} onChange={(e) => setT(e.target.value)} placeholder="Development token" style={{ minWidth: 320 }} />
-        <button className="primary" onClick={() => { setToken(t); onDone(); }}>Continue</button></div>
+      <h2>Revenue Intelligence</h2>
+      {cfg?.google_client_id ? <><p className="sub">Sign in with your Codest Google account. Access is limited to people an administrator has added.</p><div id="g-btn" /></> :
+        cfg && cfg.env !== "production" ? <><p className="sub">Development environment: paste a signed development token.</p>
+          <div className="row"><input aria-label="Development token" type="password" value={t} onChange={(e) => setT(e.target.value)} placeholder="Development token" style={{ minWidth: 320 }} />
+            <button className="primary" onClick={() => { setToken(t); onDone(); }}>Continue</button></div></> :
+        cfg ? <div className="err">Sign-in is not configured. An administrator must set RI_GOOGLE_CLIENT_ID.</div> : null}
+      {err && <div className="err" role="alert">{err}</div>}
     </div>
   );
 }

@@ -32,11 +32,18 @@ class TokenVerifier:
                     raise HTTPException(401, "dev auth unavailable")
                 claims = jwt.decode(token, self.s.dev_auth_secret, algorithms=["HS256"], options={"require": ["exp", "email"]})
             else:
-                claims = jwt.decode(token, self._key(token), algorithms=["RS256"], audience=self.s.oidc_audience, issuer=self.s.oidc_issuer,
+                issuers = [i.strip() for i in (self.s.oidc_issuer or "").split(",") if i.strip()]
+                claims = jwt.decode(token, self._key(token), algorithms=["RS256"], audience=self.s.oidc_audience, issuer=issuers or None,
                                     options={"require": ["exp", "iss", "aud", "email"]})
+                if claims.get("email_verified") is False:
+                    raise HTTPException(401, "email not verified by the identity provider")
         except jwt.PyJWTError as exc:
             raise HTTPException(401, f"invalid token: {type(exc).__name__}") from exc
-        return str(claims["email"]).lower()
+        email = str(claims["email"]).lower()
+        dom = self.s.allowed_email_domain
+        if dom and not email.endswith("@" + dom):
+            raise HTTPException(403, "email domain not allowed")
+        return email
 
 
 def make_dev_token(secret: str, email: str, ttl: int = 3600) -> str:

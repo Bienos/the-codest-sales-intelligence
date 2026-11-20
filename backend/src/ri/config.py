@@ -1,6 +1,7 @@
 """Environment-driven settings. Secrets are read from env / mounted files, never from the repo."""
 from __future__ import annotations
 
+import dataclasses
 import os
 from dataclasses import dataclass, field
 
@@ -50,6 +51,9 @@ class Settings:
     anthropic_api_key: str | None = field(default=None, repr=False)
     slack_webhook_url: str | None = field(default=None, repr=False)
     approval_ttl_hours: int = 72
+    google_client_id: str | None = None
+    allowed_email_domain: str | None = None
+    bootstrap_admin_emails: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -74,7 +78,14 @@ class Settings:
             anthropic_api_key=read_secret("ANTHROPIC_API_KEY"),
             slack_webhook_url=read_secret("SLACK_WEBHOOK_URL"),
             approval_ttl_hours=int(os.environ.get("RI_APPROVAL_TTL_HOURS", "72")),
+            google_client_id=os.environ.get("RI_GOOGLE_CLIENT_ID"),
+            allowed_email_domain=(os.environ.get("RI_ALLOWED_EMAIL_DOMAIN") or "").lower() or None,
+            bootstrap_admin_emails=tuple(e.strip().lower() for e in os.environ.get("RI_BOOTSTRAP_ADMIN_EMAILS", "").split(",") if e.strip()),
         )
+        if s.google_client_id and s.auth_mode == "oidc":      # Google Sign-In: ID tokens are RS256 JWTs signed with Google's published keys
+            s = dataclasses.replace(s, oidc_audience=s.oidc_audience or s.google_client_id,
+                                    oidc_issuer=s.oidc_issuer or "https://accounts.google.com,accounts.google.com",
+                                    oidc_jwks_url=s.oidc_jwks_url or "https://www.googleapis.com/oauth2/v3/certs")
         s.validate()
         return s
 

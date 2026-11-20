@@ -34,7 +34,9 @@ def main(argv: list[str] | None = None) -> int:
             from .signals.baseline import import_baseline
             from .signals.persist import sync_rule_versions
             from .sources.registry import seed_registry
-            print({"legacy_signals_inserted": import_baseline(conn), "rules": sync_rule_versions(conn), "sources_seeded": seed_registry(conn)})
+            for em in s.bootstrap_admin_emails:
+                conn.execute("INSERT INTO users(email, display_name, role, team) VALUES (%s,%s,'admin','default') ON CONFLICT (email) DO NOTHING", (em, em.split("@")[0]))
+            print({"bootstrap_admins": list(s.bootstrap_admin_emails), "legacy_signals_inserted": import_baseline(conn), "rules": sync_rule_versions(conn), "sources_seeded": seed_registry(conn)})
             conn.commit()
         elif a.cmd == "import-sheets":
             from .sheets.client import ConnectorBlocked, GoogleSheetsClient

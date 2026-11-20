@@ -18,4 +18,4 @@ COPY --from=web /web/dist frontend/dist
 USER ri
 EXPOSE 8000
 HEALTHCHECK CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"
-CMD ["python", "-m", "ri.cli", "serve"]
+CMD ["sh", "-c", "python -m ri.cli migrate && python -m ri.cli seed && python -m ri.cli serve"]

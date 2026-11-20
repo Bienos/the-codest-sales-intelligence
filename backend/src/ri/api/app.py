@@ -89,6 +89,11 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
             conn.execute("SELECT 1")
         return {"ok": True}
 
+    @app.get("/api/config")
+    def public_config():
+        """Public, non-secret bootstrap for the SPA (Google OAuth client IDs are public by design)."""
+        return {"auth_mode": settings.auth_mode, "google_client_id": settings.google_client_id, "env": settings.env}
+
     @app.get("/api/me")
     def me(p: Principal = Depends(principal_dep)):
         return {"email": p.email, "role": p.role, "team": p.team, "permissions": sorted(p.perms), "pipedrive_user_id": p.pipedrive_user_id}
