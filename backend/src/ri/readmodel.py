@@ -34,7 +34,9 @@ def evidence_for(conn: Conn, claim_ids: list[Any], limit: int = 6) -> list[dict[
     out = []
     for r in rows:
         url = r["canonical_url"] or (r["object_json"] or {}).get("official_url") or (r["object_json"] or {}).get("url")
-        out.append({"claim_id": str(r["id"]), "claim": r["evidence_anchor"], "kind": r["claim_kind"], "anchor_verified": r["anchor_verified"], "url": url,
+        o = r["object_json"] or {}
+        shown = r["evidence_anchor"] or (f"{r['predicate'].replace('_', ' ')}: " + ", ".join(f"{k}={v}" for k, v in list(o.items())[:4] if v not in (None, '', [])) if o else r["predicate"].replace("_", " "))
+        out.append({"claim_id": str(r["id"]), "claim": shown, "kind": r["claim_kind"], "anchor_verified": r["anchor_verified"], "url": url,
                     "published_at": r["published_at"], "retrieved_at": r["fetched_at"], "authority": r["source_tier"] or ("S1" if (r["object_json"] or {}).get("official_url") else None),
                     "source": r["display_name"]})
     return out

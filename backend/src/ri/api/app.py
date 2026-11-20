@@ -364,4 +364,6 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                     "open_identity_reviews": q1(conn, "SELECT count(*) n FROM identity_reviews WHERE status='open'")["n"],  # type: ignore[index]
                     "quarantined_webhooks": q1(conn, "SELECT count(*) n FROM crm_webhook_inbox WHERE status='quarantined'")["n"]}  # type: ignore[index]
 
+    from . import r5
+    r5.register(app)
     return app
