@@ -15,14 +15,14 @@ Conn = psycopg.Connection[dict[str, Any]]
 
 
 def connect(url: str) -> Conn:
-    return psycopg.connect(url, row_factory=dict_row, autocommit=False)  # type: ignore[return-value]
+    return psycopg.connect(url, row_factory=dict_row, autocommit=False, prepare_threshold=None)  # type: ignore[return-value]
 
 
 class Database:
     def __init__(self, url: str, min_size: int = 1, max_size: int = 10):
         self.url = url
         self._pool = ConnectionPool(
-            url, min_size=min_size, max_size=max_size, kwargs={"row_factory": dict_row}, open=True
+            url, min_size=min_size, max_size=max_size, kwargs={"row_factory": dict_row, "prepare_threshold": None}, open=True
         )
 
     @contextmanager

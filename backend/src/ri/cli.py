@@ -49,7 +49,6 @@ def main(argv: list[str] | None = None) -> int:
             r = import_workbook(conn, client, a.arg or "A")
             print(r.status, r.tabs)
         elif a.cmd == "sync-crm":
-            import os
             from .crm.pipedrive import PipedriveReader, process_inbox, sync_incremental
             try:
                 reader = PipedriveReader(os.environ.get("PIPEDRIVE_DOMAIN"), s.pipedrive_api_token)
@@ -114,7 +113,6 @@ def main(argv: list[str] | None = None) -> int:
             except ConnectorBlocked as exc:
                 print(f"BLOCKED: {exc}", file=sys.stderr)
                 return 3
-            import os
             print(send_digest(conn, sink, base_url=os.environ["RI_BASE_URL"], secret=os.environ["RI_LINK_SECRET"]))
             conn.commit()
     finally:
