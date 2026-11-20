@@ -1,0 +1,4 @@
+# Codest capability catalogue used ONLY to test workstream fit (spec 05 §10). Derived from the CAP-04 proof stacks in the original
+# tracker (Ruby on Rails, Python/data, Java, React/Vue/TS, AWS, QA automation) plus domains named in the master architecture.
+# This is NOT approved external proof: client references/case metrics live in proof_assets and need release approval (spec 11 §10).
+capabilities: [java, python, ruby_on_rails, react, typescript, vue, aws, devops, qa_automation, banking_domain, payments, iso20022, data, llm, api, mobile]

@@ -78,6 +78,11 @@ def resolve(
         cands = qa(conn,
                    "SELECT DISTINCT o.id, o.display_name, o.canonical_domain, o.country_code FROM organizations o "
                    "JOIN organization_aliases a ON a.organization_id=o.id WHERE a.alias_norm = ANY(%s)", (variants,))
+    # defence in depth: an org without an alias row must still match on its normalised display name (never duplicate an account)
+    seen = {str(c["id"]) for c in cands}
+    for c in qa(conn, "SELECT id, display_name, canonical_domain, country_code FROM organizations WHERE display_name %% %s LIMIT 25", (name,)):
+        if str(c["id"]) not in seen and normalize_name(c["display_name"]) in variants:
+            cands.append(c)
     compatible = [c for c in cands if _country_compatible(country, c["country_code"])]
     feats["country_excluded"] = [str(c["id"]) for c in cands if c not in compatible]
     if len(compatible) == 1:
