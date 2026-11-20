@@ -1,8 +1,8 @@
 """Opportunity decision engine: facts -> gates -> scores -> blockers (spec 07). Explicit rules only; the LLM never writes a number."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -164,7 +164,7 @@ def score(f: Facts, gates: dict[str, Any], status_demand: str) -> tuple[dict[str
     fit = [w for w in f.workstreams if set(w["needed_capabilities"]) & CAPS]
     if fit:
         best = max({"confirmed_scope": 20, "implied_engineering_activity": 14, "inferred_possible_external": 7}[w["scope_confidence"]] for w in fit)
-        s["engineering_relevance"] = {"points": min(best + 5, 25), "max": 25, "why": f"best workstream scope confidence + capability match"}
+        s["engineering_relevance"] = {"points": min(best + 5, 25), "max": 25, "why": "best workstream scope confidence + capability match"}
     else:
         s["engineering_relevance"] = {"points": 0, "max": 25, "why": "no capability match"}
     s["external_demand"] = {"points": {"buyer_confirmed": 20, "explicit": 20, "inferred": 12, "unknown": 5 if f.initiative["stage"] in ACTIVE_STAGES else 0}[status_demand], "max": 20, "why": f"external demand {status_demand}"}

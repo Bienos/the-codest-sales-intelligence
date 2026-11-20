@@ -4,7 +4,6 @@ earlier gates pass AND an approval exists. Stops early and records WHY (no decis
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any
 
 from ..db import Conn, jb, q1, qa

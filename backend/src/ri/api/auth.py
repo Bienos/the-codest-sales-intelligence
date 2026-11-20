@@ -1,0 +1,64 @@
+"""Authentication. OIDC (RS256 via JWKS) in staging/production; signed dev tokens only when env != production."""
+from __future__ import annotations
+
+import time
+from typing import Any, Callable
+
+import jwt
+from fastapi import Depends, HTTPException, Request
+
+from ..access import Principal, principal_from_row
+from ..config import Settings
+from ..db import q1
+
+
+class TokenVerifier:
+    def __init__(self, settings: Settings, key_resolver: Callable[[str], Any] | None = None):
+        self.s = settings
+        self._resolver = key_resolver
+        self._jwks = None
+
+    def _key(self, token: str):
+        if self._resolver:
+            return self._resolver(token)
+        if self._jwks is None:
+            self._jwks = jwt.PyJWKClient(self.s.oidc_jwks_url)       # type: ignore[arg-type]
+        return self._jwks.get_signing_key_from_jwt(token).key
+
+    def email_for(self, token: str) -> str:
+        try:
+            if self.s.auth_mode == "dev":
+                if self.s.env == "production" or not self.s.dev_auth_secret:
+                    raise HTTPException(401, "dev auth unavailable")
+                claims = jwt.decode(token, self.s.dev_auth_secret, algorithms=["HS256"], options={"require": ["exp", "email"]})
+            else:
+                claims = jwt.decode(token, self._key(token), algorithms=["RS256"], audience=self.s.oidc_audience, issuer=self.s.oidc_issuer,
+                                    options={"require": ["exp", "iss", "aud", "email"]})
+        except jwt.PyJWTError as exc:
+            raise HTTPException(401, f"invalid token: {type(exc).__name__}") from exc
+        return str(claims["email"]).lower()
+
+
+def make_dev_token(secret: str, email: str, ttl: int = 3600) -> str:
+    return jwt.encode({"email": email, "exp": int(time.time()) + ttl}, secret, algorithm="HS256")
+
+
+def principal_dep(request: Request) -> Principal:
+    auth = request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        raise HTTPException(401, "missing bearer token")
+    email = request.app.state.verifier.email_for(auth[7:])
+    with request.app.state.db.tx() as conn:
+        u = q1(conn, "SELECT * FROM users WHERE lower(email)=%s AND active", (email,))
+        if not u:
+            conn.execute("INSERT INTO audit_events(actor, operation, record_type, detail) VALUES (%s,'login_denied_unknown_user','user','{}')", (email,))
+            raise HTTPException(403, "no active account for this identity")
+        return principal_from_row(u)
+
+
+def require(perm: str) -> Callable[[Principal], Principal]:
+    def dep(p: Principal = Depends(principal_dep)) -> Principal:
+        if not p.can(perm):
+            raise HTTPException(403, f"missing permission {perm}")
+        return p
+    return dep

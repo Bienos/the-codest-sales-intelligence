@@ -1,7 +1,6 @@
 """Event -> initiative association (spec 05 §4). Never combines unrelated programmes just because they share a bank."""
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any

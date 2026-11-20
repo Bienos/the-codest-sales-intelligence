@@ -80,7 +80,7 @@ def evaluate(conn: Conn, hyp_id: str, *, now: datetime | None = None, actor: str
         except states.TransitionError:
             pass
     spec = actions.decide(f, gates, blockers)
-    action_id = actions.upsert_action(conn, hyp_id, spec, now)
+    actions.upsert_action(conn, hyp_id, spec, now)
     _advance(conn, hyp_id, actor)
     audit(conn, actor=actor, operation="evaluate_hypothesis", record_type="opportunity_hypothesis", record_id=hyp_id,
           after={"score": total, "priority": prio, "gates": {k: v["status"] for k, v in gates.items()}})

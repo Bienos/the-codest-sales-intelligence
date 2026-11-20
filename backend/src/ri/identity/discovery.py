@@ -1,7 +1,7 @@
 """Companies discovered outside the master lists get a SEPARATE qualification workflow (master §2, spec 07 §10)."""
 from __future__ import annotations
 
-from ..db import Conn, jb, q1
+from ..db import Conn
 from ..identity.resolver import resolve
 from ..sheets.parsers import normalize_name
 

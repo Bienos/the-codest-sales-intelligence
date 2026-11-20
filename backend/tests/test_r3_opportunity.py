@@ -1,5 +1,4 @@
 """R3 acceptance: waterfall gating, approvals/credit controls, decision engine, state machine, counterevidence, actions, planner."""
-import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
