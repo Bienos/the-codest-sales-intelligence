@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 
@@ -25,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
         from .api.static import mount_frontend
         app = create_app(s)
         mount_frontend(app)
-        uvicorn.run(app, host="0.0.0.0", port=8000)  # noqa: S104
+        uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))  # noqa: S104
         return 0
     conn = connect(s.database_url)
     try:
