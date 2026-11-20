@@ -1,0 +1,156 @@
+"""Unstructured-document event extraction (spec 03 §6, 11 §8, 12 §4).
+
+Controls: JSON-schema validation (invalid output writes NOTHING); every claim's anchor must appear VERBATIM in the
+document or the claim is dropped; an event with no verified claim is dropped; discovery snippets are never treated as
+original sources; prompt-injection patterns are flagged and extraction results never trigger actions.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from pathlib import Path
+from typing import Any, Literal, Protocol
+
+import httpx
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from ..db import Conn, jb, q1
+from ..jobs.queue import JobError
+from ..sources.http import request_json
+from ..sources.util import parse_dt
+from .origin import assign_origin
+from .store import add_claim, norm_key, store_event
+
+PROMPT_PATH = Path(__file__).resolve().parents[3] / "prompts" / "extract_events_v1.txt"
+EVENT_TYPES = ["procurement_published", "procurement_amended", "procurement_awarded", "vendor_selected", "implementation_launched",
+               "programme_announced", "programme_completed", "integration_release", "product_launch", "engineering_job_opened",
+               "contractor_job_opened", "job_closed", "technology_leader_appointed", "acquisition_announced", "funding_announced",
+               "supplier_panel_opened", "supplier_panel_closed", "regulatory_change", "deadline_approaching", "crm_buyer_response",
+               "relationship_changed", "negative_cancellation", "programme_delayed", "supplier_exit"]
+INJECTION = re.compile(r"(ignore (all |any |the )?(previous|prior|above) (instructions|prompts)|disregard (the )?(system|previous)|"
+                       r"you are now|system prompt|api[ _-]?key|exfiltrat|send (this|the|your) (token|key|secret)|reveal (your|the) (prompt|instructions))", re.I)
+
+
+class XClaim(BaseModel):
+    predicate: str = Field(min_length=1, max_length=120)
+    object: dict[str, Any] = Field(default_factory=dict)
+    anchor: str = Field(min_length=3, max_length=600)
+
+
+class XEntity(BaseModel):
+    name: str
+    role: str
+
+
+class XEvent(BaseModel):
+    event_type: Literal[tuple(EVENT_TYPES)]  # type: ignore[valid-type]
+    subject_name: str = Field(min_length=1)
+    event_date: str | None = None
+    summary: str = Field(min_length=3, max_length=500)
+    attrs: dict[str, Any] = Field(default_factory=dict)
+    other_entities: list[XEntity] = Field(default_factory=list)
+    claims: list[XClaim] = Field(min_length=1)
+
+    @field_validator("event_date")
+    @classmethod
+    def _iso(cls, v):
+        if v is not None and not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+            raise ValueError("event_date must be ISO yyyy-mm-dd or null")
+        return v
+
+
+class XResult(BaseModel):
+    events: list[XEvent]
+
+
+class EventExtractor(Protocol):
+    version: str
+
+    async def extract(self, *, title: str | None, text: str, published_at: str | None) -> dict[str, Any]: ...
+
+
+def _squash(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip().casefold()
+
+
+def anchor_in_text(anchor: str, text: str) -> bool:
+    return _squash(anchor) in _squash(text)
+
+
+class AnthropicExtractor:
+    """Production extractor. Requires ANTHROPIC_API_KEY; without it the integration is blocked (never faked)."""
+
+    def __init__(self, client: httpx.AsyncClient, api_key: str | None, model: str = "claude-haiku-5-5", max_tokens: int = 4000):
+        if not api_key:
+            from ..sheets.client import ConnectorBlocked
+            raise ConnectorBlocked("ANTHROPIC_API_KEY not set: LLM extraction is blocked")
+        self.client, self.key, self.model, self.max_tokens = client, api_key, model, max_tokens
+        self._system = PROMPT_PATH.read_text(encoding="utf-8").format(event_types=", ".join(EVENT_TYPES))
+        self.version = f"anthropic:{model}:prompt-{hashlib.sha256(self._system.encode()).hexdigest()[:10]}"
+
+    async def extract(self, *, title, text, published_at):
+        user = f"<document title={json.dumps(title or '')} published={json.dumps(published_at)}>\n{text[:30000]}\n</document>"
+        data = await request_json(self.client, "POST", "https://api.anthropic.com/v1/messages",
+                                  headers={"x-api-key": self.key, "anthropic-version": "2023-06-01"},
+                                  json={"model": self.model, "max_tokens": self.max_tokens, "temperature": 0, "system": self._system,
+                                        "messages": [{"role": "user", "content": user}]})
+        out = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+        m = re.search(r"\{.*\}", out, re.S)
+        if not m:
+            raise ValueError("no JSON object in model output")
+        return json.loads(m.group(0))
+
+
+def _run(coro):
+    import asyncio
+    return asyncio.run(coro)
+
+
+def process_document(conn: Conn, doc_id: str, extractor: EventExtractor, *, resolve_org=None, replay: bool = False) -> dict[str, Any]:
+    d = q1(conn, "SELECT d.*, s.source_tier, s.retention_policy FROM source_documents d JOIN sources s USING (source_id) WHERE d.id=%s", (doc_id,))
+    if not d:
+        raise JobError("document not found", "not_found")
+    meta = dict(d["raw_meta"] or {})
+    if meta.get("discovery_only"):
+        # search snippets are discovery evidence only: the original source must be fetched before any factual claim
+        conn.execute("UPDATE source_documents SET raw_meta=%s WHERE id=%s", (jb({**meta, "needs_original_fetch": True}), doc_id))
+        return {"events": 0, "reason": "discovery_snippet_not_an_original_source"}
+    text = d["content_text"] or ""
+    if not text.strip():
+        return {"events": 0, "reason": "no_text"}
+    flags = []
+    if INJECTION.search(text):
+        flags.append("prompt_injection_suspected")
+        conn.execute("INSERT INTO audit_events(actor, operation, record_type, record_id, detail) VALUES ('system:extract','prompt_injection_flag','source_document',%s,%s)",
+                     (doc_id, jb({"source_id": d["source_id"]})))
+    try:
+        raw = _run(extractor.extract(title=d["title"], text=text, published_at=d["published_at"].isoformat() if d["published_at"] else None))
+        parsed = XResult.model_validate(raw)
+    except (ValidationError, ValueError, KeyError, TypeError) as exc:
+        # schema failure: nothing is written, the job is quarantined for review (spec 03 §12)
+        raise JobError(f"extraction output failed schema validation: {exc}"[:500], "invalid_payload") from exc
+    group = assign_origin(conn, doc_id, text)
+    stored, dropped_claims, dropped_events = [], 0, 0
+    for ev in parsed.events:
+        good = [c for c in ev.claims if anchor_in_text(c.anchor, text)]
+        dropped_claims += len(ev.claims) - len(good)
+        if not good:
+            dropped_events += 1
+            continue
+        claim_ids = [add_claim(conn, subject=ev.subject_name, predicate=c.predicate, obj=c.object, doc_id=doc_id, anchor=c.anchor[:600],
+                               kind="quote", anchor_verified=True, model_version=extractor.version, valid_from=d["published_at"]) for c in good]
+        org_id = resolve_org(ev.subject_name) if resolve_org else None
+        others = [{"name": o.name, "role": o.role, "org_id": (resolve_org(o.name) if resolve_org else None)} for o in ev.other_entities]
+        attrs = {**ev.attrs, "source_tier": d["source_tier"], "flags": flags}
+        dk = ev.attrs.get("dedup_key") or norm_key(ev.summary)
+        # same fact in mirrored articles shares the origin group => one event; independent first-party issuers do not
+        eid, created = store_event(conn, event_type=ev.event_type, subject_name=ev.subject_name, subject_org_id=org_id, summary=ev.summary, attrs=attrs,
+                                   key_parts=(norm_key(str(dk)), group), event_at=parse_dt(ev.event_date), pub_at=d["published_at"], claim_ids=claim_ids,
+                                   document_ids=[doc_id], origin_document_id=d["origin_document_id"] or doc_id, origin_group=group,
+                                   other_entities=others, model_version=extractor.version, replay=replay)
+        stored.append((eid, created))
+    if d["retention_policy"] != "full_text":      # licence-restricted sources: purge the transient text after extraction
+        conn.execute("UPDATE source_documents SET content_text=NULL, content_purged_at=now() WHERE id=%s", (doc_id,))
+    return {"events": len([1 for _, c in stored if c]), "linked_existing": len([1 for _, c in stored if not c]),
+            "dropped_unverified_claims": dropped_claims, "dropped_events": dropped_events, "flags": flags, "origin_group": group}

@@ -1,0 +1,288 @@
+# Executable extension of the ORIGINAL 64-rule tracker (reference/signals/*.csv is never modified).
+# Only rules listed here with status: active have validated detectors. All other legacy IDs are imported as
+# defined_not_activated and cannot fire until a detector + fixtures (>=3 pos, >=3 neg, >=2 ambiguous, >=1 expiry) exist.
+# Predicate leaves: {attr: <name>, <op>: <value>}   ops: eq in not_in gte lte exists is_true is_false contains_any days_since_in
+# Special attrs: summary, event_type, other_roles (roles of other named entities), employment_type, tech_keywords ...
+rules:
+  - id: SRC-01
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [procurement_published, procurement_amended]
+    source_tiers: [S1]
+    required_fields: [buyer_entity, scope, authoritative_url, submission_deadline, notice_status]
+    match: {all: [{attr: notice_status, in: [open, amended]}, {attr: relevant_services, is_true: true}]}
+    exclusions: []
+    demand_tier: D1
+    strength: 3
+    min_verification: verified
+    expiry: {mode: official_close, field: submission_deadline}
+    reason_code: live_relevant_tender
+    commercial_questions: ["Is The Codest eligible, alone or in a consortium?", "Are technical scope, certifications, location and contract terms feasible?"]
+    related_play: SP-09
+    buyer_roles: [technical_sponsor, procurement_owner]
+    negative_rules: [NEG-05, NEG-12]
+  - id: SRC-02
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [supplier_panel_opened]
+    source_tiers: [S1, S2, S3]
+    required_fields: [authoritative_url]
+    match: {all: [{attr: panel_open_for_applications, is_true: true}, {attr: it_services_scope, is_true: true}]}
+    exclusions: [{attr: panel_closed, is_true: true}]
+    demand_tier: D2
+    strength: 1
+    min_verification: verified
+    expiry: {mode: days, days: 90}
+    reason_code: supplier_route_opening
+    commercial_questions: ["Which category, lot and entity does the panel cover?", "What eligibility and security preflight is required?"]
+    related_play: SP-09
+    buyer_roles: [procurement_owner, technical_sponsor]
+  - id: SRC-04
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [vendor_selected, programme_announced, procurement_awarded, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: award_scope_includes_dev, is_true: true}, {attr: other_roles, contains_any: [si, prime, integrator, systems_integrator]}]}
+    exclusions: [{attr: programme_status, in: [cancelled, completed]}]
+    demand_tier: D3
+    upgrade_with_independent_groups: {min: 2, to: D2}
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: prime_award_partner_route
+    commercial_questions: ["Which workstreams remain outside the prime's scope?", "Does the prime run a specialist-subcontracting route and what are its eligibility rules?"]
+    related_play: SP-08
+    buyer_roles: [partner_delivery, alliance_lead]
+    negative_rules: [NEG-03]
+  - id: SRC-05
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [vendor_selected, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: counterparty_selected, is_true: true}, {any: [{attr: other_roles, contains_any: [vendor, technology_provider, core_banking_vendor, payments_vendor]}, {attr: role_of_subject, eq: vendor}]}]}
+    exclusions: [{attr: programme_status, in: [cancelled, completed]}]
+    demand_tier: D3
+    upgrade_with_independent_groups: {min: 2, to: D2}
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: vendor_implementation_signed
+    commercial_questions: ["Is implementation owned by the vendor, the bank or an integrator?", "Does the vendor need external implementation capacity?"]
+    related_play: SP-05
+    buyer_roles: [partner_delivery, transformation_director]
+  - id: SRC-06
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [procurement_published, supplier_panel_opened]
+    source_tiers: [S1, S2, S3]
+    required_fields: [authoritative_url]
+    match: {all: [{attr: contingent_labour_call, is_true: true}]}
+    exclusions: [{attr: notice_status, in: [expired, awarded, cancelled]}]
+    demand_tier: D1
+    strength: 3
+    min_verification: verified
+    expiry: {mode: days, days: 21}
+    reason_code: contingent_labour_requisition
+    commercial_questions: ["Is the requisition open to an external supplier or only to incumbent agencies?", "Do labour-leasing licences apply in this jurisdiction?"]
+    related_play: SP-01
+    buyer_roles: [delivery_director, procurement_owner]
+  - id: CAP-01
+    version: 1.0.0
+    status: active
+    kind: cluster
+    required_event_types: [engineering_job_opened, contractor_job_opened]
+    source_tiers: [S2]
+    required_fields: [title]
+    match: {all: [{attr: open_status, eq: open}]}
+    exclusions: []
+    cluster: {group_by: [subject_org_id, team], min_count: 3, window_days: 45}
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 45}
+    reason_code: engineering_hiring_cluster
+    commercial_questions: ["Is this insourcing or external capacity?", "Which programme or product do the roles serve?"]
+    related_play: SP-02
+    buyer_roles: [engineering_director, programme_owner]
+    negative_rules: [NEG-02]
+  - id: CAP-02
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [contractor_job_opened]
+    source_tiers: [S2]
+    required_fields: [title, employment_type, tech_keywords]
+    match: {all: [{attr: employment_type, in: [contract, interim, freelance]}, {attr: tech_keywords, exists: true}, {attr: open_status, eq: open}]}
+    exclusions: []
+    demand_tier: D2
+    strength: 3
+    min_verification: verified
+    expiry: {mode: vacancy_closure, days: 30}
+    reason_code: contract_role_on_named_system
+    commercial_questions: ["Is the role open to supplier/agency engagement or direct freelancers only?", "What is the named system and programme?"]
+    related_play: SP-01
+    buyer_roles: [engineering_director, delivery_director]
+  - id: CAP-05
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [engineering_job_opened, contractor_job_opened]
+    source_tiers: [S2]
+    required_fields: [title]
+    match: {all: [{any: [{attr: title, contains_any: [llm, rag, mlops, ml ops, ai agent, agentic, machine learning engineer, genai]}, {attr: tech_keywords, contains_any: [llm, rag, mlops, langchain]}]}, {attr: open_status, eq: open}]}
+    exclusions: [{attr: title, contains_any: [intern, working student, trainee]}]
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 60}
+    reason_code: production_ai_engineering_roles
+    commercial_questions: ["Is the AI work tied to a named product?", "Is delivery in-house or partner-led?"]
+    related_play: SP-07
+    buyer_roles: [ai_owner, engineering_director]
+    negative_rules: [NEG-02]
+  - id: PRG-01
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, vendor_selected, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: core_banking}, {attr: named_systems, exists: true}, {attr: has_dated_milestones, is_true: true}]}
+    exclusions: [{attr: programme_status, in: [cancelled, paused, completed]}]
+    demand_tier: D3
+    upgrade_with_independent_groups: {min: 2, to: D2}
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 180}
+    reason_code: core_banking_programme
+    commercial_questions: ["Which workstreams are separable from the platform vendor and integrator scope?", "Who controls supplier selection?"]
+    related_play: SP-05
+    buyer_roles: [transformation_director, programme_owner]
+    negative_rules: [NEG-03, NEG-06]
+  - id: PRG-02
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, vendor_selected, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: cloud_data}, {attr: named_systems, exists: true}, {attr: has_dated_milestones, is_true: true}]}
+    exclusions: [{attr: programme_status, in: [cancelled, paused, completed]}]
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 180}
+    reason_code: cloud_data_migration
+    commercial_questions: ["Which domains and dates are in scope?", "Is migration capacity in-house, vendor or SI-led?"]
+    related_play: SP-06
+    buyer_roles: [platform_director, data_director]
+    negative_rules: [NEG-03, NEG-06]
+  - id: PRG-06
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, implementation_launched, regulatory_change, integration_release]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: payments_rail}, {attr: named_systems, exists: true}]}
+    exclusions: [{attr: programme_status, in: [cancelled, paused, completed]}]
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 180}
+    reason_code: payment_rail_integration
+    commercial_questions: ["Which scheme/rail and which entity?", "Is certification/test window dated?"]
+    related_play: SP-04
+    buyer_roles: [payments_engineering_head]
+    negative_rules: [NEG-03, NEG-06]
+  - id: MAN-01
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [technology_leader_appointed]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: [leader_role, leader_start_date]
+    match: {all: [{attr: leader_role, in: [cto, cio, head_engineering, head_payments, head_platform]}, {attr: leader_start_date, days_since_in: [30, 120]}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 2
+    min_verification: verified
+    expiry: {mode: date_field_window, field: leader_start_date, days: 120}
+    reason_code: new_technology_leader_window
+    commercial_questions: ["Has the leader named a priority programme?", "Are budgets and supplier panels under review?"]
+    related_play: SP-10
+    buyer_roles: [technology_leader]
+  - id: REL-03
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [relationship_changed]
+    source_tiers: [S2, S3, S4, internal]
+    required_fields: []
+    match: {all: [{attr: change, eq: contact_new_role}, {attr: contact_known_in_crm, is_true: true}, {attr: new_org_in_icp, is_true: true}]}
+    exclusions: [{attr: new_role_no_delivery_influence, is_true: true}, {attr: contact_suppressed, is_true: true}]
+    demand_tier: D4
+    strength: 3
+    min_verification: verified
+    expiry: {mode: days, days: 180}
+    reason_code: known_contact_new_role
+    commercial_questions: ["Does the new role carry delivery influence?", "Is the relationship genuinely warm per CRM history?"]
+    related_play: SP-10
+    buyer_roles: [former_champion]
+    negative_rules: [NEG-11, NEG-12]
+  # ---------------------------------------------------------------- negatives
+  - id: NEG-03
+    version: 1.0.0
+    status: active
+    kind: negative
+    required_event_types: [vendor_selected, procurement_awarded, programme_announced, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: outsourcing_contract_covers_scope, is_true: true}]}
+    exclusions: []
+    negative: {kind: route_block, effect: change_route, scope_type: route, scope_suffix: direct, window_months: 12}
+    min_verification: verified
+    reason_code: si_contract_covers_scope
+  - id: NEG-05
+    version: 1.0.0
+    status: active
+    kind: negative
+    required_event_types: [supplier_panel_closed]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {any: [{attr: panel_closed, is_true: true}, {attr: supplier_list_reduced, is_true: true}]}
+    exclusions: []
+    negative: {kind: route_block, effect: stop, scope_type: route, scope_suffix: direct, window_months: 12}
+    min_verification: verified
+    reason_code: vendor_consolidation
+  - id: NEG-06
+    version: 1.0.0
+    status: active
+    kind: negative
+    required_event_types: [negative_cancellation, programme_delayed, programme_announced]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {any: [{attr: programme_status, in: [cancelled, paused]}, {attr: event_type, eq: negative_cancellation}]}
+    exclusions: []
+    negative: {kind: demand_counterevidence, effect: downgrade, scope_type: account, window_months: null, expire_related: [PRG, CAP]}
+    min_verification: verified
+    reason_code: programme_cancelled_or_paused
+  - id: NEG-12
+    version: 1.0.0
+    status: active
+    kind: negative
+    required_event_types: [relationship_changed]
+    source_tiers: [S2, S3, S4, internal]
+    required_fields: []
+    match: {all: [{attr: ownership_conflict, is_true: true}]}
+    exclusions: []
+    negative: {kind: ownership_gate, effect: stop, scope_type: account, window_months: null}
+    min_verification: verified
+    reason_code: account_ownership_conflict

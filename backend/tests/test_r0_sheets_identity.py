@@ -165,7 +165,7 @@ def _org(conn, name, country=None, domain=None, ident=None):
 
 
 def test_parent_and_subsidiary_not_merged(conn):
-    parent = _org(conn, "Bupa Group", "GB")
+    _org(conn, "Bupa Group", "GB")
     d = resolve(conn, name="Bupa UK", country="GB", allow_create=True)
     assert d.action in ("review", "create_new") and d.action != "auto_link"
     assert d.org_id is None

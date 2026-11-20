@@ -1,0 +1,211 @@
+# SYNTHETIC evaluation fixtures (labelled synthetic: invented entities, derived from the 64-rule tracker semantics).
+# Evaluation clock: 2026-11-20T12:00:00Z. Each rule: base event + explicit per-case mutations.
+# kind: positive | negative | ambiguous | expiry     expect: match | none (+ optional tier / trace)
+- rule: SRC-01
+  base: {event_type: procurement_published, source_tier: S1, days_ago: 3, attrs: {notice_id: SYN-1, notice_status: open, buyer_entity: Example Bank, scope: Core banking integration software development, authoritative_url: "https://example.invalid/n/1", submission_deadline: "2026-12-07T12:00:00+00:00", relevant_services: true}}
+  cases:
+    - {kind: positive, name: open_relevant_tender, expect: match, tier: D1}
+    - {kind: positive, name: amended_notice_stays_live, top: {event_type: procurement_amended}, set: {notice_status: amended}, expect: match, tier: D1}
+    - {kind: positive, name: qa_services_tender, set: {scope: QA test automation services, submission_deadline: "2027-01-15T12:00:00+01:00"}, expect: match, tier: D1}
+    - {kind: negative, name: expired_status, set: {notice_status: expired}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: award_is_not_open_rfp, set: {notice_status: awarded}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: hardware_only_scope, set: {relevant_services: false, scope: Supply of laptops}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: missing_deadline, drop: [submission_deadline], expect: none, trace: "missing_required_field:submission_deadline"}
+    - {kind: ambiguous, name: unverified_event, top: {verified: false}, expect: none, trace: event_unverified}
+    - {kind: ambiguous, name: aggregator_copy_not_official, top: {source_tier: S4}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: deadline_passed_even_though_status_open, set: {submission_deadline: "2026-11-10T12:00:00+00:00"}, expect: none, trace: expired}
+- rule: SRC-02
+  base: {event_type: supplier_panel_opened, source_tier: S3, days_ago: 10, attrs: {authoritative_url: "https://example.invalid/p/1", panel_open_for_applications: true, it_services_scope: true}}
+  cases:
+    - {kind: positive, name: panel_open_it_scope, expect: match, tier: D2}
+    - {kind: positive, name: official_s1_panel, top: {source_tier: S1}, expect: match}
+    - {kind: positive, name: dps_reopening, set: {scope_note: DPS reopening}, expect: match}
+    - {kind: negative, name: not_open_for_applications, set: {panel_open_for_applications: false}, expect: none}
+    - {kind: negative, name: no_it_scope, set: {it_services_scope: false}, expect: none}
+    - {kind: negative, name: wrong_event_type, top: {event_type: supplier_panel_closed}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: contradictory_open_and_closed, set: {panel_closed: true}, expect: none, trace: excluded}
+    - {kind: expiry, name: older_than_90_days, top: {days_ago: 100}, expect: none, trace: expired}
+- rule: SRC-04
+  base: {event_type: vendor_selected, source_tier: S3, days_ago: 10, other_roles: [si], attrs: {award_scope_includes_dev: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: si_selected_with_dev_scope, expect: match, tier: D3}
+    - {kind: positive, name: prime_programme_announced, top: {event_type: programme_announced, other_roles: [prime]}, expect: match}
+    - {kind: positive, name: integrator_award, top: {event_type: procurement_awarded, other_roles: [integrator]}, expect: match}
+    - {kind: positive, name: two_independent_first_party_origins_upgrade, top: {groups: 2}, expect: match, tier: D2}
+    - {kind: negative, name: no_dev_scope, set: {award_scope_includes_dev: false}, expect: none}
+    - {kind: negative, name: vendor_not_si, top: {other_roles: [vendor]}, expect: none}
+    - {kind: negative, name: programme_completed, set: {programme_status: completed}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_post_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 130}, expect: none, trace: expired}
+- rule: SRC-05
+  base: {event_type: vendor_selected, source_tier: S3, days_ago: 10, other_roles: [vendor], attrs: {counterparty_selected: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: bank_selects_platform_vendor, expect: match, tier: D3}
+    - {kind: positive, name: vendor_is_subject, top: {other_roles: []}, set: {role_of_subject: vendor}, expect: match}
+    - {kind: positive, name: implementation_launched, top: {event_type: implementation_launched}, expect: match}
+    - {kind: negative, name: counterparty_not_selected, set: {counterparty_selected: false}, expect: none}
+    - {kind: negative, name: only_si_named, top: {other_roles: [si]}, set: {role_of_subject: bank}, expect: none}
+    - {kind: negative, name: programme_completed, set: {programme_status: completed}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: trade_press_only, top: {source_tier: S4}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 125}, expect: none, trace: expired}
+- rule: SRC-06
+  base: {event_type: procurement_published, source_tier: S1, days_ago: 5, attrs: {authoritative_url: "https://example.invalid/vms/1", contingent_labour_call: true}}
+  cases:
+    - {kind: positive, name: vms_requisition, expect: match, tier: D1}
+    - {kind: positive, name: panel_contingent_call, top: {event_type: supplier_panel_opened, source_tier: S2}, expect: match}
+    - {kind: positive, name: s3_vendor_requisition, top: {source_tier: S3}, expect: match}
+    - {kind: negative, name: not_contingent, set: {contingent_labour_call: false}, expect: none}
+    - {kind: negative, name: already_expired_notice, set: {notice_status: expired}, expect: none, trace: excluded}
+    - {kind: negative, name: wrong_event_type, top: {event_type: engineering_job_opened}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: missing_official_url, drop: [authoritative_url], expect: none, trace: "missing_required_field:authoritative_url"}
+    - {kind: expiry, name: older_than_21_days, top: {days_ago: 30}, expect: none, trace: expired}
+- rule: CAP-01
+  base: {event_type: engineering_job_opened, source_tier: S2, days_ago: 5, cluster_count: 3, attrs: {title: Backend Engineer, team: Payments, open_status: open}}
+  cases:
+    - {kind: positive, name: third_role_completes_cluster, expect: match, tier: D3}
+    - {kind: positive, name: contractor_third_role, top: {event_type: contractor_job_opened}, expect: match}
+    - {kind: positive, name: other_team_title, set: {title: Platform Engineer, team: Core}, expect: match}
+    - {kind: negative, name: only_two_roles, top: {cluster_count: 2}, expect: none}
+    - {kind: negative, name: cluster_already_fired, top: {cluster_count: 4}, expect: none}
+    - {kind: negative, name: role_closed, set: {open_status: closed}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: aggregator_job_board, top: {source_tier: S4}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_45_days, top: {days_ago: 50}, expect: none, trace: expired}
+- rule: CAP-02
+  base: {event_type: contractor_job_opened, source_tier: S2, days_ago: 5, attrs: {title: Contract Kafka Engineer, employment_type: contract, tech_keywords: [kafka], open_status: open}}
+  cases:
+    - {kind: positive, name: contract_on_named_tech, expect: match, tier: D2}
+    - {kind: positive, name: interim_java, set: {employment_type: interim, tech_keywords: [java]}, expect: match}
+    - {kind: positive, name: freelance_temenos, set: {employment_type: freelance, tech_keywords: [temenos]}, expect: match}
+    - {kind: negative, name: permanent_role, set: {employment_type: permanent}, expect: none}
+    - {kind: negative, name: no_named_system, set: {tech_keywords: []}, expect: none, trace: "missing_required_field:tech_keywords"}
+    - {kind: negative, name: wrong_event_type, top: {event_type: engineering_job_opened}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: role_already_closed, set: {open_status: closed}, expect: none}
+    - {kind: expiry, name: older_than_30_days, top: {days_ago: 40}, expect: none, trace: expired}
+- rule: CAP-05
+  base: {event_type: engineering_job_opened, source_tier: S2, days_ago: 5, attrs: {title: LLM Platform Engineer, tech_keywords: [llm], open_status: open}}
+  cases:
+    - {kind: positive, name: llm_engineer, expect: match, tier: D3}
+    - {kind: positive, name: mlops_title, set: {title: MLOps Engineer, tech_keywords: []}, expect: match}
+    - {kind: positive, name: rag_in_keywords, set: {title: Software Engineer, tech_keywords: [rag]}, expect: match}
+    - {kind: positive, name: contract_ai_agent_developer, top: {event_type: contractor_job_opened}, set: {title: AI Agent Developer, tech_keywords: []}, expect: match}
+    - {kind: negative, name: unrelated_backend_role, set: {title: Backend Engineer, tech_keywords: [java]}, expect: none}
+    - {kind: negative, name: internship_excluded, set: {title: Intern - ML research (LLM)}, expect: none, trace: excluded}
+    - {kind: negative, name: role_closed, set: {open_status: closed}, expect: none}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: working_student, set: {title: Working Student GenAI}, expect: none, trace: excluded}
+    - {kind: expiry, name: older_than_60_days, top: {days_ago: 70}, expect: none, trace: expired}
+- rule: PRG-01
+  base: {event_type: programme_announced, source_tier: S3, days_ago: 20, attrs: {programme_domain: core_banking, named_systems: [Temenos Transact], has_dated_milestones: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: named_core_programme, expect: match, tier: D3}
+    - {kind: positive, name: vendor_selected_core, top: {event_type: vendor_selected}, expect: match}
+    - {kind: positive, name: corroborated_by_two_origins, top: {event_type: implementation_launched, groups: 2}, expect: match, tier: D2}
+    - {kind: negative, name: payments_not_core, set: {programme_domain: payments_rail}, expect: none}
+    - {kind: negative, name: no_named_systems, set: {named_systems: []}, expect: none}
+    - {kind: negative, name: no_dated_milestones, set: {has_dated_milestones: false}, expect: none}
+    - {kind: ambiguous, name: programme_paused, set: {programme_status: paused}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: expiry, name: older_than_180_days, top: {days_ago: 200}, expect: none, trace: expired}
+- rule: PRG-02
+  base: {event_type: programme_announced, source_tier: S2, days_ago: 20, attrs: {programme_domain: cloud_data, named_systems: [AWS, Kafka], has_dated_milestones: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: cloud_migration_with_dates, expect: match, tier: D3}
+    - {kind: positive, name: implementation_launched, top: {event_type: implementation_launched}, expect: match}
+    - {kind: positive, name: vendor_selected_data_platform, top: {event_type: vendor_selected}, set: {named_systems: [Snowflake]}, expect: match}
+    - {kind: negative, name: wrong_domain, set: {programme_domain: lending}, expect: none}
+    - {kind: negative, name: no_named_systems, set: {named_systems: []}, expect: none}
+    - {kind: negative, name: no_milestones, set: {has_dated_milestones: false}, expect: none}
+    - {kind: ambiguous, name: cancelled_programme, set: {programme_status: cancelled}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: expiry, name: older_than_180_days, top: {days_ago: 190}, expect: none, trace: expired}
+- rule: PRG-06
+  base: {event_type: programme_announced, source_tier: S2, days_ago: 20, attrs: {programme_domain: payments_rail, named_systems: [SEPA Instant], programme_status: implementation}}
+  cases:
+    - {kind: positive, name: instant_payments_programme, expect: match, tier: D3}
+    - {kind: positive, name: regulatory_change_with_rail, top: {event_type: regulatory_change, source_tier: S1}, expect: match}
+    - {kind: positive, name: integration_release, top: {event_type: integration_release}, set: {named_systems: [ISO 20022]}, expect: match}
+    - {kind: negative, name: core_not_payments, set: {programme_domain: core_banking}, expect: none}
+    - {kind: negative, name: no_named_rail, set: {named_systems: []}, expect: none}
+    - {kind: negative, name: cancelled, set: {programme_status: cancelled}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: attention_only_source, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_180_days, top: {days_ago: 200}, expect: none, trace: expired}
+- rule: MAN-01
+  base: {event_type: technology_leader_appointed, source_tier: S2, days_ago: 30, attrs: {leader_role: cto, leader_start_date: "2026-09-21"}}
+  cases:
+    - {kind: positive, name: new_cto_day_60, expect: match, tier: D4}
+    - {kind: positive, name: new_cio_day_50, set: {leader_role: cio, leader_start_date: "2026-10-01"}, expect: match}
+    - {kind: positive, name: head_payments_day_87, set: {leader_role: head_payments, leader_start_date: "2026-08-25"}, expect: match}
+    - {kind: positive, name: head_platform_day_111, set: {leader_role: head_platform, leader_start_date: "2026-08-01"}, expect: match}
+    - {kind: negative, name: not_a_technology_role, set: {leader_role: other}, expect: none}
+    - {kind: negative, name: too_early_day_10, set: {leader_start_date: "2026-11-10"}, expect: none}
+    - {kind: negative, name: too_late_day_172, set: {leader_start_date: "2026-06-01"}, expect: none}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: start_date_unknown, drop: [leader_start_date], expect: none, trace: "missing_required_field:leader_start_date"}
+    - {kind: expiry, name: window_closed_day_142, set: {leader_start_date: "2026-07-01"}, expect: none, trace: positive_pattern_not_matched}
+- rule: REL-03
+  base: {event_type: relationship_changed, source_tier: S4, days_ago: 10, attrs: {change: contact_new_role, contact_known_in_crm: true, new_org_in_icp: true}}
+  cases:
+    - {kind: positive, name: known_champion_moves_to_icp_company, expect: match, tier: D4}
+    - {kind: positive, name: internal_source, top: {source_tier: internal}, expect: match}
+    - {kind: positive, name: company_site_source, top: {source_tier: S3}, expect: match}
+    - {kind: negative, name: contact_not_known_in_crm, set: {contact_known_in_crm: false}, expect: none}
+    - {kind: negative, name: new_company_outside_icp, set: {new_org_in_icp: false}, expect: none}
+    - {kind: negative, name: different_change, set: {change: promotion}, expect: none}
+    - {kind: ambiguous, name: role_without_delivery_influence, set: {new_role_no_delivery_influence: true}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: contact_suppressed, set: {contact_suppressed: true}, expect: none, trace: excluded}
+    - {kind: expiry, name: older_than_180_days, top: {days_ago: 200}, expect: none, trace: expired}
+- rule: NEG-03
+  base: {event_type: vendor_selected, source_tier: S3, days_ago: 30, attrs: {outsourcing_contract_covers_scope: true}}
+  cases:
+    - {kind: positive, name: si_contract_covers_scope, expect: match}
+    - {kind: positive, name: procurement_award_covers_scope, top: {event_type: procurement_awarded, source_tier: S1}, expect: match}
+    - {kind: positive, name: programme_announcement_with_si, top: {event_type: programme_announced}, expect: match}
+    - {kind: negative, name: scope_not_covered, set: {outsourcing_contract_covers_scope: false}, expect: none}
+    - {kind: negative, name: flag_absent, drop: [outsourcing_contract_covers_scope], expect: none}
+    - {kind: negative, name: wrong_event_type, top: {event_type: product_launch}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_12_months, top: {days_ago: 400}, expect: none, trace: expired}
+- rule: NEG-05
+  base: {event_type: supplier_panel_closed, source_tier: S3, days_ago: 30, attrs: {panel_closed: true}}
+  cases:
+    - {kind: positive, name: panel_closed, expect: match}
+    - {kind: positive, name: supplier_list_reduced, set: {panel_closed: false, supplier_list_reduced: true}, expect: match}
+    - {kind: positive, name: official_s1_closure, top: {source_tier: S1}, expect: match}
+    - {kind: negative, name: neither_flag, set: {panel_closed: false}, expect: none}
+    - {kind: negative, name: panel_opened_not_closed, top: {event_type: supplier_panel_opened}, expect: none, trace: event_type_not_applicable}
+    - {kind: negative, name: attribute_missing, drop: [panel_closed], expect: none}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_12_months, top: {days_ago: 400}, expect: none, trace: expired}
+- rule: NEG-06
+  base: {event_type: negative_cancellation, source_tier: S3, days_ago: 5, attrs: {programme_status: cancelled, programme_domain: core_banking}}
+  cases:
+    - {kind: positive, name: programme_cancelled, expect: match}
+    - {kind: positive, name: programme_paused, top: {event_type: programme_announced}, set: {programme_status: paused}, expect: match}
+    - {kind: positive, name: cancellation_event_without_status, drop: [programme_status], expect: match}
+    - {kind: negative, name: programme_in_implementation, top: {event_type: programme_announced}, set: {programme_status: implementation}, expect: none}
+    - {kind: negative, name: delayed_is_not_cancelled, top: {event_type: programme_delayed}, set: {programme_status: delayed}, expect: none}
+    - {kind: negative, name: wrong_event_type, top: {event_type: product_launch}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: negative_persists_until_new_programme_event, top: {days_ago: 400}, expect: match}
+- rule: NEG-12
+  base: {event_type: relationship_changed, source_tier: internal, days_ago: 2, attrs: {ownership_conflict: true}}
+  cases:
+    - {kind: positive, name: owned_by_other_rep, expect: match}
+    - {kind: positive, name: partner_end_client, top: {source_tier: S2}, set: {non_circumvention: true}, expect: match}
+    - {kind: positive, name: seen_in_press, top: {source_tier: S3}, expect: match}
+    - {kind: negative, name: no_conflict, set: {ownership_conflict: false}, expect: none}
+    - {kind: negative, name: flag_absent, drop: [ownership_conflict], expect: none}
+    - {kind: negative, name: wrong_event_type, top: {event_type: funding_announced}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: low_authority_source, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: ownership_gate_has_no_time_expiry, top: {days_ago: 700}, expect: match}

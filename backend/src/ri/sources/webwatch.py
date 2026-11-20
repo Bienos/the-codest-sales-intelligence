@@ -1,0 +1,211 @@
+"""Permitted page/feed change monitoring (spec 02 §7 website change monitoring).
+
+Rules: robots.txt is honoured (disallow => PolicyBlocked, collector stops); conditional GET (ETag/Last-Modified);
+only the configured page SECTION is hashed (chrome/tracking stripped) so cosmetic churn emits nothing; dynamic
+pages that repeatedly fail are marked degraded - we do NOT bypass blocks, paywalls or authentication.
+"""
+from __future__ import annotations
+
+import re
+import urllib.robotparser
+import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
+from urllib.parse import urljoin, urlparse
+
+import httpx
+
+from .base import (FetchBatch, HealthCheck, PolicyBlocked, RawItem, SchemaDrift, SourceDescriptor, SourceDocumentDraft)
+from .http import UA, classify
+from .util import excerpt, parse_dt, sha, utcnow
+
+_DROP = {"script", "style", "noscript", "nav", "footer", "header", "form", "iframe", "svg"}
+
+
+class _Extract(HTMLParser):
+    """Collect visible text, optionally only inside an element matched by id/class/tag (`selector`)."""
+
+    def __init__(self, selector: str | None):
+        super().__init__()
+        self.sel, self.depth_drop, self.depth_sel, self.chunks, self.links = selector, 0, 0, [], []
+        self._stack: list[tuple[str, bool]] = []
+
+    def _match(self, tag, attrs) -> bool:
+        if not self.sel:
+            return True
+        a = dict(attrs)
+        if self.sel.startswith("#"):
+            return a.get("id") == self.sel[1:]
+        if self.sel.startswith("."):
+            return self.sel[1:] in (a.get("class") or "").split()
+        return tag == self.sel
+
+    def handle_starttag(self, tag, attrs):
+        if tag in _DROP:
+            self.depth_drop += 1
+        entering = self.depth_sel == 0 and self._match(tag, attrs)
+        if self.depth_sel > 0 or entering:
+            self.depth_sel += 1
+        self._stack.append((tag, self.depth_sel > 0))
+        if self.depth_sel > 0 and tag == "a" and dict(attrs).get("href"):
+            self.links.append(dict(attrs)["href"])
+
+    def handle_endtag(self, tag):
+        if tag in _DROP and self.depth_drop:
+            self.depth_drop -= 1
+        if self._stack:
+            self._stack.pop()
+            if self.depth_sel > 0:
+                self.depth_sel -= 1
+
+    def handle_data(self, data):
+        if self.depth_sel > 0 and not self.depth_drop and data.strip():
+            self.chunks.append(data.strip())
+
+
+def extract_section(html: str, selector: str | None) -> tuple[str, list[str]]:
+    p = _Extract(selector)
+    p.feed(html)
+    text = " ".join(p.chunks)
+    text = re.sub(r"\b\d{1,2}:\d{2}(:\d{2})?\b", "", text)       # drop clocks/timestamps that churn every load
+    text = re.sub(r"\s+", " ", text).strip()
+    return text, p.links
+
+
+class RobotsCache:
+    def __init__(self):
+        self._c: dict[str, urllib.robotparser.RobotFileParser | None] = {}
+
+    async def allowed(self, client: httpx.AsyncClient, url: str) -> bool:
+        origin = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+        if origin not in self._c:
+            rp = urllib.robotparser.RobotFileParser()
+            try:
+                r = await client.get(f"{origin}/robots.txt", headers={"User-Agent": UA})
+                if r.status_code == 200:
+                    rp.parse(r.text.splitlines())
+                    self._c[origin] = rp
+                elif r.status_code in (401, 403):
+                    self._c[origin] = None          # explicit denial => treat as disallowed
+                else:
+                    self._c[origin] = rp            # no robots file => allowed (parser default)
+                    rp.parse([])
+            except httpx.HTTPError:
+                self._c[origin] = rp
+                rp.parse([])
+        rp = self._c[origin]
+        return bool(rp and rp.can_fetch(UA, url))
+
+
+class PageWatchConnector:
+    def __init__(self, client: httpx.AsyncClient, url: str, *, source_id: str, selector: str | None = None, now_fn=utcnow,
+                 robots: RobotsCache | None = None):
+        self.client, self.url, self.source_id, self.selector, self.now = client, url, source_id, selector, now_fn
+        self.robots = robots or RobotsCache()
+        self._validators: dict[str, str] = {}
+
+    def describe(self) -> SourceDescriptor:
+        return SourceDescriptor(self.source_id, "page-monitor", "change_monitor", "S2", "1")
+
+    async def health_check(self) -> HealthCheck:
+        try:
+            await self.fetch(None, 1)
+            return HealthCheck(True)
+        except Exception as exc:  # noqa: BLE001
+            return HealthCheck(False, str(exc), getattr(exc, "error_class", "transient_network"))
+
+    async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
+        if not await self.robots.allowed(self.client, self.url):
+            raise PolicyBlocked(f"robots.txt disallows {self.url}")
+        hdrs = {"User-Agent": UA}
+        if cursor:  # cursor = "etag|last-modified" from the previous successful run
+            etag, _, lm = cursor.partition("|")
+            if etag:
+                hdrs["If-None-Match"] = etag
+            if lm:
+                hdrs["If-Modified-Since"] = lm
+        resp = await self.client.get(self.url, headers=hdrs, follow_redirects=True)
+        if resp.status_code == 304:
+            return FetchBatch([], cursor, False, self.now(), "1", quota_usage={"requests": 1}, complete_listing=False)
+        classify(resp)
+        text, links = extract_section(resp.text, self.selector)
+        if self.selector and not text:
+            raise SchemaDrift(f"selector {self.selector!r} matched nothing on {self.url} (page layout changed?)")
+        nxt = f"{resp.headers.get('ETag', '')}|{resp.headers.get('Last-Modified', '')}"
+        return FetchBatch([RawItem(self.url, sha(text), {"text": text, "links": links, "html_bytes": len(resp.content)}, self.url)],
+                          nxt, False, self.now(), "1", quota_usage={"requests": 1})
+
+    async def fetch_by_id(self, external_id: str) -> RawItem | None:
+        b = await self.fetch(None, 1)
+        return b.items[0] if b.items else None
+
+    def canonicalize(self, item: RawItem) -> SourceDocumentDraft:
+        t = item.payload["text"]
+        return SourceDocumentDraft(item.external_id, item.version or sha(t), item.external_id, None, None, t, excerpt(t),
+                                   raw_meta={"links": item.payload["links"][:50]})
+
+
+class FeedConnector:
+    """RSS 2.0 / Atom. `external_id` = guid/id, falling back to link. publication date preserved separately."""
+
+    def __init__(self, client: httpx.AsyncClient, url: str, *, source_id: str, now_fn=utcnow, robots: RobotsCache | None = None):
+        self.client, self.url, self.source_id, self.now = client, url, source_id, now_fn
+        self.robots = robots or RobotsCache()
+
+    def describe(self) -> SourceDescriptor:
+        return SourceDescriptor(self.source_id, "feed", "feed", "S2", "1")
+
+    async def health_check(self) -> HealthCheck:
+        try:
+            await self.fetch(None, 1)
+            return HealthCheck(True)
+        except Exception as exc:  # noqa: BLE001
+            return HealthCheck(False, str(exc), getattr(exc, "error_class", "transient_network"))
+
+    async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
+        if not await self.robots.allowed(self.client, self.url):
+            raise PolicyBlocked(f"robots.txt disallows {self.url}")
+        resp = await self.client.get(self.url, headers={"User-Agent": UA}, follow_redirects=True)
+        classify(resp)
+        try:
+            root = ET.fromstring(resp.text)
+        except ET.ParseError as exc:
+            raise SchemaDrift(f"feed is not valid XML: {exc}") from exc
+        items = []
+        ns = {"a": "http://www.w3.org/2005/Atom"}
+        entries = root.findall(".//item") or root.findall(".//a:entry", ns)
+        if not entries and root.tag not in {"rss", "{http://www.w3.org/2005/Atom}feed"}:
+            raise SchemaDrift("unrecognised feed format")
+        for e in entries[:limit]:
+            def g(tag, atag=None, e=e):
+                el = e.find(tag)
+                if el is None and atag:
+                    el = e.find(f"a:{atag}", ns)
+                return (el.text or "").strip() if el is not None and el.text else None
+            link = g("link")
+            if not link:
+                l = e.find("a:link", ns)
+                link = l.get("href") if l is not None else None
+            guid = g("guid", "id") or link
+            if not guid:
+                continue
+            items.append(RawItem(guid, g("pubDate", "updated"), {"title": g("title", "title"), "link": link,
+                                                             "summary": g("description", "summary"), "published": g("pubDate", "published") or g("pubDate", "updated")}, link))
+        return FetchBatch(items, None, False, self.now(), "1", quota_usage={"requests": 1})
+
+    async def fetch_by_id(self, external_id: str) -> RawItem | None:
+        b = await self.fetch(None, 200)
+        return next((i for i in b.items if i.external_id == external_id), None)
+
+    def canonicalize(self, item: RawItem) -> SourceDocumentDraft:
+        p = item.payload
+        text = re.sub(r"<[^>]+>", " ", p.get("summary") or "")
+        text = re.sub(r"\s+", " ", f"{p.get('title') or ''}. {text}").strip()
+        pub = None
+        if p.get("published"):
+            try:
+                from email.utils import parsedate_to_datetime
+                pub = parsedate_to_datetime(p["published"])
+            except (TypeError, ValueError):
+                pub = parse_dt(p["published"])
+        return SourceDocumentDraft(item.external_id, sha(item.external_id, p.get("title"), p.get("summary")), urljoin(self.url, p["link"]) if p.get("link") else None,
+                                   p.get("title"), pub, text, excerpt(text))
