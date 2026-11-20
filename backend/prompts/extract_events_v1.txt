@@ -13,7 +13,7 @@ RULES
 - attrs: only from this controlled vocabulary when stated in the text: programme_domain (core_banking|payments_rail|cloud_data|digital_channels|
   lending|fraud_aml|ai_use_case|api_platform|other), role_of_subject (bank|vendor|si|fintech|other), named_systems[], has_dated_milestones (bool),
   external_scope_stated (bool: text explicitly says external/partner/supplier work is sought), counterparty_selected (bool), award_scope_includes_dev (bool),
-  programme_status (announced|planning|implementation|delayed|cancelled|paused|completed), panel_open_for_applications (bool), it_services_scope (bool),
+  programme_name (official name only if stated in the text), programme_status (announced|planning|implementation|delayed|cancelled|paused|completed), milestone_date (ISO, only if stated), panel_open_for_applications (bool), it_services_scope (bool),
   contingent_labour_call (bool), panel_closed (bool), supplier_list_reduced (bool), outsourcing_contract_covers_scope (bool: a large SI/outsourcing contract
   explicitly covers this scope), leader_role (cto|cio|head_engineering|head_payments|head_platform|other), leader_start_date (ISO), change (contact_new_role),
   ownership_conflict (bool), dedup_key (short canonical key of the fact).

@@ -13,8 +13,16 @@ from .pipeline import RunResult
 
 
 def finish_event(conn: Conn, event_id: str, *, recheck=None, now: datetime | None = None) -> dict[str, Any]:
+    from ..initiatives.link import link_capacity_evidence, link_event
+    from ..initiatives.routes import derive_routes
     status = verify_event(conn, event_id, recheck_notice=recheck, now=now)
     out = evaluate_event(conn, event_id, now=now)
+    link = link_event(conn, event_id)
+    cap = link_capacity_evidence(conn, event_id)
+    out["initiative_id"] = link.initiative_id or cap.initiative_id
+    if out["negatives"]:     # scoped negatives (route blocks) change route access for the account's initiatives
+        for i in conn.execute("SELECT i.id FROM initiatives i JOIN events e ON e.subject_org_id=i.owner_org_id WHERE e.id=%s AND i.status='active'", (event_id,)).fetchall():
+            derive_routes(conn, str(i["id"]))
     ev = q1(conn, "SELECT event_type FROM events WHERE id=%s", (event_id,))
     if ev and ev["event_type"] == "job_closed":
         out["jobs_signals_expired"] = expire_on_job_closed(conn, event_id)
