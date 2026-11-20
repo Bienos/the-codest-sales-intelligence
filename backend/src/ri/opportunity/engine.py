@@ -43,7 +43,7 @@ def evaluate(conn: Conn, hyp_id: str, *, now: datetime | None = None, actor: str
     blockers = model.compute_blockers(f, conn)
     breakdown, total = model.score(f, gates, ds)
     conf = model.evidence_confidence(f, conn)
-    prio = model.priority_for(f, total, blockers, conf)
+    prio = model.priority_for(f, total, blockers, conf, ds)
     if gates["G2"]["status"] == "fail" and prio not in {"blocked"}:
         prio = "low"            # initiative completed/paused: no live commercial action regardless of score
     sev = "hard" if any(b["scope"] == "hard" for b in blockers) else "route" if blockers else "soft" if f.negatives else "none"

@@ -1,0 +1,2 @@
+# ADR-0001 Modular monolith, domain modules not agents
+One Python package (`ri`) with the eight spec domains as modules; one image, three processes (api/worker/scheduler). Deterministic code owns ingestion, identity, scheduling, state, permissions, audit and cost; AI only extracts and (optionally) reviews, behind schemas. Rejected: microservices and autonomous multi-agent orchestration (unneeded complexity, harder audit).

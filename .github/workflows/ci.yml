@@ -1,0 +1,27 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres: {image: "postgres:16", env: {POSTGRES_HOST_AUTH_METHOD: trust}, ports: ["5432:5432"], options: >-
+        --health-cmd pg_isready --health-interval 5s --health-retries 10}
+    env: {TEST_DATABASE_URL: "postgresql://postgres@localhost:5432/postgres"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13"}
+      - run: pip install -e "backend[dev]"
+      - run: ruff check backend/src backend/tests --select F,E9,B --ignore B008,B904,B007
+      - run: pytest backend -q           # unit + integration + signal-fixture coverage gate + replay/idempotency
+      - name: migration dry run on fresh DB
+        run: createdb -h localhost -U postgres dry && DATABASE_URL=postgresql://postgres@localhost/dry PYTHONPATH=backend/src python -m ri.cli migrate
+      - name: secret scan
+        run: "! git grep -nE '(AKIA[0-9A-Z]{16}|-----BEGIN (RSA )?PRIVATE KEY|xox[bap]-)' -- . ':!docs' "
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - run: cd frontend && npm ci && npm run build

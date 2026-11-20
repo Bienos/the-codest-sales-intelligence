@@ -189,14 +189,16 @@ def score(f: Facts, gates: dict[str, Any], status_demand: str) -> tuple[dict[str
     return s, sum(v["points"] for v in s.values())
 
 
-def priority_for(f: Facts, total: int, blockers: list[dict[str, str]], confidence: str) -> str:
+def priority_for(f: Facts, total: int, blockers: list[dict[str, str]], confidence: str, demand: str = "unknown") -> str:
     if any(b["scope"] == "hard" for b in blockers):
         return "blocked"
     live_tender = f.tender is not None and f.hyp["route_type"] in {"procurement", "direct"} and any(s["rule_id"] == "SRC-01" for s in f.signals)
     if live_tender and f.tender["deadline_at"] and 0 <= (f.tender["deadline_at"] - f.now).days <= URGENT_DAYS:
         return "urgent"
     route_blocked = any(b["scope"] == "route" for b in blockers)
-    if total >= HIGH_THRESHOLD and confidence in {"medium", "high"} and not route_blocked:
+    # commercial-footing floor: a verified programme alone (demand unknown AND route unknown) is never 'high' - technology investment != outsourcing demand
+    footing = demand in {"explicit", "inferred", "buyer_confirmed"} or (f.route is not None and f.route["access_status"] in {"verified", "potential"})
+    if total >= HIGH_THRESHOLD and confidence in {"medium", "high"} and not route_blocked and footing:
         return "high"
     if total >= MEDIUM_THRESHOLD:
         return "medium"

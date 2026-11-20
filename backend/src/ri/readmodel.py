@@ -104,11 +104,10 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
         us = q1(conn, "SELECT decision, fingerprint, reason FROM hypothesis_user_state WHERE hypothesis_id=%s AND user_id=%s", (h["id"], p.user_id))
         if us and us["fingerprint"] == fp and us["decision"] in {"dismissed", "monitor"}:
             continue        # dismissed/monitored AND nothing material changed => never resurfaces
-        last = q1(conn, "SELECT snapshot FROM hypothesis_seen WHERE hypothesis_id=%s ORDER BY first_presented_at DESC LIMIT 1", (h["id"],))
-        if last and (q1(conn, "SELECT 1 FROM hypothesis_seen WHERE hypothesis_id=%s AND fingerprint=%s", (h["id"], fp))) and not us and h["priority"] != "urgent":
-            # already presented in this exact state: not new. (kept visible only if still unanswered AND high+)
-            if h["priority"] == "medium":
-                continue
+        # "seen" drives before/after change display and notification dedup ONLY; unanswered items stay in the work queue until the user decides
+        last = q1(conn, "SELECT snapshot FROM hypothesis_seen WHERE hypothesis_id=%s AND fingerprint<>%s ORDER BY first_presented_at DESC LIMIT 1", (h["id"], fp))
+        if us and us["decision"] == "accepted" and us["fingerprint"] == fp:
+            continue        # accepted and unchanged: it is now active work (Opportunity workspace), not a new development
         c = card(conn, h, now, last["snapshot"] if last else None)
         if us and us["decision"] == "dismissed" and us["fingerprint"] != fp:
             c["reopened_after_dismissal"] = {"previous_reason": us["reason"], "note": "material new evidence since you dismissed this"}

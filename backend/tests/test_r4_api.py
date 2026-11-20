@@ -266,3 +266,13 @@ def test_explorer_states_ranking_basis_and_coverage(world):
     assert "not a probability" in r["ranking_basis"] and "coverage" in r and "NOT proof" in r["coverage_note"]
     assert r["items"] and r["items"][0]["evidence_confidence"] in {"low", "medium", "high"}
     assert c.get("/api/explorer?entity=companies&existing=false", headers=h("analyst")).json()["items"] == []
+
+
+def test_unanswered_items_stay_on_today_across_reloads_accepted_unchanged_leaves(world):
+    c, h = world["c"], world["h"]
+    ids = lambda: sorted(x["hypothesis_id"] for sec in c.get("/api/today", headers=h("bdm")).json()["sections"].values() for x in sec)  # noqa: E731
+    first = ids()
+    assert first and ids() == first == ids()                       # viewing is not answering: nothing vanishes on refresh
+    hid = first[0]
+    assert c.post(f"/api/hypotheses/{hid}/decision", json={"decision": "accepted"}, headers=h("bdm")).status_code == 200
+    assert hid not in ids() and len(ids()) == len(first) - 1       # accepted + unchanged => active work, not a new development

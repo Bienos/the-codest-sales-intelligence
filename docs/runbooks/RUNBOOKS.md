@@ -1,0 +1,11 @@
+# Operational runbooks (spec 13 §10) — mapped to code
+- **RB-01 source auth expires**: health shows `failed/auth`, source status `failed`, scheduler stops polling. Rotate credential → `registry.activate`/set status active → next run resumes from the last committed cursor; run a backfill window for the gap.
+- **RB-02 tender deadline wrong**: pause source (`registry.pause`), re-fetch official notice (`fetch_by_id`), correct, add a fixture to `signal_fixtures.yaml`.
+- **RB-03 provider outage**: automatic (degraded after 3 failures, backoff honours Retry-After); other sources continue.
+- **RB-04 CRM double-write risk**: set `RI_CRM_WRITES_ENABLED=false`; check approvals in `executing`; the executor reconciles via the `[ri-idem:<key>]` marker before any retry.
+- **RB-05 identity false merge**: split orgs in SQL under audit; re-run `engine.evaluate_stale`; hypotheses re-derive from revision bump.
+- **RB-06 prompt injection**: `audit_events.operation='prompt_injection_flag'`; quarantine the document, add a fixture.
+- **RB-07 cost spike**: caps are hard; set `provider_budgets.cap=0` to stop; inspect `budget_ledger`.
+- **Backup/restore**: `deploy/backup.sh`; `deploy/restore_drill.sh <dump> <admin-url> <source-url>` (verifies checksum, row parity, migrations, audit immutability).
+- **Migrations**: forward-only; a modified applied file aborts. Fix forward with a new numbered file.
+- **Dead letters**: `/admin/jobs` → Replay (once-only, audited).

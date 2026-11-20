@@ -412,3 +412,13 @@ def test_new_company_outside_master_lists_enters_separate_workflow(conn, env):
     assert conn.execute("select status from new_company_candidates where organization_id=%s", (oid,)).fetchone()["status"] == "pending_qualification"
     again, st2 = register_discovered_company(conn, name="Example Bank", country="GB", domain=None, event_id=None)
     assert again == env["bank"] and st2 == "existing_account"                  # existing accounts are never duplicated
+
+
+def test_verified_programme_without_demand_or_route_footing_is_never_high(conn, env):
+    ini, hyps = make_hyp(conn, env)
+    for h in hyps.values():
+        out = engine.evaluate(conn, h, now=NOW)
+        assert out["demand"] == "unknown" and out["priority"] in {"medium", "low", "blocked"}, out["priority"]
+    # a live official tender provides explicit demand => may rank high/urgent
+    t = tender_chain(conn, env, NOW + timedelta(days=40))
+    assert engine.evaluate(conn, t, now=NOW)["priority"] in {"high", "urgent", "medium"}
