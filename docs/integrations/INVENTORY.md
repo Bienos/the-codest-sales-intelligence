@@ -4,6 +4,7 @@ Legend: **Built** = adapter + tests on fixtures · **Live-verified** = exercised
 
 | Integration | Direction | Built | Live-verified | Blocker / what is needed |
 |---|---|---|---|---|
+| **Supabase Postgres** (`the-codest-sales-intelligence`, eu-central-1, PG 17) | store | ✅ migrations 0001–0008 applied via connector, checksums recorded in `schema_migrations` | ✅ verified: 69 tables, RLS on all, 0 grants to `anon`/`authenticated`, security advisor clean apart from intended deny-all INFO | App host needs the **session-pooler** connection string as a secret. Run `python -m ri.cli seed` once (loads the 64 rules + source registry). Performance advisor: 48 unindexed FKs to index once real data exists. Tested locally on PG 16 only. |
 | Google Sheets A/B | in (read-only) | ✅ client, 15 contracts, drift pause, lineage | ⚠️ **Schemas inspected live** via Drive connector; **no API sync run** | Needs a service account with Viewer on both workbooks → `docs/runbooks/connect-google-sheets.md`. Egress to `sheets.googleapis.com` returned 403 here. |
 | Pipedrive read sync/webhooks | in | ✅ | ⚠️ Payload shape confirmed by a live read via MCP (v2: `data[]`, `next_cursor`, `owner_id`) | Needs API token + `PIPEDRIVE_DOMAIN`; webhook basic-auth secret; field-key mapping (custom keys are account-specific hashes). Egress blocked. |
 | Pipedrive write executor | out | ✅ approval-gated, kill-switch default OFF, fetch-before-retry | ❌ | Separate write token; needs CRM-admin approval of allowed operations (only `create_activity` is implemented). |
