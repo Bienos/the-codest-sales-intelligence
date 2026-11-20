@@ -15,7 +15,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("cmd", choices=["migrate", "seed", "import-sheets", "sync-crm", "schedule", "worker", "digest", "serve"])
     ap.add_argument("arg", nargs="?")
     a = ap.parse_args(argv)
-    s = Settings.from_env()
+    s = Settings.from_env(require_auth=(a.cmd == "serve"))      # only the web app handles logins; worker/scheduler/migrate must not need them
     if a.cmd == "migrate":
         from .migrate import migrate
         print("applied:", migrate(s.database_url) or "nothing to do")

@@ -294,3 +294,11 @@ def test_google_signin_defaults_domain_allowlist_and_email_verified(monkeypatch)
     for bad in (tok(email_verified=False), tok(email="x@other.com"), tok(aud="someone-elses-client")):
         with pytest.raises(HTTPException):
             v.email_for(bad)
+
+
+def test_only_the_api_requires_sign_in_config_in_production():
+    Settings(env="production", auth_mode="oidc").validate(require_auth=False)          # worker / scheduler / migrate
+    with pytest.raises(RuntimeError):
+        Settings(env="production", auth_mode="oidc").validate()                         # the web app still refuses to start without sign-in
+    with pytest.raises(RuntimeError):
+        Settings(env="production", auth_mode="dev").validate(require_auth=False)        # dev auth is forbidden everywhere in production

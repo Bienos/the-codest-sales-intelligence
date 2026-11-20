@@ -59,7 +59,7 @@ class Settings:
     bootstrap_admin_emails: tuple[str, ...] = ()
 
     @classmethod
-    def from_env(cls) -> Settings:
+    def from_env(cls, require_auth: bool = True) -> Settings:
         env = os.environ.get("RI_ENV", "development")
         s = cls(
             env=env,
@@ -92,12 +92,12 @@ class Settings:
             s = dataclasses.replace(s, oidc_audience=s.oidc_audience or s.google_client_id,
                                     oidc_issuer=s.oidc_issuer or "https://accounts.google.com,accounts.google.com",
                                     oidc_jwks_url=s.oidc_jwks_url or "https://www.googleapis.com/oauth2/v3/certs")
-        s.validate()
+        s.validate(require_auth=require_auth)
         return s
 
-    def validate(self) -> None:
+    def validate(self, require_auth: bool = True) -> None:
         if self.env == "production":
             if self.auth_mode == "dev":
                 raise RuntimeError("RI_AUTH_MODE=dev is forbidden in production")
-            if self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_jwks_url and self.oidc_audience):
+            if require_auth and self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_jwks_url and self.oidc_audience):
                 raise RuntimeError("production requires RI_OIDC_ISSUER, RI_OIDC_AUDIENCE and RI_OIDC_JWKS_URL")
