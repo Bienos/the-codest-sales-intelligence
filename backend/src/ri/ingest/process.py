@@ -4,11 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from ..db import Conn, q1
+from ..db import Conn, jb, q1
 from ..events.extract import EventExtractor, process_document
 from ..events.structured import emit_job_event, emit_procurement_events
 from ..events.verify import verify_event
 from ..signals.persist import evaluate_event, expire_on_job_closed
+from ..jobs.queue import JobError
+from ..sources.base import BudgetExceeded
 from .pipeline import RunResult
 
 
@@ -40,11 +42,25 @@ def process_run(conn: Conn, res: RunResult, *, extractor: EventExtractor | None 
             r = finish_event(conn, eid, recheck=recheck, now=now)
             summary["signals"] += len(r["signals"]); summary["negatives"] += len(r["negatives"])
     if extractor is not None:
-        for doc_id in [*res.new_doc_ids, *res.changed_doc_ids]:
+        pending = [str(r["id"]) for r in conn.execute("SELECT id FROM source_documents WHERE raw_meta->>'pending_extraction'='true' AND content_text IS NOT NULL ORDER BY fetched_at LIMIT 50").fetchall()]
+        for doc_id in [*res.new_doc_ids, *res.changed_doc_ids, *[p for p in pending if p not in res.new_doc_ids]]:
             d = q1(conn, "SELECT raw_meta FROM source_documents WHERE id=%s", (doc_id,))
             if not d or (d["raw_meta"] or {}).get("structured"):
                 continue
-            out = process_document(conn, doc_id, extractor, resolve_org=resolve_org, replay=replay)
+            try:
+                with conn.transaction():
+                    out = process_document(conn, doc_id, extractor, resolve_org=resolve_org, replay=replay)
+                    conn.execute("UPDATE source_documents SET raw_meta = raw_meta - 'pending_extraction' WHERE id=%s", (doc_id,))
+            except BudgetExceeded:
+                # cap reached: the document stays queued (text retained) and is retried when budget is available - never silently dropped
+                conn.execute("UPDATE source_documents SET raw_meta = raw_meta || '{\"pending_extraction\": true}'::jsonb WHERE id=%s", (doc_id,))
+                summary["deferred_budget"] = summary.get("deferred_budget", 0) + 1
+                continue
+            except JobError as exc:       # one bad document must not abort the run: dead-letter it and carry on
+                conn.execute("INSERT INTO dead_letters(kind, payload, error_class, error) VALUES ('extract_document',%s,%s,%s)", (jb({"document_id": doc_id}), exc.error_class, str(exc)[:500]))
+                conn.execute("UPDATE source_documents SET raw_meta = raw_meta - 'pending_extraction' WHERE id=%s", (doc_id,))
+                summary["extraction_failed"] = summary.get("extraction_failed", 0) + 1
+                continue
             for e in conn.execute("SELECT DISTINCT e.id FROM events e JOIN event_documents ed ON ed.event_id=e.id WHERE ed.document_id=%s", (doc_id,)).fetchall():
                 r = finish_event(conn, str(e["id"]), recheck=recheck, now=now)
                 summary["signals"] += len(r["signals"]); summary["negatives"] += len(r["negatives"])

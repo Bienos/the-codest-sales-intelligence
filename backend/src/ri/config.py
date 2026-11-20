@@ -52,6 +52,9 @@ class Settings:
     slack_webhook_url: str | None = field(default=None, repr=False)
     approval_ttl_hours: int = 72
     google_client_id: str | None = None
+    anthropic_monthly_token_cap: float = 0.0     # tokens/month; 0 = model extraction cannot run
+    exa_monthly_cap_usd: float = 0.0
+    exa_est_cost_per_search: float | None = None  # must be set from Exa's price list; unknown => no search runs
     allowed_email_domain: str | None = None
     bootstrap_admin_emails: tuple[str, ...] = ()
 
@@ -78,7 +81,10 @@ class Settings:
             anthropic_api_key=read_secret("ANTHROPIC_API_KEY"),
             slack_webhook_url=read_secret("SLACK_WEBHOOK_URL"),
             approval_ttl_hours=int(os.environ.get("RI_APPROVAL_TTL_HOURS", "72")),
-            google_client_id=os.environ.get("RI_GOOGLE_CLIENT_ID"),
+            google_client_id=os.environ.get("RI_GOOGLE_CLIENT_ID") or None,
+            anthropic_monthly_token_cap=_f("RI_ANTHROPIC_MONTHLY_TOKEN_CAP", 0.0),
+            exa_monthly_cap_usd=_f("RI_EXA_MONTHLY_CAP_USD", 0.0),
+            exa_est_cost_per_search=float(os.environ["RI_EXA_EST_COST_PER_SEARCH"]) if os.environ.get("RI_EXA_EST_COST_PER_SEARCH") else None,
             allowed_email_domain=(os.environ.get("RI_ALLOWED_EMAIL_DOMAIN") or "").lower() or None,
             bootstrap_admin_emails=tuple(e.strip().lower() for e in os.environ.get("RI_BOOTSTRAP_ADMIN_EMAILS", "").split(",") if e.strip()),
         )

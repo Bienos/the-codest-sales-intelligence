@@ -10,7 +10,7 @@ from ..sources.base import ConnectorError
 from .queue import JobError, RequiresApproval
 
 
-def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory: Callable[[], Any] | None = None,
+def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory: Callable[[Conn], Any] | None = None,
                    resolve_org_factory: Callable[[Conn], Callable[[str], str | None]] | None = None) -> dict[str, Callable[[Conn, dict], dict]]:
     def source_run(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         sid = job["payload"]["source_id"]
@@ -21,7 +21,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             raise JobError(res.error or "source run failed", res.error_class)
         if res.status == "skipped":
             return {"skipped": res.error}
-        ex = extractor_factory() if extractor_factory else None
+        ex = extractor_factory(conn) if extractor_factory else None
         out = process_run(conn, res, extractor=ex, resolve_org=resolver)
         return {"run_id": res.run_id, "new": res.new, "changed": res.changed, "unchanged": res.unchanged, **out}
 

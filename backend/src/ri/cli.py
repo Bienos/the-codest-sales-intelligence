@@ -76,8 +76,32 @@ def main(argv: list[str] | None = None) -> int:
                     return TedConnector(client, query=src["config"]["query"])
                 if source_id == "procurement-uk-fts":
                     return FindTenderConnector(client)
+                url = (src["config"] or {}).get("url")
+                if url:      # operator-configured newsroom / feed URLs (robots.txt is enforced by the connector)
+                    from .sources.webwatch import FeedConnector, PageWatchConnector
+                    if src["collection_method"] == "feed":
+                        return FeedConnector(client, url, source_id=source_id)
+                    return PageWatchConnector(client, url, source_id=source_id, selector=(src["config"] or {}).get("selector"))
                 raise NotImplementedError(f"no connector implementation wired for {source_id}")
-            handlers = build_handlers(connector_factory=factory)
+            from . import budget
+            from .events.budgeted import BudgetedExtractor
+            from .events.extract import AnthropicExtractor
+            from .identity.resolver import resolve
+            period = BudgetedExtractor.period()
+            budget.set_cap(conn, "anthropic", "monthly", period, s.anthropic_monthly_token_cap, "tokens")
+            budget.set_cap(conn, "exa", "monthly", period, s.exa_monthly_cap_usd, "usd")
+            conn.commit()
+            print(f"caps for {period}: anthropic={s.anthropic_monthly_token_cap} tokens, exa=${s.exa_monthly_cap_usd}")
+            http = httpx.AsyncClient(timeout=60)
+
+            def extractor_factory(c):
+                if not s.anthropic_api_key:
+                    return None
+                return BudgetedExtractor(AnthropicExtractor(http, s.anthropic_api_key), c)
+
+            def resolve_factory(c):
+                return lambda name: (lambda d: d.org_id if d.action == "auto_link" else None)(resolve(c, name=name, allow_create=False)) if name else None
+            handlers = build_handlers(connector_factory=factory, extractor_factory=extractor_factory, resolve_org_factory=resolve_factory)
             print("worker started; polling queue")
             while True:
                 if run_one(conn, f"worker-{time.time_ns()}", handlers) is None:

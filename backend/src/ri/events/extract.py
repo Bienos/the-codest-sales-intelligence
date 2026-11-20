@@ -88,6 +88,8 @@ class AnthropicExtractor:
         self.client, self.key, self.model, self.max_tokens = client, api_key, model, max_tokens
         self._system = PROMPT_PATH.read_text(encoding="utf-8").format(event_types=", ".join(EVENT_TYPES))
         self.version = f"anthropic:{model}:prompt-{hashlib.sha256(self._system.encode()).hexdigest()[:10]}"
+        self.max_tokens_budget = max_tokens
+        self.last_usage_tokens = 0
 
     async def extract(self, *, title, text, published_at):
         user = f"<document title={json.dumps(title or '')} published={json.dumps(published_at)}>\n{text[:30000]}\n</document>"
@@ -95,6 +97,8 @@ class AnthropicExtractor:
                                   headers={"x-api-key": self.key, "anthropic-version": "2023-06-01"},
                                   json={"model": self.model, "max_tokens": self.max_tokens, "temperature": 0, "system": self._system,
                                         "messages": [{"role": "user", "content": user}]})
+        u = data.get("usage") or {}
+        self.last_usage_tokens = int(u.get("input_tokens", 0)) + int(u.get("output_tokens", 0))
         out = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         m = re.search(r"\{.*\}", out, re.S)
         if not m:
