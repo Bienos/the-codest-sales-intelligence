@@ -1,0 +1,86 @@
+"""Environment-driven settings. Secrets are read from env / mounted files, never from the repo."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+
+
+def _b(name: str, default: bool = False) -> bool:
+    return os.environ.get(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _f(name: str, default: float) -> float:
+    return float(os.environ.get(name, default))
+
+
+def read_secret(name: str) -> str | None:
+    """`NAME` env var, or contents of the file named by `NAME_FILE` (Docker/K8s secrets)."""
+    v = os.environ.get(name)
+    if v:
+        return v
+    p = os.environ.get(f"{name}_FILE")
+    if p and os.path.exists(p):
+        with open(p, encoding="utf-8") as fh:
+            return fh.read().strip()
+    return None
+
+
+@dataclass(frozen=True)
+class Settings:
+    env: str = "development"  # development | staging | production
+    database_url: str = "postgresql://postgres@localhost:5432/ri"
+    # Hard safety switches. Production writes are OFF unless explicitly enabled per system.
+    crm_writes_enabled: bool = False
+    outbound_enabled: bool = False
+    paid_enrichment_enabled: bool = False
+    # Budgets (EUR-agnostic "units"; provider rates are NOT assumed - see docs/14)
+    default_monthly_provider_budget: float = 0.0
+    default_hypothesis_research_budget: float = 0.0
+    # Auth
+    auth_mode: str = "oidc"  # oidc | dev (dev only allowed when env != production)
+    oidc_issuer: str | None = None
+    oidc_audience: str | None = None
+    oidc_jwks_url: str | None = None
+    dev_auth_secret: str | None = None
+    # Secrets (resolved lazily; absence => integration reported 'blocked', never faked)
+    google_credentials_file: str | None = field(default=None, repr=False)
+    pipedrive_api_token: str | None = field(default=None, repr=False)
+    pipedrive_webhook_secret: str | None = field(default=None, repr=False)
+    exa_api_key: str | None = field(default=None, repr=False)
+    anthropic_api_key: str | None = field(default=None, repr=False)
+    slack_webhook_url: str | None = field(default=None, repr=False)
+    approval_ttl_hours: int = 72
+
+    @classmethod
+    def from_env(cls) -> Settings:
+        env = os.environ.get("RI_ENV", "development")
+        s = cls(
+            env=env,
+            database_url=os.environ.get("DATABASE_URL", cls.database_url),
+            crm_writes_enabled=_b("RI_CRM_WRITES_ENABLED"),
+            outbound_enabled=_b("RI_OUTBOUND_ENABLED"),
+            paid_enrichment_enabled=_b("RI_PAID_ENRICHMENT_ENABLED"),
+            default_monthly_provider_budget=_f("RI_DEFAULT_MONTHLY_PROVIDER_BUDGET", 0.0),
+            default_hypothesis_research_budget=_f("RI_DEFAULT_HYPOTHESIS_BUDGET", 0.0),
+            auth_mode=os.environ.get("RI_AUTH_MODE", "oidc"),
+            oidc_issuer=os.environ.get("RI_OIDC_ISSUER"),
+            oidc_audience=os.environ.get("RI_OIDC_AUDIENCE"),
+            oidc_jwks_url=os.environ.get("RI_OIDC_JWKS_URL"),
+            dev_auth_secret=read_secret("RI_DEV_AUTH_SECRET"),
+            google_credentials_file=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
+            pipedrive_api_token=read_secret("PIPEDRIVE_API_TOKEN"),
+            pipedrive_webhook_secret=read_secret("PIPEDRIVE_WEBHOOK_SECRET"),
+            exa_api_key=read_secret("EXA_API_KEY"),
+            anthropic_api_key=read_secret("ANTHROPIC_API_KEY"),
+            slack_webhook_url=read_secret("SLACK_WEBHOOK_URL"),
+            approval_ttl_hours=int(os.environ.get("RI_APPROVAL_TTL_HOURS", "72")),
+        )
+        s.validate()
+        return s
+
+    def validate(self) -> None:
+        if self.env == "production":
+            if self.auth_mode == "dev":
+                raise RuntimeError("RI_AUTH_MODE=dev is forbidden in production")
+            if self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_jwks_url and self.oidc_audience):
+                raise RuntimeError("production requires RI_OIDC_ISSUER, RI_OIDC_AUDIENCE and RI_OIDC_JWKS_URL")

@@ -1,0 +1,101 @@
+{
+  "package": "The Codest Revenue Intelligence Platform V4.0",
+  "design_status": "proposed_not_implemented",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 6211,
+      "sha256": "a47b4baa05a0719a645ba5a9bcf20715d748e4804bbbbcfae7c5065062b57d4d"
+    },
+    {
+      "path": "THE_CODEST_REVENUE_INTELLIGENCE_MASTER_ARCHITECTURE_V4.md",
+      "bytes": 28870,
+      "sha256": "f436701110d052229f7a4e7e45c874b4d55cef0c7572d88f24a4cb23d155c335"
+    },
+    {
+      "path": "reference/SIGNAL_CATALOG_BASELINE.md",
+      "bytes": 9057,
+      "sha256": "3763c480f6d6124c5925392595c079aa84a1982a0db5c71355aa47a9d70571c2"
+    },
+    {
+      "path": "reference/The_Codest_Buying_Signal_Tracker_Original_64_Rules.csv",
+      "bytes": 13880,
+      "sha256": "c2ffda8e47d36858d5c0989d2bcd1729b178184195a7da969e4e6fd6c417b680"
+    },
+    {
+      "path": "specifications/01_PRODUCT_REQUIREMENTS.md",
+      "bytes": 9152,
+      "sha256": "fcbf7625c719e3e38b068a510094bf9494cced64f8cb5f2332b0a0dd0d527e82"
+    },
+    {
+      "path": "specifications/02_SOURCE_INTELLIGENCE.md",
+      "bytes": 8474,
+      "sha256": "610a7875b6d0d047af3db2ee7e118dea5049b8ec4c8d2754e94e400c6f53988b"
+    },
+    {
+      "path": "specifications/03_SIGNAL_ENGINE.md",
+      "bytes": 7995,
+      "sha256": "46bc78b81bbe80c2db4006aa63e8569108994fc39c864ffe1ce3cadadb61d63a"
+    },
+    {
+      "path": "specifications/04_DATA_AND_IDENTITY_MODEL.md",
+      "bytes": 9404,
+      "sha256": "935d614080d6392eb7966f590465f06a6d1ac82809f51ac85ccc145ee37d8242"
+    },
+    {
+      "path": "specifications/05_INITIATIVE_INTELLIGENCE.md",
+      "bytes": 7353,
+      "sha256": "767428c8e1dbb0eed26fc08a19242a3dd7b92c28525de10bbd4887e87159f5ee"
+    },
+    {
+      "path": "specifications/06_ENRICHMENT_ARCHITECTURE.md",
+      "bytes": 7521,
+      "sha256": "1811a46c2c7b0cd0c43048b1847765674acc2b4401094eef197c91394bed963f"
+    },
+    {
+      "path": "specifications/07_OPPORTUNITY_REASONING.md",
+      "bytes": 8217,
+      "sha256": "c82755c4b0bdf87a9c58ee46a99e5f1c26d09acd34ee2ea455ecc0f15de03ecf"
+    },
+    {
+      "path": "specifications/08_BUYER_ACCESS_AND_SALES.md",
+      "bytes": 9058,
+      "sha256": "81fbf3c2ab97a988d517ba6dd1981f9e59836ff1fe9212b4b5089fbdab94ec74"
+    },
+    {
+      "path": "specifications/09_INTEGRATIONS.md",
+      "bytes": 7804,
+      "sha256": "f2db4ec767521c4054615a2b831a5eada197c10f33b97164f66b77c0c0b88338"
+    },
+    {
+      "path": "specifications/10_USER_EXPERIENCE.md",
+      "bytes": 7383,
+      "sha256": "8d4580f7a19a1234e35e030e316307a4cd826f787a581d853c1983ceac38bb81"
+    },
+    {
+      "path": "specifications/11_SECURITY_AND_GOVERNANCE.md",
+      "bytes": 7228,
+      "sha256": "bca3e200756b885cec23151f78f550d131ec6cc20e8d37db99f4066871893f1a"
+    },
+    {
+      "path": "specifications/12_RELIABILITY_AND_EVALUATION.md",
+      "bytes": 8046,
+      "sha256": "c9a108776f18ab8f873f44806510deaac964c1768d90c5b380430427ad771be0"
+    },
+    {
+      "path": "specifications/13_DEPLOYMENT_AND_OPERATIONS.md",
+      "bytes": 7675,
+      "sha256": "bf76b53c680be8cb24833e6fdb4ecc703a758031840d56b9b3d60111c2471962"
+    },
+    {
+      "path": "specifications/14_COST_AND_CAPACITY_MODEL.md",
+      "bytes": 7083,
+      "sha256": "0c48b5e3326275ff233c24d238dc4653483db1b55681ee12283d11929fbe2998"
+    },
+    {
+      "path": "specifications/15_IMPLEMENTATION_PLAN.md",
+      "bytes": 8849,
+      "sha256": "79dbb1203649eac78a177df9bc63262b6d5162d52ed3400c6b8552ab43ab0f83"
+    }
+  ]
+}
