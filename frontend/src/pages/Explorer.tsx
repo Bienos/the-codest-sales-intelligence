@@ -14,7 +14,7 @@ export default function Explorer() {
   const cols = d?.items?.[0] ? Object.keys(d.items[0]).filter((k) => k !== "id") : [];
   return (
     <>
-      <h2>Market Explorer</h2><p className="sub">Search and filter. Results are limited to your scope and never prove the absence of market activity.</p>
+      <div className="page-head"><div className="eyebrow">Search the market</div><h2>Market Explorer</h2></div><p className="sub" style={{marginTop:-8}}>Search and filter. Results are limited to your scope and never prove the absence of market activity.</p>
       <div className="row" style={{ marginBottom: 12 }}>
         <select aria-label="Entity" value={entity} onChange={(e) => setEntity(e.target.value)}><option value="opportunities">Opportunities</option><option value="companies">Companies</option><option value="procurement">Procurement notices</option><option value="events">Events</option></select>
         <input aria-label="Search" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -24,7 +24,7 @@ export default function Explorer() {
       <Err e={err} />{d && <><Coverage c={d.coverage} /><p className="small"><b>Ranking:</b> {d.ranking_basis}</p>
         <div className="card table-wrap"><table><thead><tr>{cols.map((c) => <th key={c}>{humanize(c)}</th>)}</tr></thead><tbody>
           {d.items.map((r: any, i: number) => <tr key={i}>{cols.map((c) => <td key={c}>{c === "display_name" && entity === "companies" ? <Link to={`/accounts/${r.id}`}>{r[c]}</Link> : c === "title" && entity === "opportunities" ? <Link to={`/opportunities/${r.id}`}>{r[c]}</Link>
-            : /_at$|date/.test(c) ? fmtDate(r[c]) : typeof r[c] === "boolean" ? (r[c] ? <Badge kind="ok">yes</Badge> : "no") : String(r[c] ?? "—")}</td>)}</tr>)}
+            : /_at$|date/.test(c) ? fmtDate(r[c]) : typeof r[c] === "boolean" ? (r[c] ? <Badge kind="ok">yes</Badge> : "no") : String(r[c] ?? "n/a")}</td>)}</tr>)}
           {d.items.length === 0 && <tr><td className="muted">No results. {d.coverage_note}</td></tr>}</tbody></table></div></>}
     </>
   );

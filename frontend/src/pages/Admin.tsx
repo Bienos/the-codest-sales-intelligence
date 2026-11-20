@@ -59,7 +59,7 @@ export default function Admin({ me }: { me: { permissions: string[] } }) {
   const p = (x: string) => me.permissions.includes(x);
   return (
     <>
-      <h2>Administration</h2>
+      <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
       <div className="tabs">{p("sources.read") && <NavLink to="/admin">Sources</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
         {p("admin.costs") && <NavLink to="/admin/costs"> Costs</NavLink>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
       <Routes><Route index element={<Sources />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} />

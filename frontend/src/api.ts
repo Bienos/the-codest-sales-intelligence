@@ -7,6 +7,7 @@ export class ApiError extends Error {
 function token(): string | null {
   try { return sessionStorage.getItem("ri_token"); } catch { return null; }
 }
+export function clearToken() { try { sessionStorage.removeItem("ri_token"); } catch { /* storage unavailable */ } }
 export function setToken(t: string) { try { sessionStorage.setItem("ri_token", t); } catch { /* storage unavailable */ } }
 
 export async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {

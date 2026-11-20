@@ -10,11 +10,11 @@ export function Accounts() {
   useEffect(() => { const t = setTimeout(() => api(`/api/accounts?q=${encodeURIComponent(q)}`).then((r) => setRows(r.items)).catch(setErr), 200); return () => clearTimeout(t); }, [q]);
   return (
     <>
-      <h2>Accounts</h2><p className="sub">Only accounts you are authorised to see: your Pipedrive-owned accounts, unowned accounts and explicit shares.</p>
+      <div className="page-head"><div className="eyebrow">Your book</div><h2>Accounts</h2></div><p className="sub" style={{marginTop:-8}}>Only accounts you are authorised to see: your Pipedrive-owned accounts, unowned accounts and explicit shares.</p>
       <input aria-label="Search accounts" placeholder="Search by name…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 280, marginBottom: 12 }} /><Err e={err} />
       <div className="card table-wrap"><table><thead><tr><th>Account</th><th>Country</th><th>List</th><th>Employees</th><th>CRM owner</th><th>Initiatives</th></tr></thead><tbody>
-        {rows.map((r) => <tr key={r.id}><td><Link to={`/accounts/${r.id}`}>{r.display_name}</Link></td><td>{r.country_code ?? "—"}</td><td>{r.in_master_list ? <Badge kind="ok">master list</Badge> : <Badge kind="info">new</Badge>}</td>
-          <td>{r.employees_estimate?.toLocaleString() ?? "—"} {r.employees_uncertain && <Badge kind="warn">estimate</Badge>}</td><td>{r.crm_owner_id ?? <span className="muted">unverified</span>}</td><td>{r.initiatives}</td></tr>)}
+        {rows.map((r) => <tr key={r.id}><td><Link to={`/accounts/${r.id}`}>{r.display_name}</Link></td><td>{r.country_code ?? "n/a"}</td><td>{r.in_master_list ? <Badge kind="ok">master list</Badge> : <Badge kind="info">new</Badge>}</td>
+          <td>{r.employees_estimate?.toLocaleString() ?? "n/a"} {r.employees_uncertain && <Badge kind="warn">estimate</Badge>}</td><td>{r.crm_owner_id ?? <span className="muted">unverified</span>}</td><td>{r.initiatives}</td></tr>)}
         {rows.length === 0 && <tr><td colSpan={6} className="muted">No accounts in your scope match.</td></tr>}</tbody></table></div>
     </>
   );
@@ -45,7 +45,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
             <p className="small">{o.why_it_matters}</p>{o.next_action && <p className="small"><b>Next:</b> {o.next_action.objective}</p>}</div>))}
       </>)}
       {tab === "Initiatives" && d.initiatives.map((i: any) => <div key={i.id} className="card"><b>{i.title}</b> {!i.title_is_official && <Badge kind="warn">analyst working title</Badge>} <Badge>{humanize(i.stage)}</Badge> {!i.budget_verified && <Badge kind="warn">budget not verified</Badge>}
-        <p className="small">Technology: {i.technology_tags.join(", ") || "—"} · last material event {fmtDate(i.last_material_event_at)} · next milestone {fmtDate(i.next_milestone_at)}</p>
+        <p className="small">Technology: {i.technology_tags.join(", ") || "n/a"} · last material event {fmtDate(i.last_material_event_at)} · next milestone {fmtDate(i.next_milestone_at)}</p>
         <ul className="tight small">{i.research_gaps.map((g: string, k: number) => <li key={k}>{g}</li>)}</ul></div>)}
       {tab === "Signals & evidence" && <div className="card table-wrap"><table><thead><tr><th>Rule</th><th>Demand tier</th><th>Status</th><th>Event</th><th>Event date</th><th>Published</th><th>First seen</th><th>Expires</th></tr></thead><tbody>
         {d.signals.map((s: any, i: number) => <tr key={i}><td>{s.rule_id}</td><td>{s.demand_tier}</td><td><Badge kind={s.status === "active" ? "ok" : ""}>{s.status}</Badge></td><td>{s.summary}</td><td>{fmtDate(s.event_at)}</td><td>{fmtDate(s.pub_at)}</td><td>{fmtDate(s.first_observed_at)}</td><td>{fmtDate(s.expires_at)}</td></tr>)}</tbody></table></div>}
@@ -54,7 +54,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       {tab === "Buyers" && (me.permissions.includes("contacts.read") ? <div className="card table-wrap"><table><thead><tr><th>Name</th><th>Title (reported)</th><th>Lane</th><th>Role verified</th><th>Email status</th><th>Suppressed</th></tr></thead><tbody>
         {d.buyers.map((b: any) => <tr key={b.id}><td>{b.name}</td><td>{b.title}</td><td>{b.lane}</td><td>{b.role_verified}</td><td>{b.email_status}</td><td>{b.suppressed ? <Badge kind="bad">yes</Badge> : "no"}</td></tr>)}</tbody></table>
         <p className="small muted">Titles are reported, not proven authority. Email addresses are never shown here; access to personal data is audited.</p></div> : <div className="empty">Contact data is not available to your role.</div>)}
-      {tab === "Access & CRM" && <div className="card"><p>{d.crm ? <>Linked to Pipedrive organisation {d.crm.crm_id}; open deals {d.crm.open_deals_count ?? "?"}; mirror synced {fmtDateTime(d.crm.synced_at)}. Pipedrive remains the source of truth for owner and deal stage.</> : "Not linked to Pipedrive — ownership cannot be checked, so outreach and CRM proposals are disabled for this account."}</p>
+      {tab === "Access & CRM" && <div className="card"><p>{d.crm ? <>Linked to Pipedrive organisation {d.crm.crm_id}; open deals {d.crm.open_deals_count ?? "?"}; mirror synced {fmtDateTime(d.crm.synced_at)}. Pipedrive remains the source of truth for owner and deal stage.</> : "Not linked to Pipedrive · ownership cannot be checked, so outreach and CRM proposals are disabled for this account."}</p>
         <h3>Master-list source rows</h3><ul className="tight small">{d.source_rows.map((r: any, i: number) => <li key={i}>{r.sheet_title} (row {r.row_number}, workbook …{r.source_file_id.slice(-6)})</li>)}</ul></div>}
       {tab === "Research & coverage" && <div className="card"><p className="small">{d.source_coverage_note}</p><table><thead><tr><th>Source family</th><th>State</th><th>Last success</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{c.source_family}</td><td>{c.coverage_state}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
         {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">No account-level coverage recorded yet: visibility is unknown, not “nothing happening”.</td></tr>}</tbody></table>

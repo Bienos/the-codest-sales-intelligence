@@ -1,0 +1,21 @@
+/* The Codest design tokens (source: brand skill / visual-identity-and-design-system). One file, imported by the app AND the design-sync previews. */
+:root {
+  --navy: #0D124C;
+  --pink: #F2096E;          /* the only action colour */
+  --pink-hover: #CC085D;
+  --body: #3E4070;
+  --purple: #B87DFF;        /* on navy, or line work on light */
+  --orange: #FF584D;        /* rare */
+  --tint-1: #F6F7FF;
+  --tint-2: #F6F1FB;
+  --tint-3: #FFF2F1;
+  --line: #DEE1F2;
+  --white: #FFFFFF;
+  /* status dots only: text always stays navy/body so contrast holds. Green is OUTSIDE the brand palette - needs brand-owner sign-off. */
+  --dot-ok: #1FA971; --dot-warn: var(--orange); --dot-bad: var(--pink); --dot-info: var(--purple);
+  --font-head: "Iosevka", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --font-body: "Fira Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 0;              /* square-edged */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --offset: 4px;            /* pink outline offset behind buttons */
+}
