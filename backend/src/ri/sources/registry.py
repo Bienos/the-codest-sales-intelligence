@@ -39,6 +39,8 @@ def seed_registry(conn: Conn, path: Path = SEED) -> int:
             n += 1
         elif s.get("config"):     # existing deployment: add newly shipped config keys but never overwrite an operator's value
             conn.execute("UPDATE sources SET config = %s::jsonb || config WHERE source_id=%s", (jb(s["config"]), s["source_id"]))
+        if not row and s.get("collection_method"):      # an uncertified source may have its collection method corrected; certified ones never change silently
+            conn.execute("UPDATE sources SET collection_method=%s WHERE source_id=%s AND status='pending_connector_validation'", (s["collection_method"], s["source_id"]))
     return n
 
 

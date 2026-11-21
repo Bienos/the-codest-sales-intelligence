@@ -49,3 +49,6 @@ Spec → implementation → tests. "Partial" = implemented but live/acceptance e
 | Usage tracker (spec 14 §8, 13 §11) | `usage.py`, `provider_usage`, Administration, Usage (months, source, plan, every call, forecast) | `test_r7_*` | Built |
 | Source library (spec 02 §3) | Administration, Sources (tier, cadence, licence, rules, documents, events, cost) | `test_r7_*` | Built |
 | Instrumentation `source_opened` (spec 01 §8) | `/api/telemetry/source-opened` | `test_r7_*` | Built (was missing) |
+| Find information by keyword | `api/search.py` (accounts and sheet text, 64 signals, sources, URLs, events, documents, claims, knowledge base), sidebar search box, Library (Signals, Sources, URLs and feeds) | `test_r8_*` (scope, injection, wildcards, filters) | Built |
+| Knowledge base (ICP map, field guide) | `kb.py`, signed links, sandboxed frame, graceful when files are absent | `test_r8_*` (expiry, per-document, wrong key, not public, missing files) | Built; documents not yet loaded in production |
+| Public landing and sign-in | `pages/Landing.tsx`, `design-system/landing.css` | browser check, desktop and phone | Built |

@@ -21,7 +21,7 @@ from ..research import planner
 from .auth import TokenVerifier, principal_dep, require
 
 CSP = ("default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; "
-       "img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; "
+       "img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://accounts.google.com/gsi/; frame-src 'self' https://accounts.google.com/gsi/; "
        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 
 DISMISS_REASONS = {"not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"}
@@ -397,6 +397,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     lists.register_users(app)
     from . import intel
     intel.register(app)
+    from . import search as search_api
+    search_api.register(app)
     from . import sources_admin
     sources_admin.register(app)
     return app

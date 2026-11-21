@@ -6,8 +6,9 @@ const TIERS: Record<string, string> = { S1: "S1 Official records", S2: "S2 Compa
 const hk = (s: string) => (s === "healthy" ? "ok" : !s || s === "unconfigured" || s === "paused" ? "" : "bad");
 const every = (s: number) => (s >= 86400 ? `${Math.round(s / 86400)}d` : `${Math.round(s / 3600)}h`);
 
-export default function Library({ render }: { render: (s: any, reload: () => void) => any }) {
-  const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [open, setOpen] = useState<string | null>(null); const [q, setQ] = useState("");
+export default function Library({ render, query, canSetup = true }: { render: (s: any, reload: () => void) => any; query?: string; canSetup?: boolean }) {
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [open, setOpen] = useState<string | null>(null); const [qLocal, setQ] = useState("");
+  const q = query ?? qLocal;
   const load = () => api("/api/admin/library").then(setD).catch(setErr);
   useEffect(() => { load(); }, []);
   if (err) return <Err e={err} />;
@@ -19,7 +20,7 @@ export default function Library({ render }: { render: (s: any, reload: () => voi
     <>
       <div className="row spread" style={{ marginBottom: 6 }}>
         <p className="small muted" style={{ margin: 0 }}><b>{d.items.length}</b> sources in the library, <b>{live}</b> live. A source only runs once it has a passing test and a certification record.</p>
-        <input aria-label="Search sources" placeholder="Search sources" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 240 }} />
+        {query === undefined && <input aria-label="Search sources" placeholder="Search sources" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 240 }} />}
       </div>
       {groups.map(([t, list]) => (
         <section key={t}><div className="section-title">{TIERS[t]}</div>
@@ -37,7 +38,7 @@ export default function Library({ render }: { render: (s: any, reload: () => voi
                 <dt>Licence</dt><dd className="small">{s.licence_notes ?? humanize(s.retention_policy)}</dd>
                 {s.url && <><dt>Page</dt><dd className="small"><a href={s.url} target="_blank" rel="noreferrer noopener">{s.url.replace(/^https?:\/\//, "").slice(0, 52)} ↗</a></dd></>}
               </dl>
-              {["feed", "change_monitor"].includes(s.collection_method) && <button className="ghost" aria-expanded={open === s.source_id} onClick={() => setOpen(open === s.source_id ? null : s.source_id)}>{open === s.source_id ? "Close setup" : s.url ? "Manage" : "Set up"}</button>}
+              {canSetup && ["feed", "change_monitor"].includes(s.collection_method) && <button className="ghost" aria-expanded={open === s.source_id} onClick={() => setOpen(open === s.source_id ? null : s.source_id)}>{open === s.source_id ? "Close setup" : s.url ? "Manage" : "Set up"}</button>}
               {open === s.source_id && <div style={{ marginTop: 10 }}>{render(s, load)}</div>}
             </article>))}</div>
         </section>))}

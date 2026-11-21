@@ -17,7 +17,7 @@ def mount_frontend(app: FastAPI, dist: Path = DIST) -> bool:
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
-        if path.startswith(("api/", "webhooks/", "metrics", "healthz", "readyz")):
+        if path.startswith(("api/", "webhooks/", "metrics", "healthz", "readyz", "kb/")):
             from fastapi import HTTPException
             raise HTTPException(404)
         root = dist.resolve()

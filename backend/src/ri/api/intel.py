@@ -226,7 +226,7 @@ def register(app: FastAPI) -> None:
 
     # ------------------------------------------------------------ source library
     @app.get("/api/admin/library")
-    def library(request: Request, p: Principal = Depends(require("sources.read"))):
+    def library(request: Request, p: Principal = Depends(require("today.read"))):
         with tx(request) as conn:
             rows = qa(conn,
                 "SELECT s.source_id, s.display_name, s.source_tier, s.source_type, s.source_family, s.provider, s.countries, s.signal_rule_ids, s.collection_method, s.auth_mode, "
