@@ -57,10 +57,13 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
             if m and m.group(1).lower() not in {"embed", "jobs", "www"}:
                 ats.append((prov, m.group(1)))
         host = urlparse(u).netloc
-        if _same_site(host, domain):
-            if NEWS_PATH.search(urlparse(u).path + "/"):
+        path = urlparse(u).path
+        depth = len([x for x in path.split("/") if x and not re.fullmatch(r"[a-z]{2}(-[a-z]{2})?", x, re.I)])   # ignore a language prefix such as /en/
+        last = "/" + ([x for x in path.split("/") if x] or [""])[-1] + "/"
+        if _same_site(host, domain) and depth <= 2:          # section index pages only: the last path segment must itself be the section, not an article
+            if NEWS_PATH.search(last):
                 news.append(u.split("#")[0])
-            if CAREERS_PATH.search(urlparse(u).path + "/"):
+            if CAREERS_PATH.search(last):
                 careers.append(u.split("#")[0])
     dedupe = lambda xs: list(dict.fromkeys(xs))   # noqa: E731
     return {"feeds": dedupe(feeds), "news": dedupe(news), "careers": dedupe(careers), "ats": dedupe(ats)}

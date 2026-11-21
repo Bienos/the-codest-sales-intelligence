@@ -39,6 +39,11 @@ def test_parse_page_finds_feed_news_careers_and_job_board_but_not_other_sites():
     assert not any("other.example" in u for u in f["news"])
 
 
+def test_single_articles_are_not_mistaken_for_a_newsroom():
+    f = parse_page('<a href="/en/blog/some-long-article-title/">x</a><a href="/en/blog/">Blog</a><a href="/en/careers/">Jobs</a>', "https://bank.example/", "bank.example")
+    assert f["news"] == ["https://bank.example/en/blog/"] and f["careers"] == ["https://bank.example/en/careers/"]
+
+
 def test_discover_follows_careers_page_to_the_job_board_and_honours_robots():
     out = asyncio.run(discover(httpx.AsyncClient(transport=httpx.MockTransport(site)), "bank.example"))
     kinds = {(e["kind"], e["board"]) for e in out["endpoints"]}
