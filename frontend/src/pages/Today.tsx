@@ -8,6 +8,17 @@ const SECTIONS: [string, string][] = [["critical", "Critical and time-limited"],
   ["relationships", "Relationship re-engagement"], ["deal_blockers", "Active deal blockers"], ["research_review", "Research awaiting review"]];
 const REASONS = ["not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"];
 
+function Deadlines() {
+  const [items, setItems] = useState<any[]>([]);
+  useEffect(() => { api("/api/deadlines").then((r) => setItems(r.items.filter((x: any) => x.days_left <= 240).slice(0, 6))).catch(() => setItems([])); }, []);
+  if (!items.length) return null;
+  return <section><div className="section-title">Regulatory deadlines</div>
+    <div className="card flush table-wrap"><table><thead><tr><th>Deadline</th><th>Regime</th><th>Who it applies to</th><th>When</th></tr></thead><tbody>
+      {items.map((x) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a></td><td className="small">{x.regime}</td><td className="small">{x.applies_to ?? "n/a"}</td>
+        <td><b>{fmtDate(x.deadline_date)}</b> <span className="small muted">{x.days_left} days</span></td></tr>)}
+    </tbody></table></div><p className="small muted">Each date was checked against an official page by a second person. Buyers under a hard deadline tend to need delivery capacity.</p></section>;
+}
+
 function Card({ c, reload }: { c: any; reload: () => void }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -107,6 +118,7 @@ export default function Today() {
               <td><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
               <td className="small">{a.signal_count} · {a.groups.join(", ")}</td><td className="small">{a.last_signal_at ? fmtDate(a.last_signal_at) : "n/a"}</td></tr>)}
           </tbody></table></div></section>}
+        <Deadlines />
         {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{d.sections[k].map((c: any) => <Card key={c.hypothesis_id} c={c} reload={load} />)}</section> : null))}
         <Prospects />
       </div>

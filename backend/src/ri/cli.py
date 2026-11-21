@@ -73,7 +73,10 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 from .canary import run_canary
                 from .notify.digest import SlackWebhookSink
-                res.update(run_canary(conn, s, sink=SlackWebhookSink(s.slack_webhook_url) if s.slack_webhook_url else None))
+                sink = SlackWebhookSink(s.slack_webhook_url) if s.slack_webhook_url else None
+                res.update(run_canary(conn, s, sink=sink))
+                from .precision import weekly_review_step
+                res.update(weekly_review_step(conn, s, sink=sink))
                 conn.commit()
             except Exception as exc:  # noqa: BLE001  (the self-test must never stop scheduling)
                 conn.rollback()

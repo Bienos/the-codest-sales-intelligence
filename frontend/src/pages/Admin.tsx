@@ -49,6 +49,14 @@ function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () =
 
 const STATE_KIND: Record<string, "ok" | "warn" | "bad" | "info"> = { live: "ok", built_in: "ok", per_account: "info", needs_address: "warn", blocked_by_site: "bad", needs_credential: "warn", not_built: "info", deferred: "info", needs_retest: "warn", testing: "info" };
 
+function ApolloCap({ r }: { r: any }) {
+  const [v, setV] = useState(String(r.cap ?? 0)); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null);
+  const save = async () => { setErr(null); try { await post("/api/admin/integrations/apollo/cap", { credits: Number(v) }); setMsg("Saved for this month."); } catch (e) { setErr(e); } };
+  return <div style={{ marginTop: 8 }}><span className="k">Credits this month</span>
+    <div className="row"><input aria-label="Monthly credit cap" type="number" min={0} value={v} onChange={(e) => setV(e.target.value)} style={{ width: 110 }} /><button onClick={save}>Set cap</button><span className="small muted">Spent {r.spent ?? 0}. Price per reveal: {r.credits_per_reveal ?? "not set (RI_APOLLO_CREDITS_PER_REVEAL)"}. At zero, no reveal can run.</span></div>
+    {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} /></div>;
+}
+
 function Integrations() {
   const [res, setRes] = useState<Record<string, { ok: boolean; detail: string }>>({}); const [busy, setBusy] = useState("");
   const test = async (k: string) => { setBusy(k); try { const r = await post(`/api/admin/integrations/${k}/test`); setRes((x) => ({ ...x, [k]: r })); } catch (e) { setRes((x) => ({ ...x, [k]: { ok: false, detail: e instanceof Error ? e.message : "Test failed" } })); } finally { setBusy(""); } };
@@ -60,12 +68,49 @@ function Integrations() {
           <div className="conn-head"><div><div className="conn-name">{r.name}</div><div className="conn-meta">{r.what}</div></div>
             <div className="row"><Badge kind={r.configured ? "ok" : "warn"}>{r.configured ? "Key set" : "Key needed"}</Badge>{r.switch && <Badge kind={r.switch_on ? "ok" : ""}>{r.switch_on ? "Switch on" : "Switch off"}</Badge>}</div></div>
           <div className="conn-cols"><div><span className="k">How to connect</span>{r.how}</div>{r.switch && <div><span className="k">Safety switch</span>{r.switch}: {r.switch_on ? "on" : "off. Nothing is sent or written until it is turned on."}</div>}</div>
+          {r.key === "apollo" && <ApolloCap r={r} />}
           {r.testable && <div className="row" style={{ marginTop: 8 }}><button disabled={!r.configured || busy === r.key} onClick={() => test(r.key)}>Test connection</button>
             {res[r.key] && <span className={res[r.key].ok ? "okmsg" : "small"} role="status">{res[r.key].detail}</span>}</div>}
         </article>)}
       </div></>)}</Load>
   );
 }
+
+function DeadlinesAdmin() {
+  const empty = { title: "", regime: "", deadline_date: "", applies_to: "", region: "", source_url: "", source_quote: "" };
+  const [f, setF] = useState(empty); const [err, setErr] = useState<unknown>(null); const [msg, setMsg] = useState("");
+  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
+  return <Load path="/api/deadlines?all=true">{(d, reload) => {
+    const add = async () => { setErr(null); setMsg(""); try { await post("/api/deadlines", { ...f, applies_to: f.applies_to || null, region: f.region || null }); setF(empty); setMsg("Proposed. A second person has to approve it before sellers see it."); reload(); } catch (e) { setErr(e); } };
+    const act = async (id: string, decision: string) => { setErr(null); try { await post(`/api/deadlines/${id}/decision`, { decision }); reload(); } catch (e) { setErr(e); } };
+    return (<>
+      <p className="sub">A date only appears for sellers once it has an official source link, the sentence that states it, and a second person's approval. Nothing here is inferred.</p>
+      <div className="card"><b>Propose a deadline</b>
+        <div className="grid2" style={{ marginTop: 8 }}>
+          <label className="small">Title<input value={f.title} onChange={set("title")} /></label><label className="small">Regime<input value={f.regime} onChange={set("regime")} placeholder="e.g. DORA" /></label>
+          <label className="small">Date<input type="date" value={f.deadline_date} onChange={set("deadline_date")} /></label><label className="small">Applies to<input value={f.applies_to} onChange={set("applies_to")} placeholder="e.g. banks in the EU" /></label>
+          <label className="small">Region<input value={f.region} onChange={set("region")} placeholder="EU, UK, DACH…" /></label><label className="small">Official page (https)<input value={f.source_url} onChange={set("source_url")} /></label>
+        </div>
+        <label className="small">The sentence on that page that states the date<textarea rows={2} value={f.source_quote} onChange={set("source_quote")} style={{ width: "100%" }} /></label>
+        <button className="primary" disabled={!f.title || !f.regime || !f.deadline_date || !f.source_url || f.source_quote.length < 15} onClick={add}>Propose</button>
+        {msg && <div className="okmsg" role="status" style={{ marginTop: 8 }}>{msg}</div>}<Err e={err} /></div>
+      <div className="card table-wrap"><table><thead><tr><th>Deadline</th><th>Date</th><th>Source quote</th><th>Status</th><th /></tr></thead><tbody>
+        {d.items.map((x: any) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a><div className="small muted">{x.regime} · proposed by {x.proposed_by}</div></td><td>{x.deadline_date}</td><td className="small">“{x.source_quote}”</td>
+          <td><Badge kind={x.status === "approved" ? "ok" : x.status === "proposed" ? "warn" : ""}>{humanize(x.status)}</Badge></td>
+          <td>{x.status === "proposed" && <div className="row"><button className="primary" onClick={() => act(x.id, "approve")}>Approve</button><button onClick={() => act(x.id, "reject")}>Reject</button></div>}{x.status === "approved" && <button onClick={() => act(x.id, "retire")}>Retire</button>}</td></tr>)}
+        {d.items.length === 0 && <tr><td colSpan={5} className="muted">No deadlines yet.</td></tr>}</tbody></table></div></>);
+  }}</Load>;
+}
+
+const Precision = () => <Load path="/api/admin/precision">{(d) => (<>
+  <p className="sub">What sellers did with each signal rule in the last {d.window_days} days. This reports; a person decides whether a rule changes. A dismissal is an opinion, so read the top reason first.</p>
+  {d.flagged.length > 0 && <div className="err" role="alert">Dismissed more than 60% of the time with enough decisions to judge: <b>{d.flagged.join(", ")}</b></div>}
+  <div className="card table-wrap"><table><thead><tr><th>Rule</th><th>Fired</th><th>Accepted</th><th>Dismissed</th><th>Dismissal rate</th><th>Top reason</th><th /></tr></thead><tbody>
+    {d.rules.map((r: any) => <tr key={r.rule_id}><td>{r.rule_id}</td><td>{r.fired}</td><td>{r.accepted}</td><td>{r.dismissed}</td><td>{r.dismissal_rate === null ? "n/a" : `${Math.round(r.dismissal_rate * 100)}%`}<div className="small muted">{r.enough_data ? `95% range ${Math.round(r.interval_95[0] * 100)} to ${Math.round(r.interval_95[1] * 100)}%` : "not enough decisions yet"}</div></td>
+      <td className="small">{r.top_dismiss_reason ? humanize(r.top_dismiss_reason) : "n/a"}</td><td>{r.flag && <Badge kind="bad">Review</Badge>}</td></tr>)}
+    {d.rules.length === 0 && <tr><td colSpan={7} className="muted">No signals fired in this window.</td></tr>}</tbody></table></div>
+  <div className="card"><b>Outreach results</b><div className="chips" style={{ marginTop: 6 }}>{Object.keys(d.outreach).length === 0 ? <span className="muted small">Nothing enrolled yet.</span> : Object.entries(d.outreach).map(([k, n]) => <Badge key={k}>{humanize(k)}: {n as number}</Badge>)}</div></div>
+  <ul className="tight small muted">{d.caveats.map((c: string, i: number) => <li key={i}>{c}</li>)}</ul></>)}</Load>;
 
 function Connections() {
   const [filter, setFilter] = useState("");
@@ -252,9 +297,9 @@ export default function Admin({ me }: { me: { permissions: string[] } }) {
     <>
       <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
       <div className="tabs">{p("admin.jobs") && <NavLink to="/admin/pipeline">Pipeline</NavLink>}{p("sources.read") && <NavLink to="/admin" end> Sources</NavLink>}{p("sources.read") && <NavLink to="/admin/connections"> Connections</NavLink>}{p("admin.costs") && <NavLink to="/admin/integrations"> Integrations</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("admin.sources") && <NavLink to="/admin/knowledge"> Knowledge</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
-        {p("sources.read") && <NavLink to="/admin/verification"> Verification</NavLink>}{p("admin.costs") && <><NavLink to="/admin/discovery"> Discovery</NavLink><NavLink to="/admin/usage"> Usage</NavLink></>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
+        {p("sources.read") && <NavLink to="/admin/verification"> Verification</NavLink>}{p("admin.costs") && <><NavLink to="/admin/discovery"> Discovery</NavLink><NavLink to="/admin/usage"> Usage</NavLink></>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/precision"> Precision</NavLink><NavLink to="/admin/deadlines"> Deadlines</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
       <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="integrations" element={<Integrations />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
-        <Route path="rules" element={<Rules />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
+        <Route path="rules" element={<Rules />} /><Route path="precision" element={<Precision />} /><Route path="deadlines" element={<DeadlinesAdmin />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
     </>
   );
 }

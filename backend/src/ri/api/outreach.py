@@ -13,6 +13,7 @@ from ..access import Principal, org_scope_sql
 from ..audit import audit
 from ..config import Settings
 from ..db import q1, qa
+from ..enrichment import contacts as contacts_mod
 from ..outbound import enrol
 from ..outbound.lemlist import LemlistClient, LemlistError
 from .auth import require
@@ -20,6 +21,10 @@ from .auth import require
 
 class EnrolIn(BaseModel):
     person_ids: list[str] = Field(min_length=1, max_length=25)
+
+
+class CapIn(BaseModel):
+    credits: float = Field(ge=0, le=100000)
 
 
 class DealIn(BaseModel):
@@ -148,7 +153,66 @@ def register_outreach(app: FastAPI, settings: Settings) -> None:
 
     @app.get("/api/admin/integrations")
     def integrations(request: Request, p: Principal = Depends(require("admin.costs"))):
-        return {"items": integration_status(settings)}
+        from .. import budget, usage
+        items = integration_status(settings)
+        with tx(request) as conn:
+            row = q1(conn, "SELECT cap, spent, reserved FROM provider_budgets WHERE provider='apollo' AND kind='contact_enrichment' AND period=%s", (usage.period_now(),))
+        for i in items:
+            if i["key"] == "apollo":
+                i["credits_per_reveal"] = settings.apollo_credits_per_reveal
+                i["cap"] = float(row["cap"]) if row else 0.0
+                i["spent"] = float(row["spent"]) if row else 0.0
+        return {"items": items}
+
+    @app.post("/api/admin/integrations/apollo/cap")
+    def apollo_cap(body: CapIn, request: Request, p: Principal = Depends(require("admin.costs"))):
+        from .. import budget, usage
+        with tx(request) as conn:
+            budget.set_cap(conn, "apollo", "contact_enrichment", usage.period_now(), body.credits, "credits")
+            audit(conn, actor=p.email, operation="apollo_cap_set", record_type="integration", record_id="apollo", detail={"credits": body.credits})
+        return {"cap": body.credits}
+
+    @app.post("/api/accounts/{oid}/find-contacts")
+    def find_contacts(oid: str, request: Request, p: Principal = Depends(require("research.request"))):
+        if not settings.apollo_api_key:
+            raise HTTPException(409, "Apollo is not connected yet. Add APOLLO_API_KEY under Integrations.")
+        with tx(request) as conn:
+            _visible(conn, p, oid)
+            try:
+                return contacts_mod.find_candidates(conn, contacts_mod.make_provider(settings), oid, by=p.email)
+            except appr.ApprovalError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            except httpx.HTTPError as exc:
+                raise HTTPException(502, f"Apollo could not be reached ({type(exc).__name__})") from exc
+
+    @app.get("/api/accounts/{oid}/contact-candidates")
+    def contact_candidates(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        with tx(request) as conn:
+            _visible(conn, p, oid)
+            return {"items": contacts_mod.candidates_for(conn, oid), "apollo_configured": bool(settings.apollo_api_key), "reveal_price": settings.apollo_credits_per_reveal,
+                    "paid_enrichment_enabled": settings.paid_enrichment_enabled}
+
+    @app.post("/api/contact-candidates/{cid}/reveal")
+    def reveal_request(cid: str, request: Request, p: Principal = Depends(require("draft.create"))):
+        with tx(request) as conn:
+            c = q1(conn, "SELECT organization_id FROM contact_candidates WHERE id=%s", (cid,))
+            if not c:
+                raise HTTPException(404, "not found")
+            _visible(conn, p, str(c["organization_id"]))
+            try:
+                return contacts_mod.request_reveal(conn, cid, by=p.email, settings=settings)
+            except appr.ApprovalError as exc:
+                raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/contact-candidates/{cid}/dismiss")
+    def dismiss_candidate(cid: str, request: Request, p: Principal = Depends(require("draft.create"))):
+        with tx(request) as conn:
+            c = q1(conn, "SELECT organization_id FROM contact_candidates WHERE id=%s", (cid,))
+            if not c:
+                raise HTTPException(404, "not found")
+            _visible(conn, p, str(c["organization_id"]))
+            conn.execute("UPDATE contact_candidates SET status='dismissed' WHERE id=%s AND status='found'", (cid,))
+            return {"status": "dismissed"}
 
     @app.post("/api/admin/integrations/{key}/test")
     def integrations_test(key: str, request: Request, p: Principal = Depends(require("admin.costs"))):

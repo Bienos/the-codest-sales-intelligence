@@ -134,6 +134,25 @@ function BriefTab({ briefs }: { briefs: any[] }) {
   );
 }
 
+function FindContacts({ orgId, can }: { orgId: string; can: boolean }) {
+  const [d, setD] = useState<any>({ items: [] }); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const load = () => api(`/api/accounts/${orgId}/contact-candidates`).then(setD).catch(() => undefined);
+  useEffect(() => { load(); }, [orgId]);
+  const run = async (fn: () => Promise<any>, ok: (r: any) => string) => { setErr(null); setMsg(""); setBusy(true); try { setMsg(ok(await fn())); await load(); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  return (
+    <div className="card">
+      <div className="row spread"><b>Find decision makers</b>{can && <button className="primary" disabled={busy || !d.apollo_configured} onClick={() => run(() => post(`/api/accounts/${orgId}/find-contacts`), (r) => `Found ${r.found} people, ${r.added} new. Names and titles only: no email yet.`)}>Search with Apollo</button>}</div>
+      <p className="small muted" style={{ margin: "4px 0 8px" }}>Searching is free and returns names and titles. Revealing an email costs {d.reveal_price ?? "an unset number of"} credit(s) per person and needs an approval. {d.apollo_configured ? "" : "Apollo is not connected yet. "}{d.paid_enrichment_enabled ? "" : "Paid reveals are switched off in this environment."}</p>
+      {d.items.length > 0 && <div className="table-wrap"><table><thead><tr><th>Name</th><th>Title</th><th>Status</th><th /></tr></thead><tbody>
+        {d.items.map((c: any) => <tr key={c.id}><td>{c.linkedin_url ? <a href={c.linkedin_url} target="_blank" rel="noreferrer noopener">{c.name}</a> : c.name}</td><td>{c.title}</td>
+          <td><Badge kind={c.status === "revealed" ? "ok" : c.status === "found" ? "info" : ""}>{c.status === "found" ? "Email not revealed" : humanize(c.status)}</Badge></td>
+          <td>{can && c.status === "found" && <div className="row"><button disabled={busy} onClick={() => run(() => post(`/api/contact-candidates/${c.id}/reveal`), (r) => `Approval requested (${r.credits} credit). Approve it under Administration, Approvals, then run it there.`)}>Request email reveal</button>
+            <button disabled={busy} onClick={() => run(() => post(`/api/contact-candidates/${c.id}/dismiss`), () => "Dismissed.")}>Dismiss</button></div>}</td></tr>)}</tbody></table></div>}
+      {msg && <div className="okmsg" role="status" style={{ marginTop: 8 }}>{msg}</div>}<Err e={err} />
+    </div>
+  );
+}
+
 function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: boolean }) {
   const [plan, setPlan] = useState<any>(null); const [sel, setSel] = useState<string[]>([]); const [en, setEn] = useState<any>({ items: [] });
   const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null);
@@ -245,6 +264,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         {d.signals.map((s: any, i: number) => <tr key={i}><td>{s.rule_id}</td><td>{s.demand_tier}</td><td><Badge kind={s.status === "active" ? "ok" : ""}>{s.status}</Badge></td><td>{s.summary}</td><td>{fmtDate(s.event_at)}</td><td>{fmtDate(s.pub_at)}</td><td>{fmtDate(s.first_observed_at)}</td><td>{fmtDate(s.expires_at)}</td></tr>)}</tbody></table></div>}
       {tab === "Suppliers" && <div className="card table-wrap"><table><thead><tr><th>Supplier</th><th>Role</th><th>Scope</th><th>Relation</th><th>Exclusivity</th></tr></thead><tbody>{d.suppliers.map((s: any, i: number) => <tr key={i}><td>{s.supplier_name}</td><td>{s.supplier_role}</td><td>{s.scope_text}</td><td>{s.relation}</td><td>{s.exclusivity}</td></tr>)}</tbody></table>
         <p className="small muted">A named supplier does not prove exclusivity or scope. Edges are scoped to this legal entity only.</p></div>}
+      {tab === "Buyers" && <FindContacts orgId={String(id)} can={me.permissions.includes("draft.create")} />}
       {tab === "Buyers" && (me.permissions.includes("contacts.read") ? <div className="card table-wrap"><table><thead><tr><th>Name</th><th>Title (reported)</th><th>Lane</th><th>Role verified</th><th>Email status</th><th>Suppressed</th></tr></thead><tbody>
         {d.buyers.map((b: any) => <tr key={b.id}><td>{b.name}</td><td>{b.title}</td><td>{b.lane}</td><td>{b.role_verified}</td><td>{b.email_status}</td><td>{b.suppressed ? <Badge kind="bad">yes</Badge> : "no"}</td></tr>)}</tbody></table>
         <p className="small muted">Titles are reported, not proven authority. Email addresses are never shown here; access to personal data is audited.</p></div> : <div className="empty">Contact data is not available to your role.</div>)}

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
@@ -314,6 +315,14 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                     return enrol_mod.execute_enrolment(conn, aid, client, settings)
                 except (appr.ApprovalError, LemlistError, ConnectorBlocked) as exc:
                     raise HTTPException(409, str(exc)) from exc
+            if kind == "contact_enrichment":
+                from ..enrichment import contacts as contacts_mod
+                try:
+                    return contacts_mod.execute_reveal(conn, aid, contacts_mod.make_provider(settings), settings)
+                except (appr.ApprovalError, ConnectorBlocked) as exc:
+                    raise HTTPException(409, str(exc)) from exc
+                except httpx.HTTPError as exc:
+                    raise HTTPException(502, f"Apollo could not be reached ({type(exc).__name__}). The approval is spent only if the call went through; check Approvals.") from exc
             if not settings.crm_writes_enabled:
                 raise HTTPException(409, "CRM writes are disabled in this environment")
             wf = request.app.state.writer_factory
@@ -428,6 +437,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     intel.register_feed(app)
     intel.register_scan(app)
     intel.register_connections(app)
+    from . import deadlines as deadlines_api
+    deadlines_api.register_deadlines(app)
     from . import outreach as outreach_api
     outreach_api.register_outreach(app, settings)
     from . import leads as leads_api

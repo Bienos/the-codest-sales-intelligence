@@ -38,6 +38,7 @@ class Settings:
     crm_writes_enabled: bool = False
     outbound_enabled: bool = False
     paid_enrichment_enabled: bool = False
+    apollo_credits_per_reveal: float | None = None             # unknown price means no paid reveal can be approved
     # Budgets (EUR-agnostic "units"; provider rates are NOT assumed - see docs/14)
     default_monthly_provider_budget: float = 0.0
     default_hypothesis_research_budget: float = 0.0
@@ -87,6 +88,7 @@ class Settings:
             crm_writes_enabled=_b("RI_CRM_WRITES_ENABLED"),
             outbound_enabled=_b("RI_OUTBOUND_ENABLED"),
             paid_enrichment_enabled=_b("RI_PAID_ENRICHMENT_ENABLED"),
+            apollo_credits_per_reveal=float(os.environ["RI_APOLLO_CREDITS_PER_REVEAL"]) if os.environ.get("RI_APOLLO_CREDITS_PER_REVEAL") else None,
             default_monthly_provider_budget=_f("RI_DEFAULT_MONTHLY_PROVIDER_BUDGET", 0.0),
             default_hypothesis_research_budget=_f("RI_DEFAULT_HYPOTHESIS_BUDGET", 0.0),
             auth_mode=os.environ.get("RI_AUTH_MODE", "oidc"),
