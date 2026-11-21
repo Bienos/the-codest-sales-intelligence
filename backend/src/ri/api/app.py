@@ -394,6 +394,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     r5.register(app)
     from . import lists
     lists.register(app)
+    lists.register_users(app)
     from . import sources_admin
     sources_admin.register(app)
     return app

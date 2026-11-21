@@ -24,6 +24,7 @@ export async function api<T = any>(path: string, init: RequestInit = {}): Promis
   return res.json() as Promise<T>;
 }
 export const post = <T = any>(p: string, body?: unknown) => api<T>(p, { method: "POST", body: JSON.stringify(body ?? {}) });
+export const patch = <T = any>(p: string, body?: unknown) => api<T>(p, { method: "PATCH", body: JSON.stringify(body ?? {}) });
 export const put = <T = any>(p: string, body?: unknown) => api<T>(p, { method: "PUT", body: JSON.stringify(body ?? {}) });
 
 export function fmtDate(v?: string | null): string {

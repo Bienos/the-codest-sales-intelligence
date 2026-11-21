@@ -8,6 +8,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel, Field
 
 from ..access import Principal, org_scope_sql
 from ..audit import audit
@@ -133,3 +134,68 @@ def register(app: FastAPI) -> None:
                 "SELECT u.id, u.workbook_key, u.filename, u.size_bytes, u.status, u.uploaded_by, u.error, u.created_at, u.processed_at, r.stats "
                 "FROM import_uploads u LEFT JOIN import_runs r ON r.id=u.import_run_id ORDER BY u.created_at DESC LIMIT 15")],
                 "runs": [dict(r, id=str(r["id"])) for r in qa(conn, "SELECT id, workbook_key, status, started_at, finished_at, error FROM import_runs ORDER BY started_at DESC LIMIT 10")]}
+
+
+ROLES = "^(bdm|sales_manager|research_analyst|marketing|delivery_expert|admin|compliance)$"
+
+
+class UserIn(BaseModel):
+    email: str = Field(min_length=5, max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    display_name: str = Field(min_length=1, max_length=100)
+    role: str = Field(pattern=ROLES)
+    team: str = Field(default="default", max_length=60)
+    pipedrive_user_id: int | None = None
+
+
+class UserPatch(BaseModel):
+    role: str | None = Field(default=None, pattern=ROLES)
+    team: str | None = Field(default=None, max_length=60)
+    active: bool | None = None
+    pipedrive_user_id: int | None = None
+
+
+def register_users(app: FastAPI) -> None:
+    from fastapi import HTTPException as HE
+    def tx(request: Request):
+        return request.app.state.db.tx()
+
+    @app.get("/api/admin/users")
+    def list_users(request: Request, p: Principal = Depends(require("admin.users"))):
+        with tx(request) as conn:
+            return {"items": [dict(r, id=str(r["id"])) for r in qa(conn, "SELECT id, email, display_name, role, team, pipedrive_user_id, active, created_at FROM users ORDER BY active DESC, role, email")],
+                    "domain": request.app.state.settings.allowed_email_domain}
+
+    @app.post("/api/admin/users")
+    def add_user(body: UserIn, request: Request, p: Principal = Depends(require("admin.users"))):
+        email = body.email.strip().lower()
+        dom = request.app.state.settings.allowed_email_domain
+        if dom and not email.endswith("@" + dom):
+            raise HE(400, f"only @{dom} addresses can be added")
+        with tx(request) as conn:
+            if q1(conn, "SELECT 1 FROM users WHERE email=%s", (email,)):
+                raise HE(409, "that person already has an account")
+            try:
+                row = conn.execute("INSERT INTO users(email, display_name, role, team, pipedrive_user_id) VALUES (%s,%s,%s,%s,%s) RETURNING id",
+                                   (email, body.display_name.strip(), body.role, body.team.strip() or "default", body.pipedrive_user_id)).fetchone()
+            except Exception as exc:    # noqa: BLE001  (unique pipedrive id)
+                raise HE(409, "that Pipedrive user id is already linked to someone else") from exc
+            audit(conn, actor=p.email, operation="user_add", record_type="user", record_id=str(row["id"]), after={"email": email, "role": body.role})
+            return {"id": str(row["id"]), "email": email}
+
+    @app.patch("/api/admin/users/{uid}")
+    def edit_user(uid: str, body: UserPatch, request: Request, p: Principal = Depends(require("admin.users"))):
+        with tx(request) as conn:
+            u = q1(conn, "SELECT * FROM users WHERE id=%s", (uid,))
+            if not u:
+                raise HE(404, "not found")
+            new_role = body.role or u["role"]
+            new_active = u["active"] if body.active is None else body.active
+            if str(u["id"]) == p.user_id and (new_role != "admin" or not new_active):
+                raise HE(400, "you cannot remove your own admin access")
+            if u["role"] == "admin" and u["active"] and (new_role != "admin" or not new_active):
+                if (q1(conn, "SELECT count(*) AS n FROM users WHERE role='admin' AND active") or {"n": 0})["n"] <= 1:
+                    raise HE(400, "at least one active administrator is required")
+            conn.execute("UPDATE users SET role=%s, active=%s, team=coalesce(%s, team), pipedrive_user_id=coalesce(%s, pipedrive_user_id) WHERE id=%s",
+                         (new_role, new_active, body.team, body.pipedrive_user_id, uid))
+            audit(conn, actor=p.email, operation="user_edit", record_type="user", record_id=uid, before={"role": u["role"], "active": u["active"]}, after={"role": new_role, "active": new_active})
+            return {"id": uid, "role": new_role, "active": new_active}

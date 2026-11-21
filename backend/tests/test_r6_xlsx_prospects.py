@@ -185,3 +185,24 @@ def test_static_server_cannot_read_outside_the_build_folder_and_sets_security_he
         assert c.get("/api/me").headers["Cache-Control"] == "no-store"
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------- user management
+def test_admin_can_add_and_deactivate_users_with_guards(api, conn):
+    c, h = api
+    assert c.get("/api/admin/users", headers=h("bdm")).status_code == 403
+    new = {"email": "New.Seller@thecodest.co", "display_name": "New Seller", "role": "bdm", "team": "dach"}
+    assert c.post("/api/admin/users", headers=h("bdm"), json=new).status_code == 403
+    r = c.post("/api/admin/users", headers=h("admin"), json=new)
+    assert r.status_code == 200 and r.json()["email"] == "new.seller@thecodest.co"
+    assert c.post("/api/admin/users", headers=h("admin"), json=new).status_code == 409
+    assert c.post("/api/admin/users", headers=h("admin"), json={**new, "email": "x@gmail.com"}).status_code in (200, 400)   # domain rule applies when configured
+    assert c.post("/api/admin/users", headers=h("admin"), json={**new, "email": "bad", "role": "root"}).status_code == 422
+    uid = r.json()["id"]
+    assert c.patch(f"/api/admin/users/{uid}", headers=h("admin"), json={"role": "sales_manager"}).json()["role"] == "sales_manager"
+    assert c.patch(f"/api/admin/users/{uid}", headers=h("admin"), json={"active": False}).json()["active"] is False
+    me = conn.execute("select id from users where email='admin@x'").fetchone()["id"]
+    assert c.patch(f"/api/admin/users/{me}", headers=h("admin"), json={"active": False}).status_code == 400      # cannot lock yourself out
+    assert c.patch(f"/api/admin/users/{me}", headers=h("admin"), json={"role": "bdm"}).status_code == 400
+    ops = [x["operation"] for x in conn.execute("select operation from audit_events where operation like 'user_%'")]
+    assert ops.count("user_add") >= 1 and "user_edit" in ops

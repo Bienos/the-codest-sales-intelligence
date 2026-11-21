@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
-import { api, fmtDateTime, post, put, upload } from "../api";
+import { api, fmtDateTime, post, put, upload, patch } from "../api";
 import { Badge, Err, humanize } from "../components/ui";
 
 const hk = (s: string) => (s === "healthy" ? "ok" : s === "unconfigured" || s === "paused" ? "" : "bad");
@@ -123,14 +123,44 @@ function Imports() {
   );
 }
 
+const ROLES = ["bdm", "sales_manager", "research_analyst", "marketing", "delivery_expert", "admin", "compliance"];
+function Users() {
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [msg, setMsg] = useState("");
+  const [f, setF] = useState({ email: "", display_name: "", role: "bdm", team: "default" });
+  const load = () => api("/api/admin/users").then(setD).catch(setErr);
+  useEffect(() => { load(); }, []);
+  const run = async (fn: () => Promise<any>, ok: string) => { setErr(null); setMsg(""); try { await fn(); setMsg(ok); load(); } catch (e) { setErr(e); } };
+  return (
+    <>
+      <div className="card">
+        <div className="eyebrow">Add a person</div>
+        <p className="small muted" style={{ marginTop: 0 }}>They sign in with Google using this address{d?.domain ? ` (only @${d.domain} is accepted)` : ""}. Sellers see accounts that have no CRM owner, plus their own and any shared with them.</p>
+        <div className="row">
+          <input aria-label="Work email" placeholder="name@thecodest.co" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} style={{ minWidth: 240 }} />
+          <input aria-label="Display name" placeholder="Display name" value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
+          <select aria-label="Role" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{ROLES.map((r) => <option key={r} value={r}>{humanize(r)}</option>)}</select>
+          <input aria-label="Team" placeholder="Team" value={f.team} onChange={(e) => setF({ ...f, team: e.target.value })} style={{ width: 120 }} />
+          <button className="primary" disabled={!f.email.includes("@") || !f.display_name} onClick={() => run(async () => { await post("/api/admin/users", f); setF({ ...f, email: "", display_name: "" }); }, "Person added. They can sign in now.")}>Add</button>
+        </div>
+        {msg && <div className="okmsg" role="status" style={{ marginTop: 12 }}>{msg}</div>}<Err e={err} />
+      </div>
+      {d && <div className="card table-wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Team</th><th>Status</th><th></th></tr></thead><tbody>{d.items.map((u: any) => <tr key={u.id}>
+        <td>{u.display_name}<div className="small muted">{u.email}</div></td>
+        <td><select aria-label={`Role for ${u.email}`} value={u.role} onChange={(e) => run(() => patch(`/api/admin/users/${u.id}`, { role: e.target.value }), "Role updated.")}>{ROLES.map((r) => <option key={r} value={r}>{humanize(r)}</option>)}</select></td>
+        <td>{u.team}</td><td><Badge kind={u.active ? "ok" : ""}>{u.active ? "Active" : "Deactivated"}</Badge></td>
+        <td><button className="ghost" onClick={() => run(() => patch(`/api/admin/users/${u.id}`, { active: !u.active }), u.active ? "Deactivated." : "Reactivated.")}>{u.active ? "Deactivate" : "Reactivate"}</button></td></tr>)}</tbody></table></div>}
+    </>
+  );
+}
+
 export default function Admin({ me }: { me: { permissions: string[] } }) {
   const p = (x: string) => me.permissions.includes(x);
   return (
     <>
       <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
-      <div className="tabs">{p("sources.read") && <NavLink to="/admin" end>Sources</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
+      <div className="tabs">{p("sources.read") && <NavLink to="/admin" end>Sources</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
         {p("admin.costs") && <NavLink to="/admin/costs"> Costs</NavLink>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
-      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="imports" element={<Imports />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} />
+      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} />
         <Route path="rules" element={<Rules />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
     </>
   );
