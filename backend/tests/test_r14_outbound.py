@@ -204,3 +204,43 @@ def test_endpoints_status_webhook_and_deal_proposal(conn, db_url):
         assert d.status_code == 200 and d.json()["diff"]["payload"]["pipeline_id"] == 2 and d.json()["diff"]["payload"]["stage_id"] == 7
     finally:
         db.close()
+
+
+def test_crm_sync_step_does_nothing_without_a_token_and_only_runs_at_the_top_of_the_hour(conn, monkeypatch):
+    from datetime import datetime, timezone
+    from ri import scheduler
+    assert scheduler.crm_sync_step(conn, S(), datetime(2026, 11, 21, 10, 1, tzinfo=timezone.utc)) == {}
+    ran = []
+    import ri.crm.pipedrive as pdm
+    monkeypatch.setattr(pdm, "sync_incremental", lambda c, r: ran.append(1) or {"orgs": 0})
+    monkeypatch.setattr(pdm, "process_inbox", lambda c: {"processed": 0})
+    st = S(pipedrive_api_token="t", pipedrive_domain="d")
+    assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 21, 10, 30, tzinfo=timezone.utc)) == {} and not ran
+    assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 21, 10, 2, tzinfo=timezone.utc))["crm_sync"] == {"orgs": 0} and ran
+
+
+def test_canary_reports_failures_once_per_change_and_recovers(conn):
+    from datetime import datetime, timezone
+    from ri import canary
+
+    class Sink:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, r, text):
+            self.sent.append(text)
+    sink, t = Sink(), datetime(2026, 11, 21, 10, 1, tzinfo=timezone.utc)
+    assert canary.run_canary(conn, S(), datetime(2026, 11, 21, 10, 30, tzinfo=timezone.utc), sink) == {}          # only at the top of the hour
+    out = canary.run_canary(conn, S(), t, sink)
+    assert out["canary_failing"] >= 2 and out["canary_alerted"] and len(sink.sent) == 1                          # no worker, no scheduler, no rules in a bare database
+    canary.run_canary(conn, S(), t, sink)
+    assert len(sink.sent) == 1                                                                                   # unchanged: no repeat message
+    codes = {b["code"] for b in canary.run_checks(conn)}
+    assert {"worker_silent", "scheduler_silent", "no_active_rules"} <= codes
+    conn.execute("insert into system_heartbeats(component, at, detail) values ('worker', now(), '{}'), ('scheduler', now(), '{}') on conflict (component) do update set at=now()")
+    from ri.signals.baseline import import_baseline
+    from ri.signals.persist import sync_rule_versions
+    import_baseline(conn)
+    sync_rule_versions(conn)
+    out2 = canary.run_canary(conn, S(), t, sink)
+    assert out2["canary_failing"] == 0 and "all checks pass" in sink.sent[-1]

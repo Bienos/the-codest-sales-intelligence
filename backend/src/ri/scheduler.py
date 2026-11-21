@@ -70,6 +70,20 @@ def requeue_stuck_verifications(conn: Conn, now: datetime | None = None, minutes
     return n
 
 
+def crm_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
+    """Hourly Pipedrive mirror refresh, only when a token is set. Runs outside the savepoint steps because the sync commits its own watermarks."""
+    now = now or datetime.now(timezone.utc)
+    if not (settings.pipedrive_api_token and settings.pipedrive_domain) or now.minute >= 5:
+        return {}
+    from .crm.pipedrive import PipedriveReader, process_inbox, sync_incremental
+    try:
+        res = sync_incremental(conn, PipedriveReader(settings.pipedrive_domain, settings.pipedrive_api_token))
+        return {"crm_sync": res, "crm_inbox": process_inbox(conn)}
+    except Exception as exc:  # noqa: BLE001
+        conn.rollback()
+        return {"crm_sync_error": f"{type(exc).__name__}: {exc}"[:200]}
+
+
 def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     """Idempotent housekeeping. Every step runs in its own savepoint: one failing step is reported and the rest still run, so the scheduler heartbeat never goes quiet."""
     from .events.relink import relink_unmatched

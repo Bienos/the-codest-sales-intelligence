@@ -64,11 +64,20 @@ def main(argv: list[str] | None = None) -> int:
             print(sync_incremental(conn, reader), process_inbox(conn))
             conn.commit()
         elif a.cmd == "schedule":
-            from .scheduler import run_maintenance, schedule_due
+            from .scheduler import crm_sync_step, run_maintenance, schedule_due
             from .heartbeat import beat
             from .scheduler import schedule_discovery
             res = {"enqueued": schedule_due(conn), "discovery": schedule_discovery(conn, enabled=bool(s.exa_api_key and s.exa_monthly_cap_usd > 0)), **run_maintenance(conn)}
+            res.update(crm_sync_step(conn, s))
             conn.commit()
+            try:
+                from .canary import run_canary
+                from .notify.digest import SlackWebhookSink
+                res.update(run_canary(conn, s, sink=SlackWebhookSink(s.slack_webhook_url) if s.slack_webhook_url else None))
+                conn.commit()
+            except Exception as exc:  # noqa: BLE001  (the self-test must never stop scheduling)
+                conn.rollback()
+                res["canary_error"] = f"{type(exc).__name__}: {exc}"[:200]
             if s.slack_webhook_url and os.environ.get("RI_BASE_URL") and os.environ.get("RI_LINK_SECRET"):     # the digest dedupes by material change, so calling it each tick is safe
                 try:
                     from .notify.digest import SlackWebhookSink, send_digest
