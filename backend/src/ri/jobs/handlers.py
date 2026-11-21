@@ -23,6 +23,8 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         if res.status == "skipped":
             return {"skipped": res.error}
         ex = extractor_factory(conn) if extractor_factory else None
+        if ex is not None and hasattr(ex, "reserve_fraction"):
+            ex.reserve_fraction = 0.3          # monitoring never uses the last 30% of the model budget: sellers' checks come first
         out = process_run(conn, res, extractor=ex, resolve_org=resolver)
         return {"run_id": res.run_id, "new": res.new, "changed": res.changed, "unchanged": res.unchanged, **out}
 
@@ -109,6 +111,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             summary[v["result"]] = summary.get(v["result"], 0) + 1
         return {"summary": summary, "sources": {k: (v.get("reason") or v.get("detail") or v["result"]) for k, v in out.items()}}
 
+    source_run.own_transactions = True  # type: ignore[attr-defined]     # run_source commits per page of work; it must not sit inside a wrapping transaction
     sources_validate_all.own_transactions = True  # type: ignore[attr-defined]
     verify_url.own_transactions = True  # type: ignore[attr-defined]
     discovery_run.own_transactions = True  # type: ignore[attr-defined]

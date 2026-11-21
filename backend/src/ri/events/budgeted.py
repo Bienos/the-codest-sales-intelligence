@@ -17,6 +17,7 @@ class BudgetedExtractor:
         self.inner, self.conn = inner, conn
         self.version = inner.version
         self.price_in, self.price_out = price_in, price_out
+        self.reserve_fraction = 0.0         # background work sets this so it never uses up the budget sellers rely on
         self.ctx: dict[str, Any] = {}       # who this call is for (document, verification request, organisation): set by the caller
 
     @staticmethod
@@ -25,6 +26,12 @@ class BudgetedExtractor:
 
     async def extract(self, *, title, text, published_at):
         est = float(min(len(text), 30000) // 3 + getattr(self.inner, "max_tokens_budget", 4000) + 1500)      # input chars/3 + max output + system prompt
+        if self.reserve_fraction > 0:
+            from ..sources.base import BudgetExceeded
+            left = budget.remaining(self.conn, self.provider, self.kind, self.period())
+            cap = self.conn.execute("SELECT cap FROM provider_budgets WHERE provider=%s AND kind=%s AND period=%s", (self.provider, self.kind, self.period())).fetchone()
+            if cap and float(cap["cap"]) > 0 and left - est < float(cap["cap"]) * self.reserve_fraction:
+                raise BudgetExceeded("background reading stops at 70% of the monthly model budget; the rest is reserved for seller checks")
         key = f"ai:{uuid.uuid4()}"
         budget.reserve(self.conn, self.provider, self.kind, self.period(), est, key=key, ref_type="document", purpose="event extraction")   # raises BudgetExceeded
         try:

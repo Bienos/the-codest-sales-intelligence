@@ -437,3 +437,18 @@ def test_scheduler_requeues_stuck_verifications_twice_then_fails_them(conn, worl
     fresh = mk_request(conn, world["org"], url="https://fresh.invalid/1")
     conn.execute("update verification_requests set status='extracting' where id=%s", (fresh,))
     assert requeue_stuck_verifications(conn) == 0                      # recent work is left alone
+
+
+def test_background_reading_leaves_30_percent_of_the_model_budget_for_sellers(conn, world):
+    budget.set_cap(conn, "anthropic", "monthly", usage.period_now(), 100_000, "tokens")
+    conn.execute("update provider_budgets set spent=60000 where provider='anthropic'")        # 40% left; one read needs about 6k+
+    conn.commit()
+    ex = BudgetedExtractor(FakeInner(), conn)
+    ex.reserve_fraction = 0.3
+    assert asyncio.run(ex.extract(title="t", text="x" * 300, published_at=None))["events"]        # 40% left: room above the reserve
+    conn.execute("update provider_budgets set spent=75000 where provider='anthropic'")        # 25% left: inside the reserve
+    conn.commit()
+    with pytest.raises(BudgetExceeded):
+        asyncio.run(ex.extract(title="t", text="x" * 300, published_at=None))
+    seller = BudgetedExtractor(FakeInner(), conn)                                              # a seller's own check has no reserve and still runs
+    assert asyncio.run(seller.extract(title="t", text="x" * 300, published_at=None))["events"]

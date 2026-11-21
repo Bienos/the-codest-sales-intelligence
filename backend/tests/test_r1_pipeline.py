@@ -318,3 +318,21 @@ def test_missed_runs_degrade_coverage_not_negative_signal(conn, env):
     degraded = evaluate_staleness(conn, now_fn=lambda: NOW)
     assert "procurement-ted" in degraded
     assert conn.execute("select state, missed_due_runs from source_health where source_id='procurement-ted'").fetchone()["state"] == "degraded"
+
+
+# ------------------------------------------------------------------- a source run THROUGH THE QUEUE (production crashed here: commit inside a wrapping transaction)
+def test_scheduled_source_run_executes_through_the_job_queue(conn, env):
+    from ri.jobs.handlers import build_handlers
+    from ri.jobs.queue import enqueue, run_one
+    activate(conn, "attention-finextra")
+    rss = ("<rss><channel><item><title>Example Bank selects Vendor</title><link>https://e.invalid/1</link><guid>g1</guid>"
+           "<description>Example Bank selects Vendor</description><pubDate>Tue, 17 Nov 2026 09:00:00 GMT</pubDate></item></channel></rss>")
+    http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(404 if r.url.path == "/robots.txt" else 200, text=rss)))
+    handlers = build_handlers(connector_factory=lambda sid: FeedConnector(http, "https://e.invalid/feed", source_id=sid))
+    enqueue(conn, "source_run", {"source_id": "attention-finextra"}, idempotency_key="sr1")
+    conn.commit()
+    assert run_one(conn, "w", handlers) == "completed"                       # was: retryable_failed, ProgrammingError
+    job = conn.execute("select status, result from jobs where kind='source_run'").fetchone()
+    assert job["status"] == "completed" and job["result"]["new"] == 1
+    assert conn.execute("select count(*) c from source_documents where source_id='attention-finextra'").fetchone()["c"] == 1
+    assert conn.execute("select state from source_health where source_id='attention-finextra'").fetchone()["state"] == "healthy"
