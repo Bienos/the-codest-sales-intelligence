@@ -1,11 +1,11 @@
-# Integration inventory — status as of 2026-11-20 (build sandbox)
+# Integration inventory — status as of 2026-11-21 (build sandbox)
 
 Legend: **Built** = adapter + tests on fixtures · **Live-verified** = exercised against the real service · **Blocked** = cannot run here (reason).
 
 | Integration | Direction | Built | Live-verified | Blocker / what is needed |
 |---|---|---|---|---|
 | **Supabase Postgres** (`the-codest-sales-intelligence`, eu-central-1, PG 17) | store | ✅ migrations 0001–0008 applied via connector, checksums recorded in `schema_migrations` | ✅ verified: 69 tables, RLS on all, 0 grants to `anon`/`authenticated`, security advisor clean apart from intended deny-all INFO | App host needs the **session-pooler** connection string as a secret. Run `python -m ri.cli seed` once (loads the 64 rules + source registry). Performance advisor: 48 unindexed FKs to index once real data exists. Tested locally on PG 16 only. |
-| Google Sheets A/B | in (read-only) | ✅ client, 15 contracts, drift pause, lineage | ⚠️ **Schemas inspected live** via Drive connector; **no API sync run** | Needs a service account with Viewer on both workbooks → `docs/runbooks/connect-google-sheets.md`. Egress to `sheets.googleapis.com` returned 403 here. |
+| Google Sheets A/B | in (read-only) | ✅ API client, **.xlsx upload client**, 15 contracts, drift pause, lineage | ✅ **Both real workbooks imported from .xlsx exports**: 18 tabs, no drift, 1,313 organisations, 2,256 contacts, 322 identity reviews, re-import changes nothing | Hourly API sync still needs a read-only service account. Until then: Administration, Imports (runbook `import-workbooks.md`). |
 | Pipedrive read sync/webhooks | in | ✅ | ⚠️ Payload shape confirmed by a live read via MCP (v2: `data[]`, `next_cursor`, `owner_id`) | Needs API token + `PIPEDRIVE_DOMAIN`; webhook basic-auth secret; field-key mapping (custom keys are account-specific hashes). Egress blocked. |
 | Pipedrive write executor | out | ✅ approval-gated, kill-switch default OFF, fetch-before-retry | ❌ | Separate write token; needs CRM-admin approval of allowed operations (only `create_activity` is implemented). |
 | EU TED | in | ✅ (search v3, pagination) | ❌ | Egress blocked; endpoint/field names are from documentation and **unverified**. Qualify per spec 02 §11. |
@@ -13,7 +13,7 @@ Legend: **Built** = adapter + tests on fixtures · **Live-verified** = exercised
 | Lever / Greenhouse / Ashby | in | ✅ | ❌ | Egress blocked; need per-employer board slugs (not in the sheets). |
 | GLEIF | in | ✅ lookup/search | ❌ | Egress returned empty response. |
 | Companies House, Contracts Finder, regulators | in | registry entries only | ❌ | Not implemented (candidates). |
-| Page / RSS monitor | in | ✅ robots-respecting, section-hashed | ❌ | Needs per-account URLs + legal review per site. |
+| Page / RSS monitor | in | ✅ robots-respecting, section-hashed; **admin UI to set URL, test from server, activate** | ❌ | URLs pre-filled for 4 vendors from links in your workbooks (unvalidated); 6 sources still need a URL. Page tests run from the server, which this sandbox cannot reach. |
 | Exa | in | ✅ adapter, plan IDs, budget gate | ❌ | No key; **price list needed** before any cap is set. |
 | LLM extraction (Anthropic) | internal | ✅ schema + anchor verification (fake extractor tested) | ❌ | `ANTHROPIC_API_KEY`; prompt/gold-set regression must pass before enabling. |
 | Apollo | in (credit-consuming) | ✅ people search/enrich, approval + single-use | ❌ | Key, entitlement, **price**, and explicit approvals. Disabled by default. |
