@@ -136,3 +136,22 @@ def test_watching_an_account_schedules_a_weekly_scan_once_and_shows_in_leads(wor
     assert schedule_watchlist(conn) == 0                                              # scanned within the last 7 days: nothing to do
     assert c.delete(f"/api/accounts/{ids['a']}/watch", headers=h("bdm")).json() == {"watched": False}
     assert c.get("/api/leads?watched=true", headers=h("bdm")).json()["total"] == 0
+
+
+def test_a_person_can_qualify_or_reject_a_candidate_and_only_candidates(world, conn):
+    c, h, ids, _ = world
+    r = c.post(f"/api/leads/{ids['c']}/qualify", headers=h("bdm"), json={"decision": "qualify", "note": "met them"})
+    assert r.json() == {"status": "qualified"}
+    items = {i["name"]: i["candidate_status"] for i in c.get("/api/leads", headers=h("bdm")).json()["items"]}
+    assert items["Synthetic Oslo Payments AS"] == "qualified"
+    assert c.post(f"/api/leads/{ids['a']}/qualify", headers=h("bdm"), json={"decision": "reject"}).status_code == 404     # a list account is not a candidate
+    assert c.post(f"/api/leads/{ids['c']}/qualify", headers=h("bdm"), json={"decision": "maybe"}).status_code == 422
+    assert c.post(f"/api/leads/{ids['c']}/qualify", headers=h("bdm"), json={"decision": "reject"}).json() == {"status": "rejected"}
+    assert "Synthetic Oslo Payments AS" not in [i["name"] for i in c.get("/api/leads", headers=h("bdm")).json()["items"]]
+    assert conn.execute("select count(*) c from audit_events where operation in ('candidate_qualified','candidate_rejected')").fetchone()["c"] == 2
+
+
+def test_today_lists_hot_and_warm_accounts_but_never_stopped_ones(world):
+    c, h, ids, _ = world
+    names = [a["display_name"] for a in c.get("/api/today", headers=h("bdm")).json()["hot_accounts"]]
+    assert "Synthetic London Bank plc" in names and "Synthetic Warsaw Bank SA" not in names

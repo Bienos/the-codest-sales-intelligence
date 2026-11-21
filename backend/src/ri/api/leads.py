@@ -90,6 +90,7 @@ class ScanSelectedIn(BaseModel):
 
 
 def register_leads(app: FastAPI) -> None:
+    register_qualify(app)
     def tx(request: Request):
         return request.app.state.db.tx()
 
@@ -176,3 +177,25 @@ def register_leads(app: FastAPI) -> None:
         with tx(request) as conn:
             conn.execute("DELETE FROM watchlist WHERE organization_id=%s AND user_email=%s", (oid, p.email))
             return {"watched": False}
+
+
+class QualifyIn(BaseModel):
+    decision: str = Field(pattern="^(qualify|reject)$")
+    note: str | None = Field(default=None, max_length=300)
+
+
+def register_qualify(app: FastAPI) -> None:
+    @app.post("/api/leads/{oid}/qualify")
+    def qualify(oid: str, body: QualifyIn, request: Request, p: Principal = Depends(require("research.request"))):
+        """A person decides whether a candidate company is a real lead. Nothing about the company's data changes: only its qualification status."""
+        from ..db import q1
+        with request.app.state.db.tx() as conn:
+            where, params = org_scope_sql(p, "o.id")
+            row = q1(conn, f"SELECT c.status FROM organizations o JOIN new_company_candidates c ON c.organization_id=o.id WHERE o.id=%s AND ({where})", [oid, *params])      # noqa: S608
+            if not row:
+                raise HTTPException(404, "not a candidate company, or not visible to you")
+            status = "qualified" if body.decision == "qualify" else "rejected"
+            note = f"{'Qualified' if status == 'qualified' else 'Rejected'} by {p.email}" + (f": {body.note.strip()}" if body.note and body.note.strip() else ".")
+            conn.execute("UPDATE new_company_candidates SET status=%s, icp_note=%s WHERE organization_id=%s", (status, note, oid))
+            audit(conn, actor=p.email, operation=f"candidate_{status}", record_type="organization", record_id=oid, detail={"note": body.note})
+            return {"status": status}

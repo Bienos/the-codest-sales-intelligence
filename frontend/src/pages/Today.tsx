@@ -101,6 +101,12 @@ export default function Today() {
       <div className="page" style={{ paddingTop: 24 }}>
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
+        {d.hot_accounts?.length > 0 && <section><div className="section-title">Hot accounts</div>
+          <div className="card flush table-wrap"><table><thead><tr><th>Account</th><th>Score</th><th>Signals</th><th>Latest</th></tr></thead><tbody>
+            {d.hot_accounts.map((a: any) => <tr key={a.id}><td><Link to={`/accounts/${a.id}`}>{a.display_name}</Link><div className="small muted">{[a.country_code, a.segment].filter(Boolean).join(" · ")}</div></td>
+              <td><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
+              <td className="small">{a.signal_count} · {a.groups.join(", ")}</td><td className="small">{a.last_signal_at ? fmtDate(a.last_signal_at) : "n/a"}</td></tr>)}
+          </tbody></table></div></section>}
         {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{d.sections[k].map((c: any) => <Card key={c.hypothesis_id} c={c} reload={load} />)}</section> : null))}
         <Prospects />
       </div>

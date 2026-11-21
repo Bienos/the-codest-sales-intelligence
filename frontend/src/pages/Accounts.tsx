@@ -56,6 +56,10 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
     setErr(null);
     try { await (r.watched ? del(`/api/accounts/${r.id}/watch`) : post(`/api/accounts/${r.id}/watch`)); setD({ ...d, items: d.items.map((x: any) => (x.id === r.id ? { ...x, watched: !r.watched } : x)) }); } catch (e) { setErr(e); }
   };
+  const decide = async (r: any, decision: "qualify" | "reject") => {
+    setErr(null);
+    try { const o = await post(`/api/leads/${r.id}/qualify`, { decision }); setD({ ...d, items: decision === "reject" ? d.items.filter((x: any) => x.id !== r.id) : d.items.map((x: any) => (x.id === r.id ? { ...x, candidate_status: o.status } : x)) }); } catch (e) { setErr(e); }
+  };
   const exportCsv = async () => {
     try {
       const t = sessionStorage.getItem("ri_token"); const r = await fetch(`/api/leads.csv?${qs(f)}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
@@ -99,7 +103,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
           <td>{r.score !== null ? <><b>{r.score}</b> <Badge kind={BAND[r.band][0]}>{BAND[r.band][1]}</Badge></> : <span className="muted">none</span>}{r.stopped && <div className="small muted">Stopped by a rule</div>}</td>
           <td className="small">{r.signal_count ? <>{r.signal_count} · {r.groups.map((g: string) => GROUP_NAME[g] ?? g).join(", ")}</> : <span className="muted">none yet</span>}</td>
           <td className="small">{r.last_signal_at ? fmtDate(r.last_signal_at) : <span className="muted">n/a</span>}</td>
-          <td className="small">{d.origins[r.origin]}{r.candidate_status === "pending_qualification" && <div className="muted">Not yet qualified</div>}</td></tr>)}
+          <td className="small">{d.origins[r.origin]}{r.candidate_status === "pending_qualification" && <div className="row" style={{ gap: 6, marginTop: 4 }}><span className="muted">Not yet qualified</span>{can("research.request") && <><button className="chip" onClick={() => decide(r, "qualify")}>Qualify</button><button className="chip" onClick={() => decide(r, "reject")}>Reject</button></>}</div>}{r.candidate_status === "qualified" && <div><Badge kind="ok">Qualified</Badge></div>}</td></tr>)}
         {d && d.items.length === 0 && <tr><td colSpan={9} className="muted">Nothing matches these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " No companies are loaded yet: upload the workbooks or add a company." : ""}</td></tr>}</tbody></table></div>
       {d && <div className="row spread small" style={{ marginTop: 10 }}><span>{d.total.toLocaleString()} leads</span>
         <span className="row"><button disabled={f.page <= 1} onClick={() => setF({ ...f, page: f.page - 1 })}>Previous</button><span>Page {f.page} of {pages}</span><button disabled={f.page >= pages} onClick={() => setF({ ...f, page: f.page + 1 })}>Next</button></span></div>}
