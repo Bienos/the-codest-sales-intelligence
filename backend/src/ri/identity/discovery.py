@@ -23,7 +23,7 @@ def register_discovered_company(conn: Conn, *, name: str, country: str | None, d
 
 
 CANDIDATE_EVENT_TYPES = ("programme_announced", "vendor_selected", "implementation_launched", "technology_leader_appointed", "funding_announced", "acquisition_announced",
-                         "supplier_panel_opened", "procurement_published", "engineering_job_opened", "product_launch")
+                         "supplier_panel_opened", "procurement_published", "engineering_job_opened", "product_launch", "market_launch", "licence_granted", "cost_programme")
 
 
 def promote_candidates(conn: Conn, limit: int = 40, tiers: tuple[str, ...] = ("core",)) -> dict[str, int]:

@@ -52,7 +52,7 @@ export default function App() {
         <div className="nav-panel" id="nav-panel">
           <form className="navsearch" role="search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search everything" placeholder="Search everything" /></form>
           {can("today.read") && link("/today", "Today", IconToday)}
-          {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
+          {can("accounts.read") && link("/accounts", "Leads", IconAccounts)}
           {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
           {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
           {link("/library", "Library", IconLibrary)}
@@ -71,7 +71,7 @@ export default function App() {
           <Route path="/search" element={<div className="page"><Search /></div>} />
           <Route path="/library" element={<div className="page"><LibraryHub /></div>} />
           <Route path="/knowledge/:doc?" element={<div className="page"><Knowledge /></div>} />
-          <Route path="/accounts" element={<div className="page"><Accounts /></div>} />
+          <Route path="/accounts" element={<div className="page"><Accounts me={me} /></div>} />
           <Route path="/accounts/:id" element={<div className="page"><Account me={me} /></div>} />
           <Route path="/opportunities/:id" element={<div className="page"><Opportunity me={me} /></div>} />
           <Route path="/explorer" element={<div className="page"><Explorer /></div>} />

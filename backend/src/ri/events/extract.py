@@ -27,7 +27,7 @@ EVENT_TYPES = ["procurement_published", "procurement_amended", "procurement_awar
                "programme_announced", "programme_completed", "integration_release", "product_launch", "engineering_job_opened",
                "contractor_job_opened", "job_closed", "technology_leader_appointed", "acquisition_announced", "funding_announced",
                "supplier_panel_opened", "supplier_panel_closed", "regulatory_change", "deadline_approaching", "crm_buyer_response",
-               "relationship_changed", "negative_cancellation", "programme_delayed", "supplier_exit"]
+               "relationship_changed", "negative_cancellation", "programme_delayed", "supplier_exit", "market_launch", "licence_granted", "cost_programme"]
 INJECTION = re.compile(r"(ignore (all |any |the )?(previous|prior|above) (instructions|prompts)|disregard (the )?(system|previous)|"
                        r"you are now|system prompt|api[ _-]?key|exfiltrat|send (this|the|your) (token|key|secret)|reveal (your|the) (prompt|instructions))", re.I)
 

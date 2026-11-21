@@ -209,3 +209,99 @@
     - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
     - {kind: ambiguous, name: low_authority_source, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
     - {kind: expiry, name: ownership_gate_has_no_time_expiry, top: {days_ago: 700}, expect: match}
+- rule: COM-01
+  base: {event_type: funding_announced, source_tier: S2, days_ago: 10, attrs: {"funding_stage": "series_b", "funding_use_stated": true}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"funding_stage": "series_c_plus"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"funding_stage": "growth_equity", "funding_use_stated": true}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"funding_stage": "growth_debt"}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"funding_stage": "seed"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"funding_use_stated": false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_3, set: {"funding_stage": "other"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: funding_use_stated_missing, drop: [funding_use_stated], expect: none}
+    - {kind: expiry, name: older_than_90_days, top: {days_ago: 115}, expect: none, trace: expired}
+- rule: COM-02
+  base: {event_type: acquisition_announced, source_tier: S2, days_ago: 10, attrs: {"integration_or_tsa_stated": true, "deal_status": "completed"}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"deal_status": "announced"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"deal_status": "completed", "tsa_end": "2027-03"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"deal_status": "announced", "integration_or_tsa_stated": true}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"integration_or_tsa_stated": false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"deal_status": "rumoured"}, expect: none, trace: excluded}
+    - {kind: negative, name: negative_3, set: {"deal_status": "terminated"}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: integration_or_tsa_stated_missing, drop: [integration_or_tsa_stated], expect: none}
+    - {kind: expiry, name: older_than_180_days, top: {days_ago: 205}, expect: none, trace: expired}
+- rule: COM-03
+  base: {event_type: market_launch, source_tier: S2, days_ago: 10, attrs: {"market_launch_dated": true}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"market": "Germany"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"market": "Poland"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"market": "Sweden"}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"market_launch_dated": false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"market_launch_dated": false, "market": "Germany"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_3, set: {"market_launch_dated": "no"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: market_launch_dated_missing, drop: [market_launch_dated], expect: none}
+    - {kind: expiry, name: older_than_90_days, top: {days_ago: 115}, expect: none, trace: expired}
+- rule: COM-04
+  base: {event_type: licence_granted, source_tier: S2, days_ago: 10, attrs: {"licence_tied_to_launch": true, "licence_type": "emi"}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"licence_type": "bank"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"licence_type": "casp"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"licence_type": "pi"}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"licence_tied_to_launch": false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"licence_tied_to_launch": false, "licence_type": "bank"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_3, set: {"licence_tied_to_launch": "unclear"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: licence_tied_to_launch_missing, drop: [licence_tied_to_launch], expect: none}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 145}, expect: none, trace: expired}
+- rule: COM-05
+  base: {event_type: integration_release, source_tier: S2, days_ago: 10, attrs: {"role_of_subject": "vendor", "customer_golive_stated": true}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"customer": "Example Bank"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"customer": "Example Insurer"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"customer": "Example Lender"}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"role_of_subject": "bank"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"customer_golive_stated": false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_3, set: {"role_of_subject": "si"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: customer_golive_stated_missing, drop: [customer_golive_stated], expect: none}
+    - {kind: expiry, name: older_than_60_days, top: {days_ago: 85}, expect: none, trace: expired}
+- rule: COM-06
+  base: {event_type: product_launch, source_tier: S2, days_ago: 10, attrs: {"new_product_line": "cards"}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"new_product_line": "payouts"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"new_product_line": "ai_feature"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"new_product_line": "embedded_finance"}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"new_product_line": "other"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"new_product_line": "rebrand"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_3, set: {"new_product_line": "pricing_change"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: new_product_line_missing, drop: [new_product_line], expect: none}
+    - {kind: expiry, name: older_than_90_days, top: {days_ago: 115}, expect: none, trace: expired}
+- rule: COM-07
+  base: {event_type: relationship_changed, source_tier: S2, days_ago: 10, attrs: {"partnership_scope_explicit": true}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"partner": "Example Vendor"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"partner": "Example Scheme"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"partner": "Example Fintech"}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"partnership_scope_explicit": false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"partnership_scope_explicit": false, "partner": "Example Vendor"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_3, set: {"partnership_scope_explicit": "vague"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: partnership_scope_explicit_missing, drop: [partnership_scope_explicit], expect: none}
+    - {kind: expiry, name: older_than_90_days, top: {days_ago: 115}, expect: none, trace: expired}
+- rule: COM-08
+  base: {event_type: cost_programme, source_tier: S2, days_ago: 10, attrs: {"tech_scope_stated": true}}
+  cases:
+    - {kind: positive, name: positive_1, set: {"programme": "legacy retirement"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_2, set: {"programme": "nearshoring"}, expect: match, tier: D4}
+    - {kind: positive, name: positive_3, set: {"programme": "automation"}, expect: match, tier: D4}
+    - {kind: negative, name: negative_1, set: {"tech_scope_stated": false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_2, set: {"tech_scope_stated": false, "programme": "office consolidation"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: negative_3, set: {"tech_scope_stated": "no"}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: tech_scope_stated_missing, drop: [tech_scope_stated], expect: none}
+    - {kind: expiry, name: older_than_180_days, top: {days_ago: 205}, expect: none, trace: expired}

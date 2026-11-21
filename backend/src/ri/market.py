@@ -63,3 +63,18 @@ def is_public_body(name: str | None) -> bool:
 
 def lane_for(name: str | None, entity_type: str | None = None) -> str:
     return "public" if (entity_type == "public_body" or is_public_body(name)) else "private"
+
+
+REGIONS = [("uk", "UK", {"GB"}), ("dach", "DACH", {"DE", "AT", "CH"}), ("nordics", "Nordics", {"SE", "NO", "DK", "FI", "IS"}), ("poland", "Poland", {"PL"}),
+           ("europe", "Rest of Europe", EUROPE), ("us", "US", {"US"})]
+
+
+def region_for(country: str | None) -> str:
+    """Region key used by the Leads database: uk, dach, nordics, poland, europe, us, other or unknown."""
+    c = alpha2(country)
+    if not c:
+        return "unknown"
+    for key, _, members in REGIONS:
+        if c in members:
+            return key
+    return "other"

@@ -30,22 +30,73 @@ function AddCompany({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function Accounts() {
+const ICP_NAMES: Record<string, string> = { strategic_5000_plus: "5,000+ staff", enterprise_1000_plus: "1,000+ staff", scaleup_500_999: "500 to 999 staff", below_threshold: "Below threshold", unknown: "Size unknown" };
+const BAND: Record<string, ["ok" | "warn" | "info" | "bad" | "", string]> = { hot: ["bad", "Hot"], warm: ["warn", "Warm"], watch: ["info", "Watch"], none: ["", "No signal"] };
+const GROUP_NAME: Record<string, string> = { SRC: "route", CAP: "capacity", MAN: "leader", PRG: "programme", COM: "business event", REG: "deadline", REL: "relationship" };
+const PRESETS: [string, Record<string, string>][] = [
+  ["Hot or warm", { band: "hot" }], ["UK banks and fintechs", { region: "uk" }], ["DACH", { region: "dach" }], ["Nordics", { region: "nordics" }], ["Poland", { region: "poland" }],
+  ["Signal in last 30 days", { signal_days: "30" }], ["Your shortlist", { shortlist: "true" }], ["Added by people", { origin: "added" }], ["Found by the platform", { origin: "discovered" }],
+];
+type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; sort: string; page: number };
+const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", sort: "score", page: 1 };
+const qs = (f: Q, extra = "") => { const u = new URLSearchParams(); (Object.entries(f) as [string, any][]).forEach(([k, v]) => { if (v !== "" && v !== 1 && !(k === "sort" && v === "score")) u.set(k, String(v)); }); if (f.page > 1) u.set("page", String(f.page)); return u.toString() + extra; };
+
+export function Accounts({ me }: { me?: { permissions: string[] } }) {
   const [adding, setAdding] = useState(false);
-  const [q, setQ] = useState("");
-  const [rows, setRows] = useState<any[]>([]);
-  const [err, setErr] = useState<unknown>(null);
-  useEffect(() => { const t = setTimeout(() => api(`/api/accounts?q=${encodeURIComponent(q)}`).then((r) => setRows(r.items)).catch(setErr), 200); return () => clearTimeout(t); }, [q]);
+  const [f, setF] = useState<Q>(EMPTY);
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set()); const [msg, setMsg] = useState("");
+  const can = (p: string) => !me || me.permissions.includes(p);
+  useEffect(() => { const t = setTimeout(() => api(`/api/leads?${qs(f)}`).then(setD).catch(setErr), f.q ? 250 : 0); return () => clearTimeout(t); }, [f]);
+  const set = (k: keyof Q, v: string) => setF({ ...f, [k]: v, page: 1 });
+  const preset = (p: Record<string, string>) => setF({ ...EMPTY, ...p, page: 1 });
+  const toggle = (id: string) => { const n = new Set(sel); n.has(id) ? n.delete(id) : n.add(id); setSel(n); };
+  const exportCsv = async () => {
+    try {
+      const t = sessionStorage.getItem("ri_token"); const r = await fetch(`/api/leads.csv?${qs(f)}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+      if (!r.ok) throw new Error(await r.text());
+      const url = URL.createObjectURL(await r.blob()); const a = document.createElement("a"); a.href = url; a.download = "leads.csv"; a.click(); URL.revokeObjectURL(url);
+    } catch (e) { setErr(e); }
+  };
+  const scanSelected = async () => {
+    setErr(null); setMsg("");
+    try { const r = await post("/api/leads/scan", { ids: Array.from(sel).slice(0, 25), with_search: false }); setMsg(`Queued ${r.queued} scans. New findings appear in the Market feed once verified.`); setSel(new Set()); } catch (e) { setErr(e); }
+  };
+  const fac = d?.facets ?? {};
+  const opt = (m: Record<string, number> | undefined, label?: (k: string) => string) => Object.entries(m ?? {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => <option key={k} value={k}>{label ? label(k) : humanize(k)} ({n})</option>);
+  const pages = d ? Math.max(1, Math.ceil(d.total / d.size)) : 1;
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Your book</div><h2>Accounts</h2></div><p className="sub" style={{marginTop:-8}}>Only accounts you are authorised to see: your Pipedrive-owned accounts, unowned accounts and explicit shares.</p>
-      <div className="row" style={{ marginBottom: 12 }}><button className="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "Add a company"}</button></div>
+      <div className="page-head"><div className="eyebrow">Your book</div><h2>Leads</h2></div>
+      <p className="sub" style={{ marginTop: -8 }}>Every company the platform knows, with a score built from its verified signals. Filter by region, size and signal strength; press Add a company for one that is missing.</p>
+      <div className="row" style={{ marginBottom: 12 }}>{can("research.request") && <button className="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "Add a company"}</button>}
+        <button onClick={exportCsv}>Export CSV</button>{sel.size > 0 && can("research.request") && <button onClick={scanSelected}>Scan {sel.size} selected</button>}</div>
       {adding && <AddCompany onClose={() => setAdding(false)} />}
-      <input aria-label="Search accounts" placeholder="Search by name…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 280, marginBottom: 12 }} /><Err e={err} />
-      <div className="card table-wrap"><table><thead><tr><th>Account</th><th>Country</th><th>List</th><th>Employees</th><th>CRM owner</th><th>Initiatives</th></tr></thead><tbody>
-        {rows.map((r) => <tr key={r.id}><td><Link to={`/accounts/${r.id}`}>{r.display_name}</Link></td><td>{r.country_code ?? "n/a"}</td><td>{r.in_master_list ? <Badge kind="ok">master list</Badge> : <Badge kind="info">new</Badge>}</td>
-          <td>{r.employees_estimate?.toLocaleString() ?? "n/a"} {r.employees_uncertain && <Badge kind="warn">estimate</Badge>}</td><td>{r.crm_owner_id ?? <span className="muted">unverified</span>}</td><td>{r.initiatives}</td></tr>)}
-        {rows.length === 0 && <tr><td colSpan={6} className="muted">No accounts in your scope match.</td></tr>}</tbody></table></div>
+      {msg && <div className="okmsg" role="status">{msg}</div>}
+      <div className="chips" aria-label="Saved views">{PRESETS.map(([l, p]) => <button key={l} className="chip" aria-pressed={Object.entries(p).every(([k, v]) => (f as any)[k] === v)} onClick={() => preset(p)}>{l}</button>)}<button className="chip" onClick={() => preset({})}>Clear</button></div>
+      <div className="leadbar">
+        <input id="lead-q" aria-label="Search leads" placeholder="Search name or website" value={f.q} onChange={(e) => set("q", e.target.value)} />
+        <select id="lead-region" aria-label="Region" value={f.region} onChange={(e) => set("region", e.target.value)}><option value="">All regions</option>{d?.regions.map((r: any) => <option key={r.key} value={r.key}>{r.label} ({fac.region?.[r.key] ?? 0})</option>)}</select>
+        <select id="lead-icp" aria-label="Company size" value={f.icp} onChange={(e) => set("icp", e.target.value)}><option value="">Any size</option>{opt(fac.icp, (k) => ICP_NAMES[k] ?? k)}</select>
+        <select id="lead-segment" aria-label="Segment" value={f.segment} onChange={(e) => set("segment", e.target.value)}><option value="">Any segment</option>{opt(fac.segment)}</select>
+        <select id="lead-band" aria-label="Signal band" value={f.band} onChange={(e) => set("band", e.target.value)}><option value="">Any signal</option>{["hot", "warm", "watch", "none"].map((k) => <option key={k} value={k}>{BAND[k][1]} ({fac.band?.[k] ?? 0})</option>)}</select>
+        <select id="lead-origin" aria-label="Origin" value={f.origin} onChange={(e) => set("origin", e.target.value)}><option value="">Any origin</option>{opt(fac.origin, (k) => d.origins[k] ?? k)}</select>
+        <select id="lead-sort" aria-label="Sort" value={f.sort} onChange={(e) => set("sort", e.target.value)}><option value="score">Highest score</option><option value="recent">Latest signal</option><option value="size">Largest</option><option value="name">Name</option></select>
+      </div>
+      <Err e={err} />
+      <div className="card table-wrap flush"><table><thead><tr><th><span className="sr">Select</span></th><th>Company</th><th>Region</th><th>Size</th><th>Score</th><th>Signals</th><th>Latest</th><th>Origin</th></tr></thead><tbody>
+        {d?.items.map((r: any) => <tr key={r.id}>
+          <td><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} /></td>
+          <td><Link to={`/accounts/${r.id}`}>{r.name}</Link>{r.shortlist && <> <Badge kind="ok">Shortlist</Badge></>}<div className="small muted">{r.segment ?? "Segment unknown"}{r.canonical_domain ? ` · ${r.canonical_domain}` : ""}</div></td>
+          <td>{r.country_code ?? "n/a"}<div className="small muted">{d.regions.find((x: any) => x.key === r.region)?.label ?? humanize(r.region)}</div></td>
+          <td>{r.employees?.toLocaleString() ?? "n/a"}{r.employees_uncertain && <> <Badge kind="warn">estimate</Badge></>}<div className="small muted">{ICP_NAMES[r.icp] ?? r.icp}</div></td>
+          <td>{r.score !== null ? <><b>{r.score}</b> <Badge kind={BAND[r.band][0]}>{BAND[r.band][1]}</Badge></> : <span className="muted">none</span>}{r.stopped && <div className="small muted">Stopped by a rule</div>}</td>
+          <td className="small">{r.signal_count ? <>{r.signal_count} · {r.groups.map((g: string) => GROUP_NAME[g] ?? g).join(", ")}</> : <span className="muted">none yet</span>}</td>
+          <td className="small">{r.last_signal_at ? fmtDate(r.last_signal_at) : <span className="muted">n/a</span>}</td>
+          <td className="small">{d.origins[r.origin]}{r.candidate_status === "pending_qualification" && <div className="muted">Not yet qualified</div>}</td></tr>)}
+        {d && d.items.length === 0 && <tr><td colSpan={8} className="muted">Nothing matches these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " No companies are loaded yet: upload the workbooks or add a company." : ""}</td></tr>}</tbody></table></div>
+      {d && <div className="row spread small" style={{ marginTop: 10 }}><span>{d.total.toLocaleString()} leads</span>
+        <span className="row"><button disabled={f.page <= 1} onClick={() => setF({ ...f, page: f.page - 1 })}>Previous</button><span>Page {f.page} of {pages}</span><button disabled={f.page >= pages} onClick={() => setF({ ...f, page: f.page + 1 })}>Next</button></span></div>}
     </>
   );
 }
@@ -75,6 +126,9 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       {scan.msg && <div className="okmsg" role="status" style={{ margin: "8px 0" }}>{scan.msg}</div>}<Err e={scan.err} />
       <div className="row"><Badge kind={a.in_master_list ? "ok" : "info"}>{a.in_master_list ? "in master list" : "new candidate"}</Badge><Badge>{a.country_code ?? "country unknown"}</Badge><Badge kind={d.ownership_verified ? "ok" : "warn"}>{d.ownership_verified ? `Pipedrive owner ${d.crm.owner_id}` : "ownership unverified"}</Badge>
         <Badge>{a.employees_estimate?.toLocaleString() ?? "?"} employees{a.employees_uncertain ? " (estimate)" : ""}</Badge></div>
+      {d.score && <div className="card"><div className="row spread"><div><span className="eyebrow">Account score</span><div className="kpi-n" style={{ margin: "4px 0" }}>{d.score.stopped ? "Stopped" : d.score.score}<span className="kpi-u"> {BAND[d.score.band][1]}</span></div></div>
+        <div className="small" style={{ maxWidth: 520 }}>{d.score.stopped ? "A stop rule is active for this account, so the score is held at zero." : `${d.score.signal_count} signals across ${d.score.groups.map((g: string) => GROUP_NAME[g] ?? g).join(", ")}. Different kinds of signal agreeing count for more than the same kind repeated.`}
+          {d.score.top?.length > 0 && <div className="chips" style={{ marginTop: 6 }}>{d.score.top.map((t: any) => <Badge key={t.rule_id}>{t.rule_id} · {t.weight}</Badge>)}</div>}</div></div></div>}
       <div className="tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}</div>
       {tab === "Overview" && (<>
         <h3>Opportunities</h3>

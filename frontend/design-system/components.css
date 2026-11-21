@@ -317,3 +317,8 @@ td:nth-child(2), td:nth-child(4) { white-space: nowrap; }
 .funnel li.drop .fn-bar i { background: var(--pink); } .funnel li.drop .fn-l b { color: var(--pink-hover); }
 .fn-n { font: 900 18px var(--font-head); color: var(--navy); text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 860px) { .funnel li { grid-template-columns: 1fr 60px; } .fn-bar { grid-column: 1 / -1; grid-row: 2; } }
+
+.leadbar { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(6, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; } .leadbar > * { min-width: 0; width: 100%; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (max-width: 1100px) { .leadbar { grid-template-columns: repeat(3, minmax(0, 1fr)); } .leadbar input { grid-column: 1 / -1; } }
+@media (max-width: 620px) { .leadbar { grid-template-columns: 1fr 1fr; } }

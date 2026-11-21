@@ -238,6 +238,150 @@ rules:
     buyer_roles: [former_champion]
     negative_rules: [NEG-11, NEG-12]
   # ---------------------------------------------------------------- negatives
+  - id: COM-01
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [funding_announced]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: funding_stage, in: [series_b, series_c_plus, growth_equity, growth_debt]}, {attr: funding_use_stated, is_true: true}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 1
+    min_verification: verified
+    expiry: {mode: days, days: 90}
+    reason_code: funding_for_build
+    commercial_questions: ["Is the money earmarked for a named product or platform build?", "Who owns engineering delivery for it?"]
+    related_play: SP-02
+    buyer_roles: [technical_sponsor]
+    negative_rules: [NEG-05]
+  - id: COM-02
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [acquisition_announced]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: integration_or_tsa_stated, is_true: true}]}
+    exclusions: [{attr: deal_status, in: [rumoured, pending_approval, terminated]}]
+    demand_tier: D4
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 180}
+    reason_code: acquisition_with_integration
+    commercial_questions: ["Is there a platform migration or a TSA exit date?", "Which workstreams will the acquirer's own integrator not cover?"]
+    related_play: SP-03
+    buyer_roles: [transformation_director, technical_sponsor]
+    negative_rules: [NEG-05]
+  - id: COM-03
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [market_launch]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: market_launch_dated, is_true: true}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 90}
+    reason_code: dated_market_launch
+    commercial_questions: ["Which systems must be localised or integrated before the date?", "Is a local partner already covering delivery?"]
+    related_play: SP-02
+    buyer_roles: [technical_sponsor, programme_owner]
+    negative_rules: [NEG-05]
+  - id: COM-04
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [licence_granted]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: licence_tied_to_launch, is_true: true}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: licence_tied_to_launch
+    commercial_questions: ["Which product launches under the licence and by when?", "Which payment or compliance integrations are still open?"]
+    related_play: SP-04
+    buyer_roles: [technical_sponsor, programme_owner]
+    negative_rules: [NEG-05]
+  - id: COM-05
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [integration_release]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: role_of_subject, eq: vendor}, {attr: customer_golive_stated, is_true: true}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 60}
+    reason_code: vendor_customer_integration
+    commercial_questions: ["Is the vendor's integration team fully staffed for this go-live?", "Does the vendor subcontract integration workstreams?"]
+    related_play: SP-08
+    buyer_roles: [partner_manager, technical_sponsor]
+    negative_rules: [NEG-05]
+  - id: COM-06
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [product_launch]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: new_product_line, in: [cards, savings, payouts, embedded_finance, ai_feature, lending, wealth]}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 90}
+    reason_code: new_product_line
+    commercial_questions: ["Is the build finished, or is more engineering needed to scale it?", "Who owns the next release?"]
+    related_play: SP-03
+    buyer_roles: [technical_sponsor, product_owner]
+    negative_rules: [NEG-05]
+  - id: COM-07
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [relationship_changed]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: partnership_scope_explicit, is_true: true}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 1
+    min_verification: verified
+    expiry: {mode: days, days: 90}
+    reason_code: partnership_with_scope
+    commercial_questions: ["Which integration phases and dates are named?", "Who delivers each phase?"]
+    related_play: SP-04
+    buyer_roles: [technical_sponsor, partner_manager]
+    negative_rules: [NEG-05]
+  - id: COM-08
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [cost_programme]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: tech_scope_stated, is_true: true}]}
+    exclusions: []
+    demand_tier: D4
+    strength: 1
+    min_verification: verified
+    expiry: {mode: days, days: 180}
+    reason_code: cost_programme_with_tech_scope
+    commercial_questions: ["Which legacy retirement, nearshoring or automation work is named?", "Is delivery staffed internally or sourced externally?"]
+    related_play: SP-02
+    buyer_roles: [technical_sponsor, procurement_owner]
+    negative_rules: [NEG-05]
   - id: NEG-03
     version: 1.0.0
     status: active
