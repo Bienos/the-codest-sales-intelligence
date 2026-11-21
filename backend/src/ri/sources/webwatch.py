@@ -191,6 +191,19 @@ class FeedConnector:
         items = []
         ns = {"a": "http://www.w3.org/2005/Atom"}
         entries = root.findall(".//item") or root.findall(".//a:entry", ns)
+        if root.tag.endswith("}RDF"):            # RSS 1.0 (RDF), used by BIS and others
+            def local(el, name):
+                for c in el:
+                    if c.tag.split("}")[-1] == name and c.text:
+                        return c.text.strip()
+                return None
+            for e in [el for el in root if el.tag.split("}")[-1] == "item"][:limit]:
+                link = local(e, "link")
+                guid = e.get("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}about") or link
+                if guid:
+                    when = local(e, "date") or local(e, "pubDate")
+                    items.append(RawItem(guid, when, {"title": local(e, "title"), "link": link, "summary": local(e, "description"), "published": when}, link))
+            return FetchBatch(items, None, False, self.now(), "1", quota_usage={"requests": 1})
         if not entries and root.tag not in {"rss", "{http://www.w3.org/2005/Atom}feed"}:
             raise SchemaDrift("unrecognised feed format")
         for e in entries[:limit]:

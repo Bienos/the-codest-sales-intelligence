@@ -81,3 +81,13 @@ def test_connections_directory_lists_every_source_with_a_plain_state_and_what_to
     assert rows["attention-leaddev"]["state"] == "needs_address"
     live = dict(rows["ats-lever"], status="active")
     assert classify({"source_id": "ats-lever", "status": "active", "collection_method": "official_api", "config": {}}, None) == "live" and live
+
+
+def test_feed_connector_reads_rss_1_rdf_feeds_such_as_bis():
+    from ri.sources.webwatch import FeedConnector
+    rdf = ('<?xml version="1.0"?><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">'
+           '<channel rdf:about="https://x.example/"><title>t</title></channel>'
+           '<item rdf:about="https://x.example/p1"><title>Payments resilience report</title><link>https://x.example/p1</link><description>About payments.</description><dc:date>2026-11-20T09:00:00Z</dc:date></item></rdf:RDF>')
+    c = FeedConnector(httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(404) if r.url.path == "/robots.txt" else httpx.Response(200, text=rdf))), "https://x.example/f.rss", source_id="regulator-bis")
+    b = asyncio.run(c.fetch(None, 10))
+    assert [i.external_id for i in b.items] == ["https://x.example/p1"] and c.canonicalize(b.items[0]).title == "Payments resilience report"
