@@ -16,7 +16,35 @@ from ..jobs.queue import JobError
 from ..sources.base import BudgetExceeded, ConnectorError, PolicyBlocked
 from .fetch import Page
 
-SOURCE_ID = "verify-original-page"
+SOURCE_ID = "verify-original-page"          # default and lowest authority (S4); see classify_source
+_OFFICIAL_SUFFIX = (".gov", ".gov.uk", ".gouv.fr", ".europa.eu", ".admin.ch", ".bund.de", ".gov.pl")
+
+
+def _host(url: str) -> str:
+    from urllib.parse import urlparse
+    h = (urlparse(url).hostname or "").lower()
+    return h[4:] if h.startswith("www.") else h
+
+
+def _under(host: str, domain: str | None) -> bool:
+    d = (domain or "").lower().removeprefix("www.")
+    return bool(d) and (host == d or host.endswith("." + d))
+
+
+def classify_source(conn: Conn, url: str, org_id: str | None) -> str:
+    """Authority of a fetched page, from its address: official sites S1, the company's own site S2, a known vendor's S3, otherwise S4.
+    Never raised on a guess: an unknown site stays at the lowest tier so it cannot switch on a signal by itself."""
+    host = _host(url)
+    for r in qa(conn, "SELECT canonical_domain, source_tier FROM sources WHERE canonical_domain IS NOT NULL AND collection_method <> 'internal'"):
+        if _under(host, r["canonical_domain"]):
+            return {"S1": "verify-official-page", "S2": "verify-company-page", "S3": "verify-vendor-page"}.get(r["source_tier"], SOURCE_ID)
+    if host.endswith(_OFFICIAL_SUFFIX):
+        return "verify-official-page"
+    if org_id:
+        o = q1(conn, "SELECT canonical_domain FROM organizations WHERE id=%s", (org_id,))
+        if o and _under(host, o["canonical_domain"]):
+            return "verify-company-page"
+    return SOURCE_ID
 RESERVE_FOR_SELLERS = 0.30
 
 
@@ -76,7 +104,7 @@ def run_verification(conn: Conn, request_id: str, *, fetch: Callable[[str], Page
     row = conn.execute(
         "INSERT INTO source_documents(source_id, external_id, version_key, canonical_url, title, published_at, content_hash, change_status, content_text, raw_meta) "
         "VALUES (%s,%s,%s,%s,%s,%s,%s,'new',%s,%s) ON CONFLICT (source_id, external_id, version_key) DO UPDATE SET content_text=EXCLUDED.content_text RETURNING id",
-        (SOURCE_ID, page.url, page.content_hash[:32], page.url, page.title, page.published_at, page.content_hash, page.text,
+        (classify_source(conn, page.url, str(r["organization_id"]) if r["organization_id"] else None), page.url, page.content_hash[:32], page.url, page.title, page.published_at, page.content_hash, page.text,
          jb({"verification_request": rid, "origin": r["origin"]}))).fetchone()
     doc_id = str(row["id"])
     _set(conn, rid, "extracting", document_id=doc_id)

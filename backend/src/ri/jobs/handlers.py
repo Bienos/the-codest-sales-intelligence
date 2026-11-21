@@ -78,10 +78,29 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             return {"skipped": "Exa is not configured (no key or no budget cap)"}
         return run_discovery(conn, cfg.pop("exa"), plan_ids=job["payload"].get("plan_ids"), requested_by=job["payload"].get("requested_by", "system:discovery"), **cfg)
 
+    def sources_validate_all(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..sources import registry
+        only = job["payload"].get("only")
+        rows = conn.execute("SELECT source_id FROM sources WHERE collection_method <> 'internal' AND status <> 'active' AND (%s::text[] IS NULL OR source_id = ANY(%s)) ORDER BY source_tier, source_id", (only, only)).fetchall()
+        out: dict[str, Any] = {}
+        for r in rows:
+            sid = r["source_id"]
+            try:
+                out[sid] = registry.validate_and_maybe_activate(conn, sid, activate=bool(job["payload"].get("activate")), by=job["payload"].get("by", "system:bulk-validate"))
+                conn.commit()
+            except Exception as exc:  # noqa: BLE001  (one bad source must not stop the rest)
+                conn.rollback()
+                out[sid] = {"result": "error", "reason": f"{type(exc).__name__}: {exc}"[:200]}
+        summary: dict[str, int] = {}
+        for v in out.values():
+            summary[v["result"]] = summary.get(v["result"], 0) + 1
+        return {"summary": summary, "sources": {k: (v.get("reason") or v.get("detail") or v["result"]) for k, v in out.items()}}
+
+    sources_validate_all.own_transactions = True  # type: ignore[attr-defined]
     verify_url.own_transactions = True  # type: ignore[attr-defined]
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run}
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

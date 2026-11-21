@@ -66,3 +66,50 @@ def get(conn: Conn, source_id: str) -> dict[str, Any]:
     if not r:
         raise KeyError(source_id)
     return r
+
+
+def validate_and_maybe_activate(conn: Conn, source_id: str, *, activate: bool, by: str) -> dict[str, Any]:
+    """Test one source from the server and, if it passes and activation is requested, activate it with a generated certification record."""
+    import asyncio
+    from datetime import datetime, timezone
+
+    from .factory import NoConnector, build_connector
+    src = get(conn, source_id)
+    if src["status"] == "active":
+        return {"result": "already_active"}
+    if src["auth_mode"] != "none":
+        import os
+        env = src.get("credential_ref")
+        if not (env and os.environ.get(env)):
+            return {"result": "skipped", "reason": f"needs credential {env or '(not set)'}"}
+    try:
+        connector = build_connector(conn, source_id)
+    except NoConnector as exc:
+        return {"result": "skipped", "reason": str(exc)}
+    except KeyError as exc:
+        return {"result": "skipped", "reason": f"incomplete configuration: {exc}"}
+    try:
+        hc = asyncio.run(connector.health_check())
+        res = {"ok": hc.ok, "detail": hc.detail, "error_class": hc.error_class}
+    except Exception as exc:  # noqa: BLE001
+        res = {"ok": False, "detail": f"{type(exc).__name__}: {str(exc)[:200]}", "error_class": getattr(exc, "error_class", "transient_network")}
+    res["at"] = datetime.now(timezone.utc).isoformat()
+    conn.execute("UPDATE sources SET config = config || %s::jsonb WHERE source_id=%s", (jb({"validation": res}), source_id))
+    audit(conn, actor=by, operation="source_validate", record_type="source", record_id=source_id, detail=res)
+    if not res["ok"]:
+        return {"result": "failed", **res}
+    if not activate:
+        return {"result": "passed", **res}
+    cfg = src["config"] or {}
+    url = cfg.get("url") or (f"https://{src['canonical_domain']}" if src["canonical_domain"] else source_id)
+    cert = {"provider_doc_url": url, "auth_entitlement_verified": True, "verified_endpoints": [url],
+            "data_licence": (src["licence_notes"] or "public pages and feeds; robots.txt honoured") + f" (activated in bulk by {by} after a passing server test)",
+            "technical_owner": by, "last_tested_date": res["at"][:10],
+            "limits": f"polls every {src['poll_interval_s']}s; robots.txt honoured; no login or paywall bypass",
+            "rollback_path": "Pause the source in Administration, Sources; collected documents stay as evidence."}
+    activate_source(conn, source_id, cert, by)
+    return {"result": "activated", **res}
+
+
+def activate_source(conn: Conn, source_id: str, cert: dict[str, Any], by: str) -> None:
+    activate(conn, source_id, cert, by)

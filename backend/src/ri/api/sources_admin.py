@@ -34,6 +34,10 @@ class ActivateIn(BaseModel):
     confirm_permitted: bool
 
 
+class BulkIn(BaseModel):
+    activate: bool = False
+
+
 class PauseIn(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
 
@@ -130,6 +134,15 @@ def register(app: FastAPI) -> None:
             except registry.CertificationError as exc:
                 raise HTTPException(400, str(exc)) from exc
             return {"source_id": sid, "status": "active"}
+
+    @app.post("/api/admin/sources/validate-all")
+    def validate_all(body: BulkIn, request: Request, p: Principal = Depends(require("admin.sources"))):
+        from datetime import datetime as _dt
+        from ..jobs.queue import enqueue
+        with tx(request) as conn:
+            jid, created = enqueue(conn, "sources_validate_all", {"activate": body.activate, "by": p.email}, idempotency_key=f"validate-all:{p.user_id}:{_dt.now(timezone.utc).strftime('%Y%m%d%H%M')}", max_attempts=1)
+            audit(conn, actor=p.email, operation="sources_validate_all_requested", record_type="job", record_id=jid, detail={"activate": body.activate})
+            return {"job_id": jid, "queued": created}
 
     @app.post("/api/admin/sources/{sid}/pause")
     def pause(sid: str, body: PauseIn, request: Request, p: Principal = Depends(require("admin.sources"))):

@@ -176,6 +176,7 @@ def test_discovery_stops_when_budget_exhausted_and_on_auth_failure(conn):
 def api(conn, db_url, world):
     mk_user(conn, "admin@x", "admin")
     mk_user(conn, "bdm@x", "bdm", 555)
+    mk_user(conn, "mkt@x", "marketing")
     link = conn.execute("insert into account_source_links(organization_id, source_system, source_file_id, sheet_id, sheet_title, row_identity, row_number, imported_hash, raw_company_name, observed_at) "
                         "values (%s,'google_sheets','wb','s','Priority Outreach','r1',2,'h','Synthetic Example Bank AG',now()) returning id", (world["org"],)).fetchone()["id"]
     conn.execute("insert into legacy_account_research(organization_id, source_link_id, kind, original, observed_at) values (%s,%s,'priority_outreach',%s, now())",
@@ -267,3 +268,118 @@ def test_end_to_end_verified_page_reaches_a_sellers_today_screen(api, conn):
     cards = [x for sec in today["sections"].values() for x in sec]
     assert cards and cards[0]["account"]["name"].startswith("Synthetic Example Bank")
     assert cards[0]["external_demand_status"] in {"unknown", "inferred", "explicit"} and cards[0]["next_action"]
+
+
+# ---------------------------------------------------------------- bulk validation, activation and the safe client
+class _HC:
+    def __init__(self, ok, detail="", error_class=None):
+        self.ok, self.detail, self.error_class = ok, detail, error_class
+
+
+class _Conn:
+    def __init__(self, ok):
+        self.ok = ok
+
+    async def health_check(self):
+        return _HC(self.ok, "" if self.ok else "robots.txt disallows", None if self.ok else "policy_block")
+
+
+def test_safe_client_refuses_private_addresses_and_loopback():
+    from ri.sources.safe import SafeClient
+    for bad in ("http://127.0.0.1/x", "http://169.254.169.254/latest/meta-data", "http://10.1.2.3/", "http://localhost:8000/admin"):
+        with pytest.raises(PolicyBlocked):
+            asyncio.run(SafeClient().get(bad))
+
+
+def test_bulk_validation_activates_only_sources_that_pass_and_records_why_others_did_not(conn, monkeypatch):
+    from ri.sources import factory, registry
+    seed_registry(conn)
+    conn.commit()
+    ok_ids = {"regulator-fca", "regulator-eba"}
+
+    def fake_build(c, sid):
+        if sid in ok_ids:
+            return _Conn(True)
+        if sid == "vendor-temenos-news":
+            return _Conn(False)
+        raise factory.NoConnector(f"no connector or address for {sid}")
+    monkeypatch.setattr(factory, "build_connector", fake_build)
+    handlers = build_handlers(connector_factory=lambda s: None)
+    from ri.jobs.queue import enqueue
+    enqueue(conn, "sources_validate_all", {"activate": True, "by": "admin@x"}, idempotency_key="t1")
+    conn.commit()
+    assert run_one(conn, "w", handlers, kinds=["sources_validate_all"]) == "completed"
+    res = conn.execute("select result from jobs where kind='sources_validate_all'").fetchone()["result"]
+    assert res["summary"]["activated"] == 2 and res["summary"]["failed"] == 1 and res["summary"]["skipped"] >= 10
+    assert {r["source_id"] for r in conn.execute("select source_id from sources where status='active'")} == ok_ids
+    cert = conn.execute("select certification from sources where source_id='regulator-fca'").fetchone()["certification"]
+    assert cert["technical_owner"] == "admin@x" and "robots.txt" in cert["limits"] and cert["last_tested_date"]
+    bad = conn.execute("select status, config->'validation'->>'ok' ok from sources where source_id='vendor-temenos-news'").fetchone()
+    assert bad["status"] == "pending_connector_validation" and bad["ok"] == "false"           # never activated on a failed test
+    assert "credential" in res["sources"]["registry-companies-house"] or "no connector" in res["sources"]["registry-companies-house"]
+    ops = {r["operation"] for r in conn.execute("select operation from audit_events where record_id in ('regulator-fca','vendor-temenos-news')")}
+    assert {"source_validate", "activate_source"} <= ops
+    # a second run only looks at what is still inactive
+    enqueue(conn, "sources_validate_all", {"activate": False, "by": "admin@x"}, idempotency_key="t2")
+    conn.commit()
+    run_one(conn, "w", handlers, kinds=["sources_validate_all"])
+    assert conn.execute("select count(*) c from sources where status='active'").fetchone()["c"] == 2
+
+
+def test_bulk_validate_endpoint_is_admin_only_and_queues_a_job(api, conn):
+    c, h, _ = api
+    assert c.post("/api/admin/sources/validate-all", headers=h("bdm"), json={"activate": True}).status_code == 403
+    r = c.post("/api/admin/sources/validate-all", headers=h("admin"), json={"activate": True})
+    assert r.status_code == 200 and r.json()["queued"] is True
+    assert conn.execute("select count(*) c from jobs where kind='sources_validate_all'").fetchone()["c"] == 1
+
+
+def test_feed_shows_only_quoted_verified_findings_with_evidence_source_and_service_fit(api, conn):
+    c, h, w = api
+    c.post("/api/prospects/verify", headers=h("bdm"), json={"organization_id": w["org"]})
+    handlers = build_handlers(connector_factory=lambda s: None, extractor_factory=lambda cn: BudgetedExtractor(ProgrammeInner(), cn), fetch_factory=lambda: (lambda u: page()))
+    run_one(conn, "w", handlers)
+    # an unverified candidate event must never appear as a finding
+    conn.execute("insert into events(event_key,event_type,subject_org_id,summary,attrs,other_entity_roles,extraction_model_version,verification_status,independent_origin_group) "
+                 "values ('k-unv','vendor_selected',%s,'UNVERIFIED rumour','{}','[]','t','unverified','g-unv')", (w["org"],))
+    conn.commit()
+    f = c.get("/api/feed", headers=h("bdm")).json()
+    assert f["count"] == 1 and f["items"][0]["summary"].startswith("Synthetic Example Bank AG selected")
+    it = f["items"][0]
+    assert not any("UNVERIFIED" in x["summary"] for x in f["items"])
+    assert it["evidence"] and ANCHOR in it["evidence"][0]["claim"] and it["evidence"][0]["url"] == "https://example-bank.invalid/press/1"      # the quote, with its source
+    assert it["organization"]["market"]["fit"] == "core" and it["organization"]["name"].startswith("Synthetic Example Bank")
+    assert "judgement" in it["fit"]["label"] and it["programme"]["title"]
+    assert it["fit"]["offers"] == [] or all(isinstance(o, str) for o in it["fit"]["offers"])         # no signal fired from a low-authority page, so no offer is suggested
+    assert f["totals"]["verified"] == 1 and f["totals"]["unverified"] == 1 and "never as findings" in f["note"]
+    # filters
+    assert c.get("/api/feed?q=synthetic%20example", headers=h("bdm")).json()["count"] == 1
+    assert c.get("/api/feed?q=nothingmatches", headers=h("bdm")).json()["count"] == 0
+    assert c.get("/api/feed?days=1", headers=h("bdm")).json()["count"] in (0, 1)
+    assert c.get("/api/feed?market=core", headers=h("bdm")).json()["count"] == 1
+    conn.execute("update organizations set country_code='US' where id=%s", (w["org"],))
+    conn.commit()
+    assert c.get("/api/feed?market=core", headers=h("bdm")).json()["count"] == 0               # US is a backup pool, not a main market
+    assert c.get("/api/feed", headers=h("mkt")).status_code == 403
+
+
+def test_service_fit_maps_rules_to_what_the_company_sells_and_ignores_negative_rules():
+    from ri import feed
+    f = feed.fit_for(["SRC-05", "CAP-05", "NEG-03"])
+    assert set(f["offers"]) == {"AI Services", "Team Extension with delivery responsibility"}
+    assert {p["play_id"] for p in f["plays"]} == {"SP-05", "SP-07"}                              # NEG-03 is a negative rule: never a fit
+    assert feed.fit_for(["CAP-02"])["offers"] == ["Staff Augmentation"] and feed.fit_for(["MAN-01"])["offers"] == []
+    assert "judgement" in f["label"] and feed.fit_for([])["plays"] == []
+    assert feed.rules_for_play("SP-09") and feed.rule_questions(["SRC-01"])
+
+
+def test_fetched_pages_get_an_authority_tier_from_their_address(conn, world):
+    from ri.verify.run import classify_source
+    conn.execute("update organizations set canonical_domain='example-bank.invalid' where id=%s", (world["org"],))
+    conn.commit()
+    t = lambda url, org=world["org"]: conn.execute("select source_tier from sources where source_id=%s", (classify_source(conn, url, org),)).fetchone()["source_tier"]  # noqa: E731
+    assert t("https://www.example-bank.invalid/press/1") == "S2" and t("https://press.example-bank.invalid/x") == "S2"      # the company's own site
+    assert t("https://www.temenos.com/press-releases/x") == "S3"                                                           # a registered vendor
+    assert t("https://www.fca.org.uk/news/x") == "S1" and t("https://www.bundesregierung.gov.pl/x") == "S1"              # official
+    assert t("https://random-blog.invalid/post") == "S4" and t("https://example-bank.invalid.evil.example/x") == "S4"      # unknown, and no look-alike trick
+    assert t("https://example-bank.invalid/x", None) == "S4"                                                               # no account known: lowest tier

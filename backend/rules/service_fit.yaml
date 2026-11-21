@@ -1,0 +1,17 @@
+# WORKING MAPPING from the sales plays in the original tracker (SP-01 to SP-10) to what The Codest sells. Offers are named as in the sales field guide
+# (CLM-003). This is judgement, not evidence: the feed labels it "suggested fit". Owner: sales leadership. Edit freely; nothing else depends on the wording.
+offers:
+  staff_augmentation: "Staff Augmentation"
+  team_extension: "Team Extension with delivery responsibility"
+  ai_services: "AI Services"
+plays:
+  SP-01: {offers: [staff_augmentation], why: "A specialist capacity gap that an external engineer or small team can fill."}
+  SP-02: {offers: [staff_augmentation, team_extension], why: "Engineering capacity is short for a named product or platform; the buyer decides between adding people and owning an area."}
+  SP-03: {offers: [team_extension], why: "A defined workstream that a team can own with agreed responsibilities."}
+  SP-04: {offers: [team_extension], why: "A payment rail or scheme integration is a bounded piece of work a team can own."}
+  SP-05: {offers: [team_extension], why: "Programme work around a platform vendor often leaves separable engineering workstreams."}
+  SP-06: {offers: [team_extension], why: "Cloud and data migration domains can be split into owned workstreams."}
+  SP-07: {offers: [ai_services], why: "AI work tied to a named product or workflow: test it on a real process first."}
+  SP-08: {offers: [team_extension], why: "A prime or integrator may subcontract workstreams outside its own scope."}
+  SP-09: {offers: [staff_augmentation, team_extension], why: "A supplier entry route: eligibility and onboarding come first, then the offer."}
+  SP-10: {offers: [], why: "A conversation starter: reconnect before proposing anything."}

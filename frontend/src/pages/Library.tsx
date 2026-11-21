@@ -28,7 +28,7 @@ export default function Library({ render, query, canSetup = true }: { render: (s
             <article key={s.source_id} className="lib-card">
               <div className="row spread" style={{ alignItems: "flex-start" }}>
                 <div><b className="lib-name">{s.display_name}</b><div className="small muted">{s.provider ?? s.source_id} · {humanize(s.source_family)}</div></div>
-                <div className="row"><Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{s.status === "pending_connector_validation" ? "Pending" : humanize(s.status)}</Badge></div>
+                <div className="row">{s.validation && s.status !== "active" && <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? "Test passed" : "Test failed"}</Badge>}<Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{s.status === "pending_connector_validation" ? "Pending" : humanize(s.status)}</Badge></div>
               </div>
               <dl className="lib-facts">
                 <dt>Collects by</dt><dd>{humanize(s.collection_method)}, every {every(s.poll_interval_s)}</dd>

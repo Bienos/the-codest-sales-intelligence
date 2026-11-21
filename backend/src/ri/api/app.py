@@ -398,6 +398,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from . import intel
     intel.register(app)
     intel.register_pipeline(app)
+    intel.register_feed(app)
     from . import search as search_api
     search_api.register(app)
     search_api.register_kb_admin(app)

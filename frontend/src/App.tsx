@@ -9,9 +9,10 @@ import Admin from "./pages/Admin";
 import Guide from "./pages/Guide";
 import Landing, { Notice } from "./pages/Landing";
 import Search from "./pages/Search";
+import Feed from "./pages/Feed";
 import LibraryHub from "./pages/LibraryHub";
 import Knowledge from "./pages/Knowledge";
-import { IconAccounts, IconAdmin, IconExplorer, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
+import { IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 
@@ -45,7 +46,8 @@ export default function App() {
         <form className="navsearch" role="search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search everything" placeholder="Search everything" /></form>
         {can("today.read") && link("/today", "Today", IconToday)}
         {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
-        {can("explorer.read") && link("/explorer", "Market Explorer", IconExplorer)}
+        {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
+        {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
         {link("/library", "Library", IconLibrary)}
         {link("/knowledge", "Knowledge base", IconKnowledge)}
         {link("/guide", "How it works", IconGuide)}
@@ -57,6 +59,7 @@ export default function App() {
           <Route path="/" element={<Navigate to={can("today.read") ? "/today" : "/admin"} replace />} />
           <Route path="/today" element={<Today />} />
           <Route path="/guide" element={<Guide />} />
+          <Route path="/feed" element={<div className="page"><Feed /></div>} />
           <Route path="/search" element={<div className="page"><Search /></div>} />
           <Route path="/library" element={<div className="page"><LibraryHub /></div>} />
           <Route path="/knowledge/:doc?" element={<div className="page"><Knowledge /></div>} />

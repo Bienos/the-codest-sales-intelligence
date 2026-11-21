@@ -47,7 +47,17 @@ function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () =
 }
 
 function Sources({ canEdit }: { canEdit: boolean }) {
-  return <Library render={(s, reload) => <SourceControls s={s} can={canEdit} reload={reload} />} />;
+  const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const bulk = async (activate: boolean) => {
+    setBusy(true); setErr(null); setMsg("");
+    try { await post("/api/admin/sources/validate-all", { activate }); setMsg(activate ? "Testing every source from the server now. Each one that passes is activated. Refresh in a minute to see the result on each card." : "Testing every source from the server now. Nothing is activated."); } catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  return (<>
+    {canEdit && <div className="card row spread"><div><b>Test all sources</b><div className="small muted">Runs each source's test from the server. Pages are read only where robots.txt allows. Sources without an address or credential are skipped and say why.</div></div>
+      <div className="row"><button disabled={busy} onClick={() => bulk(false)}>Test only</button><button className="primary" disabled={busy} onClick={() => bulk(true)}>Test and activate passing</button></div></div>}
+    {msg && <div className="okmsg" role="status" style={{ marginBottom: 12 }}>{msg}</div>}<Err e={err} />
+    <Library render={(s, reload) => <SourceControls s={s} can={canEdit} reload={reload} />} />
+  </>);
 }
 
 const Identity = () => <Load path="/api/admin/identity-reviews">{(d, reload) => <IdentityList d={d} reload={reload} />}</Load>;

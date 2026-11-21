@@ -80,21 +80,10 @@ def main(argv: list[str] | None = None) -> int:
             from .jobs.queue import run_one
             from .sources.registry import get as get_source
 
+            from .sources.factory import build_connector
+
             def factory(source_id: str):
-                from .sources.procurement import FindTenderConnector, TedConnector
-                src = get_source(conn, source_id)
-                client = httpx.AsyncClient(timeout=30)
-                if source_id == "procurement-ted":
-                    return TedConnector(client, query=src["config"]["query"])
-                if source_id == "procurement-uk-fts":
-                    return FindTenderConnector(client)
-                url = (src["config"] or {}).get("url")
-                if url:      # operator-configured newsroom / feed URLs (robots.txt is enforced by the connector)
-                    from .sources.webwatch import FeedConnector, PageWatchConnector
-                    if src["collection_method"] == "feed":
-                        return FeedConnector(client, url, source_id=source_id)
-                    return PageWatchConnector(client, url, source_id=source_id, selector=(src["config"] or {}).get("selector"))
-                raise NotImplementedError(f"no connector implementation wired for {source_id}")
+                return build_connector(conn, source_id)
             from . import budget
             from .events.budgeted import BudgetedExtractor
             from .events.extract import AnthropicExtractor

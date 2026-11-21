@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from .. import usage
 from ..access import Principal, org_scope_sql
 from ..audit import audit
+from ..readmodel import coverage_health
 from ..db import q1, qa
 from ..jobs.queue import enqueue
 from .auth import require
@@ -297,3 +298,59 @@ def register_pipeline(app: FastAPI) -> None:
         if not digest_cfg:
             nexts.append("Optional: set the Slack webhook to get the daily digest.")
         return {"stages": stages, "queue": jobs, "oldest_waiting_s": age(oldest.get("t")), "budgets": {k: {"cap": float(v["cap"]), "used": float(v["spent"]) + float(v["reserved"])} for k, v in bud.items()}, "next_steps": nexts}
+
+
+def register_feed(app: FastAPI) -> None:
+    from .. import feed as fd
+    from ..readmodel import evidence_for
+    from ..sheets.reconcile import icp_band, market_focus
+
+    def tx(request: Request):
+        return request.app.state.db.tx()
+
+    @app.get("/api/feed")
+    def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
+                    market: str = Query("", pattern="^(|core)$"), mine_only: bool = False, limit: int = Query(40, le=100), p: Principal = Depends(require("explorer.read"))):
+        from .search import all_like, tokens
+        toks = tokens(q)
+        rule_ids = fd.rules_for_play(play) if play else ([rule] if rule else [])
+        with tx(request) as conn:
+            ew, ep = org_scope_sql(p, "e.subject_org_id")
+            tw, tp = all_like("(e.summary || ' ' || coalesce(o.display_name,''))", toks) if toks else ("TRUE", [])
+            rows = qa(conn,
+                f"SELECT e.id, e.event_type, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verification_status, e.is_historical_replay, o.id AS org_id, o.display_name, o.country_code, o.segment, "   # noqa: S608
+                f"o.employees_estimate, o.employees_uncertain, o.in_master_list, "
+                f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=e.id) AS sigs, "
+                f"(SELECT coalesce(array_agg(ec.claim_id), '{{}}') FROM event_claims ec WHERE ec.event_id=e.id) AS claim_ids, "
+                f"(SELECT jsonb_build_object('id', i.id, 'title', i.title, 'stage', i.stage) FROM initiative_events ie JOIN initiatives i ON i.id=ie.initiative_id WHERE ie.event_id=e.id LIMIT 1) AS programme, "
+                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened "
+                f"FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
+                f"WHERE e.verification_status='verified' AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
+                f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) "
+                f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND s.rule_id = ANY(%s))) "
+                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, rule_ids or None, rule_ids or None, limit * 2])
+            items = []
+            for r in rows:
+                mk = market_focus(r["country_code"], r["segment"])
+                if market == "core" and mk["fit"] != "core":
+                    continue
+                sig_ids = [x["rule_id"] for x in r["sigs"] if x["status"] == "active"]
+                ev = evidence_for(conn, list(r["claim_ids"]), limit=2) if r["claim_ids"] else []
+                items.append({"id": str(r["id"]), "type": r["event_type"], "summary": r["summary"], "happened": r["happened"], "event_at": r["event_at"], "published": r["pub_at"],
+                              "first_seen": r["first_observed_at"],
+                              "organization": {"id": str(r["org_id"]), "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"],
+                                               "in_master_list": r["in_master_list"], "icp": icp_band(r["employees_estimate"], bool(r["employees_uncertain"]), r["segment"])["band"], "market": mk} if r["org_id"] else None,
+                              "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in r["sigs"]], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
+                              "evidence": ev, "programme": r["programme"]})
+                if len(items) >= limit:
+                    break
+            names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals")}
+            for it in items:
+                for s in it["signals"]:
+                    s["name"] = names.get(s["rule_id"], s["rule_id"])
+            leads = qa(conn, "SELECT v.url, v.claimed_text, v.status, v.created_at, v.plan_id, v.result FROM verification_requests v WHERE v.origin='exa_discovery' AND v.status IN ('queued','fetching','extracting','waiting_budget','no_event','blocked','failed') ORDER BY v.created_at DESC LIMIT 12")
+            cov = coverage_health(conn, p)
+            totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified FROM events") or {}
+        return {"items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
+                "plays": [{"id": i, "name": n} for i, n in fd.play_ids()],
+                "note": "Only events whose claims quote the original page appear here. Searches and sheet signals that have not been checked are listed as leads, never as findings."}

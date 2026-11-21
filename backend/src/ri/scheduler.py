@@ -27,12 +27,12 @@ def schedule_due(conn: Conn, now: datetime | None = None) -> int:
 
 def schedule_discovery(conn: Conn, now: datetime | None = None, *, enabled: bool = True) -> int:
     """One discovery run per day when Exa is configured; the run itself enforces the hard budget and per-run limits."""
-    if not enabled:
-        return 0
     from .discovery.plans import sync_plans
     from .discovery.run import due_count
     now = now or datetime.now(timezone.utc)
-    sync_plans(conn)
+    sync_plans(conn)                       # plans are visible in Administration even before Exa is configured
+    if not enabled:
+        return 0
     if due_count(conn, 7, now) == 0:
         return 0
     _, created = enqueue(conn, "discovery_run", {}, idempotency_key=f"discovery:{now.date().isoformat()}", max_attempts=2, correlation_id="sched-discovery")
