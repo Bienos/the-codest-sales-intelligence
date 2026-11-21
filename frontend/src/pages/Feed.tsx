@@ -9,12 +9,12 @@ const LEAD: Record<string, [string, string]> = { queued: ["info", "Waiting to be
   no_event: ["", "Checked: nothing quotable"], blocked: ["bad", "Page not allowed"], failed: ["bad", "Could not check"] };
 
 export default function Feed() {
-  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [days, setDays] = useState(60);
+  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [mine, setMine] = useState(true); const [days, setDays] = useState(60);
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   useEffect(() => {
-    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}`).then(setD).catch(setErr), q ? 250 : 0);
+    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=${mine}`).then(setD).catch(setErr), q ? 250 : 0);
     return () => clearTimeout(t);
-  }, [q, play, core, days]);
+  }, [q, play, core, days, mine]);
   const groups: [string, any[]][] = [];
   d?.items.forEach((it: any) => { const k = dayKey(it.happened); const g = groups.find((x) => x[0] === k); g ? g[1].push(it) : groups.push([k, [it]]); });
   const cov = d?.coverage;
@@ -27,6 +27,7 @@ export default function Feed() {
         <select aria-label="Sales play" value={play} onChange={(e) => setPlay(e.target.value)}><option value="">All plays</option>{d?.plays.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         <select aria-label="Time window" value={days} onChange={(e) => setDays(Number(e.target.value))}><option value={14}>Last 2 weeks</option><option value={30}>Last 30 days</option><option value={60}>Last 60 days</option><option value={180}>Last 6 months</option></select>
         <label className="small row"><input type="checkbox" checked={core} onChange={(e) => setCore(e.target.checked)} /> Main markets only</label>
+        <label className="small row"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Only companies on your lists{d && d.totals.market_wide > 0 && mine ? ` (${d.totals.market_wide.toLocaleString()} market-wide items hidden)` : ""}</label>
       </div>
       <Err e={err} />
       {cov && !cov.all_monitored_healthy && <div className={`cov ${cov.no_active_monitoring ? "bad" : ""}`}><b>Coverage.</b> {cov.no_active_monitoring ? "No source is live yet, so this feed only shows what you verified yourself or what discovery found. A quiet feed says nothing about the market." : `${cov.unhealthy.length} source(s) are degraded: ${cov.unhealthy.map((u: any) => u.source).join(", ")}.`} <Link to="/admin/pipeline">See what is running</Link></div>}

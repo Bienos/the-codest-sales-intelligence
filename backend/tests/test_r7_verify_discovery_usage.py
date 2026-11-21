@@ -452,3 +452,35 @@ def test_background_reading_leaves_30_percent_of_the_model_budget_for_sellers(co
         asyncio.run(ex.extract(title="t", text="x" * 300, published_at=None))
     seller = BudgetedExtractor(FakeInner(), conn)                                              # a seller's own check has no reserve and still runs
     assert asyncio.run(seller.extract(title="t", text="x" * 300, published_at=None))["events"]
+
+
+# ---------------------------------------------------------------- events that arrive before the accounts exist are linked afterwards
+def test_unmatched_events_are_linked_once_the_account_exists_and_then_flow_on(conn):
+    from ri.events.relink import relink_unmatched
+    seed_registry(conn)
+    conn.execute("insert into events(event_key,event_type,subject_org_id,subject_name_raw,summary,attrs,other_entity_roles,extraction_model_version,verification_status,independent_origin_group) "
+                 "values ('k-r1','vendor_selected',null,'Brand New Harbour Bank','Brand New Harbour Bank selected a vendor','{}','[]','t','verified','g-r1'), "
+                 "('k-r2','vendor_selected',null,'Some Unrelated Council','Council tender','{}','[]','t','verified','g-r2')")
+    conn.commit()
+    assert relink_unmatched(conn) == {"checked": 0, "linked": 0}                           # no accounts yet: nothing to match against
+    org = str(conn.execute("insert into organizations(display_name,country_code,in_master_list) values ('Brand New Harbour Bank','GB',true) returning id").fetchone()["id"])
+    conn.execute("insert into organization_aliases(organization_id, alias, alias_norm, source_ref) values (%s,'Brand New Harbour Bank','brand new harbour bank','t')", (org,))
+    conn.commit()
+    out = relink_unmatched(conn)
+    assert out["linked"] == 1 and out["checked"] == 2
+    assert str(conn.execute("select subject_org_id from events where event_key='k-r1'").fetchone()["subject_org_id"]) == org
+    assert conn.execute("select subject_org_id from events where event_key='k-r2'").fetchone()["subject_org_id"] is None
+    assert relink_unmatched(conn)["checked"] == 0                                           # not re-checked until a newer organisation appears
+    conn.execute("insert into organizations(display_name,country_code) values ('Another Newcomer','DE')")
+    conn.commit()
+    assert relink_unmatched(conn)["checked"] == 1                                           # the unrelated one is looked at again, once
+
+
+def test_feed_hides_market_wide_items_by_default_but_can_show_them(api, conn):
+    c, h, w = api
+    conn.execute("insert into events(event_key,event_type,subject_org_id,subject_name_raw,pub_at,summary,attrs,other_entity_roles,extraction_model_version,verification_status,independent_origin_group) "
+                 "values ('k-mw','procurement_published',null,'A Council Somewhere', now(),'Council tender for software','{}','[]','t','verified','g-mw')")
+    conn.commit()
+    f = c.get("/api/feed", headers=h("bdm")).json()
+    assert f["count"] == 0 and f["totals"]["market_wide"] == 1                                # hidden, but counted so the page can say so
+    assert c.get("/api/feed?accounts_only=false", headers=h("bdm")).json()["count"] == 1

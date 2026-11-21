@@ -59,7 +59,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     """Idempotent housekeeping: staleness => degraded coverage, expiry sweeps, initiative refresh, hypothesis re-evaluation."""
     from .ingest.pipeline import evaluate_staleness
     from .initiatives.lifecycle import refresh
+    from .events.relink import relink_unmatched
     from .opportunity.engine import ensure_hypotheses, evaluate_stale
     from .signals.persist import sweep_expiry
     now = now or datetime.now(timezone.utc)
-    return {"degraded_sources": evaluate_staleness(conn, now_fn=lambda: now), **sweep_expiry(conn, now), **refresh(conn, now), "hypotheses_built": ensure_hypotheses(conn, now), "verifications_requeued": requeue_stuck_verifications(conn, now), "reevaluated": evaluate_stale(conn, now)}
+    return {"degraded_sources": evaluate_staleness(conn, now_fn=lambda: now), **sweep_expiry(conn, now), **refresh(conn, now), "relinked_events": relink_unmatched(conn, 150, now)["linked"], "hypotheses_built": ensure_hypotheses(conn, now), "verifications_requeued": requeue_stuck_verifications(conn, now), "reevaluated": evaluate_stale(conn, now)}

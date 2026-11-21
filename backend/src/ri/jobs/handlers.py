@@ -59,6 +59,13 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         conn.execute("UPDATE import_uploads SET status=%s, import_run_id=%s, content=NULL, processed_at=now() WHERE id=%s",
                      ("completed" if res.status == "completed" else "failed", res.run_id, up["id"]))
         conn.commit()
+        from ..events.relink import relink_unmatched      # accounts now exist: link everything that arrived before them
+        try:
+            rl = relink_unmatched(conn, 1500)
+            conn.commit()
+        except Exception:  # noqa: BLE001  (the import itself succeeded; the scheduler will keep relinking)
+            conn.rollback()
+            rl = {"checked": 0, "linked": 0}
         return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
 
     def verify_url(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:

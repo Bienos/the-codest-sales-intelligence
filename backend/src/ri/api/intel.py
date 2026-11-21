@@ -311,7 +311,7 @@ def register_feed(app: FastAPI) -> None:
 
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
-                    market: str = Query("", pattern="^(|core)$"), mine_only: bool = False, limit: int = Query(40, le=100), p: Principal = Depends(require("explorer.read"))):
+                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, limit: int = Query(40, le=100), p: Principal = Depends(require("explorer.read"))):
         from .search import all_like, tokens
         toks = tokens(q)
         rule_ids = fd.rules_for_play(play) if play else ([rule] if rule else [])
@@ -327,9 +327,9 @@ def register_feed(app: FastAPI) -> None:
                 f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened "
                 f"FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
                 f"WHERE e.verification_status='verified' AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
-                f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) "
+                f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
                 f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND s.rule_id = ANY(%s))) "
-                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, rule_ids or None, rule_ids or None, limit * 2])
+                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only, rule_ids or None, rule_ids or None, limit * 2])
             items = []
             for r in rows:
                 mk = market_focus(r["country_code"], r["segment"])
@@ -351,7 +351,8 @@ def register_feed(app: FastAPI) -> None:
                     s["name"] = names.get(s["rule_id"], s["rule_id"])
             leads = qa(conn, "SELECT v.url, v.claimed_text, v.status, v.created_at, v.plan_id, v.result FROM verification_requests v WHERE v.origin='exa_discovery' AND v.status IN ('queued','fetching','extracting','waiting_budget','no_event','blocked','failed') ORDER BY v.created_at DESC LIMIT 12")
             cov = coverage_health(conn, p)
-            totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified FROM events") or {}
+            totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified, "
+                              "count(*) FILTER (WHERE subject_org_id IS NULL AND verification_status='verified' AND coalesce(event_at, pub_at, first_observed_at) > now() - make_interval(days => %s)) AS market_wide FROM events", (days,)) or {}
         return {"items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
                 "plays": [{"id": i, "name": n} for i, n in fd.play_ids()],
                 "note": "Only events whose claims quote the original page appear here. Searches and sheet signals that have not been checked are listed as leads, never as findings."}
