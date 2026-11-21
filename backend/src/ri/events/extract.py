@@ -81,7 +81,7 @@ def anchor_in_text(anchor: str, text: str) -> bool:
 class AnthropicExtractor:
     """Production extractor. Requires ANTHROPIC_API_KEY; without it the integration is blocked (never faked)."""
 
-    def __init__(self, client: httpx.AsyncClient, api_key: str | None, model: str = "claude-haiku-5-5", max_tokens: int = 4000):
+    def __init__(self, client: httpx.AsyncClient | None, api_key: str | None, model: str = "claude-haiku-5-5", max_tokens: int = 4000):
         if not api_key:
             from ..sheets.client import ConnectorBlocked
             raise ConnectorBlocked("ANTHROPIC_API_KEY not set: LLM extraction is blocked")
@@ -90,15 +90,20 @@ class AnthropicExtractor:
         self.version = f"anthropic:{model}:prompt-{hashlib.sha256(self._system.encode()).hexdigest()[:10]}"
         self.max_tokens_budget = max_tokens
         self.last_usage_tokens = 0
+        self.last_tokens_in = self.last_tokens_out = 0
 
     async def extract(self, *, title, text, published_at):
         user = f"<document title={json.dumps(title or '')} published={json.dumps(published_at)}>\n{text[:30000]}\n</document>"
-        data = await request_json(self.client, "POST", "https://api.anthropic.com/v1/messages",
-                                  headers={"x-api-key": self.key, "anthropic-version": "2023-06-01"},
-                                  json={"model": self.model, "max_tokens": self.max_tokens, "temperature": 0, "system": self._system,
-                                        "messages": [{"role": "user", "content": user}]})
+        payload = {"model": self.model, "max_tokens": self.max_tokens, "temperature": 0, "system": self._system, "messages": [{"role": "user", "content": user}]}
+        hdrs = {"x-api-key": self.key, "anthropic-version": "2023-06-01"}
+        if self.client is None:       # one client per call: an AsyncClient is bound to the event loop that first used it
+            async with httpx.AsyncClient(timeout=90) as c:
+                data = await request_json(c, "POST", "https://api.anthropic.com/v1/messages", headers=hdrs, json=payload)
+        else:
+            data = await request_json(self.client, "POST", "https://api.anthropic.com/v1/messages", headers=hdrs, json=payload)
         u = data.get("usage") or {}
-        self.last_usage_tokens = int(u.get("input_tokens", 0)) + int(u.get("output_tokens", 0))
+        self.last_tokens_in, self.last_tokens_out = int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0))
+        self.last_usage_tokens = self.last_tokens_in + self.last_tokens_out
         out = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
         m = re.search(r"\{.*\}", out, re.S)
         if not m:

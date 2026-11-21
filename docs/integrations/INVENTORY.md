@@ -14,11 +14,12 @@ Legend: **Built** = adapter + tests on fixtures · **Live-verified** = exercised
 | GLEIF | in | ✅ lookup/search | ❌ | Egress returned empty response. |
 | Companies House, Contracts Finder, regulators | in | registry entries only | ❌ | Not implemented (candidates). |
 | Page / RSS monitor | in | ✅ robots-respecting, section-hashed; **admin UI to set URL, test from server, activate** | ❌ | URLs pre-filled for 4 vendors from links in your workbooks (unvalidated); 6 sources still need a URL. Page tests run from the server, which this sandbox cannot reach. |
-| Exa | in | ✅ adapter, plan IDs, budget gate | ❌ | No key; **price list needed** before any cap is set. |
-| LLM extraction (Anthropic) | internal | ✅ schema + anchor verification (fake extractor tested) | ❌ | `ANTHROPIC_API_KEY`; prompt/gold-set regression must pass before enabling. |
+| Exa | in | ✅ adapter, **24 discovery plans (6 themes x 4 regions) mapped to active rules, daily scheduler, hard monthly cap, per-call cost recorded from Exa's own response** | ❌ not yet run against the live API | Key and $20 cap are set on Render. First live run is the first proof; check Administration, Usage. Hits only ever become verification requests, never events. |
+| LLM extraction (Anthropic) | internal | ✅ schema + quote-anchor verification, token budget, **usage rows with input/output tokens per call**, fresh HTTP client per call | ❌ not yet run against the live API | Key and token cap set on Render. Dollar cost shows only if `RI_ANTHROPIC_PRICE_IN_PER_MTOK` and `_OUT_` are set. Prompt/gold-set regression still to run. |
 | Apollo | in (credit-consuming) | ✅ people search/enrich, approval + single-use | ❌ | Key, entitlement, **price**, and explicit approvals. Disabled by default. |
 | Slack / email | out | ✅ Slack webhook sink, signed links | ❌ | Webhook URL; email sink not built. |
 | Lemlist | out | ❌ not built | — | Intentionally: no sequence enrolment without the ownership/suppression/approval controls being signed off. |
 | Approved proof / collateral | in | ✅ `proof_assets` governance | — | Marketing must load approved assets; none exist yet. |
 
 No synthetic or fixture response is presented as intelligence anywhere in the UI or API: demo data is labelled SYNTHETIC and seeded only with `RI_ENV=development`.
+| Verification of sheet signals | internal | ✅ SSRF-safe fetch (public addresses only, redirect hops re-checked, robots.txt, 2 MB cap, no social sites) -> quote-anchored extraction -> gates | ❌ | Sellers can only verify URLs cited in their own account's sheet rows. Discovery checks leave 30% of the model budget for sellers. PDFs are not read yet. |

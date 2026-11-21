@@ -59,7 +59,8 @@ def main(argv: list[str] | None = None) -> int:
             conn.commit()
         elif a.cmd == "schedule":
             from .scheduler import run_maintenance, schedule_due
-            print({"enqueued": schedule_due(conn), **run_maintenance(conn)})
+            from .scheduler import schedule_discovery
+            print({"enqueued": schedule_due(conn), "discovery": schedule_discovery(conn, enabled=bool(s.exa_api_key and s.exa_monthly_cap_usd > 0)), **run_maintenance(conn)})
             conn.commit()
         elif a.cmd == "worker":
             import httpx
@@ -96,11 +97,22 @@ def main(argv: list[str] | None = None) -> int:
             def extractor_factory(c):
                 if not s.anthropic_api_key:
                     return None
-                return BudgetedExtractor(AnthropicExtractor(http, s.anthropic_api_key), c)
+                return BudgetedExtractor(AnthropicExtractor(None, s.anthropic_api_key), c, price_in=s.anthropic_price_in_per_mtok, price_out=s.anthropic_price_out_per_mtok)
 
             def resolve_factory(c):
                 return lambda name: (lambda d: d.org_id if d.action == "auto_link" else None)(resolve(c, name=name, allow_create=False)) if name else None
-            handlers = build_handlers(connector_factory=factory, extractor_factory=extractor_factory, resolve_org_factory=resolve_factory)
+            from .verify.run import sync_fetch
+
+            def discovery_factory(c):
+                if not (s.exa_api_key and s.exa_monthly_cap_usd > 0):
+                    return None
+                from .sources.exa import ExaClient
+                budget.set_cap(c, "exa", "monthly", BudgetedExtractor.period(), s.exa_monthly_cap_usd, "usd")
+                c.commit()
+                return {"exa": ExaClient(None, s.exa_api_key), "max_searches": s.discovery_max_searches_per_run,
+                        "max_new_requests": s.discovery_max_new_requests_per_run, "interval_days": s.discovery_interval_days, "est_cost": s.exa_est_cost_per_search}
+            handlers = build_handlers(connector_factory=factory, extractor_factory=extractor_factory, resolve_org_factory=resolve_factory,
+                                      fetch_factory=lambda: sync_fetch(lambda: None), discovery_factory=discovery_factory)
             print("worker started; polling queue")
             while True:
                 if run_one(conn, f"worker-{time.time_ns()}", handlers) is None:

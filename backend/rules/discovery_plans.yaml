@@ -1,0 +1,14 @@
+# Exa discovery plans (spec 02 §7, 14 §5). Each theme maps to ACTIVE signal rules; one plan = theme x geography.
+# Results are discovery evidence only: every hit is queued for verification against its original page before it can become an event.
+geographies:
+  UK: "United Kingdom"
+  DACH: "Germany OR Austria OR Switzerland"
+  Nordics: "Sweden OR Denmark OR Norway OR Finland"
+  Poland: "Poland"
+themes:
+  - {id: core-banking, rule: PRG-01, recency_days: 21, query: "bank announces core banking platform replacement or selects core banking vendor {geo}"}
+  - {id: cloud-data-migration, rule: PRG-02, recency_days: 21, query: "bank announces cloud migration or data platform modernisation programme {geo}"}
+  - {id: payment-rails, rule: PRG-06, recency_days: 30, query: "bank or payment provider instant payments SEPA Instant Verification of Payee integration programme {geo}"}
+  - {id: si-programme-win, rule: SRC-04, recency_days: 30, query: "systems integrator wins bank transformation programme with software development scope {geo}"}
+  - {id: vendor-implementation, rule: SRC-05, recency_days: 21, query: "bank selects Temenos OR Mambu OR Thought Machine OR Finastra OR Form3 implementation {geo}"}
+  - {id: tech-leader-appointed, rule: MAN-01, recency_days: 21, query: "bank or fintech appoints new CTO OR CIO OR Head of Engineering OR Head of Payments {geo}"}

@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { ReactNode } from "react";
-import { fmtDate } from "../api";
+import { fmtDate, trackSourceOpened } from "../api";
 
 const I = (d: ReactNode) => (p: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="square" strokeLinejoin="miter" aria-hidden="true" className={p.className}>{d}</svg>
@@ -60,13 +61,13 @@ export function GateBar({ gates }: { gates: Record<string, { status: string; rea
   );
 }
 
-export function Evidence({ items }: { items: any[] }) {
+export function Evidence({ items, hypothesisId }: { items: any[]; hypothesisId?: string }) {
   if (!items?.length) return <span className="muted small">No cited evidence attached.</span>;
   return (
     <div>
       {items.map((e) => (
         <div key={e.claim_id} className="small" style={{ margin: "8px 0" }}>
-          {e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" title="Open the original source">{e.source ?? "Original source"} ↗</a> : <span className="pill">Structured record, no URL</span>}
+          {e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" title="Open the original source" onClick={() => hypothesisId && trackSourceOpened({ hypothesis_id: hypothesisId })}>{e.source ?? "Original source"} ↗</a> : <span className="pill">Structured record, no URL</span>}
           <span className="prov">authority {e.authority ?? "n/a"} · published {fmtDate(e.published_at)} · retrieved {fmtDate(e.retrieved_at)}</span>
           {e.claim && <div style={{ marginTop: 4 }}>“{e.claim}” {!e.anchor_verified && e.kind === "quote" && <Badge kind="warn">anchor unverified</Badge>}</div>}
         </div>
@@ -90,3 +91,25 @@ export function Coverage({ c, empty }: { c: any; empty?: string | null }) {
 
 export const Err = ({ e }: { e: unknown }) => (e ? <div className="err" role="alert">{String((e as Error).message ?? e)}</div> : null);
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{title}</b>{children}</div>;
+
+/** Brand mark: the official logo file when it has been supplied, otherwise the plain text mark. Never redrawn here. */
+export function Brand({ sub = true }: { sub?: boolean }) {
+  const [ok, setOk] = useState(true);
+  return (
+    <div className="brand" style={{ border: 0, padding: 0, margin: 0 }}>
+      {ok ? <img className="brand-logo" src="/brand/logo-white.svg" alt="The Codest" width={140} onError={() => setOk(false)} />
+        : <div className="brand-row"><span className="brand-mark" /><div className="brand-name">The Codest</div></div>}
+      {sub && <div className="brand-sub" style={{ marginTop: 0 }}>Revenue Intelligence</div>}
+    </div>
+  );
+}
+
+export function Meter({ used, cap, unit = "", warn = 0.8 }: { used: number; cap: number; unit?: string; warn?: number }) {
+  const pct = cap > 0 ? Math.min(used / cap, 1) : 0;
+  return (
+    <div className="meter" role="img" aria-label={`${used} of ${cap} ${unit} used`}>
+      <div className="meter-bar"><i style={{ width: `${pct * 100}%` }} className={pct >= 1 ? "full" : pct >= warn ? "hot" : ""} /></div>
+      <div className="small muted">{cap > 0 ? `${Math.round(pct * 100)}% of cap` : "No cap set: calls are blocked"}</div>
+    </div>
+  );
+}

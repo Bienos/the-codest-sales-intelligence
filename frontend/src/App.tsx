@@ -7,7 +7,7 @@ import Opportunity from "./pages/Opportunity";
 import Explorer from "./pages/Explorer";
 import Admin from "./pages/Admin";
 import Guide from "./pages/Guide";
-import { IconAccounts, IconAdmin, IconExplorer, IconGuide, IconToday } from "./components/ui";
+import { IconAccounts, IconAdmin, IconExplorer, IconGuide, IconToday, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 declare global { interface Window { google?: any } }
@@ -38,7 +38,7 @@ function Login({ onDone, notice }: { onDone: () => void; notice: Notice }) {
   return (
     <div className="login">
       <div className="login-l">
-        <div className="brand" style={{ border: 0, padding: 0, margin: 0 }}><span className="brand-mark" /><div><div className="brand-name">The Codest</div><div className="brand-sub">Revenue Intelligence</div></div></div>
+        <Brand />
         <div><h1>See which engineering work is real, and who owns it.</h1><p style={{ marginTop: 22 }}>Every recommendation shows its evidence, what is still unknown, and one specific next step. Nothing is sent or changed in your CRM without approval.</p></div>
         <div className="small" style={{ color: "#B9BCE3", position: "relative", zIndex: 1 }}>Access is limited to people an administrator has added.</div>
       </div>
@@ -78,7 +78,7 @@ export default function App() {
   return (
     <div className="shell">
       <nav className="nav" aria-label="Primary">
-        <div className="brand"><span className="brand-mark" /><div><div className="brand-name">The Codest</div><div className="brand-sub">Revenue Intelligence</div></div></div>
+        <div className="brand"><Brand /></div>
         {can("today.read") && link("/today", "Today", IconToday)}
         {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
         {can("explorer.read") && link("/explorer", "Market Explorer", IconExplorer)}

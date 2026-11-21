@@ -48,7 +48,7 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
               <div><span className="k">Counterevidence</span>{c.counterevidence?.length ? <ul>{c.counterevidence.map((x: any, i: number) => <li key={i}>{x.detail}</li>)}</ul> : <span className="small muted">None recorded</span>}</div>
               <div><span className="k">Still unknown</span><ul>{c.unknowns.slice(0, 4).map((u: string, i: number) => <li key={i}>{u}</li>)}</ul></div>
             </div>)}
-          {open && <div style={{ marginTop: 14 }}><span className="k" style={{ font: "800 11px var(--font-head)", letterSpacing: ".12em", textTransform: "uppercase" }}>Original evidence</span><Evidence items={c.evidence} /></div>}
+          {open && <div style={{ marginTop: 14 }}><span className="k" style={{ font: "800 11px var(--font-head)", letterSpacing: ".12em", textTransform: "uppercase" }}>Original evidence</span><Evidence items={c.evidence} hypothesisId={c.hypothesis_id} /></div>}
         </div>
         <aside className="opp-side" aria-label="Next action">
           <div className="eyebrow" style={{ margin: 0 }}>Next action</div>

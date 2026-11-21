@@ -50,3 +50,8 @@ export async function upload<T = any>(path: string, file: File): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+/** Fire-and-forget product instrumentation: never blocks or breaks the click. */
+export function trackSourceOpened(body: { organization_id?: string; hypothesis_id?: string; where?: "evidence" | "prospect" }) {
+  void post("/api/telemetry/source-opened", body).catch(() => undefined);
+}

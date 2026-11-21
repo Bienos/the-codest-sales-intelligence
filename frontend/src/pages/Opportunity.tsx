@@ -34,7 +34,7 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
       <div className="ws" style={{ marginTop: 8 }}>
         <div>
           <div className="section-title">Problem and evidence</div>
-          <div className="card"><p style={{ marginTop: 0 }}><b>What happened.</b> {d.what_happened.summary}</p><p><b>Why it matters.</b> {d.why_it_matters}</p><Evidence items={d.evidence} /></div>
+          <div className="card"><p style={{ marginTop: 0 }}><b>What happened.</b> {d.what_happened.summary}</p><p><b>Why it matters.</b> {d.why_it_matters}</p><Evidence items={d.evidence} hypothesisId={id} /></div>
 
           <div className="section-title">Buyer-confirmed facts and assumptions</div>
           <div className="card"><Badge kind={pb.meeting_brief.buyer_confirmed ? "ok" : "warn"}>{pb.meeting_brief.buyer_confirmed ? "Buyer-confirmed need recorded" : "No buyer-confirmed need yet"}</Badge>

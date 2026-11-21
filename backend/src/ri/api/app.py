@@ -395,6 +395,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from . import lists
     lists.register(app)
     lists.register_users(app)
+    from . import intel
+    intel.register(app)
     from . import sources_admin
     sources_admin.register(app)
     return app

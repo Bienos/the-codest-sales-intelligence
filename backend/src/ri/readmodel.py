@@ -84,7 +84,7 @@ def section_of(c: dict[str, Any], h: dict[str, Any], conn: Conn) -> str:
 
 def coverage_health(conn: Conn, p: Principal) -> dict[str, Any]:
     rows = qa(conn, "SELECT s.source_id, s.display_name, s.source_family, s.status, h.state, h.last_success_at, h.error_class FROM sources s LEFT JOIN source_health h USING (source_id) "
-                    "WHERE s.source_tier <> 'internal'")
+                    "WHERE s.source_tier <> 'internal' AND s.collection_method <> 'internal'")
     active = [r for r in rows if r["status"] in {"active", "degraded", "failed", "blocked"}]
     bad = [r for r in active if r["state"] in {"degraded", "failed", "blocked"}]
     pending = [r for r in rows if r["status"] == "pending_connector_validation"]

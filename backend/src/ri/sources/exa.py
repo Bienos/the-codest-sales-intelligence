@@ -33,7 +33,7 @@ class SearchPlan:
 
 
 class ExaClient:
-    def __init__(self, client: httpx.AsyncClient, api_key: str | None, *, est_cost_per_search: float = 0.0, now_fn=utcnow):
+    def __init__(self, client: httpx.AsyncClient | None, api_key: str | None, *, est_cost_per_search: float = 0.0, now_fn=utcnow):
         if not api_key:
             from ..sheets.client import ConnectorBlocked
             raise ConnectorBlocked("EXA_API_KEY not set: Exa discovery is blocked (structured sources continue)")
@@ -45,7 +45,11 @@ class ExaClient:
                                 "startPublishedDate": (self.now() - timedelta(days=plan.recency_days)).strftime("%Y-%m-%dT00:00:00.000Z")}
         if plan.include_domains:
             body["includeDomains"] = list(plan.include_domains)
-        data = await request_json(self.client, "POST", EXA_SEARCH, json=body, headers={"x-api-key": self.key})
+        if self.client is None:       # one client per call: an AsyncClient is bound to the event loop that first used it
+            async with httpx.AsyncClient(timeout=60) as c:
+                data = await request_json(c, "POST", EXA_SEARCH, json=body, headers={"x-api-key": self.key})
+        else:
+            data = await request_json(self.client, "POST", EXA_SEARCH, json=body, headers={"x-api-key": self.key})
         if not isinstance(data, dict) or "results" not in data:
             from .base import SchemaDrift
             raise SchemaDrift("Exa response has no results")

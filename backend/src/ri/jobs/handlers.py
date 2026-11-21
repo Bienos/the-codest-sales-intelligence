@@ -11,7 +11,8 @@ from .queue import JobError, RequiresApproval
 
 
 def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory: Callable[[Conn], Any] | None = None,
-                   resolve_org_factory: Callable[[Conn], Callable[[str], str | None]] | None = None) -> dict[str, Callable[[Conn, dict], dict]]:
+                   resolve_org_factory: Callable[[Conn], Callable[[str], str | None]] | None = None,
+                   fetch_factory: Callable[[], Callable[[str], Any]] | None = None, discovery_factory: Callable[[Conn], dict[str, Any] | None] | None = None) -> dict[str, Callable[[Conn, dict], dict]]:
     def source_run(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         sid = job["payload"]["source_id"]
         connector = connector_factory(sid)
@@ -58,8 +59,29 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         conn.commit()
         return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
 
+    def verify_url(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..verify.run import run_verification
+        if extractor_factory is None or fetch_factory is None:
+            raise JobError("verification is not configured on this worker", "access_denied")
+        ex = extractor_factory(conn)
+        if ex is None:
+            conn.execute("UPDATE verification_requests SET status='waiting_budget', updated_at=now(), result=%s WHERE id=%s",
+                         ('{"reason": "no Anthropic API key configured on the worker"}', job["payload"]["request_id"]))
+            return {"status": "waiting_budget", "reason": "no model key"}
+        resolver = resolve_org_factory(conn) if resolve_org_factory else None
+        return run_verification(conn, job["payload"]["request_id"], fetch=fetch_factory(), extractor=ex, resolver=resolver)
+
+    def discovery_run(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..discovery.run import run_discovery
+        cfg = discovery_factory(conn) if discovery_factory else None
+        if cfg is None:
+            return {"skipped": "Exa is not configured (no key or no budget cap)"}
+        return run_discovery(conn, cfg.pop("exa"), plan_ids=job["payload"].get("plan_ids"), requested_by=job["payload"].get("requested_by", "system:discovery"), **cfg)
+
+    verify_url.own_transactions = True  # type: ignore[attr-defined]
+    discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx}
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

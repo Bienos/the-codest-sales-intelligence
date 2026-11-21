@@ -54,7 +54,12 @@ class Settings:
     google_client_id: str | None = None
     anthropic_monthly_token_cap: float = 0.0     # tokens/month; 0 = model extraction cannot run
     exa_monthly_cap_usd: float = 0.0
-    exa_est_cost_per_search: float | None = None  # must be set from Exa's price list; unknown => no search runs
+    exa_est_cost_per_search: float | None = None  # reservation estimate only; real cost is taken from each Exa response. None => 0.01 default
+    anthropic_price_in_per_mtok: float | None = None   # optional list prices: dollars are shown only when both are set
+    anthropic_price_out_per_mtok: float | None = None
+    discovery_interval_days: int = 7
+    discovery_max_searches_per_run: int = 8
+    discovery_max_new_requests_per_run: int = 3
     allowed_email_domain: str | None = None
     bootstrap_admin_emails: tuple[str, ...] = ()
 
@@ -84,6 +89,11 @@ class Settings:
             google_client_id=os.environ.get("RI_GOOGLE_CLIENT_ID") or None,
             anthropic_monthly_token_cap=_f("RI_ANTHROPIC_MONTHLY_TOKEN_CAP", 0.0),
             exa_monthly_cap_usd=_f("RI_EXA_MONTHLY_CAP_USD", 0.0),
+            anthropic_price_in_per_mtok=float(os.environ["RI_ANTHROPIC_PRICE_IN_PER_MTOK"]) if os.environ.get("RI_ANTHROPIC_PRICE_IN_PER_MTOK") else None,
+            anthropic_price_out_per_mtok=float(os.environ["RI_ANTHROPIC_PRICE_OUT_PER_MTOK"]) if os.environ.get("RI_ANTHROPIC_PRICE_OUT_PER_MTOK") else None,
+            discovery_interval_days=int(os.environ.get("RI_DISCOVERY_INTERVAL_DAYS", "7")),
+            discovery_max_searches_per_run=int(os.environ.get("RI_DISCOVERY_MAX_SEARCHES_PER_RUN", "8")),
+            discovery_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_MAX_NEW_REQUESTS_PER_RUN", "3")),
             exa_est_cost_per_search=float(os.environ["RI_EXA_EST_COST_PER_SEARCH"]) if os.environ.get("RI_EXA_EST_COST_PER_SEARCH") else None,
             allowed_email_domain=(os.environ.get("RI_ALLOWED_EMAIL_DOMAIN") or "").lower() or None,
             bootstrap_admin_emails=tuple(e.strip().lower() for e in os.environ.get("RI_BOOTSTRAP_ADMIN_EMAILS", "").split(",") if e.strip()),

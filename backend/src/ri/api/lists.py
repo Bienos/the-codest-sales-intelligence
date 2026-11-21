@@ -62,6 +62,41 @@ def prospect_item(r: dict[str, Any], kind: str, can_contacts: bool, today: date)
     return item
 
 
+def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int) -> list[dict[str, Any]]:
+    today = datetime.now(timezone.utc).date()
+    where, params = org_scope_sql(p, "o.id")
+    rows = qa(conn,
+        f"SELECT DISTINCT ON (r.organization_id, r.kind) r.organization_id, r.kind, r.original, o.display_name, o.country_code, o.segment, o.employees_estimate, "   # noqa: S608
+        f"(SELECT count(*) FROM opportunity_hypotheses h WHERE h.organization_id=o.id AND h.state NOT IN ('superseded')) AS opps "
+        f"FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
+        f"WHERE r.kind IN ('priority_outreach','master_account') AND ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') "
+        f"ORDER BY r.organization_id, r.kind, r.observed_at DESC", [*params, q, q])
+    can_contacts = p.can("contacts.read")
+    by_org: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        oid = str(r["organization_id"])
+        it = prospect_item(r, r["kind"], can_contacts, today)
+        if not it["signal"] and not it["source_url"]:
+            continue                      # nothing to act on
+        cur = by_org.get(oid)
+        if cur and cur["lane"] == "shortlist":      # curated shortlist wins over the generic master row
+            continue
+        by_org[oid] = {"organization": {"id": oid, "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"]},
+                       "has_opportunity": bool(r["opps"]), **it}
+    items = [i for i in by_org.values() if lane == "all" or i["lane"] == lane]
+    items.sort(key=lambda i: (i["lane"] != "shortlist", i["rank"] if i["rank"] is not None else 999,
+                              _PRIORITY.get(str(i["priority"] or "").lower(), 3), -(i["score"] or 0)))
+    total = len(items)
+    items = items[:max(limit, 1)]
+    urls = [i["source_url"] for i in items if i["source_url"]]
+    ver = {v["url"]: v for v in qa(conn, "SELECT url, status, events_created, result FROM verification_requests WHERE origin='sheet_signal' AND url = ANY(%s)", (urls,))} if urls else {}
+    for i in items:
+        v = ver.get(i["source_url"])
+        i["verification"] = {"status": v["status"], "events": v["events_created"], "reason": (v["result"] or {}).get("reason")} if v else None
+        i["_total"] = total
+    return items
+
+
 def register(app: FastAPI) -> None:
     def tx(request: Request):
         return request.app.state.db.tx()
@@ -69,31 +104,12 @@ def register(app: FastAPI) -> None:
     @app.get("/api/prospects")
     def prospects(request: Request, lane: str = Query("all", pattern="^(all|shortlist|signals)$"), q: str = "", limit: int = Query(40, le=200),
                   p: Principal = Depends(require("accounts.read"))):
-        today = datetime.now(timezone.utc).date()
         with tx(request) as conn:
-            where, params = org_scope_sql(p, "o.id")
-            rows = qa(conn,
-                f"SELECT DISTINCT ON (r.organization_id, r.kind) r.organization_id, r.kind, r.original, o.display_name, o.country_code, o.segment, o.employees_estimate, "   # noqa: S608
-                f"(SELECT count(*) FROM opportunity_hypotheses h WHERE h.organization_id=o.id AND h.state NOT IN ('superseded')) AS opps "
-                f"FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
-                f"WHERE r.kind IN ('priority_outreach','master_account') AND ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') "
-                f"ORDER BY r.organization_id, r.kind, r.observed_at DESC", [*params, q, q])
-            can_contacts = p.can("contacts.read")
-            by_org: dict[str, dict[str, Any]] = {}
-            for r in rows:
-                oid = str(r["organization_id"])
-                it = prospect_item(r, r["kind"], can_contacts, today)
-                if not it["signal"] and not it["source_url"]:
-                    continue                      # nothing to act on
-                cur = by_org.get(oid)
-                if cur and cur["lane"] == "shortlist":      # curated shortlist wins over the generic master row
-                    continue
-                by_org[oid] = {"organization": {"id": oid, "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"]},
-                               "has_opportunity": bool(r["opps"]), **it}
-            items = [i for i in by_org.values() if lane == "all" or i["lane"] == lane]
-            items.sort(key=lambda i: (i["lane"] != "shortlist", i["rank"] if i["rank"] is not None else 999,
-                                      _PRIORITY.get(str(i["priority"] or "").lower(), 3), -(i["score"] or 0)))
-            return {"items": items[:limit], "total": len(items),
+            items = prospects_for(conn, p, lane=lane, q=q, limit=limit)
+            total = items[0]["_total"] if items else 0
+            for i in items:
+                i.pop("_total", None)
+            return {"items": items, "total": total,
                     "note": "From your imported sheets. Not yet verified by this platform: confirm the source before acting."}
 
     @app.get("/api/overview")
@@ -105,10 +121,12 @@ def register(app: FastAPI) -> None:
             run = q1(conn, "SELECT workbook_key, status, finished_at FROM import_runs WHERE status IN ('completed','paused_schema_drift') ORDER BY finished_at DESC NULLS LAST LIMIT 1")
             shortlist = q1(conn, "SELECT count(DISTINCT organization_id) AS n FROM legacy_account_research WHERE kind='priority_outreach'") or {}
             verified = q1(conn, "SELECT count(*) AS n FROM opportunity_hypotheses WHERE state NOT IN ('superseded')") or {}
-            src = q1(conn, "SELECT count(*) FILTER (WHERE state IN ('healthy','ok','active')) AS live, count(*) AS total FROM source_health") or {}
+            src = q1(conn, "SELECT count(*) FILTER (WHERE s.status='active') AS live, count(*) AS total FROM sources s WHERE s.collection_method <> 'internal'") or {}
+            vr = {r["status"]: r["n"] for r in qa(conn, "SELECT status, count(*) AS n FROM verification_requests GROUP BY status")}
+            bud = {r["provider"]: {"cap": float(r["cap"]), "used": float(r["spent"]) + float(r["reserved"])} for r in qa(conn, "SELECT provider, cap, spent, reserved FROM provider_budgets WHERE kind='monthly' AND period=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')")}
             return {"accounts": c.get("orgs", 0), "master_accounts": c.get("master", 0), "contacts": people.get("n", 0), "shortlist": shortlist.get("n", 0),
                     "verified_opportunities": verified.get("n", 0), "sources_live": src.get("live", 0), "sources_total": src.get("total", 0),
-                    "last_import": run}
+                    "last_import": run, "verifications": vr, "budgets": bud}
 
     @app.post("/api/admin/import/upload")
     async def upload(request: Request, file: UploadFile = File(...), p: Principal = Depends(require("admin.sources"))):

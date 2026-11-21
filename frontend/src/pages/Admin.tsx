@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { api, fmtDateTime, post, put, upload, patch } from "../api";
 import { Badge, Err, humanize } from "../components/ui";
+import Library from "./Library";
+import Usage from "./Usage";
+import { Discovery, Verification } from "./Pipeline";
 
-const hk = (s: string) => (s === "healthy" ? "ok" : s === "unconfigured" || s === "paused" ? "" : "bad");
 
 function Load({ path, children }: { path: string; children: (d: any, reload: () => void) => any }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
@@ -44,19 +46,7 @@ function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () =
 }
 
 function Sources({ canEdit }: { canEdit: boolean }) {
-  const [open, setOpen] = useState<string | null>(null);
-  return <Load path="/api/admin/sources">{(d, reload) => (
-    <div className="card table-wrap"><table><thead><tr><th>Source</th><th>Tier</th><th>Status</th><th>Health</th><th>Last success</th><th>Failures 7d</th><th></th></tr></thead><tbody>
-      {d.items.flatMap((s: any) => {
-        const editable = canEdit && ["feed", "change_monitor"].includes(s.collection_method);
-        const rows = [<tr key={s.source_id}><td>{s.display_name}<div className="small muted">{s.source_family} · {s.source_id}</div></td><td>{s.source_tier}</td>
-          <td><Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{humanize(s.status)}</Badge>{!s.url && ["feed", "change_monitor"].includes(s.collection_method) && <div className="small muted">needs a URL</div>}</td>
-          <td><Badge kind={hk(s.health ?? "unconfigured")}>{s.health ?? "unconfigured"}</Badge>{s.error_class && <div className="small">{s.error_class}</div>}</td><td>{fmtDateTime(s.last_success_at)}</td><td>{s.failures_7d}</td>
-          <td>{editable && <button className="ghost" aria-expanded={open === s.source_id} onClick={() => setOpen(open === s.source_id ? null : s.source_id)}>{open === s.source_id ? "Close" : "Set up"}</button>}</td></tr>];
-        if (open === s.source_id) rows.push(<tr key={s.source_id + "-c"}><td colSpan={7} style={{ background: "var(--tint-1)" }}><SourceControls s={s} can={editable} reload={reload} /></td></tr>);
-        return rows;
-      })}</tbody></table>
-      <p className="small muted">A source is only polled once it has a passing test and a certification record. “Pending” means built but not yet verified against the live site. Page tests run from the server, not your browser, and respect robots.txt.</p></div>)}</Load>;
+  return <Library render={(s, reload) => <SourceControls s={s} can={canEdit} reload={reload} />} />;
 }
 
 const Identity = () => <Load path="/api/admin/identity-reviews">{(d, reload) => <IdentityList d={d} reload={reload} />}</Load>;
@@ -159,8 +149,8 @@ export default function Admin({ me }: { me: { permissions: string[] } }) {
     <>
       <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
       <div className="tabs">{p("sources.read") && <NavLink to="/admin" end>Sources</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
-        {p("admin.costs") && <NavLink to="/admin/costs"> Costs</NavLink>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
-      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} />
+        {p("sources.read") && <NavLink to="/admin/verification"> Verification</NavLink>}{p("admin.costs") && <><NavLink to="/admin/discovery"> Discovery</NavLink><NavLink to="/admin/usage"> Usage</NavLink></>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
+      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
         <Route path="rules" element={<Rules />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
     </>
   );

@@ -40,3 +40,12 @@ Spec → implementation → tests. "Partial" = implemented but live/acceptance e
 | WP-10 buyer/plays/deals | plays SP-01..10, drafts, deal view | Done |
 | WP-11 hardening | metrics, runbooks | **Fault-injection beyond unit tests, SLOs, on-call: not done** |
 | R0–R5 gates | `docs/releases/RELEASE_REPORT.md` | R0–R3 engineering-complete; R4–R5 complete in code, **not production-signed** |
+
+## Added 21 Nov 2026
+| Need | Implementation | Tests | Status |
+|---|---|---|---|
+| Sheet signal becomes verified evidence | `verify/{fetch,run}.py`, `verification_requests`, Today verify buttons | `test_r7_*` (quoted claim only, blocked, thin page, budget, SSRF) | Built; live model run pending first use |
+| Exa discovery (spec 02 §7, 14 §5) | `discovery/{plans,run}.py`, `rules/discovery_plans.yaml`, scheduler | `test_r7_*` (budget reserve/settle, reported cost, auth stop, once per interval) | Built; live API run pending |
+| Usage tracker (spec 14 §8, 13 §11) | `usage.py`, `provider_usage`, Administration, Usage (months, source, plan, every call, forecast) | `test_r7_*` | Built |
+| Source library (spec 02 §3) | Administration, Sources (tier, cadence, licence, rules, documents, events, cost) | `test_r7_*` | Built |
+| Instrumentation `source_opened` (spec 01 §8) | `/api/telemetry/source-opened` | `test_r7_*` | Built (was missing) |

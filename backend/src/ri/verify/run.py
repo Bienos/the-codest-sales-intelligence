@@ -1,0 +1,122 @@
+"""Verify a claim by reading its ORIGINAL source: fetch -> document -> extract (budgeted, quote-anchored) -> events -> gates.
+A sheet signal or a discovery hit never becomes an opportunity on its own: only events whose claims quote the fetched page do."""
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from datetime import datetime, timezone
+from typing import Any
+
+from rapidfuzz import fuzz
+
+from ..db import Conn, jb, q1, qa
+from ..events.extract import process_document
+from ..ingest.process import finish_event
+from ..jobs.queue import JobError
+from ..sources.base import BudgetExceeded, ConnectorError, PolicyBlocked
+from .fetch import Page
+
+SOURCE_ID = "verify-original-page"
+RESERVE_FOR_SELLERS = 0.30
+
+
+def _set(conn: Conn, rid: str, status: str, **fields: Any) -> None:
+    sets = ["status=%s", "updated_at=now()"]
+    vals: list[Any] = [status]
+    for k, v in fields.items():
+        sets.append(f"{k}=%s")
+        vals.append(jb(v) if k == "result" else v)
+    conn.execute(f"UPDATE verification_requests SET {', '.join(sets)} WHERE id=%s", (*vals, rid))   # noqa: S608  (column names are code-controlled)
+
+
+def org_aware_resolver(conn: Conn, resolver: Callable[[str], str | None] | None, org_id: str | None) -> Callable[[str], str | None]:
+    """Resolve event subjects to canonical orgs; if the claim was made for a known account, accept a close name match to that account."""
+    org = q1(conn, "SELECT display_name FROM organizations WHERE id=%s", (org_id,)) if org_id else None
+    names = [org["display_name"]] + [a["alias"] for a in qa(conn, "SELECT alias FROM organization_aliases WHERE organization_id=%s LIMIT 20", (org_id,))] if org else []
+
+    def resolve(name: str) -> str | None:
+        found = resolver(name) if resolver else None
+        if found:
+            return found
+        if org_id and name and any(fuzz.token_set_ratio(name.casefold(), n.casefold()) >= 88 for n in names):
+            return org_id
+        return None
+    return resolve
+
+
+def run_verification(conn: Conn, request_id: str, *, fetch: Callable[[str], Page], extractor: Any,
+                     resolver: Callable[[str], str | None] | None = None, now: datetime | None = None) -> dict[str, Any]:
+    r = q1(conn, "SELECT * FROM verification_requests WHERE id=%s", (request_id,))
+    if not r:
+        raise JobError("verification request not found", "not_found")
+    if r["status"] in {"verified", "no_event"}:
+        return {"status": r["status"], "already_done": True}
+    rid = str(r["id"])
+    if r["origin"] == "exa_discovery":
+        # discovery must never use up the model budget that sellers rely on: the last 30% is reserved for seller-requested checks
+        b = q1(conn, "SELECT cap, reserved, spent FROM provider_budgets WHERE provider='anthropic' AND kind='monthly' AND period=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')")
+        if b and float(b["cap"]) > 0 and (float(b["cap"]) - float(b["reserved"]) - float(b["spent"])) / float(b["cap"]) < RESERVE_FOR_SELLERS:
+            _set(conn, rid, "waiting_budget", result={"reason": "kept in reserve: discovery stops using model budget once 70% of the month is spent, so seller checks always have room"})
+            return {"status": "waiting_budget", "reason": "seller_reserve"}
+    _set(conn, rid, "fetching")
+    conn.commit()
+    try:
+        page = fetch(r["url"])
+    except PolicyBlocked as exc:
+        _set(conn, rid, "blocked", result={"reason": str(exc)})
+        return {"status": "blocked", "reason": str(exc)}
+    except ConnectorError as exc:
+        _set(conn, rid, "failed", result={"reason": str(exc), "error_class": exc.error_class})
+        if exc.error_class in {"transient_network", "server_error", "rate_limited"}:
+            raise JobError(str(exc), exc.error_class) from exc       # queue retries with backoff
+        return {"status": "failed", "reason": str(exc)}
+    if len(page.text) < 200:
+        _set(conn, rid, "no_event", result={"reason": "page had almost no readable text (it may need JavaScript or a login)", "chars": len(page.text)})
+        return {"status": "no_event", "reason": "no_text"}
+    row = conn.execute(
+        "INSERT INTO source_documents(source_id, external_id, version_key, canonical_url, title, published_at, content_hash, change_status, content_text, raw_meta) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,'new',%s,%s) ON CONFLICT (source_id, external_id, version_key) DO UPDATE SET content_text=EXCLUDED.content_text RETURNING id",
+        (SOURCE_ID, page.url, page.content_hash[:32], page.url, page.title, page.published_at, page.content_hash, page.text,
+         jb({"verification_request": rid, "origin": r["origin"]}))).fetchone()
+    doc_id = str(row["id"])
+    _set(conn, rid, "extracting", document_id=doc_id)
+    conn.commit()
+    if hasattr(extractor, "ctx"):
+        extractor.ctx = {"document_id": doc_id, "request_id": rid, "organization_id": str(r["organization_id"]) if r["organization_id"] else None}
+    resolve = org_aware_resolver(conn, resolver, str(r["organization_id"]) if r["organization_id"] else None)
+    try:
+        out = process_document(conn, doc_id, extractor, resolve_org=resolve)
+    except BudgetExceeded:
+        conn.rollback()
+        _set(conn, rid, "waiting_budget", result={"reason": "monthly model budget reached; will retry when budget is available"})
+        return {"status": "waiting_budget"}
+    except JobError as exc:
+        conn.rollback()
+        _set(conn, rid, "failed", result={"reason": str(exc), "error_class": exc.error_class})
+        return {"status": "failed", "reason": str(exc)}
+    event_ids = [str(e["id"]) for e in conn.execute(
+        "SELECT DISTINCT e.id FROM events e JOIN event_documents ed ON ed.event_id=e.id WHERE ed.document_id=%s", (doc_id,)).fetchall()]
+    signals = negatives = 0
+    for eid in event_ids:
+        res = finish_event(conn, eid, now=now)
+        signals += len(res["signals"])
+        negatives += len(res["negatives"])
+    status = "verified" if event_ids else "no_event"
+    _set(conn, rid, status, events_created=len(event_ids), result={**out, "signals": signals, "negatives": negatives, "page_title": page.title,
+                                                                   "page_published": page.published_at.isoformat() if page.published_at else None,
+                                                                   "fetched_at": (now or datetime.now(timezone.utc)).isoformat()})
+    return {"status": status, "events": len(event_ids), "signals": signals}
+
+
+def sync_fetch(client_factory: Callable[[], Any]) -> Callable[[str], Page]:
+    """Blocking wrapper for the worker thread."""
+    import httpx
+
+    from .fetch import fetch_page
+
+    def go(url: str) -> Page:
+        async def inner() -> Page:
+            async with httpx.AsyncClient(timeout=25, follow_redirects=False) as c:
+                return await fetch_page(c, url)
+        return asyncio.run(inner())
+    return go

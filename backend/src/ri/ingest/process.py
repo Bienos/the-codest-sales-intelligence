@@ -47,6 +47,8 @@ def process_run(conn: Conn, res: RunResult, *, extractor: EventExtractor | None 
             d = q1(conn, "SELECT raw_meta FROM source_documents WHERE id=%s", (doc_id,))
             if not d or (d["raw_meta"] or {}).get("structured"):
                 continue
+            if hasattr(extractor, "ctx"):
+                extractor.ctx = {"document_id": doc_id}
             try:
                 with conn.transaction():
                     out = process_document(conn, doc_id, extractor, resolve_org=resolve_org, replay=replay)
