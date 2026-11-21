@@ -234,3 +234,10 @@ td:nth-child(2), td:nth-child(4) { white-space: nowrap; }
 .gloss { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; margin: 0; border-top: 1px solid var(--line); border-left: 1px solid var(--line); background: #fff; }
 .gloss > div { padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); } .gloss dt { font: 900 14px var(--font-head); text-transform: uppercase; color: var(--navy); margin-bottom: 4px; } .gloss dd { margin: 0; font-size: 14px; }
 @media (max-width: 980px) { .map3 { grid-template-columns: 1fr; gap: 14px; } .map3 .arrow { transform: rotate(90deg); height: 20px; } .gloss { grid-template-columns: 1fr; } }
+
+/* ---------- pipeline status ---------- */
+.pipe-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; align-items: start; } @media (max-width: 1000px) { .pipe-grid { grid-template-columns: 1fr; } }
+.pipe { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; position: relative; }
+.pipe-step { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 14px; background: #fff; border: 1px solid var(--line); border-left: 5px solid var(--navy); padding: 16px 18px; margin-bottom: -1px; }
+.pipe-step.waiting { border-left-color: var(--orange); } .pipe-step.stale, .pipe-step.never { border-left-color: var(--pink); } .pipe-step.off { border-left-color: #A9ABC9; background: var(--tint-1); }
+.pipe-n { font: 900 26px/1 var(--font-head); color: var(--navy); } .pipe-t { font: 900 15px var(--font-head); text-transform: uppercase; color: var(--navy); }

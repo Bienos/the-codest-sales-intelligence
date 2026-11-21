@@ -397,8 +397,10 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     lists.register_users(app)
     from . import intel
     intel.register(app)
+    intel.register_pipeline(app)
     from . import search as search_api
     search_api.register(app)
+    search_api.register_kb_admin(app)
     from . import sources_admin
     sources_admin.register(app)
     return app

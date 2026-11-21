@@ -33,7 +33,7 @@ def e1_entity(conn: Conn, org_id: str) -> tuple[bool, str, dict[str, Any]]:
     if not o:
         return False, "organisation_not_found", {}
     pending = q1(conn, "SELECT 1 FROM identity_reviews WHERE status='open' AND %s = ANY(candidate_org_ids)", (org_id,))
-    icp = icp_band(o["employees_estimate"], bool(o["employees_uncertain"]))
+    icp = icp_band(o["employees_estimate"], bool(o["employees_uncertain"]), o.get("segment"))
     put_field(conn, "organization", org_id, "icp_band", "E1", "present" if icp["band"] != "unknown" else "unknown", icp, provider="canonical", method="internal_rule",
               confidence="medium" if o["employees_basis"] == "sheet_recorded" else "low")
     put_field(conn, "organization", org_id, "legal_identity", "E1", "present" if o["verification_status"] in {"registry_verified", "manual_verified"} else "unknown",

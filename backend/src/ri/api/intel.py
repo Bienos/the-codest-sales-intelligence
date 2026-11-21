@@ -237,3 +237,63 @@ def register(app: FastAPI) -> None:
                 "(SELECT coalesce(sum(units),0) FROM provider_usage u WHERE u.source_id=s.source_id AND u.period=%s) AS units_month "
                 "FROM sources s LEFT JOIN source_health h USING (source_id) ORDER BY s.source_tier, s.source_family, s.display_name", (usage.period_now(), usage.period_now()))
             return {"items": rows}
+
+
+def register_pipeline(app: FastAPI) -> None:
+    def tx(request: Request):
+        return request.app.state.db.tx()
+
+    def age(ts) -> int | None:
+        return int((datetime.now(timezone.utc) - ts).total_seconds()) if ts else None
+
+    @app.get("/api/admin/pipeline")
+    def pipeline(request: Request, p: Principal = Depends(require("admin.jobs"))):
+        s = request.app.state.settings
+        with tx(request) as conn:
+            hb = {r["component"]: r for r in qa(conn, "SELECT component, at, detail FROM system_heartbeats")}
+            jobs = {r["status"]: r["n"] for r in qa(conn, "SELECT status, count(*) AS n FROM jobs GROUP BY status")}
+            oldest = q1(conn, "SELECT min(created_at) AS t FROM jobs WHERE status IN ('scheduled','retryable_failed') AND run_after <= now()") or {}
+            last_job = q1(conn, "SELECT max(updated_at) AS t FROM jobs WHERE status='completed'") or {}
+            src = q1(conn, "SELECT count(*) FILTER (WHERE status='active') AS active, count(*) FILTER (WHERE status='pending_connector_validation' AND collection_method<>'internal') AS pending, "
+                           "count(*) FILTER (WHERE collection_method<>'internal') AS total, count(*) FILTER (WHERE config->>'url' IS NOT NULL AND status<>'active' AND collection_method<>'internal') AS ready_to_test FROM sources") or {}
+            failing = qa(conn, "SELECT s.display_name, h.error_class, h.consecutive_failures FROM sources s JOIN source_health h USING (source_id) WHERE s.status IN ('active','degraded') AND h.state IN ('degraded','failed','blocked') LIMIT 10")
+            disc = q1(conn, "SELECT max(last_run_at) AS last_run, count(*) FILTER (WHERE enabled AND (last_run_at IS NULL OR last_run_at < now() - make_interval(days => %s))) AS due, count(*) AS plans FROM discovery_plans", (s.discovery_interval_days,)) or {}
+            ver = {r["status"]: r["n"] for r in qa(conn, "SELECT status, count(*) AS n FROM verification_requests GROUP BY status")}
+            ev = q1(conn, "SELECT count(*) AS n, count(*) FILTER (WHERE first_observed_at > now() - interval '7 days') AS week FROM events") or {}
+            ini = q1(conn, "SELECT count(*) AS n FROM initiatives WHERE status='active'") or {}
+            hyp = q1(conn, "SELECT count(*) AS n, count(*) FILTER (WHERE last_checked_at IS NOT NULL) AS scored FROM opportunity_hypotheses WHERE state<>'superseded'") or {}
+            dig = q1(conn, "SELECT max(created_at) AS t FROM notifications_sent WHERE status='sent'") or {}
+            imp = q1(conn, "SELECT workbook_key, status, finished_at FROM import_runs WHERE status IN ('completed','paused_schema_drift') ORDER BY finished_at DESC NULLS LAST LIMIT 1")
+            bud = {r["provider"]: r for r in qa(conn, "SELECT provider, cap, spent, reserved FROM provider_budgets WHERE kind='monthly' AND period=%s", (usage.period_now(),))}
+        sch, wrk = hb.get("scheduler"), hb.get("worker")
+
+        def fresh(h, limit):
+            return "never" if not h else "ok" if age(h["at"]) < limit else "stale"
+        digest_cfg = bool(s.slack_webhook_url)
+        stages = [
+            {"key": "scheduler", "label": "Scheduler", "mode": "automatic", "state": fresh(sch, 900), "last": sch["at"] if sch else None, "note": "Runs every 5 minutes. Decides which sources are due, queues the daily discovery run, expires old signals and re-scores moved programmes."},
+            {"key": "worker", "label": "Worker", "mode": "automatic", "state": fresh(wrk, 300), "last": wrk["at"] if wrk else None, "note": f"Takes jobs from the queue within seconds. Queue: {jobs.get('scheduled', 0)} waiting, {jobs.get('retryable_failed', 0)} retrying, {jobs.get('permanent_failed', 0)} failed. Last job finished {('%d min ago' % (age(last_job.get('t')) // 60)) if last_job.get('t') else 'never'}."},
+            {"key": "sources", "label": "Source watching", "mode": "automatic once a source is live", "state": "ok" if src.get("active") else "waiting",
+             "note": f"{src.get('active', 0)} of {src.get('total', 0)} sources are live. {src.get('ready_to_test', 0)} have an address and are waiting for you to test and activate them in Administration, Sources.", "detail": [dict(f) for f in failing]},
+            {"key": "discovery", "label": "Exa discovery", "mode": "automatic", "state": "ok" if (s.exa_api_key and s.exa_monthly_cap_usd > 0) else "off", "last": disc.get("last_run"),
+             "note": f"{disc.get('plans', 0)} search plans, {disc.get('due', 0)} due now. Runs once a day within the monthly cap of ${s.exa_monthly_cap_usd:g}. Hits are only leads: each is queued for verification."},
+            {"key": "verification", "label": "Verification", "mode": "automatic after a trigger", "state": "ok",
+             "note": "Fetches the original page, extracts quoted events, keeps only what the page proves. Triggered by a seller, or by a discovery hit. " + (f"{ver.get('waiting_budget', 0)} waiting for model budget." if ver.get("waiting_budget") else ""), "counts": ver},
+            {"key": "opportunities", "label": "Events to opportunities", "mode": "automatic", "state": "ok",
+             "note": f"{ev.get('n', 0)} verified events ({ev.get('week', 0)} this week), {ini.get('n', 0)} active programmes, {hyp.get('scored', 0)} scored opportunities. Each verified event updates its programme and re-scores it with no manual step."},
+            {"key": "digest", "label": "Daily digest", "mode": "automatic" if digest_cfg else "off", "state": "ok" if digest_cfg else "off", "last": dig.get("t"),
+             "note": "Sent to Slack when something material changes; never repeats an unchanged item." if digest_cfg else "Not configured. Set SLACK_WEBHOOK_URL, RI_BASE_URL and RI_LINK_SECRET on the scheduler to switch it on."},
+            {"key": "sheets", "label": "Sheet import", "mode": "manual", "state": "ok" if imp else "waiting", "last": imp["finished_at"] if imp else None,
+             "note": "You upload the .xlsx exports in Administration, Imports. Hourly automatic sync needs a read-only Google service account."},
+            {"key": "pipedrive", "label": "Pipedrive", "mode": "off", "state": "off", "note": "Not connected. Without it there is no ownership data, so every account is open to every seller, and no CRM changes can be made."},
+        ]
+        nexts = []
+        if not src.get("active"):
+            nexts.append("Test and activate the newsroom and feed sources (Administration, Sources). Until one is live, only discovery and manual verification feed the platform.")
+        if not imp:
+            nexts.append("Upload the two workbooks (Administration, Imports).")
+        if not wrk or fresh(wrk, 300) != "ok":
+            nexts.append("The worker has not checked in recently. Check the worker service on Render.")
+        if not digest_cfg:
+            nexts.append("Optional: set the Slack webhook to get the daily digest.")
+        return {"stages": stages, "queue": jobs, "oldest_waiting_s": age(oldest.get("t")), "budgets": {k: {"cap": float(v["cap"]), "used": float(v["spent"]) + float(v["reserved"])} for k, v in bud.items()}, "next_steps": nexts}

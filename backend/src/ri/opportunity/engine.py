@@ -122,4 +122,22 @@ def evaluate_stale(conn: Conn, now: datetime | None = None) -> int:
     return n
 
 
-__all__ = ["build_for_initiative", "evaluate", "evaluate_stale", "json"]
+def refresh_hypotheses(conn: Conn, initiative_id: str, now: datetime | None = None) -> list[str]:
+    """The live path from 'event linked to a programme' to 'opportunity card': build one hypothesis per route, then evaluate each.
+    Idempotent: re-running updates the same hypotheses and never creates duplicates."""
+    ids = build_for_initiative(conn, initiative_id)
+    for hid in ids:
+        evaluate(conn, hid, now=now)
+    return ids
+
+
+def ensure_hypotheses(conn: Conn, now: datetime | None = None) -> int:
+    """Safety net for the scheduler: any active programme with routes but no hypothesis gets one (e.g. after an interrupted run)."""
+    n = 0
+    for i in qa(conn, "SELECT i.id FROM initiatives i WHERE i.status='active' AND i.stage NOT IN ('completed','cancelled') AND "
+                      "EXISTS (SELECT 1 FROM procurement_routes r WHERE r.initiative_id=i.id) AND NOT EXISTS (SELECT 1 FROM opportunity_hypotheses h WHERE h.initiative_id=i.id)"):
+        n += len(refresh_hypotheses(conn, str(i["id"]), now))
+    return n
+
+
+__all__ = ["build_for_initiative", "ensure_hypotheses", "evaluate", "evaluate_stale", "refresh_hypotheses", "json"]

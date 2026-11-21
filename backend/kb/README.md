@@ -1,2 +1,4 @@
-Internal knowledge-base documents (`icp.html`, `field-guide.html`) are deliberately NOT committed: they are internal-only sales material.
-Place the two files here on the server (or mount them) and they appear under Knowledge base. Missing files are handled: the tab shows "not loaded yet".
+Internal knowledge-base documents (ICP map, sales field guide) are NOT stored in this repository.
+An administrator uploads the two .html files in the app under Administration, Knowledge. They are kept in the database, shown only behind login
+through short-lived signed links in a sandboxed frame, and never served as public files.
+(For local development only, files named `icp.html` and `field-guide.html` placed here are used as a fallback; they are git-ignored.)

@@ -28,7 +28,7 @@ export default function Knowledge() {
       <div className="tabs" role="tablist">{docs.map((d) => <button key={d.id} role="tab" aria-selected={d.id === current} onClick={() => nav(`/knowledge/${d.id}`)}>{d.title}</button>)}</div>
       <Err e={err} />
       {meta && <p className="small muted" style={{ marginTop: 0 }}>{meta.blurb} Not for prospects. A snapshot of the artifact at <a href={meta.source} target="_blank" rel="noreferrer noopener">{meta.source.replace("https://", "")}</a>; ask for a refresh when it changes.</p>}
-      {missing ? <div className="empty"><b>This document is not loaded yet</b>An administrator needs to add it. It is held outside the code repository because it is internal only.</div> : src ? <iframe className="kb-frame" title={meta?.title ?? "Knowledge base"} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" /> : <p className="muted">Loading</p>}
+      {missing ? <div className="empty"><b>This document is not loaded yet</b>An administrator can upload it in Administration, Knowledge.</div> : src ? <iframe className="kb-frame" title={meta?.title ?? "Knowledge base"} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" /> : <p className="muted">Loading</p>}
     </>
   );
 }

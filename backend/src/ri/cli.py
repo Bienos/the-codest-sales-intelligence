@@ -59,9 +59,21 @@ def main(argv: list[str] | None = None) -> int:
             conn.commit()
         elif a.cmd == "schedule":
             from .scheduler import run_maintenance, schedule_due
+            from .heartbeat import beat
             from .scheduler import schedule_discovery
-            print({"enqueued": schedule_due(conn), "discovery": schedule_discovery(conn, enabled=bool(s.exa_api_key and s.exa_monthly_cap_usd > 0)), **run_maintenance(conn)})
+            res = {"enqueued": schedule_due(conn), "discovery": schedule_discovery(conn, enabled=bool(s.exa_api_key and s.exa_monthly_cap_usd > 0)), **run_maintenance(conn)}
             conn.commit()
+            if s.slack_webhook_url and os.environ.get("RI_BASE_URL") and os.environ.get("RI_LINK_SECRET"):     # the digest dedupes by material change, so calling it each tick is safe
+                try:
+                    from .notify.digest import SlackWebhookSink, send_digest
+                    res["digest"] = send_digest(conn, SlackWebhookSink(s.slack_webhook_url), base_url=os.environ["RI_BASE_URL"], secret=os.environ["RI_LINK_SECRET"])
+                    conn.commit()
+                except Exception as exc:  # noqa: BLE001  (a notification failure must never stop scheduling)
+                    conn.rollback()
+                    res["digest_error"] = f"{type(exc).__name__}: {exc}"[:200]
+            beat(conn, "scheduler", {k: v for k, v in res.items() if isinstance(v, (int, str, bool))})
+            conn.commit()
+            print(res)
         elif a.cmd == "worker":
             import httpx
             from .jobs.handlers import build_handlers
@@ -113,9 +125,17 @@ def main(argv: list[str] | None = None) -> int:
                         "max_new_requests": s.discovery_max_new_requests_per_run, "interval_days": s.discovery_interval_days, "est_cost": s.exa_est_cost_per_search}
             handlers = build_handlers(connector_factory=factory, extractor_factory=extractor_factory, resolve_org_factory=resolve_factory,
                                       fetch_factory=lambda: sync_fetch(lambda: None), discovery_factory=discovery_factory)
+            from .heartbeat import beat
             print("worker started; polling queue")
+            last_beat, done = 0.0, 0
             while True:
-                if run_one(conn, f"worker-{time.time_ns()}", handlers) is None:
+                r = run_one(conn, f"worker-{time.time_ns()}", handlers)
+                done += r is not None
+                if time.time() - last_beat > 60:
+                    beat(conn, "worker", {"jobs_since_start": done})
+                    conn.commit()
+                    last_beat = time.time()
+                if r is None:
                     time.sleep(5)
         elif a.cmd == "digest":
             from .notify.digest import SlackWebhookSink, send_digest

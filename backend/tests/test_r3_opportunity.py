@@ -89,7 +89,7 @@ def test_score_is_rule_based_bounded_and_not_a_probability(conn, env):
 
 
 def test_icp_boundary_estimate_is_penalised_and_flagged(conn, env):
-    conn.execute("update organizations set employees_estimate=498, employees_basis='provider_estimate', employees_uncertain=true where id=%s", (env["bank"],))
+    conn.execute("update organizations set employees_estimate=498, employees_basis='provider_estimate', employees_uncertain=true, segment='Payments software' where id=%s", (env["bank"],))
     ini, hyps = make_hyp(conn, env)
     out = engine.evaluate(conn, hyps["prime_subcontract"], now=NOW)
     assert out["gates"]["G1"]["status"] == "unknown"
@@ -122,7 +122,7 @@ def test_ownership_conflict_routes_to_owner_and_never_outreach(conn, env):
     ini, hyps = make_hyp(conn, env, crm=True, owner=555)
     out = engine.evaluate(conn, hyps["prime_subcontract"], now=NOW, requester_crm_user=777)      # requester is not the owner
     assert out["priority"] == "blocked" and out["action"] == "route_to_owner"
-    act = conn.execute("select owner_id, action_type from recommended_actions where status='proposed'").fetchone()
+    act = conn.execute("select owner_id, action_type from recommended_actions where status='proposed' and hypothesis_id=%s", (hyps["prime_subcontract"],)).fetchone()
     assert act["owner_id"] == 555
     # the owner themselves is not blocked by the ownership gate
     out2 = engine.evaluate(conn, hyps["prime_subcontract"], now=NOW, requester_crm_user=555)
@@ -223,7 +223,8 @@ def test_reevaluate_on_initiative_revision_supersedes_stale_conclusion(conn, env
     engine.evaluate(conn, h, now=NOW)
     a1 = conn.execute("select id, action_type from recommended_actions where hypothesis_id=%s and status='proposed'", (h,)).fetchone()
     finish_event(conn, mk_event(conn, env, env["bank"], "programme_completed", {"programme_domain": "core_banking", "programme_status": "completed", "programme_name": "Atlas"}, days_ago=1), now=NOW)
-    assert engine.evaluate_stale(conn, NOW) >= 1
+    # the pipeline now re-evaluates the moment the programme moves, so nothing is left stale for the sweep
+    assert engine.evaluate_stale(conn, NOW) == 0
     a2 = conn.execute("select action_type from recommended_actions where hypothesis_id=%s and status='proposed'", (h,)).fetchone()
     assert a2["action_type"] == "monitor" and a1["action_type"] != "monitor"
     assert conn.execute("select status from recommended_actions where id=%s", (a1["id"],)).fetchone()["status"] == "superseded"
@@ -422,3 +423,32 @@ def test_verified_programme_without_demand_or_route_footing_is_never_high(conn, 
     # a live official tender provides explicit demand => may rank high/urgent
     t = tender_chain(conn, env, NOW + timedelta(days=40))
     assert engine.evaluate(conn, t, now=NOW)["priority"] in {"high", "urgent", "medium"}
+
+
+def test_sweep_still_catches_a_programme_revised_outside_the_pipeline(conn, env):
+    ini, hyps = make_hyp(conn, env)
+    h = hyps["direct"]
+    engine.evaluate(conn, h, now=NOW)
+    conn.execute("update initiatives set revision = revision + 1 where id=%s", (ini,))      # e.g. an analyst edit
+    assert engine.evaluate_stale(conn, NOW) >= 1
+    assert engine.evaluate_stale(conn, NOW) == 0
+
+
+def test_verified_event_becomes_an_opportunity_automatically_and_maintenance_is_a_safety_net(conn, env):
+    from ri.scheduler import run_maintenance
+    e1 = mk_event(conn, env, env["bank"], "vendor_selected", {**CORE, "counterparty_selected": True, "programme_name": "Atlas"}, [OTHERS[0]])
+    out = finish_event(conn, e1, now=NOW)
+    assert out["initiative_id"] and out["hypotheses"]                                      # no manual build step
+    n = conn.execute("select count(*) c from opportunity_hypotheses where last_checked_at is not null").fetchone()["c"]
+    assert n >= 1
+    conn.execute("TRUNCATE recommended_actions, opportunity_transitions, hypothesis_seen, hypothesis_user_state, opportunity_hypotheses CASCADE")
+    m = run_maintenance(conn, NOW)                                                          # a run that was interrupted is repaired by the scheduler
+    assert m["hypotheses_built"] >= 1
+    assert conn.execute("select count(*) c from opportunity_hypotheses").fetchone()["c"] >= 1
+
+
+def test_a_small_bank_fails_the_icp_gate_until_an_exception_is_approved(conn, env):
+    conn.execute("update organizations set employees_estimate=2500, employees_uncertain=false, segment='Retail bank' where id=%s", (env["bank"],))
+    ini, hyps = make_hyp(conn, env)
+    out = engine.evaluate(conn, hyps["prime_subcontract"], now=NOW)
+    assert out["gates"]["G1"]["status"] == "fail" and "bank below the 5,000" in out["gates"]["G1"]["reason"] and "approved exception" in out["gates"]["G1"]["reason"]

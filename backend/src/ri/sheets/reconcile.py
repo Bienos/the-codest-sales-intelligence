@@ -4,6 +4,8 @@ Never writes to the source sheets. Never overwrites CRM-owned facts. Idempotent:
 """
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,10 +37,36 @@ class Counters:
         return self.__dict__.copy()
 
 
-def icp_band(employees: int | None, uncertain: bool) -> dict[str, Any]:
-    """Internal ICP baseline (master §2). Estimates near a threshold are flagged, never silently rounded."""
+CORE_MARKETS = {"GB", "DE", "AT", "CH", "SE", "NO", "DK", "FI", "IS"}      # UK, DACH, Nordics
+VENDOR_WORDS = re.compile(r"software house|outsourc|nearshore|offshore|it services|it consult|digital agency|dev shop", re.I)
+
+
+def is_bank(segment: str | None) -> bool:
+    return bool(segment and re.search(r"\bbank", segment, re.I))
+
+
+def market_focus(country: str | None, segment: str | None) -> dict[str, str]:
+    """Sales field guide: main markets are DACH, Nordics and the UK, plus Poland for banks; the US is a backup pool only."""
+    c = (country or "").upper()
+    if not c:
+        return {"fit": "unknown", "label": "Country unknown"}
+    if c in CORE_MARKETS:
+        return {"fit": "core", "label": "Main market"}
+    if c == "PL":
+        return {"fit": "core", "label": "Main market (Poland, banks)"} if is_bank(segment) else {"fit": "outside", "label": "Poland is a bank-only market"}
+    if c == "US":
+        return {"fit": "backup", "label": "Backup pool only (US)"}
+    return {"fit": "outside", "label": "Outside the main markets"}
+
+
+def icp_band(employees: int | None, uncertain: bool, segment: str | None = None) -> dict[str, Any]:
+    """Internal ICP baseline (master §2 and the ICP map): banks 5,000+, enterprises 1,000+, scale-ups 500+. Smaller only by approved exception.
+    Estimates near a threshold are flagged, never silently rounded."""
     if employees is None:
         return {"band": "unknown", "boundary_uncertain": False}
+    if is_bank(segment) and employees < ICP_STRATEGIC:
+        near_bank = bool(uncertain and abs(employees - ICP_STRATEGIC) <= max(25, 0.1 * ICP_STRATEGIC))
+        return {"band": "below_threshold", "boundary_uncertain": near_bank, "reason": "bank below the 5,000 employee threshold"}
     if employees >= ICP_STRATEGIC:
         band = "strategic_5000_plus"
     elif employees >= ICP_ENTERPRISE:

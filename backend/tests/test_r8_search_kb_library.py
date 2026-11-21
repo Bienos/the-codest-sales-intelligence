@@ -129,7 +129,6 @@ def test_kb_files_are_not_public_static_files(tmp_path):
 def test_missing_kb_files_are_a_normal_state(api, tmp_path, monkeypatch):
     c, h, _, _ = api
     monkeypatch.setattr(kb, "KB_DIR", tmp_path)
-    kb.chunks.cache_clear()
     try:
         items = c.get("/api/kb", headers=h("bdm")).json()["items"]
         assert items and not any(i["available"] for i in items)
@@ -138,4 +137,69 @@ def test_missing_kb_files_are_a_normal_state(api, tmp_path, monkeypatch):
         assert not any(g["key"] == "kb" for g in c.get("/api/search?q=procurement sponsor", headers=h("bdm")).json()["groups"])
     finally:
         monkeypatch.undo()
-        kb.chunks.cache_clear()
+    
+
+# ---------------------------------------------------------------- database-backed knowledge base and the autonomy status
+def test_admin_uploads_kb_documents_to_the_database_and_they_are_served_and_searchable(api, conn, tmp_path, monkeypatch):
+    c, h, _, _ = api
+    monkeypatch.setattr(kb, "KB_DIR", tmp_path)                     # no repository copy at all: the database is the only source
+    html = "<!doctype html><html><head><title>t</title></head><body><h1>Field guide</h1><p>Zebrafish alignment is our unique keyword sentence.</p></body></html>"
+    assert c.post("/api/admin/kb/icp", headers=h("bdm"), files={"file": ("a.html", html)}).status_code == 403
+    assert c.post("/api/admin/kb/nope", headers=h("admin"), files={"file": ("a.html", html)}).status_code == 404
+    assert c.post("/api/admin/kb/icp", headers=h("admin"), files={"file": ("a.html", "just text")}).status_code == 400
+    assert c.post("/api/admin/kb/icp", headers=h("admin"), files={"file": ("a.html", b"\xff\xfe<html>")}).status_code == 400
+    assert c.post("/api/admin/kb/icp", headers=h("admin"), files={"file": ("a.html", "<html>" + "x" * 2_600_000)}).status_code == 400
+    r = c.post("/api/admin/kb/icp", headers=h("admin"), files={"file": ("a.html", html)})
+    assert r.status_code == 200 and r.json()["bytes"] == len(html)
+    items = {i["id"]: i for i in c.get("/api/kb", headers=h("bdm")).json()["items"]}
+    assert items["icp"]["available"] and items["icp"]["meta"]["uploaded_by"] == "admin@x" and not items["field-guide"]["available"]
+    link = c.post("/api/kb/icp/link", headers=h("bdm")).json()["url"]
+    assert "Zebrafish" in c.get(link).text
+    d = c.get("/api/search?q=zebrafish alignment", headers=h("bdm")).json()
+    assert any(g["key"] == "kb" for g in d["groups"])
+    html2 = html.replace("Zebrafish", "Narwhal")                       # replacing a document refreshes the search index
+    c.post("/api/admin/kb/icp", headers=h("admin"), files={"file": ("a.html", html2)})
+    assert not any(g["key"] == "kb" for g in c.get("/api/search?q=zebrafish alignment", headers=h("bdm")).json()["groups"])
+    assert any(g["key"] == "kb" for g in c.get("/api/search?q=narwhal alignment", headers=h("bdm")).json()["groups"])
+    assert conn.execute("select count(*) c from audit_events where operation='kb_upload'").fetchone()["c"] >= 2
+
+
+def test_pipeline_status_tells_the_truth_about_what_runs_by_itself(api, conn):
+    from ri.heartbeat import beat
+    c, h, _, _ = api
+    assert c.get("/api/admin/pipeline", headers=h("bdm")).status_code == 403
+    d = c.get("/api/admin/pipeline", headers=h("admin")).json()
+    st = {s["key"]: s for s in d["stages"]}
+    assert st["scheduler"]["state"] == "never" and st["worker"]["state"] == "never"
+    assert st["sheets"]["mode"] == "manual" and st["pipedrive"]["mode"] == "off" and st["digest"]["state"] == "off"
+    assert any("worker" in n.lower() for n in d["next_steps"]) and any("activate" in n.lower() for n in d["next_steps"])
+    beat(conn, "scheduler", {"enqueued": 2})
+    beat(conn, "worker", {})
+    conn.commit()
+    st = {s["key"]: s for s in c.get("/api/admin/pipeline", headers=h("admin")).json()["stages"]}
+    assert st["scheduler"]["state"] == "ok" and st["worker"]["state"] == "ok"
+    conn.execute("update system_heartbeats set at = now() - interval '2 hours' where component='worker'")
+    conn.commit()
+    assert {s["key"]: s for s in c.get("/api/admin/pipeline", headers=h("admin")).json()["stages"]}["worker"]["state"] == "stale"
+
+
+# ---------------------------------------------------------------- ICP map rules reflected in the platform
+def test_bank_size_rule_and_market_focus_follow_the_icp_map():
+    from ri.sheets.reconcile import icp_band, market_focus, VENDOR_WORDS
+    assert icp_band(6000, False, "Banking")["band"] == "strategic_5000_plus"
+    b = icp_band(2500, False, "Retail bank")                       # banks need 5,000+: smaller only by approved exception
+    assert b["band"] == "below_threshold" and "bank" in b["reason"]
+    assert icp_band(2500, False, "Payments software")["band"] == "enterprise_1000_plus"      # non-banks keep the 1,000 / 500 ladder
+    assert icp_band(700, False, None)["band"] == "scaleup_500_999" and icp_band(300, False, "SaaS")["band"] == "below_threshold"
+    assert market_focus("GB", "Banking")["fit"] == "core" and market_focus("SE", None)["fit"] == "core"
+    assert market_focus("PL", "Bank")["fit"] == "core" and market_focus("PL", "Retail")["fit"] == "outside"      # Poland is bank-only
+    assert market_focus("US", "Banking")["fit"] == "backup" and market_focus("NL", None)["fit"] == "outside" and market_focus(None, None)["fit"] == "unknown"
+    assert VENDOR_WORDS.search("Software house and IT services") and not VENDOR_WORDS.search("Retail banking")
+
+
+def test_prospects_carry_market_and_vendor_flags(api, conn):
+    c, h, org, _ = api
+    conn.execute("update organizations set country_code='US', segment='Nearshore software house' where id=%s", (org,))
+    conn.commit()
+    it = c.get("/api/prospects", headers=h("admin")).json()["items"][0]
+    assert it["market"]["fit"] == "backup" and it["vendor_flag"] is True

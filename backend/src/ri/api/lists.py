@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from ..access import Principal, org_scope_sql
 from ..audit import audit
+from ..sheets.reconcile import VENDOR_WORDS, market_focus
 from ..db import jb, q1, qa
 from ..jobs.queue import enqueue
 from ..sheets.client import MAX_XLSX_BYTES, detect_workbook
@@ -82,7 +83,8 @@ def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int) -> list[
         if cur and cur["lane"] == "shortlist":      # curated shortlist wins over the generic master row
             continue
         by_org[oid] = {"organization": {"id": oid, "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"]},
-                       "has_opportunity": bool(r["opps"]), **it}
+                       "has_opportunity": bool(r["opps"]), "market": market_focus(r["country_code"], r["segment"]),
+                       "vendor_flag": bool(r["segment"] and VENDOR_WORDS.search(r["segment"])), **it}
     items = [i for i in by_org.values() if lane == "all" or i["lane"] == lane]
     items.sort(key=lambda i: (i["lane"] != "shortlist", i["rank"] if i["rank"] is not None else 999,
                               _PRIORITY.get(str(i["priority"] or "").lower(), 3), -(i["score"] or 0)))

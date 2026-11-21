@@ -242,3 +242,28 @@ def test_discovery_checks_leave_the_last_30_percent_of_model_budget_for_sellers(
     budget.set_cap(conn, "anthropic", "monthly", usage.period_now(), 1_000_000, "tokens")
     conn.commit()
     assert run_verification(conn, mine, fetch=lambda u: page(url="https://d.invalid/2"), extractor=BudgetedExtractor(FakeInner(), conn))["status"] == "verified"
+
+
+class ProgrammeInner(FakeInner):
+    """A model reply describing a real-looking programme, so the whole chain can run: page -> event -> signal -> programme -> opportunity -> Today."""
+    async def extract(self, *, title, text, published_at):
+        out = await super().extract(title=title, text=text, published_at=published_at)
+        out["events"][0]["attrs"] = {"programme_domain": "core_banking", "programme_name": "Atlas", "named_systems": ["Synthetic Core"], "has_dated_milestones": True,
+                                     "programme_status": "implementation", "counterparty_selected": True}
+        out["events"][0]["other_entities"] = [{"name": "Synthetic Platform Vendor", "role": "vendor"}, {"name": "Synthetic Integrator", "role": "si"}]
+        return out
+
+
+def test_end_to_end_verified_page_reaches_a_sellers_today_screen(api, conn):
+    c, h, w = api
+    r = c.post("/api/prospects/verify", headers=h("bdm"), json={"organization_id": w["org"]}).json()
+    assert r["status"] == "queued"
+    handlers = build_handlers(connector_factory=lambda s: None, extractor_factory=lambda cn: BudgetedExtractor(ProgrammeInner(), cn), fetch_factory=lambda: (lambda u: page()))
+    assert run_one(conn, "w", handlers) == "completed"
+    assert conn.execute("select count(*) c from events").fetchone()["c"] == 1
+    assert conn.execute("select count(*) c from initiatives").fetchone()["c"] >= 1                    # programme formed
+    assert conn.execute("select count(*) c from opportunity_hypotheses where last_checked_at is not null").fetchone()["c"] >= 1   # opportunity built and scored with no manual step
+    today = c.get("/api/today", headers=h("bdm")).json()
+    cards = [x for sec in today["sections"].values() for x in sec]
+    assert cards and cards[0]["account"]["name"].startswith("Synthetic Example Bank")
+    assert cards[0]["external_demand_status"] in {"unknown", "inferred", "explicit"} and cards[0]["next_action"]

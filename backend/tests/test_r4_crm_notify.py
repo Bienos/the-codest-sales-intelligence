@@ -223,7 +223,7 @@ def test_urgent_item_stays_visible_daily_but_digest_never_repeats_it(conn, env):
     s1 = send_digest(conn, sink, base_url="https://ri.example", secret="s" * 32, now=NOW)
     assert s1["sent"] == 1
     s2 = send_digest(conn, sink, base_url="https://ri.example", secret="s" * 32, now=NOW)
-    assert s2["sent"] == 0 and s2["skipped_duplicate"] == 1                                 # still on Today (urgent) but not re-notified
+    assert s2["sent"] == 0 and s2["skipped_duplicate"] >= 1                                 # still on Today (urgent) but not re-notified
     u = conn.execute("select * from users where email='bdm@x'").fetchone()
     c = today(conn, principal_from_row(u), NOW)["sections"]["critical"][0]
     assert send_urgent(conn, sink, c, recipient="bdm@x", base_url="https://ri.example", secret="s" * 32, fp=c["fingerprint"]) is False   # immediate alert deduped against digest

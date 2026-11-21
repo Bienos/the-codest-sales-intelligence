@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+import hashlib
+
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
 from .. import kb
@@ -51,10 +53,11 @@ def register(app: FastAPI) -> None:
                 nm, nmp = all_like("o.display_name", toks)
                 tx_, txp = all_like("r.original::text", toks)
                 rows = qa(conn,
-                    f"SELECT o.id, o.display_name, o.country_code, o.segment, (SELECT r.original FROM legacy_account_research r WHERE r.organization_id=o.id AND {tx_} "   # noqa: S608
-                    f"ORDER BY (r.kind='priority_outreach') DESC LIMIT 1) AS hit FROM organizations o WHERE ({where}) AND (({nm}) OR EXISTS (SELECT 1 FROM legacy_account_research r "
-                    f"WHERE r.organization_id=o.id AND {tx_})) ORDER BY ({nm}) DESC, o.in_master_list DESC, o.display_name LIMIT 25",
-                    [*txp, *params, *nmp, *txp, *nmp])
+                    f"WITH hits AS (SELECT DISTINCT ON (r.organization_id) r.organization_id, r.original FROM legacy_account_research r WHERE {tx_} "     # noqa: S608
+                    f"ORDER BY r.organization_id, (r.kind='priority_outreach') DESC) "
+                    f"SELECT o.id, o.display_name, o.country_code, o.segment, h.original AS hit FROM organizations o LEFT JOIN hits h ON h.organization_id=o.id "
+                    f"WHERE ({where}) AND (h.organization_id IS NOT NULL OR ({nm})) ORDER BY (({nm})) DESC, o.in_master_list DESC, o.display_name LIMIT 25",
+                    [*txp, *params, *nmp, *nmp])
                 items = []
                 for r in rows:
                     o = r["hit"] or {}
@@ -79,8 +82,8 @@ def register(app: FastAPI) -> None:
             groups.append({"key": "signals", "label": "Signals (the 64 rules)", "items": [{"title": f"{s['rule_id']}  {s['signal']}", "meta": f"{s['grp']} · strength {s['strength']}", "snippet": snippet(" ".join(filter(None, [s["how_to_spot"], s["who_to_contact"], s["check_it_is_real"]])), toks), "link": "/library?tab=signals&q=" + toks[0]} for s in sigs]})
             sw, sp_ = all_like("(s.display_name || ' ' || coalesce(s.provider,'') || ' ' || coalesce(s.canonical_domain,'') || ' ' || s.source_id || ' ' || coalesce(s.config->>'url','') || ' ' || array_to_string(s.signal_rule_ids,' ') || ' ' || coalesce(s.licence_notes,''))", toks)
             srcs = qa(conn, f"SELECT s.source_id, s.display_name, s.source_tier, s.status, s.config->>'url' AS url, s.canonical_domain FROM sources s WHERE {sw} ORDER BY s.source_tier, s.display_name LIMIT 15", sp_)    # noqa: S608
+            kbh = kb.search(toks, conn=conn)
             groups.append({"key": "sources", "label": "Sources, URLs and feeds", "items": [{"title": s["display_name"], "meta": f"{s['source_tier']} · {s['status']}", "snippet": s["url"] or s["canonical_domain"] or "", "link": "/library?tab=sources&q=" + toks[0]} for s in srcs]})
-        kbh = kb.search(toks)
         groups.append({"key": "kb", "label": "Knowledge base", "items": [{"title": h["doc_title"], "meta": "", "snippet": snippet(h["text"], toks, 260), "link": f"/knowledge/{h['doc']}"} for h in kbh]})
         groups = [g for g in groups if g["items"]]
         return {"query": q, "groups": groups, "total": sum(len(g["items"]) for g in groups)}
@@ -121,17 +124,51 @@ def register(app: FastAPI) -> None:
 
     # ------------------------------------------------------------ knowledge base (signed, short-lived links)
     @app.get("/api/kb")
-    def kb_list(p: Principal = Depends(require("today.read"))):
-        return {"items": [{"id": k, "title": v["title"], "blurb": v["blurb"], "source": v["source"], "available": kb.available(k)} for k, v in kb.DOCS.items()]}
+    def kb_list(request: Request, p: Principal = Depends(require("today.read"))):
+        with tx(request) as conn:
+            return {"items": [{"id": k, "title": v["title"], "blurb": v["blurb"], "source": v["source"], "available": kb.available(k, conn), "meta": kb.stored(conn, k)} for k, v in kb.DOCS.items()]}
 
     @app.post("/api/kb/{doc_id}/link")
     def kb_link(doc_id: str, request: Request, p: Principal = Depends(require("today.read"))):
-        if not kb.available(doc_id):
+        with tx(request) as conn:
+            ok = kb.available(doc_id, conn)
+        if not ok:
             raise HTTPException(404, "document not loaded")
         return {"url": f"/kb/view/{doc_id}?t=" + kb.sign_link(request.app.state.settings.database_url, doc_id, p.user_id), "expires_in": kb.LINK_TTL_S}
 
     @app.get("/kb/view/{doc_id}", response_class=HTMLResponse, include_in_schema=False)
     def kb_view(doc_id: str, t: str, request: Request):
-        if not kb.available(doc_id) or not kb.verify_link(request.app.state.settings.database_url, t, doc_id):
+        with tx(request) as conn:
+            ok = kb.available(doc_id, conn)
+            doc = kb.read_doc(doc_id, conn) if ok else ""
+        if not ok or not kb.verify_link(request.app.state.settings.database_url, t, doc_id):
             raise HTTPException(404, "not found")
-        return HTMLResponse(kb.read_doc(doc_id), headers={"Content-Security-Policy": kb.KB_CSP, "X-Frame-Options": "SAMEORIGIN", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+        return HTMLResponse(doc, headers={"Content-Security-Policy": kb.KB_CSP, "X-Frame-Options": "SAMEORIGIN", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+
+
+def register_kb_admin(app: FastAPI) -> None:
+    from ..audit import audit
+
+    def tx(request: Request):
+        return request.app.state.db.tx()
+
+    @app.post("/api/admin/kb/{doc_id}")
+    async def kb_upload(doc_id: str, request: Request, file: UploadFile = File(...), p: Principal = Depends(require("admin.sources"))):
+        if doc_id not in kb.DOCS:
+            raise HTTPException(404, "unknown document")
+        raw = await file.read(2_500_001)
+        if len(raw) > 2_500_000:
+            raise HTTPException(400, "file is larger than 2.5 MB")
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(400, "file must be UTF-8 HTML") from exc
+        if "<html" not in text[:2000].lower() and "<!doctype html" not in text[:200].lower():
+            raise HTTPException(400, "this does not look like an HTML document")
+        sha = hashlib.sha256(raw).hexdigest()
+        with tx(request) as conn:
+            conn.execute("INSERT INTO kb_documents(doc_id, html, sha256, size_bytes, uploaded_by) VALUES (%s,%s,%s,%s,%s) "
+                         "ON CONFLICT (doc_id) DO UPDATE SET html=EXCLUDED.html, sha256=EXCLUDED.sha256, size_bytes=EXCLUDED.size_bytes, uploaded_by=EXCLUDED.uploaded_by, uploaded_at=now()",
+                         (doc_id, text, sha, len(raw), p.email))
+            audit(conn, actor=p.email, operation="kb_upload", record_type="kb_document", record_id=doc_id, detail={"bytes": len(raw), "sha256": sha})
+        return {"doc_id": doc_id, "bytes": len(raw), "sha256": sha}

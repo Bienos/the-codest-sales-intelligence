@@ -96,13 +96,13 @@ def evidence_confidence(f: Facts, conn: Conn) -> str:
 
 def compute_gates(f: Facts) -> dict[str, dict[str, Any]]:
     g: dict[str, dict[str, Any]] = {}
-    icp = icp_band(f.org["employees_estimate"], bool(f.org["employees_uncertain"]))
+    icp = icp_band(f.org["employees_estimate"], bool(f.org["employees_uncertain"]), f.org.get("segment"))
     if f.open_identity_review:
         g["G1"] = {"status": "unknown", "reason": "identity review open"}
     elif icp["band"] == "unknown" or icp["boundary_uncertain"]:
         g["G1"] = {"status": "unknown", "reason": "size unknown or estimate straddles an ICP boundary"}
     elif icp["band"] == "below_threshold":
-        g["G1"] = {"status": "fail", "reason": "below ICP size threshold (exception needs explicit rationale)"}
+        g["G1"] = {"status": "fail", "reason": (icp.get("reason") or "below ICP size threshold") + " (smaller only by approved exception, with a written rationale)"}
     else:
         g["G1"] = {"status": "pass", "reason": f"ICP band {icp['band']}"}
     st = f.initiative["stage"]
@@ -158,7 +158,7 @@ def compute_blockers(f: Facts, conn: Conn) -> list[dict[str, str]]:
 
 def score(f: Facts, gates: dict[str, Any], status_demand: str) -> tuple[dict[str, dict[str, Any]], int]:
     s: dict[str, dict[str, Any]] = {}
-    icp = icp_band(f.org["employees_estimate"], bool(f.org["employees_uncertain"]))
+    icp = icp_band(f.org["employees_estimate"], bool(f.org["employees_uncertain"]), f.org.get("segment"))
     base = {"strategic_5000_plus": 15, "enterprise_1000_plus": 12, "scaleup_500_999": 9, "unknown": 4, "below_threshold": 0}[icp["band"]]
     s["icp"] = {"points": max(base - (3 if icp["boundary_uncertain"] else 0), 0), "max": 15, "why": f"{icp['band']}" + (" (boundary uncertain, -3)" if icp["boundary_uncertain"] else "")}
     fit = [w for w in f.workstreams if set(w["needed_capabilities"]) & CAPS]

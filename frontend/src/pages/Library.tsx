@@ -38,7 +38,7 @@ export default function Library({ render, query, canSetup = true }: { render: (s
                 <dt>Licence</dt><dd className="small">{s.licence_notes ?? humanize(s.retention_policy)}</dd>
                 {s.url && <><dt>Page</dt><dd className="small"><a href={s.url} target="_blank" rel="noreferrer noopener">{s.url.replace(/^https?:\/\//, "").slice(0, 52)} ↗</a></dd></>}
               </dl>
-              {canSetup && ["feed", "change_monitor"].includes(s.collection_method) && <button className="ghost" aria-expanded={open === s.source_id} onClick={() => setOpen(open === s.source_id ? null : s.source_id)}>{open === s.source_id ? "Close setup" : s.url ? "Manage" : "Set up"}</button>}
+              {canSetup && s.canonical_domain && ["feed", "change_monitor"].includes(s.collection_method) && <button className="ghost" aria-expanded={open === s.source_id} onClick={() => setOpen(open === s.source_id ? null : s.source_id)}>{open === s.source_id ? "Close setup" : s.url ? "Manage" : "Set up"}</button>}
               {open === s.source_id && <div style={{ marginTop: 10 }}>{render(s, load)}</div>}
             </article>))}</div>
         </section>))}

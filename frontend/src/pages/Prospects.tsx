@@ -63,6 +63,8 @@ export default function Prospects() {
                 <div className="row">
                   {it.score !== null && <Badge kind={it.score >= 80 ? "ok" : "info"}>Sheet score {it.score}</Badge>}
                   {it.confidence && <Badge>{String(it.confidence).split("(")[0].trim()} confidence</Badge>}
+                  {it.market && it.market.fit !== "core" && <Badge kind={it.market.fit === "backup" ? "warn" : ""}>{it.market.label}</Badge>}
+                  {it.vendor_flag && <Badge kind="warn">Possible software vendor: partner route only</Badge>}
                 </div>
               </div>
               <p className="pro-signal">{it.signal}</p>
