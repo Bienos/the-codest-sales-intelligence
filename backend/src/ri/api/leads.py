@@ -34,9 +34,10 @@ def _rows(conn, p: Principal, q: str) -> list[dict[str, Any]]:
     rows = qa(conn,
         f"SELECT o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.entity_type, "      # noqa: S608
         f"o.created_at, s.score, s.band, s.groups, s.signal_count, s.stopped, s.last_signal_at, s.top, c.status AS candidate_status, c.icp_note, "
-        f"EXISTS (SELECT 1 FROM legacy_account_research r WHERE r.organization_id=o.id AND r.kind='priority_outreach') AS shortlist "
+        f"EXISTS (SELECT 1 FROM legacy_account_research r WHERE r.organization_id=o.id AND r.kind='priority_outreach') AS shortlist, "
+        f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
         f"FROM organizations o LEFT JOIN account_scores s ON s.organization_id=o.id LEFT JOIN new_company_candidates c ON c.organization_id=o.id "
-        f"WHERE ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%' OR o.canonical_domain ILIKE '%%'||%s||'%%')", [*params, q, q, q])
+        f"WHERE ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%' OR o.canonical_domain ILIKE '%%'||%s||'%%')", [p.email, *params, q, q, q])
     out = []
     for r in rows:
         icp = icp_band(r["employees"], bool(r["employees_uncertain"]), r["segment"])
@@ -45,7 +46,7 @@ def _rows(conn, p: Principal, q: str) -> list[dict[str, Any]]:
     return out
 
 
-def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public):
+def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public, watched=False):
     now = datetime.now(timezone.utc)
     cut = now - timedelta(days=signal_days) if signal_days else None
     out = []
@@ -63,6 +64,8 @@ def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist,
         if cut and not (r["last_signal_at"] and r["last_signal_at"] >= cut):
             continue
         if shortlist and not r["shortlist"]:
+            continue
+        if watched and not r["watched"]:
             continue
         if not public and (r["entity_type"] == "public_body" or r["candidate_status"] == "rejected"):
             continue
@@ -92,16 +95,16 @@ def register_leads(app: FastAPI) -> None:
 
     Params = dict(q=Query("", max_length=120), region=Query("", pattern="^(|uk|dach|nordics|poland|europe|us|other|unknown)$"),
                   icp=Query("", max_length=40), segment=Query("", max_length=60), band=Query("", pattern="^(|hot|warm|watch|none)$"),
-                  origin=Query("", pattern="^(|list|added|discovered)$"), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False),
+                  origin=Query("", pattern="^(|list|added|discovered)$"), watched=Query(False), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False),
                   sort=Query("score", pattern="^(score|name|size|recent)$"))
 
     @app.get("/api/leads")
     def leads(request: Request, page: int = Query(1, ge=1), size: int = Query(50, ge=10, le=200), q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"],
               segment: str = Params["segment"], band: str = Params["band"], origin: str = Params["origin"], signal_days: int = Params["signal_days"],
-              shortlist: bool = Params["shortlist"], public: bool = Params["public"], sort: str = Params["sort"], p: Principal = Depends(require("accounts.read"))):
+              shortlist: bool = Params["shortlist"], public: bool = Params["public"], watched: bool = Params["watched"], sort: str = Params["sort"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             allrows = _rows(conn, p, q)
-        rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public)
+        rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched)
         rows.sort(key=SORTS[sort])
         total = len(rows)
         items = rows[(page - 1) * size: page * size]
@@ -153,3 +156,23 @@ def register_leads(app: FastAPI) -> None:
                 audit(conn, actor=p.email, operation="account_scan_requested", record_type="organization", record_id=oid, detail={"bulk": True})
                 n += 1
             return {"queued": n}
+
+
+    @app.post("/api/accounts/{oid}/watch")
+    def watch(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        from ..db import q1
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):      # noqa: S608
+                raise HTTPException(404, "not found")
+            if (q1(conn, "SELECT count(*) AS n FROM watchlist WHERE user_email=%s", (p.email,)) or {"n": 0})["n"] >= 100:
+                raise HTTPException(429, "You can watch up to 100 accounts. Remove one first.")
+            conn.execute("INSERT INTO watchlist(organization_id, user_email) VALUES (%s,%s) ON CONFLICT DO NOTHING", (oid, p.email))
+            audit(conn, actor=p.email, operation="watch_added", record_type="organization", record_id=oid, detail={})
+            return {"watched": True}
+
+    @app.delete("/api/accounts/{oid}/watch")
+    def unwatch(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        with tx(request) as conn:
+            conn.execute("DELETE FROM watchlist WHERE organization_id=%s AND user_email=%s", (oid, p.email))
+            return {"watched": False}

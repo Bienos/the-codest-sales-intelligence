@@ -1,7 +1,7 @@
 """Durable scheduling (spec 13 §5). The scheduler only ENQUEUES; idempotency keys make double-scheduling and restarts harmless."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .db import Conn, qa
 from .jobs.queue import enqueue
@@ -38,6 +38,21 @@ def schedule_discovery(conn: Conn, now: datetime | None = None, *, enabled: bool
         return 0
     _, created = enqueue(conn, "discovery_run", {}, idempotency_key=f"discovery:{now.date().isoformat()}", max_attempts=2, correlation_id="sched-discovery")
     return int(created)
+
+
+def schedule_watchlist(conn: Conn, now: datetime | None = None, limit: int = 25, every_days: int = 7) -> int:
+    """Starred accounts are re-scanned weekly (their own pages only, no paid search). Idempotent per account per ISO week."""
+    now = now or datetime.now(timezone.utc)
+    rows = qa(conn, "SELECT w.organization_id FROM (SELECT DISTINCT organization_id FROM watchlist) w "
+                    "WHERE NOT EXISTS (SELECT 1 FROM account_endpoints e WHERE e.organization_id=w.organization_id AND e.last_scanned_at > %s) "
+                    "ORDER BY (SELECT min(last_scanned_at) FROM account_endpoints e WHERE e.organization_id=w.organization_id) NULLS FIRST LIMIT %s",
+              (now - timedelta(days=every_days), limit))
+    n = 0
+    wk = now.strftime("%G-W%V")
+    for r in rows:
+        _, created = enqueue(conn, "account_scan", {"organization_id": str(r["organization_id"])}, idempotency_key=f"watch-scan:{r['organization_id']}:{wk}", max_attempts=2, correlation_id="sched-watchlist")
+        n += bool(created)
+    return n
 
 
 def requeue_stuck_verifications(conn: Conn, now: datetime | None = None, minutes: int = 20) -> int:
@@ -80,6 +95,7 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
         else:
             out[name] = r
 
+    step("watchlist_scans", lambda: schedule_watchlist(conn, now))
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
+const del = (p: string) => api(p, { method: "DELETE" });
 import { Badge, Err, Evidence, humanize, priorityKind } from "../components/ui";
 
 function AddCompany({ onClose }: { onClose: () => void }) {
@@ -35,10 +36,10 @@ const BAND: Record<string, ["ok" | "warn" | "info" | "bad" | "", string]> = { ho
 const GROUP_NAME: Record<string, string> = { SRC: "route", CAP: "capacity", MAN: "leader", PRG: "programme", COM: "business event", REG: "deadline", REL: "relationship" };
 const PRESETS: [string, Record<string, string>][] = [
   ["Hot or warm", { band: "hot" }], ["UK banks and fintechs", { region: "uk" }], ["DACH", { region: "dach" }], ["Nordics", { region: "nordics" }], ["Poland", { region: "poland" }],
-  ["Signal in last 30 days", { signal_days: "30" }], ["Your shortlist", { shortlist: "true" }], ["Added by people", { origin: "added" }], ["Found by the platform", { origin: "discovered" }],
+  ["Signal in last 30 days", { signal_days: "30" }], ["Watching", { watched: "true" }], ["Your shortlist", { shortlist: "true" }], ["Added by people", { origin: "added" }], ["Found by the platform", { origin: "discovered" }],
 ];
-type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; sort: string; page: number };
-const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", sort: "score", page: 1 };
+type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; sort: string; page: number };
+const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", sort: "score", page: 1 };
 const qs = (f: Q, extra = "") => { const u = new URLSearchParams(); (Object.entries(f) as [string, any][]).forEach(([k, v]) => { if (v !== "" && v !== 1 && !(k === "sort" && v === "score")) u.set(k, String(v)); }); if (f.page > 1) u.set("page", String(f.page)); return u.toString() + extra; };
 
 export function Accounts({ me }: { me?: { permissions: string[] } }) {
@@ -51,6 +52,10 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
   const set = (k: keyof Q, v: string) => setF({ ...f, [k]: v, page: 1 });
   const preset = (p: Record<string, string>) => setF({ ...EMPTY, ...p, page: 1 });
   const toggle = (id: string) => { const n = new Set(sel); n.has(id) ? n.delete(id) : n.add(id); setSel(n); };
+  const toggleWatch = async (r: any) => {
+    setErr(null);
+    try { await (r.watched ? del(`/api/accounts/${r.id}/watch`) : post(`/api/accounts/${r.id}/watch`)); setD({ ...d, items: d.items.map((x: any) => (x.id === r.id ? { ...x, watched: !r.watched } : x)) }); } catch (e) { setErr(e); }
+  };
   const exportCsv = async () => {
     try {
       const t = sessionStorage.getItem("ri_token"); const r = await fetch(`/api/leads.csv?${qs(f)}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
@@ -84,9 +89,10 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
         <select id="lead-sort" aria-label="Sort" value={f.sort} onChange={(e) => set("sort", e.target.value)}><option value="score">Highest score</option><option value="recent">Latest signal</option><option value="size">Largest</option><option value="name">Name</option></select>
       </div>
       <Err e={err} />
-      <div className="card table-wrap flush"><table><thead><tr><th><span className="sr">Select</span></th><th>Company</th><th>Region</th><th>Size</th><th>Score</th><th>Signals</th><th>Latest</th><th>Origin</th></tr></thead><tbody>
+      <div className="card table-wrap flush"><table><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th>Score</th><th>Signals</th><th>Latest</th><th>Origin</th></tr></thead><tbody>
         {d?.items.map((r: any) => <tr key={r.id}>
           <td><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} /></td>
+          <td><button className="star" aria-pressed={r.watched} aria-label={r.watched ? `Stop watching ${r.name}` : `Watch ${r.name}`} title={r.watched ? "Watching: its site, news and jobs are re-read weekly" : "Watch: re-read its site, news and jobs weekly"} onClick={() => toggleWatch(r)}>{r.watched ? "★" : "☆"}</button></td>
           <td><Link to={`/accounts/${r.id}`}>{r.name}</Link>{r.shortlist && <> <Badge kind="ok">Shortlist</Badge></>}<div className="small muted">{r.segment ?? "Segment unknown"}{r.canonical_domain ? ` · ${r.canonical_domain}` : ""}</div></td>
           <td>{r.country_code ?? "n/a"}<div className="small muted">{d.regions.find((x: any) => x.key === r.region)?.label ?? humanize(r.region)}</div></td>
           <td>{r.employees?.toLocaleString() ?? "n/a"}{r.employees_uncertain && <> <Badge kind="warn">estimate</Badge></>}<div className="small muted">{ICP_NAMES[r.icp] ?? r.icp}</div></td>
@@ -94,7 +100,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
           <td className="small">{r.signal_count ? <>{r.signal_count} · {r.groups.map((g: string) => GROUP_NAME[g] ?? g).join(", ")}</> : <span className="muted">none yet</span>}</td>
           <td className="small">{r.last_signal_at ? fmtDate(r.last_signal_at) : <span className="muted">n/a</span>}</td>
           <td className="small">{d.origins[r.origin]}{r.candidate_status === "pending_qualification" && <div className="muted">Not yet qualified</div>}</td></tr>)}
-        {d && d.items.length === 0 && <tr><td colSpan={8} className="muted">Nothing matches these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " No companies are loaded yet: upload the workbooks or add a company." : ""}</td></tr>}</tbody></table></div>
+        {d && d.items.length === 0 && <tr><td colSpan={9} className="muted">Nothing matches these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " No companies are loaded yet: upload the workbooks or add a company." : ""}</td></tr>}</tbody></table></div>
       {d && <div className="row spread small" style={{ marginTop: 10 }}><span>{d.total.toLocaleString()} leads</span>
         <span className="row"><button disabled={f.page <= 1} onClick={() => setF({ ...f, page: f.page - 1 })}>Previous</button><span>Page {f.page} of {pages}</span><button disabled={f.page >= pages} onClick={() => setF({ ...f, page: f.page + 1 })}>Next</button></span></div>}
     </>

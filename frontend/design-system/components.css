@@ -322,3 +322,5 @@ td:nth-child(2), td:nth-child(4) { white-space: nowrap; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 @media (max-width: 1100px) { .leadbar { grid-template-columns: repeat(3, minmax(0, 1fr)); } .leadbar input { grid-column: 1 / -1; } }
 @media (max-width: 620px) { .leadbar { grid-template-columns: 1fr 1fr; } }
+
+button.star { border: 0; background: none; padding: 4px 6px; min-height: 0; font-size: 20px; line-height: 1; color: var(--navy); } button.star[aria-pressed="true"] { color: var(--pink); } button.star:hover { background: none; color: var(--pink); }

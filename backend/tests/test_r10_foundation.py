@@ -169,8 +169,10 @@ def test_one_failing_maintenance_step_is_reported_and_the_others_still_run(conn,
 
 def test_candidate_gate_keeps_commercial_buyers_and_rejects_public_bodies_events_and_regulators():
     from ri.market import candidate_ok
-    for n in ("PGE Dystrybucja S.A.", "Green Tech Valley Cluster GmbH", "Sparkasse Köln", "Nieruchomości i Opłaty Lokalne spółka z ograniczoną odpowiedzialnością"):
+    for n in ("Kallio Software Oy", "Sparkasse Köln", "LINK digital GmbH", "Raiffeisen Bank International AG", "Phoenics.IT GmbH"):
         assert candidate_ok(n, via_tender=True)[0], n
+    for n in ("PGE Dystrybucja S.A.", "ZOO WROCŁAW Sp. z o.o.", "Tramwaje Warszawskie sp. z o.o.", "LOTTO Hamburg GmbH", "NRW.BANK AöR"):
+        assert not candidate_ok(n, via_tender=True)[0], n
     for n in ("Narodowy Fundusz Zdrowia", "Försäkringskassan", "Universitätsklinikum Frankfurt", "UK SHARED BUSINESS SERVICES LIMITED", "OLG Köln", "Kammarkollegiet, egen verksamhet"):
         assert not candidate_ok(n, via_tender=True)[0], n
     assert candidate_ok("PayNow", role="fintech")[0] and not candidate_ok("Temenos AG", role="vendor")[0]
@@ -181,7 +183,7 @@ def test_candidate_gate_keeps_commercial_buyers_and_rejects_public_bodies_events
 def test_reclassify_rejects_earlier_junk_candidates_and_sets_aside_what_was_built_on_them_but_leaves_added_companies_alone(conn):
     from ri.identity.discovery import reclassify_candidates
     junk = conn.execute("insert into organizations(display_name, country_code) values ('Narodowy Fundusz Zdrowia','PL') returning id").fetchone()["id"]
-    good = conn.execute("insert into organizations(display_name, country_code) values ('PGE Dystrybucja S.A.','PL') returning id").fetchone()["id"]
+    good = conn.execute("insert into organizations(display_name, country_code) values ('Kallio Software Oy','FI') returning id").fetchone()["id"]
     mine = conn.execute("insert into organizations(display_name, canonical_domain) values ('Stiftung Meine Firma','mine.example') returning id").fetchone()["id"]
     for o, note in ((junk, "Found through a proven procurement published event. Not yet qualified."), (good, "Found through a proven procurement published event. Not yet qualified."), (mine, "Added by bdm@x. Not yet qualified.")):
         conn.execute("insert into new_company_candidates(organization_id, icp_note) values (%s,%s)", (o, note))

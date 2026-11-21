@@ -46,7 +46,7 @@ _STRONG = re.compile(
     r"fundusz|fonds|stiftung|foundation|endowment|kuratorium|studierendenwerk|studentenwerk|vergabestelle|landesamt|olg|gericht|court|staatsanwalt|\w*onkolog\w*|\w*klinikum|\w*sykehus\w*|"
     r"kantonal\w*|cantonal|service cantonal|kaupunki|kaupungin|rahasto|fjársýsla|ríkis\w*|hyvinvointialue|sairaanhoito|kela|\w*kassan|\w*kollegiet|statsforvalter\w*|stats\w*|skatte\w*|"
     r"instytut|institut|institute|politechnika|akademia|academy|muzeum|museum|biblioteka|library|inspektorat|zarząd|zakład|urząd|służba|straż|pogotowie|"
-    r"resortu|resort|bundesanstalt|landratsamt|hochschule|forschungs\w*|\w*staatsforsten|wohnhäuser|sozial\w*)\b", re.I)
+    r"resortu|resort|aör|anstalt des öffentlichen rechts|körperschaft|bundesanstalt|landratsamt|hochschule|forschungs\w*|\w*staatsforsten|wohnhäuser|sozial\w*)\b", re.I)
 _WEAK = re.compile(r"\b(department (of|for)|county|bezirk|region(en)?|college|school|schule|agency|agentur|amt|verwaltung|administration|authority|defence|defense|army|navy|centrum|centre|center|"
                    r"public (health|transport|body)|sveriges|statens|státní|bund)\b", re.I)
 # financial buyers are never public-sector noise even when the word "state" or "national" appears in the name
@@ -87,6 +87,7 @@ def region_for(country: str | None) -> str:
 _LEGAL_FORM = re.compile(r"((?<!\w)(ag|gmbh|kg|kgaa|ug|se|sa|s\.a\.|spa|s\.p\.a\.|srl|nv|bv|b\.v\.|ab|asa|as|a/s|aps|oy|oyj|plc|ltd|limited|llc|inc|corp|corporation|s\.r\.o\.|sp\. z o\.o\.)(?!\w)|spółka akcyjna|aktiengesellschaft|spółka z ograniczoną odpowiedzialnością)", re.I)
 _NOT_A_BUYER = re.compile(r"\b(festival|summit|conference|congress|expo|forum|sandbox|taskforce|task force|project|scheme|programme|initiative|week|awards?|ambassadors?|regulator|supervisor|"
                           r"unnamed|veteran card|association|council|consortium|working group|standard|framework)\b|\(unnamed", re.I)
+_TECH = re.compile(r"(?<!\w)(it|software|digital|tech\w*|data|daten|cloud|cyber|systems?|informatik\w*|informatyk\w*|edv|consulting|solutions|labs?|platform\w*|fintech|payments?)(?!\w)", re.I)
 _REGULATORS = {"bafin", "finma", "fca", "pra", "ecb", "eba", "eiopa", "esma", "bis", "sec", "finra", "bundesbank", "riksbank", "fsa"}
 
 
@@ -103,5 +104,7 @@ def candidate_ok(name: str | None, *, role: str | None = None, via_tender: bool 
     if not strict:
         return True, ""
     if via_tender:
-        return (True, "") if (_LEGAL_FORM.search(n) or _FIN.search(n)) else (False, "tender buyer without a company form")
+        if not (_LEGAL_FORM.search(n) or _FIN.search(n)):
+            return False, "tender buyer without a company form"
+        return (True, "") if (_FIN.search(n) or _TECH.search(n)) else (False, "no sign of finance or technology in the name")
     return (True, "") if role in ("bank", "fintech") else (False, f"role is {role or 'unknown'}, not a bank or fintech")

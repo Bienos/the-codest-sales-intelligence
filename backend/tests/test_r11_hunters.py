@@ -119,3 +119,20 @@ def test_bulk_scan_queues_selected_accounts_and_respects_the_daily_limit(world, 
         conn.execute("insert into audit_events(actor, operation, record_type) values ('bdm@x','account_scan_requested','organization')")
     conn.commit()
     assert c.post("/api/leads/scan", headers=h("bdm"), json={"ids": [ids["a"], ids["b"]]}).status_code == 429
+
+
+def test_watching_an_account_schedules_a_weekly_scan_once_and_shows_in_leads(world, conn):
+    from ri.scheduler import schedule_watchlist
+    c, h, ids, _ = world
+    assert c.post(f"/api/accounts/{ids['a']}/watch", headers=h("bdm")).json() == {"watched": True}
+    assert c.post(f"/api/accounts/00000000-0000-0000-0000-000000000000/watch", headers=h("bdm")).status_code == 404
+    items = {i["name"]: i["watched"] for i in c.get("/api/leads", headers=h("bdm")).json()["items"]}
+    assert items["Synthetic London Bank plc"] is True and items["Synthetic Berlin Scale-up GmbH"] is False
+    assert [i["name"] for i in c.get("/api/leads?watched=true", headers=h("bdm")).json()["items"]] == ["Synthetic London Bank plc"]
+    assert schedule_watchlist(conn) == 1 and schedule_watchlist(conn) == 0           # idempotent within the week
+    conn.execute("insert into account_endpoints(organization_id, kind, url, last_scanned_at) values (%s,'feed','https://x.invalid/f', now())", (ids["a"],))
+    conn.commit()
+    conn.execute("delete from jobs where kind='account_scan'"); conn.commit()
+    assert schedule_watchlist(conn) == 0                                              # scanned within the last 7 days: nothing to do
+    assert c.delete(f"/api/accounts/{ids['a']}/watch", headers=h("bdm")).json() == {"watched": False}
+    assert c.get("/api/leads?watched=true", headers=h("bdm")).json()["total"] == 0
