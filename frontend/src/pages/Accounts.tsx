@@ -134,7 +134,29 @@ function BriefTab({ briefs }: { briefs: any[] }) {
   );
 }
 
-function CampaignTab({ camps, canDraft, make, decide }: { camps: any; canDraft: boolean; make: (role: string) => void; decide: (id: string, d: string) => void }) {
+function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: boolean }) {
+  const [plan, setPlan] = useState<any>(null); const [sel, setSel] = useState<string[]>([]); const [en, setEn] = useState<any>({ items: [] });
+  const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null);
+  const load = () => { api(`/api/accounts/${orgId}/contacts-plan`).then(setPlan).catch(() => setPlan(null)); api(`/api/campaigns/${draft.id}/enrolments`).then(setEn).catch(() => undefined); };
+  useEffect(load, [draft.id]);
+  if (!plan) return null;
+  const toggle = (id: string) => setSel((x) => x.includes(id) ? x.filter((i) => i !== id) : [...x, id]);
+  const request = async () => { setErr(null); setMsg(""); try { const r = await post(`/api/campaigns/${draft.id}/enrol`, { person_ids: sel }); setMsg(`Approval requested for ${r.contacts} contact(s). A second person approves it under Administration, Approvals.${r.ownership_checked ? "" : " Ownership could not be checked because this account is not linked to Pipedrive yet."}`); setSel([]); load(); } catch (e) { setErr(e); } };
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <b>Send through Lemlist</b>
+      <p className="small muted" style={{ margin: "4px 0 8px" }}>Only contacts with a verified email can be used. The campaign is built in Lemlist but not launched: a person presses Launch there. {en.outbound_enabled ? "" : "Sending is switched off in this environment."}{en.lemlist_configured ? "" : " Lemlist is not connected yet."}</p>
+      {plan.eligible.length === 0 && <p className="small">No contact here has a verified email yet.</p>}
+      {plan.eligible.map((c: any) => <label key={c.id} className="row small" style={{ gap: 8, marginBottom: 4 }}><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can} /> {c.name}{c.title ? `, ${c.title}` : ""}</label>)}
+      <p className="small muted">Not usable yet: {plan.needs_verification.length} found but unverified · {plan.manual_review} need manual review · {plan.no_email} without an email · {plan.suppressed} suppressed.</p>
+      {can && <button className="primary" disabled={sel.length === 0} onClick={request}>Request approval to enrol {sel.length || ""}</button>}
+      {msg && <div className="okmsg" role="status" style={{ marginTop: 8 }}>{msg}</div>}<Err e={err} />
+      {en.items.length > 0 && <div className="table-wrap" style={{ marginTop: 10 }}><table><thead><tr><th>Contact</th><th>Status</th><th>Last event</th></tr></thead><tbody>{en.items.map((x: any) => <tr key={x.id}><td>{x.full_name ?? "Contact"}</td><td><Badge kind={x.status === "interested" ? "ok" : x.status === "unsubscribed" || x.status === "bounced" ? "bad" : "info"}>{humanize(x.status)}</Badge></td><td>{x.last_event_at ? fmtDateTime(x.last_event_at) : "No reply yet"}</td></tr>)}</tbody></table></div>}
+    </div>
+  );
+}
+
+function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; canDraft: boolean; orgId: string; make: (role: string) => void; decide: (id: string, d: string) => void }) {
   const [role, setRole] = useState("");
   const [copied, setCopied] = useState("");
   const b = camps.items[0];
@@ -162,6 +184,7 @@ function CampaignTab({ camps, canDraft, make, decide }: { camps: any; canDraft: 
             <div className="small muted" style={{ marginTop: 8 }}>Claims used: {st.claims_used.join(", ") || "none"} · built on {st.fact_refs.join(", ") || "no fact"}</div>
           </article>))}
         {canDraft && b.status === "draft" && <div className="row"><button className="primary" onClick={() => decide(b.id, "approve")}>Approve draft</button><button onClick={() => decide(b.id, "reject")}>Reject</button></div>}
+        {b.status === "approved" && <SendPanel draft={b} orgId={orgId} can={canDraft} />}
         {b.facts && Object.keys(b.facts).length > 0 && <details style={{ marginTop: 12 }}><summary>Verified facts it was built on</summary><ul className="tight small">{Object.entries(b.facts).map(([k, v]: any) => <li key={k}><b>{k}</b> {v}</li>)}</ul></details>}
       </>}
     </div>
@@ -228,7 +251,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       {tab === "Access & CRM" && <div className="card"><p>{d.crm ? <>Linked to Pipedrive organisation {d.crm.crm_id}; open deals {d.crm.open_deals_count ?? "?"}; mirror synced {fmtDateTime(d.crm.synced_at)}. Pipedrive remains the source of truth for owner and deal stage.</> : "Not linked to Pipedrive · ownership cannot be checked, so outreach and CRM proposals are disabled for this account."}</p>
         <h3>Master-list source rows</h3><ul className="tight small">{d.source_rows.map((r: any, i: number) => <li key={i}>{r.sheet_title} (row {r.row_number}, workbook …{r.source_file_id.slice(-6)})</li>)}</ul></div>}
       {tab === "Research brief" && <BriefTab briefs={briefs} />}
-      {tab === "Outreach drafts" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} make={makeCampaign} decide={decideCampaign} />}
+      {tab === "Outreach drafts" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={String(id)} make={makeCampaign} decide={decideCampaign} />}
       {tab === "Research & coverage" && <div className="card"><p className="small">{d.source_coverage_note}</p><table><thead><tr><th>Source family</th><th>State</th><th>Last success</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{c.source_family}</td><td>{c.coverage_state}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
         {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">No account-level coverage recorded yet: visibility is unknown, not “nothing happening”.</td></tr>}</tbody></table>
         <h3>Where this account publishes</h3>

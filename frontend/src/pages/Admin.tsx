@@ -49,6 +49,24 @@ function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () =
 
 const STATE_KIND: Record<string, "ok" | "warn" | "bad" | "info"> = { live: "ok", built_in: "ok", per_account: "info", needs_address: "warn", blocked_by_site: "bad", needs_credential: "warn", not_built: "info", deferred: "info", needs_retest: "warn", testing: "info" };
 
+function Integrations() {
+  const [res, setRes] = useState<Record<string, { ok: boolean; detail: string }>>({}); const [busy, setBusy] = useState("");
+  const test = async (k: string) => { setBusy(k); try { const r = await post(`/api/admin/integrations/${k}/test`); setRes((x) => ({ ...x, [k]: r })); } catch (e) { setRes((x) => ({ ...x, [k]: { ok: false, detail: e instanceof Error ? e.message : "Test failed" } })); } finally { setBusy(""); } };
+  return (
+    <Load path="/api/admin/integrations">{(d) => (<>
+      <p className="sub" style={{ marginBottom: 14 }}>The keys behind outreach, CRM and enrichment. Keys live on the server and are never shown here. A passing test proves the key works, nothing more. Sending and CRM writes also need their switch turned on and a second person's approval.</p>
+      <div className="conn-list">
+        {d.items.map((r: any) => <article key={r.key} className={`conn ${r.configured ? "live" : "needs_credential"}`}>
+          <div className="conn-head"><div><div className="conn-name">{r.name}</div><div className="conn-meta">{r.what}</div></div>
+            <div className="row"><Badge kind={r.configured ? "ok" : "warn"}>{r.configured ? "Key set" : "Key needed"}</Badge>{r.switch && <Badge kind={r.switch_on ? "ok" : ""}>{r.switch_on ? "Switch on" : "Switch off"}</Badge>}</div></div>
+          <div className="conn-cols"><div><span className="k">How to connect</span>{r.how}</div>{r.switch && <div><span className="k">Safety switch</span>{r.switch}: {r.switch_on ? "on" : "off. Nothing is sent or written until it is turned on."}</div>}</div>
+          {r.testable && <div className="row" style={{ marginTop: 8 }}><button disabled={!r.configured || busy === r.key} onClick={() => test(r.key)}>Test connection</button>
+            {res[r.key] && <span className={res[r.key].ok ? "okmsg" : "small"} role="status">{res[r.key].detail}</span>}</div>}
+        </article>)}
+      </div></>)}</Load>
+  );
+}
+
 function Connections() {
   const [filter, setFilter] = useState("");
   return (
@@ -233,9 +251,9 @@ export default function Admin({ me }: { me: { permissions: string[] } }) {
   return (
     <>
       <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
-      <div className="tabs">{p("admin.jobs") && <NavLink to="/admin/pipeline">Pipeline</NavLink>}{p("sources.read") && <NavLink to="/admin" end> Sources</NavLink>}{p("sources.read") && <NavLink to="/admin/connections"> Connections</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("admin.sources") && <NavLink to="/admin/knowledge"> Knowledge</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
+      <div className="tabs">{p("admin.jobs") && <NavLink to="/admin/pipeline">Pipeline</NavLink>}{p("sources.read") && <NavLink to="/admin" end> Sources</NavLink>}{p("sources.read") && <NavLink to="/admin/connections"> Connections</NavLink>}{p("admin.costs") && <NavLink to="/admin/integrations"> Integrations</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("admin.sources") && <NavLink to="/admin/knowledge"> Knowledge</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
         {p("sources.read") && <NavLink to="/admin/verification"> Verification</NavLink>}{p("admin.costs") && <><NavLink to="/admin/discovery"> Discovery</NavLink><NavLink to="/admin/usage"> Usage</NavLink></>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
-      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
+      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="integrations" element={<Integrations />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
         <Route path="rules" element={<Rules />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
     </>
   );

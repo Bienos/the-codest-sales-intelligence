@@ -55,6 +55,13 @@ class Settings:
     anthropic_model: str = "claude-haiku-5-5"      # reads and verifies pages; switch with RI_ANTHROPIC_MODEL (prices below follow the model unless overridden)
     pipedrive_api_token: str | None = field(default=None, repr=False)
     pipedrive_webhook_secret: str | None = field(default=None, repr=False)
+    pipedrive_write_token: str | None = field(default=None, repr=False)     # falls back to the API token: one key is enough to start
+    pipedrive_domain: str | None = None                      # the part before .pipedrive.com (yours is shown in Pipedrive's address bar)
+    pipedrive_pipeline_id: int = 2                            # Business Pipeline
+    pipedrive_stage_id: int = 7                               # Discovery: where a deal starts when a prospect replies positively
+    lemlist_api_key: str | None = field(default=None, repr=False)
+    lemlist_webhook_secret: str | None = field(default=None, repr=False)
+    apollo_api_key: str | None = field(default=None, repr=False)
     exa_api_key: str | None = field(default=None, repr=False)
     anthropic_api_key: str | None = field(default=None, repr=False)
     slack_webhook_url: str | None = field(default=None, repr=False)
@@ -89,11 +96,18 @@ class Settings:
             dev_auth_secret=read_secret("RI_DEV_AUTH_SECRET"),
             google_credentials_file=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
             google_service_account_json=read_secret("GOOGLE_SERVICE_ACCOUNT_JSON"),
+            pipedrive_domain=os.environ.get("PIPEDRIVE_DOMAIN") or None,
+            pipedrive_pipeline_id=int(os.environ.get("RI_PIPEDRIVE_PIPELINE_ID") or 2),
+            pipedrive_stage_id=int(os.environ.get("RI_PIPEDRIVE_STAGE_ID") or 7),
+            lemlist_api_key=read_secret("LEMLIST_API_KEY"),
+            lemlist_webhook_secret=read_secret("RI_LEMLIST_WEBHOOK_SECRET"),
+            apollo_api_key=read_secret("APOLLO_API_KEY"),
             session_secret=read_secret("RI_SESSION_SECRET") or read_secret("RI_LINK_SECRET"),
             anthropic_model=os.environ.get("RI_ANTHROPIC_MODEL") or "claude-haiku-5-5",
             anthropic_research_model=os.environ.get("RI_RESEARCH_MODEL") or "claude-sonnet-5-5",
             pipedrive_api_token=read_secret("PIPEDRIVE_API_TOKEN"),
             pipedrive_webhook_secret=read_secret("PIPEDRIVE_WEBHOOK_SECRET"),
+            pipedrive_write_token=read_secret("PIPEDRIVE_WRITE_TOKEN") or read_secret("PIPEDRIVE_API_TOKEN"),
             exa_api_key=read_secret("EXA_API_KEY"),
             anthropic_api_key=read_secret("ANTHROPIC_API_KEY"),
             slack_webhook_url=read_secret("SLACK_WEBHOOK_URL"),

@@ -16,6 +16,7 @@ from ..crm import pipedrive as pd
 from ..db import Database, jb, q1, qa
 from ..jobs import queue
 from ..opportunity import engine, states
+from ..sheets.client import ConnectorBlocked
 from ..readmodel import card, coverage_health, evidence_for, fingerprint, today
 from ..research import planner
 from .auth import TokenVerifier, principal_dep, require
@@ -304,6 +305,15 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     @app.post("/api/approvals/{aid}/execute")
     def approval_execute(aid: str, request: Request, p: Principal = Depends(require("approvals.decide"))):
         with tx(request) as conn:
+            kind = (q1(conn, "SELECT kind FROM approvals WHERE id=%s", (aid,)) or {}).get("kind")
+            if kind == "sequence_enrolment":
+                from ..outbound import enrol as enrol_mod
+                from ..outbound.lemlist import LemlistClient, LemlistError
+                try:
+                    client = LemlistClient(settings.lemlist_api_key) if settings.lemlist_api_key else None
+                    return enrol_mod.execute_enrolment(conn, aid, client, settings)
+                except (appr.ApprovalError, LemlistError, ConnectorBlocked) as exc:
+                    raise HTTPException(409, str(exc)) from exc
             if not settings.crm_writes_enabled:
                 raise HTTPException(409, "CRM writes are disabled in this environment")
             wf = request.app.state.writer_factory
@@ -418,6 +428,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     intel.register_feed(app)
     intel.register_scan(app)
     intel.register_connections(app)
+    from . import outreach as outreach_api
+    outreach_api.register_outreach(app, settings)
     from . import leads as leads_api
     leads_api.register_leads(app)
     from . import search as search_api

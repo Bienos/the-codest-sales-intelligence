@@ -24,7 +24,13 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
         from .api.app import create_app
         from .api.static import mount_frontend
-        app = create_app(s)
+        writer_factory = None
+        if s.pipedrive_write_token and s.pipedrive_domain:
+            from .crm.pipedrive import PipedriveWriter
+
+            def writer_factory():          # noqa: E306  (built per call so a rotated token is picked up without a restart)
+                return PipedriveWriter(s.pipedrive_domain, s.pipedrive_write_token)
+        app = create_app(s, writer_factory=writer_factory)
         mount_frontend(app)
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))  # noqa: S104
         return 0

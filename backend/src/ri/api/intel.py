@@ -553,7 +553,7 @@ def register_scan(app: FastAPI) -> None:
             status = "approved" if body.decision == "approve" else "rejected"
             conn.execute("UPDATE campaign_drafts SET status=%s, decided_by=%s, decided_at=now() WHERE id=%s", (status, p.email, did))
             audit(conn, actor=p.email, operation=f"campaign_{status}", record_type="campaign_draft", record_id=did, detail={})
-            return {"status": status, "note": "Approved means a person has read it. Sending is a separate step that is not built yet."}
+            return {"status": status, "note": "Approved means a person has read it. "}
 
     @app.get("/api/accounts/{oid}/context")
     def account_context(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):

@@ -89,6 +89,25 @@ class PipedriveWriter:
         r.raise_for_status()
         return r.json().get("data") or {}
 
+    def find_deal(self, org_crm_id: int, title: str) -> dict[str, Any] | None:
+        r = self.http.get(f"{self.base}/deals", params={"org_id": org_crm_id, "status": "open", "limit": 100}, headers={"x-api-token": self.token})
+        r.raise_for_status()
+        for d in r.json().get("data") or []:
+            if (d.get("title") or "").strip().lower() == title.strip().lower():
+                return d
+        return None
+
+    def create_deal(self, payload: dict[str, Any]) -> dict[str, Any]:
+        r = self.http.post(f"{self.base}/deals", json=payload, headers={"x-api-token": self.token})
+        r.raise_for_status()
+        return r.json().get("data") or {}
+
+    def add_note(self, payload: dict[str, Any], key: str) -> dict[str, Any]:
+        body = {**payload, "content": f"{payload.get('content', '')}\n{MARKER}{key}]".strip()}
+        r = self.http.post("https://" + self.base.split("/")[2] + "/api/v1/notes", json=body, headers={"x-api-token": self.token})
+        r.raise_for_status()
+        return r.json().get("data") or {}
+
 
 # ------------------------------------------------------------------ mirror upserts
 def _dt(v):
@@ -225,7 +244,7 @@ def execute_approved(conn: Conn, approval_id: str, writer: PipedriveWriter | Non
     if not a:
         raise ApprovalError("approval not found")
     validate_for_execution(conn, approval_id, kind="crm_write", target_system="pipedrive", target_id=a["target_id"], operation=a["operation"], payload=a["payload"])
-    if a["operation"] != "create_activity":
+    if a["operation"] not in ("create_activity", "create_deal", "add_note"):
         raise ApprovalError(f"operation {a['operation']} is not supported by the executor")
     if writer is None:
         raise ConnectorBlocked("no CRM writer configured")
@@ -236,14 +255,26 @@ def execute_approved(conn: Conn, approval_id: str, writer: PipedriveWriter | Non
     mark_executing(conn, approval_id, str(uuid.uuid4()))
     conn.commit()
     try:
-        prior = writer.find_by_marker(org["crm_id"], key)          # a timed-out earlier attempt may have succeeded
+        op = a["operation"]
+        if op == "create_deal":
+            prior = writer.find_deal(org["crm_id"], a["payload"]["title"])
+        elif op == "create_activity":
+            prior = writer.find_by_marker(org["crm_id"], key)          # a timed-out earlier attempt may have succeeded
+        else:
+            prior = None
         if prior:
             mark_done(conn, approval_id, True, {"reconciled": True, "remote_id": prior.get("id")})
             return ExecResult("executed", prior.get("id"), True)
-        res = writer.create_activity({**a["payload"], "org_id": org["crm_id"]}, key)
+        base = {**a["payload"], "org_id": org["crm_id"]}
+        if op == "create_deal":
+            res = writer.create_deal(base)
+        elif op == "add_note":
+            res = writer.add_note(base, key)
+        else:
+            res = writer.create_activity(base, key)
         mark_done(conn, approval_id, True, {"remote_id": res.get("id")})
-        audit(conn, actor="system:executor", operation="crm_activity_created", record_type="crm_organization", record_id=str(org["crm_id"]), approval_id=approval_id,
-              detail={"remote_id": res.get("id")})
+        audit(conn, actor="system:executor", operation={"create_deal": "crm_deal_created", "add_note": "crm_note_added"}.get(op, "crm_activity_created"), record_type="crm_organization",
+              record_id=str(org["crm_id"]), approval_id=approval_id, detail={"remote_id": res.get("id")})
         return ExecResult("executed", res.get("id"))
     except (httpx.TransportError, httpx.TimeoutException, ConnectorBlocked) as exc:
         # AMBIGUOUS outcome (the write may have landed): hand the approval back so a retry runs fetch-before-write reconciliation
