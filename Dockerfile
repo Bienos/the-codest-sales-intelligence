@@ -11,7 +11,9 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/app/backend/src
 WORKDIR /app
 RUN useradd -r -u 10001 ri
 COPY backend/pyproject.toml backend/
-RUN pip install --no-cache-dir "fastapi>=0.115" "uvicorn>=0.30" "psycopg[binary,pool]>=3.2" "httpx>=0.27" "pydantic>=2.7" "pyyaml>=6" "rapidfuzz>=3.9" "pyjwt[crypto]>=2.8"
+# one source of truth for dependencies: pyproject.toml (a hand-copied list here caused a missing-package crash once)
+RUN python -c "import tomllib;print('\n'.join(tomllib.load(open('backend/pyproject.toml','rb'))['project']['dependencies']))" > /tmp/requirements.txt \
+ && pip install --no-cache-dir -r /tmp/requirements.txt
 COPY backend/ backend/
 COPY reference/ reference/
 COPY --from=web /web/dist frontend/dist
