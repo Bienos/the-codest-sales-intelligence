@@ -1,0 +1,5 @@
+/* Brand fonts for previews and design tools (Iosevka Heavy, Fira Sans). The app itself loads the same files via Fontsource. */
+@font-face { font-family: "Iosevka"; font-weight: 800; font-style: normal; src: url("./fonts/iosevka-latin-800-normal.woff2") format("woff2"); }
+@font-face { font-family: "Iosevka"; font-weight: 900; font-style: normal; src: url("./fonts/iosevka-latin-900-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fira Sans"; font-weight: 400; font-style: normal; src: url("./fonts/fira-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Fira Sans"; font-weight: 600; font-style: normal; src: url("./fonts/fira-sans-latin-600-normal.woff2") format("woff2"); }

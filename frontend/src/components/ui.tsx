@@ -8,6 +8,7 @@ export const IconToday = I(<><rect x="3" y="4" width="18" height="17" /><path d=
 export const IconAccounts = I(<><path d="M4 21V5h10v16M14 10h6v11M4 21h16M8 9h2M8 13h2M8 17h2" /></>);
 export const IconExplorer = I(<><circle cx="11" cy="11" r="7" /><path d="M16 16l5 5" /></>);
 export const IconAdmin = I(<><path d="M4 6h16M4 12h16M4 18h16" /><path d="M9 4v4M15 10v4M8 16v4" /></>);
+export const IconGuide = I(<><circle cx="12" cy="12" r="9" /><path d="M10 14l-1 3 3-1 5-5-2-2-5 5zM13.5 8.5l2 2" /></>);
 export const IconPass = I(<><circle cx="12" cy="12" r="9" /><path d="M7.5 12.5l3 3 6-7" /></>);
 export const IconUnknown = I(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 .5c0 1.6-2.5 2-2.5 3.5M12 17v.5" /></>);
 export const IconFail = I(<><circle cx="12" cy="12" r="9" /><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" /></>);

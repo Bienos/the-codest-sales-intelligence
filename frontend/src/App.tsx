@@ -6,7 +6,8 @@ import { Accounts, Account } from "./pages/Accounts";
 import Opportunity from "./pages/Opportunity";
 import Explorer from "./pages/Explorer";
 import Admin from "./pages/Admin";
-import { IconAccounts, IconAdmin, IconExplorer, IconToday } from "./components/ui";
+import Guide from "./pages/Guide";
+import { IconAccounts, IconAdmin, IconExplorer, IconGuide, IconToday } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 declare global { interface Window { google?: any } }
@@ -66,6 +67,7 @@ export default function App() {
         {can("today.read") && link("/today", "Today", IconToday)}
         {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
         {can("explorer.read") && link("/explorer", "Market Explorer", IconExplorer)}
+        {link("/guide", "How it works", IconGuide)}
         {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", "Administration", IconAdmin)}
         <div className="who"><b>{me.email}</b>{me.role.replace(/_/g, " ")}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>Sign out</button></div>
       </nav>
@@ -73,6 +75,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to={can("today.read") ? "/today" : "/admin"} replace />} />
           <Route path="/today" element={<Today />} />
+          <Route path="/guide" element={<Guide />} />
           <Route path="/accounts" element={<div className="page"><Accounts /></div>} />
           <Route path="/accounts/:id" element={<div className="page"><Account me={me} /></div>} />
           <Route path="/opportunities/:id" element={<div className="page"><Opportunity me={me} /></div>} />
