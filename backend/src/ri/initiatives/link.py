@@ -144,6 +144,25 @@ def link_event(conn: Conn, event_id: str, *, actor: str = "system:initiative-lin
     return LinkResult(iid, "probable_link", True, review_opened=opened, reason="new_initiative")
 
 
+def parse_milestone(v) -> str | None:
+    """The model may give a full date, a month ("2027-03") or a year. A month means 'by the end of that month'. Anything else is ignored, never guessed."""
+    import calendar
+    import re
+    t = str(v or "").strip()
+    m = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?", t)
+    if m:
+        try:
+            from datetime import date
+            return date(int(m[1]), int(m[2]), int(m[3])).isoformat()
+        except ValueError:
+            return None
+    m = re.fullmatch(r"(\d{4})-(\d{2})", t)
+    if m and 1 <= int(m[2]) <= 12:
+        return f"{m[1]}-{m[2]}-{calendar.monthrange(int(m[1]), int(m[2]))[1]:02d}"
+    m = re.fullmatch(r"(\d{4})", t)
+    return f"{m[1]}-12-31" if m else None
+
+
 def _attach(conn: Conn, ev: dict[str, Any], iid: str, strength: str, reason: str, actor: str) -> None:
     conn.execute("INSERT INTO initiative_events(initiative_id, event_id, link_strength, reason) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                  (iid, ev["id"], strength, reason))
@@ -164,9 +183,10 @@ def _attach(conn: Conn, ev: dict[str, Any], iid: str, strength: str, reason: str
     tags = sorted(set(cur["technology_tags"]) | _systems(a))
     if tags != sorted(cur["technology_tags"]):
         conn.execute("UPDATE initiatives SET technology_tags=%s WHERE id=%s", (tags, iid))
-    if a.get("milestone_date"):
+    ms = parse_milestone(a.get("milestone_date"))
+    if ms:
         conn.execute("UPDATE initiatives SET next_milestone_at = CASE WHEN next_milestone_at IS NULL OR next_milestone_at < now() THEN %s::timestamptz ELSE LEAST(next_milestone_at, %s::timestamptz) END WHERE id=%s",
-                     (a["milestone_date"], a["milestone_date"], iid))
+                     (ms, ms, iid))
         material = True
     for o in (ev["other_entity_roles"] or []):
         role = o.get("role")

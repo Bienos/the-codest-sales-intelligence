@@ -149,3 +149,19 @@ def test_pipeline_funnel_shows_where_things_stop(client, conn):
     f = c.get("/api/admin/pipeline", headers=h("admin")).json()
     stages = {x["key"]: x["n"] for x in f["funnel"]}
     assert stages["events"] == 1 and stages["linked"] == 0 and f["accounts"] == 0
+
+
+def test_a_month_only_milestone_from_the_model_is_read_as_end_of_month_and_junk_is_ignored():
+    from ri.initiatives.link import parse_milestone
+    assert parse_milestone("2027-03") == "2027-03-31" and parse_milestone("2027-02-10T00:00:00Z") == "2027-02-10" and parse_milestone("2028") == "2028-12-31"
+    assert parse_milestone("Q3 2027") is None and parse_milestone("2027-13") is None and parse_milestone("2027-02-31") is None and parse_milestone(None) is None
+
+
+def test_one_failing_maintenance_step_is_reported_and_the_others_still_run(conn, monkeypatch):
+    from ri import scheduler
+    import ri.scoring as scoring
+    def boom(*a, **k):
+        raise RuntimeError("synthetic failure")
+    monkeypatch.setattr(scoring, "recompute_scores", boom)
+    out = scheduler.run_maintenance(conn)
+    assert out["score_error"].startswith("RuntimeError") and "market_tagged" in out and "reevaluated" in out

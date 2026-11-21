@@ -24,8 +24,12 @@ def relink_unmatched(conn: Conn, limit: int = 300, now: datetime | None = None) 
             nid = (r["attrs"] or {}).get("notice_id")
             if nid:
                 conn.execute("UPDATE procurement_notices SET buyer_org_id=%s WHERE notice_id=%s AND buyer_org_id IS NULL", (d.org_id, nid))
-            finish_event(conn, str(r["id"]), now=now)            # signals, programme and opportunity, exactly as if it had matched on arrival
-            linked += 1
+            try:
+                with conn.transaction():                          # one bad event must never stop the others (or the scheduler)
+                    finish_event(conn, str(r["id"]), now=now)    # signals, programme and opportunity, exactly as if it had matched on arrival
+                linked += 1
+            except Exception as exc:  # noqa: BLE001
+                conn.execute("UPDATE events SET attrs = attrs || %s::jsonb WHERE id=%s", (jb({"relink_error": f"{type(exc).__name__}: {exc}"[:200]}), r["id"]))
         else:
             conn.execute("UPDATE events SET attrs = attrs || %s::jsonb WHERE id=%s", (jb({"relink_checked_at": now.isoformat()}), r["id"]))
     return {"checked": len(rows), "linked": linked}

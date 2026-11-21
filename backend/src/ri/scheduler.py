@@ -56,14 +56,38 @@ def requeue_stuck_verifications(conn: Conn, now: datetime | None = None, minutes
 
 
 def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
-    """Idempotent housekeeping: staleness => degraded coverage, expiry sweeps, initiative refresh, hypothesis re-evaluation."""
-    from .ingest.pipeline import evaluate_staleness
-    from .initiatives.lifecycle import refresh
+    """Idempotent housekeeping. Every step runs in its own savepoint: one failing step is reported and the rest still run, so the scheduler heartbeat never goes quiet."""
     from .events.relink import relink_unmatched
-    from .opportunity.engine import ensure_hypotheses, evaluate_stale
-    from .signals.persist import sweep_expiry
     from .events.verify import tag_untagged
     from .identity.discovery import promote_candidates
+    from .ingest.pipeline import evaluate_staleness
+    from .initiatives.lifecycle import refresh
+    from .opportunity.engine import ensure_hypotheses, evaluate_stale
     from .scoring import recompute_scores
+    from .signals.persist import sweep_expiry
     now = now or datetime.now(timezone.utc)
-    return {"market_tagged": tag_untagged(conn, 1500), **promote_candidates(conn, 40), **{f"score_{k}": v for k, v in recompute_scores(conn, now).items()}, "degraded_sources": evaluate_staleness(conn, now_fn=lambda: now), **sweep_expiry(conn, now), **refresh(conn, now), "relinked_events": relink_unmatched(conn, 150, now)["linked"], "hypotheses_built": ensure_hypotheses(conn, now), "verifications_requeued": requeue_stuck_verifications(conn, now), "reevaluated": evaluate_stale(conn, now)}
+    out: dict = {}
+
+    def step(name: str, fn) -> None:
+        try:
+            with conn.transaction():
+                r = fn()
+        except Exception as exc:  # noqa: BLE001
+            out[f"{name}_error"] = f"{type(exc).__name__}: {exc}"[:200]
+            return
+        if isinstance(r, dict):
+            out.update({(k if name in ("expiry", "initiatives") else f"{name}_{k}" if k in ("scored", "cleared") else k): v for k, v in r.items()})
+        else:
+            out[name] = r
+
+    step("market_tagged", lambda: tag_untagged(conn, 1500))
+    step("candidates", lambda: promote_candidates(conn, 40))
+    step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))
+    step("expiry", lambda: sweep_expiry(conn, now))
+    step("initiatives", lambda: refresh(conn, now))
+    step("relinked_events", lambda: relink_unmatched(conn, 150, now)["linked"])
+    step("hypotheses_built", lambda: ensure_hypotheses(conn, now))
+    step("verifications_requeued", lambda: requeue_stuck_verifications(conn, now))
+    step("reevaluated", lambda: evaluate_stale(conn, now))
+    step("score", lambda: recompute_scores(conn, now))
+    return out
