@@ -147,10 +147,30 @@ def register(app: FastAPI) -> None:
             audit(conn, actor=p.email, operation="sheet_upload", record_type="import_upload", record_id=str(up["id"]), detail={"workbook": key, "bytes": len(data), "sha256": sha})
             return {"upload_id": str(up["id"]), "workbook": key, "status": "queued", "bytes": len(data)}
 
+    @app.post("/api/admin/import/sync")
+    def sync_from_google(request: Request, workbook: str = Query(..., pattern="^[AB]$"), p: Principal = Depends(require("admin.sources"))):
+        st = request.app.state.settings
+        if not (st.google_service_account_json or st.google_credentials_file):
+            raise HTTPException(409, "Google Sheets is not connected yet. Set GOOGLE_SERVICE_ACCOUNT_JSON on the API and worker, share both workbooks with that service account, then press Sync again.")
+        with tx(request) as conn:
+            jid, created = enqueue(conn, "sheet_sync", {"workbook": workbook, "requested_by": p.email}, idempotency_key=f"sheet-sync:{workbook}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", max_attempts=1)
+            audit(conn, actor=p.email, operation="sheet_sync_requested", record_type="job", record_id=jid, detail={"workbook": workbook})
+            return {"job_id": jid, "queued": created, "workbook": workbook}
+
     @app.get("/api/admin/imports")
     def imports(request: Request, p: Principal = Depends(require("admin.sources"))):
+        st = request.app.state.settings
+        sa_email = None
+        if st.google_service_account_json:
+            import json as _json
+            try:
+                sa_email = _json.loads(st.google_service_account_json).get("client_email")
+            except ValueError:
+                sa_email = None
         with tx(request) as conn:
-            return {"uploads": [dict(r, id=str(r["id"])) for r in qa(conn,
+            return {"google_sheets": {"configured": bool(st.google_service_account_json or st.google_credentials_file), "service_account_email": sa_email,
+                                      "workbooks": {"A": "https://docs.google.com/spreadsheets/d/1J9vDQK3lQzZLP2tx2TkoHnQQQSFEA3-qRmXtoU4TX9Y", "B": "https://docs.google.com/spreadsheets/d/1wJKkovlp4oFGo8aj3ayRlAH-oXZ4O-RGDK8LZme9EMc"}},
+                    "uploads": [dict(r, id=str(r["id"])) for r in qa(conn,
                 "SELECT u.id, u.workbook_key, u.filename, u.size_bytes, u.status, u.uploaded_by, u.error, u.created_at, u.processed_at, r.stats "
                 "FROM import_uploads u LEFT JOIN import_runs r ON r.id=u.import_run_id ORDER BY u.created_at DESC LIMIT 15")],
                 "runs": [dict(r, id=str(r["id"])) for r in qa(conn, "SELECT id, workbook_key, status, started_at, finished_at, error FROM import_runs ORDER BY started_at DESC LIMIT 10")]}

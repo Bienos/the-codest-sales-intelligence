@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             def extractor_factory(c):
                 if not s.anthropic_api_key:
                     return None
-                return BudgetedExtractor(AnthropicExtractor(None, s.anthropic_api_key), c, price_in=s.anthropic_price_in_per_mtok, price_out=s.anthropic_price_out_per_mtok)
+                return BudgetedExtractor(AnthropicExtractor(None, s.anthropic_api_key, model=s.anthropic_model), c, price_in=s.anthropic_price_in_per_mtok, price_out=s.anthropic_price_out_per_mtok)
 
             def resolve_factory(c):
                 return lambda name: (lambda d: d.org_id if d.action == "auto_link" else None)(resolve(c, name=name, allow_create=False)) if name else None

@@ -26,6 +26,10 @@ def read_secret(name: str) -> str | None:
     return None
 
 
+# list prices in dollars per million tokens (input, output), prompts up to 100K tokens; from the published price list, check before relying on them
+LIST_PRICES = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.0, 10.0), "claude-opus-5-5": (4.0, 20.0)}
+
+
 @dataclass(frozen=True)
 class Settings:
     env: str = "development"  # development | staging | production
@@ -45,6 +49,8 @@ class Settings:
     dev_auth_secret: str | None = None
     # Secrets (resolved lazily; absence => integration reported 'blocked', never faked)
     google_credentials_file: str | None = field(default=None, repr=False)
+    google_service_account_json: str | None = field(default=None, repr=False)
+    anthropic_model: str = "claude-haiku-5-5"      # reads and verifies pages; switch with RI_ANTHROPIC_MODEL (prices below follow the model unless overridden)
     pipedrive_api_token: str | None = field(default=None, repr=False)
     pipedrive_webhook_secret: str | None = field(default=None, repr=False)
     exa_api_key: str | None = field(default=None, repr=False)
@@ -80,6 +86,8 @@ class Settings:
             oidc_jwks_url=os.environ.get("RI_OIDC_JWKS_URL"),
             dev_auth_secret=read_secret("RI_DEV_AUTH_SECRET"),
             google_credentials_file=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
+            google_service_account_json=read_secret("GOOGLE_SERVICE_ACCOUNT_JSON"),
+            anthropic_model=os.environ.get("RI_ANTHROPIC_MODEL") or "claude-haiku-5-5",
             pipedrive_api_token=read_secret("PIPEDRIVE_API_TOKEN"),
             pipedrive_webhook_secret=read_secret("PIPEDRIVE_WEBHOOK_SECRET"),
             exa_api_key=read_secret("EXA_API_KEY"),
@@ -89,8 +97,8 @@ class Settings:
             google_client_id=os.environ.get("RI_GOOGLE_CLIENT_ID") or None,
             anthropic_monthly_token_cap=_f("RI_ANTHROPIC_MONTHLY_TOKEN_CAP", 0.0),
             exa_monthly_cap_usd=_f("RI_EXA_MONTHLY_CAP_USD", 0.0),
-            anthropic_price_in_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_IN_PER_MTOK") or 0.10),
-            anthropic_price_out_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_OUT_PER_MTOK") or 0.50),
+            anthropic_price_in_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_IN_PER_MTOK") or LIST_PRICES.get(os.environ.get("RI_ANTHROPIC_MODEL") or "claude-haiku-5-5", (0.10, 0.50))[0]),
+            anthropic_price_out_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_OUT_PER_MTOK") or LIST_PRICES.get(os.environ.get("RI_ANTHROPIC_MODEL") or "claude-haiku-5-5", (0.10, 0.50))[1]),
             discovery_interval_days=int(os.environ.get("RI_DISCOVERY_INTERVAL_DAYS", "7")),
             discovery_max_searches_per_run=int(os.environ.get("RI_DISCOVERY_MAX_SEARCHES_PER_RUN", "16")),
             discovery_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_MAX_NEW_REQUESTS_PER_RUN", "5")),

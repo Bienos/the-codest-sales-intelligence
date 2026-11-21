@@ -96,3 +96,42 @@ def test_feed_connector_reads_rss_1_rdf_feeds_such_as_bis():
     c = FeedConnector(httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(404) if r.url.path == "/robots.txt" else httpx.Response(200, text=rdf))), "https://x.example/f.rss", source_id="regulator-bis")
     b = asyncio.run(c.fetch(None, 10))
     assert [i.external_id for i in b.items] == ["https://x.example/p1"] and c.canonicalize(b.items[0]).title == "Payments resilience report"
+
+
+def test_google_sheets_client_accepts_a_key_pasted_as_json_and_rejects_an_incomplete_one():
+    import json
+
+    import pytest
+
+    from ri.sheets.client import ConnectorBlocked, GoogleSheetsClient
+    ok = json.dumps({"client_email": "sync@example.iam.gserviceaccount.com", "private_key": "x", "token_uri": "https://oauth2.example/token"})
+    assert GoogleSheetsClient(None, credentials_json=ok)._sa["client_email"].startswith("sync@")
+    with pytest.raises(ConnectorBlocked):
+        GoogleSheetsClient(None, credentials_json='{"client_email": "a@b"}')
+    with pytest.raises(ConnectorBlocked):
+        GoogleSheetsClient(None)
+
+
+def test_sync_endpoint_explains_what_is_missing_and_queues_once_connected(conn, db_url):
+    from fastapi.testclient import TestClient
+
+    from ri.api.app import create_app
+    from ri.api.auth import make_dev_token
+    from ri.config import Settings
+    from ri.db import Database
+    from test_r4_crm_notify import mk_user
+    from test_r7_verify_discovery_usage import SECRET
+    mk_user(conn, "admin@x", "admin")
+    conn.commit()
+    h = {"Authorization": f"Bearer {make_dev_token(SECRET, 'admin@x')}"}
+    db = Database(db_url, max_size=2)
+    try:
+        c = TestClient(create_app(Settings(env="development", auth_mode="dev", dev_auth_secret=SECRET), db=db))
+        r = c.post("/api/admin/import/sync?workbook=A", headers=h)
+        assert r.status_code == 409 and "GOOGLE_SERVICE_ACCOUNT_JSON" in r.text
+        c2 = TestClient(create_app(Settings(env="development", auth_mode="dev", dev_auth_secret=SECRET,
+                                            google_service_account_json='{"client_email":"sync@example.iam.gserviceaccount.com","private_key":"x","token_uri":"t"}'), db=db))
+        assert c2.post("/api/admin/import/sync?workbook=A", headers=h).json()["queued"] is True
+        assert c2.get("/api/admin/imports", headers=h).json()["google_sheets"]["service_account_email"] == "sync@example.iam.gserviceaccount.com"
+    finally:
+        db.close()

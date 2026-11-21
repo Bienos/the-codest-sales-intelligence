@@ -68,6 +68,31 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             rl = {"checked": 0, "linked": 0}
         return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
 
+    def sheet_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        """Reads a workbook straight from Google Sheets (service account) and imports it. Needs the workbook shared with the service account."""
+        from ..config import Settings
+        from ..sheets import contracts as C
+        from ..sheets.client import ConnectorBlocked, GoogleSheetsClient
+        from ..sheets.importer import import_workbook
+        key = job["payload"]["workbook"]
+        st = Settings.from_env(require_auth=False)
+        conn.execute("UPDATE jobs SET lease_expires_at = now() + interval '2 hours' WHERE id=%s", (job["id"],))
+        conn.commit()
+        try:
+            client = GoogleSheetsClient(st.google_credentials_file, credentials_json=st.google_service_account_json)
+            res = import_workbook(conn, client, key, actor=f"sync:{job['payload'].get('requested_by', 'system')}")
+        except ConnectorBlocked as exc:
+            conn.rollback()
+            raise JobError(str(exc)[:300], "access_denied") from exc
+        conn.commit()
+        from ..events.relink import relink_unmatched
+        try:
+            relink_unmatched(conn, 1500)
+            conn.commit()
+        except Exception:  # noqa: BLE001
+            conn.rollback()
+        return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
+
     def verify_url(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..verify.run import run_verification
         if extractor_factory is None or fetch_factory is None:
@@ -132,8 +157,9 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
 
     account_scan.own_transactions = True  # type: ignore[attr-defined]
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
+    sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan}
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

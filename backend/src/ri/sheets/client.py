@@ -56,14 +56,21 @@ _HYPERLINK = re.compile(r'=HYPERLINK\(\s*"([^"]+)"', re.I)
 class GoogleSheetsClient:
     """Service-account (JWT bearer) client. Rate-limit aware: honours 429 Retry-After with bounded retries."""
 
-    def __init__(self, credentials_file: str | None, *, http: httpx.Client | None = None, max_retries: int = 4):
-        if not credentials_file:
-            raise ConnectorBlocked("GOOGLE_APPLICATION_CREDENTIALS not set: Google Sheets connector is blocked")
-        try:
-            with open(credentials_file, encoding="utf-8") as fh:
-                self._sa = json.load(fh)
-        except OSError as exc:
-            raise ConnectorBlocked(f"cannot read service-account file: {exc}") from exc
+    def __init__(self, credentials_file: str | None, *, http: httpx.Client | None = None, max_retries: int = 4, credentials_json: str | None = None):
+        if credentials_json:
+            try:
+                self._sa = json.loads(credentials_json)
+                self._sa["client_email"], self._sa["private_key"], self._sa["token_uri"]      # noqa: B018  (fail early if the key is incomplete)
+            except (ValueError, KeyError) as exc:
+                raise ConnectorBlocked("GOOGLE_SERVICE_ACCOUNT_JSON is not a complete service-account key") from exc
+        elif not credentials_file:
+            raise ConnectorBlocked("Google Sheets is not connected: set GOOGLE_SERVICE_ACCOUNT_JSON (or GOOGLE_APPLICATION_CREDENTIALS)")
+        else:
+            try:
+                with open(credentials_file, encoding="utf-8") as fh:
+                    self._sa = json.load(fh)
+            except OSError as exc:
+                raise ConnectorBlocked(f"cannot read service-account file: {exc}") from exc
         self._http = http or httpx.Client(timeout=30)
         self._token: tuple[str, float] | None = None
         self._max_retries = max_retries

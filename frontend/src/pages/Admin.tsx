@@ -148,10 +148,30 @@ function Imports() {
     if (!f) return; setBusy(true); setErr(null); setMsg("");
     try { const r = await upload("/api/admin/import/upload", f); setMsg(`Workbook ${r.workbook} received. The worker is importing it now. This can take several minutes.`); load(); } catch (e) { setErr(e); } finally { setBusy(false); }
   };
+  const sync = async (wb: string) => {
+    setBusy(true); setErr(null); setMsg("");
+    try { await post(`/api/admin/import/sync?workbook=${wb}`); setMsg(`Sync of workbook ${wb} queued. The worker reads it from Google Sheets now. This can take several minutes.`); load(); } catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  const gs = d?.google_sheets;
   return (
     <>
       <div className="card">
-        <div className="eyebrow">Upload a workbook export</div>
+        <div className="eyebrow">Connect Google Sheets (no uploads needed)</div>
+        {gs?.configured ? <p style={{ marginTop: 0 }}><Badge kind="ok">Connected</Badge> Share both workbooks with <b>{gs.service_account_email ?? "the service account"}</b> as Viewer, then sync. Each sync re-reads the sheets and keeps the data current.</p>
+          : <ol className="small" style={{ marginTop: 0 }}>
+              <li>In Google Cloud, create a service account in any project and enable the Google Sheets API. Create a JSON key for it.</li>
+              <li>In Render, add the whole JSON as the secret <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> on the API and the worker.</li>
+              <li>Open each workbook in Google Sheets, press Share, and add the service account's email as Viewer.</li>
+              <li>Come back here and press Sync. If your Google admin blocks sharing outside the company, upload the exports below instead.</li>
+            </ol>}
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <button className="primary" disabled={busy || !gs?.configured} onClick={() => sync("A")}>Sync workbook A</button>
+          <button className="primary" disabled={busy || !gs?.configured} onClick={() => sync("B")}>Sync workbook B</button>
+          {gs?.workbooks && <><a href={gs.workbooks.A} target="_blank" rel="noreferrer">Open A</a><a href={gs.workbooks.B} target="_blank" rel="noreferrer">Open B</a></>}
+        </div>
+      </div>
+      <div className="card">
+        <div className="eyebrow">Or upload a workbook export</div>
         <p style={{ marginTop: 0 }}>In Google Sheets choose <b>File, Download, Microsoft Excel (.xlsx)</b> for each workbook, then upload it here. The platform recognises which workbook it is, checks every tab header against the agreed contract, and imports in the background. A renamed or reordered column pauses that tab instead of guessing.</p>
         <input type="file" accept=".xlsx" aria-label="Workbook file (.xlsx)" disabled={busy} onChange={(e) => { void send(e.target.files?.[0]); e.target.value = ""; }} />
         {msg && <div className="okmsg" role="status" style={{ marginTop: 12 }}>{msg}</div>}<Err e={err} />
