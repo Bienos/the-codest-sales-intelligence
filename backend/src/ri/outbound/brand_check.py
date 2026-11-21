@@ -62,8 +62,12 @@ def check_step(step: dict[str, Any], facts: dict[str, str], *, first: bool) -> l
     for c in used:
         if c not in r["usable_claims"]:
             brk("claim_not_usable", f"{c} is not cleared for use in a draft")
-    if re.search(r"\btake responsibility\b", text, re.I) and "CLM-001" not in used:
+    if re.search(r"\btakes? responsibility\b", text, re.I) and "CLM-001" not in used:
         brk("claim_not_declared", "the responsibility promise is used but CLM-001 is not declared")
+    for c in used:                      # the approved wording only: a paraphrase is a second, unapproved promise
+        wording = r["usable_claims"].get(c)
+        if wording and _norm(wording) not in low:
+            brk("claim_reworded", f"{c} must appear in its approved wording: \"{wording}\"")
     # numbers: only those that appear in a verified source, or a year
     allowed = " ".join(facts.values())
     for num in re.findall(r"(?<![\w{])\d[\d.,]*%?", body + " " + subject):
