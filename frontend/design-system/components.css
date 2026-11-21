@@ -179,3 +179,10 @@ pre { background: var(--tint-1); border: 1px solid var(--line); padding: 10px 12
 .setup li.done .tick { background: var(--dot-ok); border-color: var(--dot-ok); color: #fff; }
 .g[title] { cursor: help; }
 @media (max-width: 680px) { .pro { grid-template-columns: 1fr; } .pro-rank { padding: 8px 14px; place-items: center start; font-size: 18px; } }
+
+/* tables: never break words inside chips or buttons */
+td .badge, td button, th { overflow-wrap: normal; word-break: normal; }
+td button, td .badge.nw, td:last-child button { white-space: nowrap; }
+td .badge { white-space: normal; }
+td:nth-child(2), td:nth-child(4) { white-space: nowrap; }
+.src-ctl textarea { max-width: 640px; }
