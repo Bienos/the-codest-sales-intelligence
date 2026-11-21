@@ -324,3 +324,5 @@ td:nth-child(2), td:nth-child(4) { white-space: nowrap; }
 @media (max-width: 620px) { .leadbar { grid-template-columns: 1fr 1fr; } }
 
 button.star { border: 0; background: none; padding: 4px 6px; min-height: 0; font-size: 20px; line-height: 1; color: var(--navy); } button.star[aria-pressed="true"] { color: var(--pink); } button.star:hover { background: none; color: var(--pink); }
+
+.brief-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 14px; }

@@ -50,6 +50,7 @@ class Settings:
     # Secrets (resolved lazily; absence => integration reported 'blocked', never faked)
     google_credentials_file: str | None = field(default=None, repr=False)
     google_service_account_json: str | None = field(default=None, repr=False)
+    anthropic_research_model: str = "claude-sonnet-5-5"       # writes account briefs (low volume, so quality over price); falls back to the reading model on any error
     session_secret: str | None = field(default=None, repr=False)      # signs 12-hour sessions; falls back to RI_LINK_SECRET
     anthropic_model: str = "claude-haiku-5-5"      # reads and verifies pages; switch with RI_ANTHROPIC_MODEL (prices below follow the model unless overridden)
     pipedrive_api_token: str | None = field(default=None, repr=False)
@@ -90,6 +91,7 @@ class Settings:
             google_service_account_json=read_secret("GOOGLE_SERVICE_ACCOUNT_JSON"),
             session_secret=read_secret("RI_SESSION_SECRET") or read_secret("RI_LINK_SECRET"),
             anthropic_model=os.environ.get("RI_ANTHROPIC_MODEL") or "claude-haiku-5-5",
+            anthropic_research_model=os.environ.get("RI_RESEARCH_MODEL") or "claude-sonnet-5-5",
             pipedrive_api_token=read_secret("PIPEDRIVE_API_TOKEN"),
             pipedrive_webhook_secret=read_secret("PIPEDRIVE_WEBHOOK_SECRET"),
             exa_api_key=read_secret("EXA_API_KEY"),

@@ -111,7 +111,30 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
   );
 }
 
-const TABS = ["Overview", "Initiatives", "Signals & evidence", "Suppliers", "Buyers", "Access & CRM", "Research & coverage"];
+function Cited({ items }: { items: any[] }) {
+  return <ul className="brief-list">{items.map((x, i) => <li key={i}><div>{x.statement}</div><blockquote className="fquote" style={{ margin: "6px 0 0" }}>“{x.quote}”<cite>{x.source_url ? <a className="pill" href={x.source_url} target="_blank" rel="noreferrer noopener">{x.source_title || x.source_kind} ↗</a> : <span>{x.source_title || x.source_kind}</span>} · {x.source_kind}</cite></blockquote></li>)}</ul>;
+}
+
+function BriefTab({ briefs }: { briefs: any[] }) {
+  const b = briefs[0];
+  if (!b) return <div className="card"><p className="muted" style={{ margin: 0 }}>No brief yet. Press “Write research brief”. It uses only what the platform has stored about this company, and every statement quotes its source.</p></div>;
+  if (b.status === "queued" || b.status === "running") return <div className="card"><p style={{ margin: 0 }}>Writing the brief… this takes about a minute.</p></div>;
+  if (b.status === "failed") return <div className="card"><Err e={new Error(b.error || "The brief could not be written.")} /></div>;
+  const c = b.content;
+  return (
+    <div className="card">
+      <p className="small muted" style={{ marginTop: 0 }}>Written {fmtDateTime(b.finished_at)} by {b.model ?? "n/a"} from {c.source_count ?? 0} stored sources. {b.dropped > 0 ? `${b.dropped} statement(s) were left out because their quote could not be found in the source.` : "Every statement below quotes its source."}</p>
+      {c.note && <p>{c.note}</p>}
+      {c.summary?.length > 0 && <><h3>What the company is and does</h3><Cited items={c.summary} /></>}
+      {c.signals?.length > 0 && <><h3>Signals</h3><Cited items={c.signals} /></>}
+      {c.hiring?.length > 0 && <><h3>Hiring</h3><Cited items={c.hiring} /></>}
+      {c.icp_fit?.read && <><h3>Fit with our ICP</h3><p>{c.icp_fit.read}</p>{c.icp_fit.reasons?.length > 0 && <Cited items={c.icp_fit.reasons} />}</>}
+      {c.open_questions?.length > 0 && <><h3>Still to find out</h3><ul className="tight">{c.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></>}
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Research brief", "Initiatives", "Signals & evidence", "Suppliers", "Buyers", "Access & CRM", "Research & coverage"];
 
 export function Account({ me }: { me: { permissions: string[] } }) {
   const { id } = useParams();
@@ -125,6 +148,11 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   if (!d) return <p className="muted">Loading…</p>;
   const a = d.account;
   const canScan = me.permissions.includes("research.request");
+  const [briefs, setBriefs] = useState<any[]>([]);
+  const loadBriefs = () => api(`/api/accounts/${id}/briefs`).then((r) => setBriefs(r.items)).catch(() => setBriefs([]));
+  useEffect(() => { loadBriefs(); }, [id]);
+  useEffect(() => { if (!briefs.some((b) => b.status === "queued" || b.status === "running")) return; const t = setInterval(loadBriefs, 6000); return () => clearInterval(t); }, [briefs]);
+  const makeBrief = async () => { try { await post(`/api/accounts/${id}/brief`); await loadBriefs(); setTab("Research brief"); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const runScan = async () => {
     setScan({ busy: true, msg: "", err: null });
     try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? `Scanning ${r.website} and searching the web. New findings appear in the Market feed once verified; reload this tab in a minute.` : "Queued. This account has no website recorded, so only the web search will run.", err: null }); }
@@ -132,7 +160,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   };
   return (
     <>
-      <div className="row spread"><h2 style={{ margin: 0 }}>{a.display_name}</h2>{canScan && <button className="primary" disabled={scan.busy} onClick={runScan}>Find signals now</button>}</div>
+      <div className="row spread"><h2 style={{ margin: 0 }}>{a.display_name}</h2>{canScan && <div className="row"><button className="primary" disabled={scan.busy} onClick={runScan}>Find signals now</button><button disabled={briefs.some((b) => b.status === "queued" || b.status === "running")} onClick={makeBrief}>Write research brief</button></div>}</div>
       {scan.msg && <div className="okmsg" role="status" style={{ margin: "8px 0" }}>{scan.msg}</div>}<Err e={scan.err} />
       <div className="row"><Badge kind={a.in_master_list ? "ok" : "info"}>{a.in_master_list ? "in master list" : "new candidate"}</Badge><Badge>{a.country_code ?? "country unknown"}</Badge><Badge kind={d.ownership_verified ? "ok" : "warn"}>{d.ownership_verified ? `Pipedrive owner ${d.crm.owner_id}` : "ownership unverified"}</Badge>
         <Badge>{a.employees_estimate?.toLocaleString() ?? "?"} employees{a.employees_uncertain ? " (estimate)" : ""}</Badge></div>
@@ -159,6 +187,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         <p className="small muted">Titles are reported, not proven authority. Email addresses are never shown here; access to personal data is audited.</p></div> : <div className="empty">Contact data is not available to your role.</div>)}
       {tab === "Access & CRM" && <div className="card"><p>{d.crm ? <>Linked to Pipedrive organisation {d.crm.crm_id}; open deals {d.crm.open_deals_count ?? "?"}; mirror synced {fmtDateTime(d.crm.synced_at)}. Pipedrive remains the source of truth for owner and deal stage.</> : "Not linked to Pipedrive · ownership cannot be checked, so outreach and CRM proposals are disabled for this account."}</p>
         <h3>Master-list source rows</h3><ul className="tight small">{d.source_rows.map((r: any, i: number) => <li key={i}>{r.sheet_title} (row {r.row_number}, workbook …{r.source_file_id.slice(-6)})</li>)}</ul></div>}
+      {tab === "Research brief" && <BriefTab briefs={briefs} />}
       {tab === "Research & coverage" && <div className="card"><p className="small">{d.source_coverage_note}</p><table><thead><tr><th>Source family</th><th>State</th><th>Last success</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{c.source_family}</td><td>{c.coverage_state}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
         {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">No account-level coverage recorded yet: visibility is unknown, not “nothing happening”.</td></tr>}</tbody></table>
         <h3>Where this account publishes</h3>

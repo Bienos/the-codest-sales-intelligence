@@ -93,6 +93,74 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             conn.rollback()
         return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
 
+    def account_brief(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        """Writes a cited research brief for one company. Budget-gated like every other model call; a failure is recorded on the brief, never silent."""
+        import httpx
+
+        from .. import budget, usage
+        from ..config import LIST_PRICES, Settings
+        from ..db import q1 as _q1
+        from ..ingest.pipeline import _run
+        from ..research.brief import generate
+        from ..sources.base import BudgetExceeded
+        from ..sources.http import request_json
+        st = Settings.from_env(require_auth=False)
+        bid = job["payload"]["brief_id"]
+        b = _q1(conn, "SELECT * FROM account_briefs WHERE id=%s", (bid,))
+        if not b:
+            raise JobError("brief not found", "not_found")
+        if not st.anthropic_api_key:
+            conn.execute("UPDATE account_briefs SET status='failed', error='AI is not configured (no API key).', finished_at=now() WHERE id=%s", (bid,))
+            return {"status": "failed"}
+        conn.execute("UPDATE account_briefs SET status='running' WHERE id=%s", (bid,))
+        conn.commit()
+        period = usage.period_now()
+
+        async def call(system: str, user: str):
+            est = float(len(system + user) // 3 + 5000)
+            key = f"brief:{bid}"
+            budget.reserve(conn, "anthropic", "monthly", period, est, key=key, ref_type="brief", purpose="account brief")
+            conn.commit()
+            hdrs = {"x-api-key": st.anthropic_api_key, "anthropic-version": "2023-06-01"}
+            last_exc: Exception | None = None
+            for model in dict.fromkeys([st.anthropic_research_model, st.anthropic_model]):
+                try:
+                    async with httpx.AsyncClient(timeout=180) as c:
+                        data = await request_json(c, "POST", "https://api.anthropic.com/v1/messages", headers=hdrs,
+                                                  json={"model": model, "max_tokens": 6000, "system": system, "messages": [{"role": "user", "content": user}]})
+                    text = "".join(x.get("text", "") for x in data.get("content", []) if x.get("type") == "text")
+                    if not text.strip():
+                        raise ValueError("empty model output")
+                    u = data.get("usage") or {}
+                    tin, tout = int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0))
+                    pin, pout = LIST_PRICES.get(model, (st.anthropic_price_in_per_mtok, st.anthropic_price_out_per_mtok))
+                    cost, basis = usage.model_cost(tin, tout, pin, pout)
+                    budget.settle(conn, "anthropic", "monthly", period, est, float(tin + tout), key=key)
+                    usage.record(conn, provider="anthropic", operation="account_brief", units=float(tin + tout), unit="tokens", tokens_in=tin, tokens_out=tout, cost_usd=cost, cost_basis=basis,
+                                 organization_id=str(b["organization_id"]), detail={"model": model})
+                    conn.commit()
+                    return text, tin, tout, model
+                except Exception as exc:  # noqa: BLE001 - try the reading model once before giving up
+                    last_exc = exc
+            budget.release(conn, "anthropic", "monthly", period, est, key=key)
+            conn.commit()
+            raise last_exc  # type: ignore[misc]
+        try:
+            r = generate(conn, str(b["organization_id"]), call, _run)
+        except BudgetExceeded as exc:
+            conn.rollback()
+            conn.execute("UPDATE account_briefs SET status='failed', error=%s, finished_at=now() WHERE id=%s", (f"Not enough AI budget left this month: {exc}"[:300], bid))
+            return {"status": "failed", "reason": "budget"}
+        except Exception as exc:  # noqa: BLE001
+            conn.rollback()
+            conn.execute("UPDATE account_briefs SET status='failed', error=%s, finished_at=now() WHERE id=%s", (f"{type(exc).__name__}: {exc}"[:300], bid))
+            return {"status": "failed", "reason": type(exc).__name__}
+        conn.execute("UPDATE account_briefs SET status='done', content=%s, dropped=%s, model=%s, tokens_in=%s, tokens_out=%s, finished_at=now() WHERE id=%s",
+                     (jb(r["content"]), r["dropped"], r["model"], r["tokens_in"], r["tokens_out"], bid))
+        return {"status": "done", "dropped": r["dropped"]}
+
+    account_brief.own_transactions = True  # type: ignore[attr-defined]
+
     def verify_url(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..verify.run import run_verification
         if extractor_factory is None or fetch_factory is None:
@@ -159,7 +227,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync}
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

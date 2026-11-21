@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
                                       fetch_factory=lambda: sync_fetch(lambda: None), discovery_factory=discovery_factory)
 
             # lanes: what a person is waiting for runs on its own worker; scheduled reading and maintenance run on the other
-            INTERACTIVE = ["account_scan", "verify_url", "sheet_import_xlsx", "sheet_sync", "sources_validate_all", "evaluate_event", "add_company"]
+            INTERACTIVE = ["account_scan", "verify_url", "sheet_import_xlsx", "sheet_sync", "sources_validate_all", "evaluate_event", "add_company", "account_brief"]
 
             def lane(name: str, own_conn, kinds_fn):
                 handlers = make_handlers(own_conn)

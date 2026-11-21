@@ -482,6 +482,30 @@ def register_scan(app: FastAPI) -> None:
             return {"id": oid, "name": name, "domain": domain, "created": created, "scan_job": jid,
                     "note": "Reading the company's own site, news, careers page and job board, plus one web search. LinkedIn and other social links are saved for context and are not scraped."}
 
+    @app.post("/api/accounts/{oid}/brief")
+    def request_brief(oid: str, request: Request, p: Principal = Depends(require("research.request"))):
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):     # noqa: S608
+                raise HTTPException(404, "not found")
+            if q1(conn, "SELECT 1 FROM account_briefs WHERE organization_id=%s AND status IN ('queued','running') AND created_at > now() - interval '15 minutes'", (oid,)):
+                raise HTTPException(409, "A brief for this company is already being written.")
+            _quota(conn, p.email)
+            row = conn.execute("INSERT INTO account_briefs(organization_id, requested_by) VALUES (%s,%s) RETURNING id", (oid, p.email)).fetchone()
+            bid = str(row["id"])     # type: ignore[index]
+            enqueue(conn, "account_brief", {"brief_id": bid}, idempotency_key=f"brief:{bid}", max_attempts=1)
+            audit(conn, actor=p.email, operation="account_scan_requested", record_type="organization", record_id=oid, detail={"brief": True})
+            return {"brief_id": bid, "status": "queued"}
+
+    @app.get("/api/accounts/{oid}/briefs")
+    def list_briefs(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):     # noqa: S608
+                raise HTTPException(404, "not found")
+            rows = qa(conn, "SELECT id, status, model, content, dropped, error, requested_by, created_at, finished_at FROM account_briefs WHERE organization_id=%s ORDER BY created_at DESC LIMIT 5", (oid,))
+            return {"items": [dict(r, id=str(r["id"])) for r in rows]}
+
     @app.get("/api/accounts/{oid}/context")
     def account_context(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
