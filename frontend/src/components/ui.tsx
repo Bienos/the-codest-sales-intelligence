@@ -30,6 +30,18 @@ export const Fact = ({ label, value, kind = "" }: { label: string; value: ReactN
 export const demandKind = (s: string) => (s === "explicit" || s === "buyer_confirmed" ? "ok" : s === "inferred" ? "info" : "warn");
 export const accessKind = (s: string) => (s === "verified" ? "ok" : s === "potential" ? "info" : s === "blocked" || s === "restricted" ? "bad" : "warn");
 
+export const GATE_QUESTIONS: Record<string, string> = {
+  G1: "Is this an account we should pursue?", G2: "Is there a verified programme, with a stage?", G3: "Does the work match what The Codest delivers?",
+  G4: "Will the buyer source outside help? Often unknown until you ask.", G5: "Can a supplier like us get in: direct, via a vendor or via a prime?",
+  G6: "Do we know who decides, and have they said so?", G7: "Can we staff it in the window they need?" };
+export function verdict(c: any): { text: string; kind: string } {
+  const demand = c.external_demand_status, access = c.route?.access_status;
+  if (c.priority === "urgent") return { text: "Time-limited. Check the deadline and your eligibility first.", kind: "bad" };
+  if (demand === "explicit" || demand === "buyer_confirmed") return { text: "Demand is evidenced. Move to qualification.", kind: "ok" };
+  if (access === "restricted" || access === "blocked") return { text: "A real programme, but the direct route is blocked. Look for a partner route.", kind: "warn" };
+  if (c.buyer_status === "none") return { text: "Worth a conversation, but you still need a named buyer.", kind: "info" };
+  return { text: "Worth a conversation. Demand is unconfirmed, so ask before you assume.", kind: "info" };
+}
 const GATE_NAMES: Record<string, string> = { G1: "Account and ICP", G2: "Initiative is real", G3: "Engineering fit", G4: "External demand", G5: "Supplier access", G6: "Buyer path", G7: "Delivery feasibility" };
 export function GateBar({ gates }: { gates: Record<string, { status: string; reason: string }> }) {
   return (
@@ -37,7 +49,7 @@ export function GateBar({ gates }: { gates: Record<string, { status: string; rea
       {Object.entries(gates).map(([g, v]) => {
         const Ico = v.status === "pass" ? IconPass : v.status === "fail" ? IconFail : IconUnknown;
         return (
-          <div key={g} role="listitem" className={`g ${v.status}`}>
+          <div key={g} role="listitem" className={`g ${v.status}`} title={GATE_QUESTIONS[g]} tabIndex={0} aria-label={`${g} ${GATE_NAMES[g]}: ${v.status}. ${GATE_QUESTIONS[g]}`}>
             <div className="gi"><Ico />{g}</div>
             <div className="gn">{GATE_NAMES[g]}</div>
             <div className="gr">{v.reason}</div>

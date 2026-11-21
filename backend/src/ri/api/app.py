@@ -20,6 +20,10 @@ from ..readmodel import card, coverage_health, evidence_for, fingerprint, today
 from ..research import planner
 from .auth import TokenVerifier, principal_dep, require
 
+CSP = ("default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; "
+       "img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; "
+       "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
 DISMISS_REASONS = {"not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"}
 
 
@@ -64,6 +68,23 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     app.state.db = db or Database(settings.database_url)
     app.state.verifier = verifier or TokenVerifier(settings)
     app.state.writer_factory = writer_factory
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        resp = await call_next(request)
+        h = resp.headers
+        h.setdefault("X-Content-Type-Options", "nosniff")
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("Referrer-Policy", "no-referrer")
+        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+        h.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")     # Google Sign-In popup needs this relaxed value
+        if request.url.path.startswith(("/api/", "/webhooks/", "/metrics")):
+            h.setdefault("Cache-Control", "no-store")                             # never cache personal or commercial data
+        else:
+            h.setdefault("Content-Security-Policy", CSP)
+        if settings.env == "production":
+            h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return resp
 
     def tx(request: Request):
         return request.app.state.db.tx()
@@ -296,7 +317,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     def admin_sources(request: Request, p: Principal = Depends(require("sources.read"))):
         with tx(request) as conn:
             return {"items": qa(conn, "SELECT s.source_id, s.display_name, s.source_tier, s.source_family, s.status, s.poll_interval_s, h.state AS health, h.last_success_at, h.consecutive_failures, h.missed_due_runs, h.error_class, h.detail, "
-                                      "s.certification IS NOT NULL AS certified, (SELECT count(*) FROM monitoring_runs r WHERE r.source_id=s.source_id AND r.status IN ('failed','partial') AND r.started_at > now()-interval '7 days') AS failures_7d "
+                                      "s.certification IS NOT NULL AS certified, s.collection_method, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, (SELECT count(*) FROM monitoring_runs r WHERE r.source_id=s.source_id AND r.status IN ('failed','partial') AND r.started_at > now()-interval '7 days') AS failures_7d "
                                       "FROM sources s LEFT JOIN source_health h USING (source_id) ORDER BY s.source_family, s.source_id")}
 
     @app.get("/api/admin/identity-reviews")
@@ -371,4 +392,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
 
     from . import r5
     r5.register(app)
+    from . import lists
+    lists.register(app)
+    from . import sources_admin
+    sources_admin.register(app)
     return app

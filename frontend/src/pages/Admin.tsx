@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
-import { api, fmtDateTime, post } from "../api";
+import { api, fmtDateTime, post, put, upload } from "../api";
 import { Badge, Err, humanize } from "../components/ui";
 
 const hk = (s: string) => (s === "healthy" ? "ok" : s === "unconfigured" || s === "paused" ? "" : "bad");
@@ -13,11 +13,51 @@ function Load({ path, children }: { path: string; children: (d: any, reload: () 
   return d ? children(d, reload) : <p className="muted">Loading…</p>;
 }
 
-const Sources = () => <Load path="/api/admin/sources">{(d) => (
-  <div className="card table-wrap"><table><thead><tr><th>Source</th><th>Tier</th><th>Family</th><th>Status</th><th>Health</th><th>Last success</th><th>Failures 7d</th><th>Certified</th></tr></thead><tbody>
-    {d.items.map((s: any) => <tr key={s.source_id}><td>{s.display_name}<div className="small muted">{s.source_id}</div></td><td>{s.source_tier}</td><td>{s.source_family}</td><td><Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{humanize(s.status)}</Badge></td>
-      <td><Badge kind={hk(s.health ?? "unconfigured")}>{s.health ?? "unconfigured"}</Badge>{s.error_class && <div className="small">{s.error_class}</div>}</td><td>{fmtDateTime(s.last_success_at)}</td><td>{s.failures_7d}</td><td>{s.certified ? "yes" : "no"}</td></tr>)}</tbody></table>
-    <p className="small muted">A source is only polled once its connector certification record exists. “Pending” means the integration is built but NOT verified against the live provider.</p></div>)}</Load>;
+function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () => void }) {
+  const [url, setUrl] = useState<string>(s.url ?? "");
+  const [licence, setLicence] = useState("Public newsroom page. robots.txt allows access. Reviewed by an administrator.");
+  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<unknown>(null);
+  const [msg, setMsg] = useState("");
+  const wrap = async (f: () => Promise<any>, done: (r: any) => string) => { setBusy(true); setErr(null); setMsg(""); try { setMsg(done(await f())); reload(); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  const v = s.validation;
+  return (
+    <div className="src-ctl">
+      {s.url_basis && s.url && <p className="small muted" style={{ margin: "0 0 8px" }}>URL basis: {s.url_basis}</p>}
+      <div className="row">
+        <input aria-label={`Page URL for ${s.display_name}`} placeholder={`https://… on ${s.canonical_domain}`} value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: 1, minWidth: 260 }} disabled={!can} />
+        <button disabled={!can || busy || url.length < 12} onClick={() => wrap(() => put(`/api/admin/sources/${s.source_id}/config`, { url }), () => "URL saved. Test it next.")}>Save URL</button>
+        <button disabled={!can || busy || !s.url} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/validate`), (r) => (r.ok ? "Test passed." : `Test failed: ${r.detail}`))}>Test from server</button>
+      </div>
+      {v && <p className="small" style={{ margin: "8px 0 0" }}><Badge kind={v.ok ? "ok" : "bad"}>{v.ok ? "Test passed" : "Test failed"}</Badge> {v.detail} <span className="muted">· {fmtDateTime(v.at)}</span></p>}
+      {can && v?.ok && s.status !== "active" && (
+        <div style={{ marginTop: 12 }}>
+          <label className="small">Licence and permission note<br /><textarea value={licence} onChange={(e) => setLicence(e.target.value)} /></label>
+          <label className="small row" style={{ margin: "8px 0" }}><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> I have checked that monitoring this page is permitted</label>
+          <button className="primary" disabled={busy || !ok || licence.length < 10} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/activate`, { licence_note: licence, confirm_permitted: ok }), () => "Source activated. The scheduler will pick it up within five minutes.")}>Activate source</button>
+        </div>)}
+      {can && s.status === "active" && <button style={{ marginTop: 10 }} disabled={busy} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/pause`, { reason: "paused by administrator" }), () => "Source paused.")}>Pause</button>}
+      {msg && <div className="okmsg" role="status" style={{ marginTop: 10 }}>{msg}</div>}<Err e={err} />
+    </div>
+  );
+}
+
+function Sources({ canEdit }: { canEdit: boolean }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return <Load path="/api/admin/sources">{(d, reload) => (
+    <div className="card table-wrap"><table><thead><tr><th>Source</th><th>Tier</th><th>Status</th><th>Health</th><th>Last success</th><th>Failures 7d</th><th></th></tr></thead><tbody>
+      {d.items.flatMap((s: any) => {
+        const editable = canEdit && ["feed", "change_monitor"].includes(s.collection_method);
+        const rows = [<tr key={s.source_id}><td>{s.display_name}<div className="small muted">{s.source_family} · {s.source_id}</div></td><td>{s.source_tier}</td>
+          <td><Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{humanize(s.status)}</Badge>{!s.url && ["feed", "change_monitor"].includes(s.collection_method) && <div className="small muted">needs a URL</div>}</td>
+          <td><Badge kind={hk(s.health ?? "unconfigured")}>{s.health ?? "unconfigured"}</Badge>{s.error_class && <div className="small">{s.error_class}</div>}</td><td>{fmtDateTime(s.last_success_at)}</td><td>{s.failures_7d}</td>
+          <td>{editable && <button className="ghost" aria-expanded={open === s.source_id} onClick={() => setOpen(open === s.source_id ? null : s.source_id)}>{open === s.source_id ? "Close" : "Set up"}</button>}</td></tr>];
+        if (open === s.source_id) rows.push(<tr key={s.source_id + "-c"}><td colSpan={7} style={{ background: "var(--tint-1)" }}><SourceControls s={s} can={editable} reload={reload} /></td></tr>);
+        return rows;
+      })}</tbody></table>
+      <p className="small muted">A source is only polled once it has a passing test and a certification record. “Pending” means built but not yet verified against the live site. Page tests run from the server, not your browser, and respect robots.txt.</p></div>)}</Load>;
+}
 
 const Identity = () => <Load path="/api/admin/identity-reviews">{(d, reload) => <IdentityList d={d} reload={reload} />}</Load>;
 function IdentityList({ d, reload }: { d: any; reload: () => void }) {
@@ -55,14 +95,42 @@ const Audit = () => <Load path="/api/admin/audit">{(d) => <div className="card t
 const Quality = () => <Load path="/api/admin/metrics">{(d) => <><div className="gates">{Object.entries(d).filter(([, v]) => typeof v === "number").map(([k, v]: any) => <div key={k} className="gate"><b>{humanize(k)}</b><div style={{ fontSize: 22 }}>{v}</div></div>)}</div>
   <Load path="/api/admin/funnel">{(f) => <><h3>Outcome funnel</h3>{Object.keys(f.cohorts).length === 0 && <div className="empty">No outcomes recorded yet. Nothing here is inferred.</div>}{Object.entries(f.cohorts).map(([k, c]: any) => <div key={k} className="card"><b>{humanize(k)}</b> · presented {c.presented} {c.insufficient_sample && <Badge kind="warn">insufficient sample: no conclusions</Badge>}</div>)}<ul className="tight small muted">{f.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>}</Load></>}</Load>;
 
+function Imports() {
+  const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
+  const load = () => api("/api/admin/imports").then(setD).catch(setErr);
+  useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, []);
+  const send = async (f: File | undefined) => {
+    if (!f) return; setBusy(true); setErr(null); setMsg("");
+    try { const r = await upload("/api/admin/import/upload", f); setMsg(`Workbook ${r.workbook} received. The worker is importing it now. This can take several minutes.`); load(); } catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  return (
+    <>
+      <div className="card">
+        <div className="eyebrow">Upload a workbook export</div>
+        <p style={{ marginTop: 0 }}>In Google Sheets choose <b>File, Download, Microsoft Excel (.xlsx)</b> for each workbook, then upload it here. The platform recognises which workbook it is, checks every tab header against the agreed contract, and imports in the background. A renamed or reordered column pauses that tab instead of guessing.</p>
+        <input type="file" accept=".xlsx" aria-label="Workbook file (.xlsx)" disabled={busy} onChange={(e) => { void send(e.target.files?.[0]); e.target.value = ""; }} />
+        {msg && <div className="okmsg" role="status" style={{ marginTop: 12 }}>{msg}</div>}<Err e={err} />
+        <p className="small muted" style={{ marginBottom: 0 }}>Re-uploading the same file changes nothing. The file itself is deleted after import; only its fingerprint and the result are kept.</p>
+      </div>
+      <h3>Recent uploads</h3>
+      {!d ? <p className="muted">Loading</p> : d.uploads.length === 0 ? <div className="empty">No uploads yet.</div> :
+        <div className="card table-wrap"><table><thead><tr><th>When</th><th>File</th><th>Workbook</th><th>Status</th><th>Detail</th></tr></thead><tbody>{d.uploads.map((u: any) => {
+          const tabs = u.stats?.tabs ? Object.entries(u.stats.tabs) as [string, any][] : [];
+          return <tr key={u.id}><td>{fmtDateTime(u.created_at)}</td><td>{u.filename}<div className="small muted">{u.uploaded_by}</div></td><td>{u.workbook_key}</td>
+            <td><Badge kind={u.status === "completed" ? "ok" : u.status === "failed" ? "bad" : "info"}>{u.status}</Badge></td>
+            <td className="small">{u.error ?? tabs.map(([k, v]) => `${k}: ${v.status}${v.rows !== undefined ? ` (${v.rows} rows)` : ""}`).join(" · ")}</td></tr>; })}</tbody></table></div>}
+    </>
+  );
+}
+
 export default function Admin({ me }: { me: { permissions: string[] } }) {
   const p = (x: string) => me.permissions.includes(x);
   return (
     <>
       <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
-      <div className="tabs">{p("sources.read") && <NavLink to="/admin">Sources</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
+      <div className="tabs">{p("sources.read") && <NavLink to="/admin" end>Sources</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
         {p("admin.costs") && <NavLink to="/admin/costs"> Costs</NavLink>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
-      <Routes><Route index element={<Sources />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} />
+      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="imports" element={<Imports />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} />
         <Route path="rules" element={<Rules />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
     </>
   );

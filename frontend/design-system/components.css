@@ -149,7 +149,7 @@ pre { background: var(--tint-1); border: 1px solid var(--line); padding: 10px 12
 /* ---------- guide ---------- */
 .flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; counter-reset: none; }
 .flow-step { background: #fff; border: 1px solid var(--line); border-top: 5px solid var(--navy); padding: 18px 20px 20px; position: relative; }
-.flow-step:nth-child(3n+2) { border-top-color: var(--purple); } .flow-step:nth-child(6) { border-top-color: var(--pink); }
+.flow-step:nth-child(3n+2) { border-top-color: var(--purple); } .flow-step:last-child { border-top-color: var(--pink); }
 .flow-n { font: 900 34px/1 var(--font-head); color: var(--navy); opacity: .9; }
 .flow-step h3 { margin: 8px 0 6px; font-size: 17px; } .flow-step p { margin: 0 0 12px; }
 .flow-see, .flow-guard { font-size: 13px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
@@ -160,3 +160,22 @@ pre { background: var(--tint-1); border: 1px solid var(--line); padding: 10px 12
 .gate-legend .g { border-bottom: 1px solid var(--line); }
 @media (max-width: 1100px) { .flow, .moves { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 680px) { .flow, .moves { grid-template-columns: 1fr; } }
+
+/* ---------- verdict, prospects, setup ---------- */
+.verdict { border-left: 5px solid var(--navy); background: var(--tint-1); padding: 10px 14px; margin: 0 0 14px; font: 600 15px/1.35 var(--font-body); color: var(--navy); }
+.verdict .k { display: block; font: 800 10.5px var(--font-head); letter-spacing: .12em; text-transform: uppercase; opacity: .75; margin-bottom: 2px; }
+.verdict.bad { border-left-color: var(--pink); background: var(--tint-3); } .verdict.warn { border-left-color: var(--orange); background: var(--tint-3); }
+.verdict.ok { border-left-color: var(--dot-ok); } .verdict.info { border-left-color: var(--purple); background: var(--tint-2); }
+.callout { border-left: 5px solid var(--purple); background: var(--tint-2); padding: 10px 14px; font-size: 14px; }
+.pros { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.pro { display: grid; grid-template-columns: 64px minmax(0, 1fr); background: #fff; border: 1px solid var(--line); }
+.pro-rank { background: var(--navy); color: #fff; font: 900 26px/1 var(--font-head); display: grid; place-items: start center; padding-top: 18px; }
+.pro-main { padding: 16px 20px 18px; min-width: 0; }
+.pro-name { font: 900 18px/1.15 var(--font-head); text-transform: uppercase; color: var(--navy); }
+.pro-signal { margin: 10px 0 4px; color: var(--navy); font-weight: 600; font-size: 15px; }
+.setup .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.setup li { display: flex; gap: 12px; align-items: flex-start; }
+.setup .tick { width: 22px; height: 22px; flex: none; border: 2px solid var(--navy); display: grid; place-items: center; font: 900 13px var(--font-head); color: var(--navy); }
+.setup li.done .tick { background: var(--dot-ok); border-color: var(--dot-ok); color: #fff; }
+.g[title] { cursor: help; }
+@media (max-width: 680px) { .pro { grid-template-columns: 1fr; } .pro-rank { padding: 8px 14px; place-items: center start; font-size: 18px; } }

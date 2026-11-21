@@ -36,3 +36,16 @@ export function fmtDateTime(v?: string | null): string {
   const d = new Date(v);
   return isNaN(d.getTime()) ? "unknown" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
+
+export async function upload<T = any>(path: string, file: File): Promise<T> {
+  const t = token();
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(path, { method: "POST", body: fd, headers: t ? { Authorization: `Bearer ${t}` } : {} });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const j = await res.json(); detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch { /* not json */ }
+    throw new ApiError(res.status, detail);
+  }
+  return res.json() as Promise<T>;
+}

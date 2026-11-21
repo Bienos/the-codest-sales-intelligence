@@ -122,9 +122,13 @@ def run_one(conn: Conn, worker: str, handlers: dict[str, Any], kinds: list[str] 
         conn.commit()
         return "quarantined"
     try:
-        with conn.transaction():
+        if getattr(handler, "own_transactions", False):     # long importers commit per unit of work (resumable); no wrapping transaction
             result = handler(conn, job)
             complete(conn, str(job["id"]), result if isinstance(result, dict) else {})
+        else:
+            with conn.transaction():
+                result = handler(conn, job)
+                complete(conn, str(job["id"]), result if isinstance(result, dict) else {})
         conn.commit()
         return "completed"
     except Exception as exc:  # noqa: BLE001

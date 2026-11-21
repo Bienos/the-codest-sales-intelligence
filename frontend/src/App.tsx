@@ -12,7 +12,13 @@ import { IconAccounts, IconAdmin, IconExplorer, IconGuide, IconToday } from "./c
 type Me = { email: string; role: string; permissions: string[] };
 declare global { interface Window { google?: any } }
 
-function Login({ onDone }: { onDone: () => void }) {
+type Notice = { kind: "denied" | "expired"; email?: string } | null;
+
+function emailFromToken(t: string | null): string | undefined {
+  try { return JSON.parse(atob((t ?? "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email; } catch { return undefined; }
+}
+
+function Login({ onDone, notice }: { onDone: () => void; notice: Notice }) {
   const [cfg, setCfg] = useState<any>(null);
   const [t, setT] = useState("");
   const [err, setErr] = useState("");
@@ -38,6 +44,8 @@ function Login({ onDone }: { onDone: () => void }) {
       </div>
       <div className="login-r"><div className="login-card">
         <div className="eyebrow">Sign in</div><h2 style={{ fontSize: 24, marginBottom: 18 }}>Welcome back</h2>
+        {notice?.kind === "denied" && <div className="err" role="alert"><b>{notice.email ?? "This Google account"} has not been given access.</b><br />Ask an administrator to add you, then sign in again. If you have more than one Google account, choose your work account.</div>}
+        {notice?.kind === "expired" && <div className="okmsg" role="status">Your session ended. Sign in again to continue.</div>}
         {cfg?.google_client_id ? <div id="g-btn" /> :
           cfg && cfg.env !== "production" ? <><p className="sub" style={{ marginBottom: 14 }}>Development environment. Paste a signed development token.</p>
             <input aria-label="Development token" type="password" value={t} onChange={(e) => setT(e.target.value)} placeholder="Development token" style={{ width: "100%", marginBottom: 14 }} />
@@ -53,10 +61,17 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
   const [n, setN] = useState(0);
+  const [notice, setNotice] = useState<Notice>(null);
   useEffect(() => {
-    api<Me>("/api/me").then((m) => { setMe(m); setNeedLogin(false); }).catch((e) => { if (e instanceof ApiError && (e.status === 401 || e.status === 403)) { clearToken(); setNeedLogin(true); } });
+    api<Me>("/api/me").then((m) => { setMe(m); setNeedLogin(false); setNotice(null); }).catch((e) => {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        let t: string | null = null; try { t = sessionStorage.getItem("ri_token"); } catch { /* storage unavailable */ }
+        setNotice(t ? (e.status === 403 ? { kind: "denied", email: emailFromToken(t) } : { kind: "expired" }) : null);
+        clearToken(); setNeedLogin(true);
+      }
+    });
   }, [n]);
-  if (needLogin) return <Login onDone={() => setN(n + 1)} />;
+  if (needLogin) return <Login onDone={() => setN(n + 1)} notice={notice} />;
   if (!me) return <div className="page muted">Loading</div>;
   const can = (p: string) => me.permissions.includes(p);
   const link = (to: string, label: string, Ico: any) => <NavLink to={to} aria-label={label} className={({ isActive }) => `navlink${isActive ? " active" : ""}`}><Ico /><span>{label}</span></NavLink>;

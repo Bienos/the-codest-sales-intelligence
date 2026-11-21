@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
-import { Badge, Coverage, Empty, Err, Evidence, Fact, accessKind, demandKind, humanize, priorityKind } from "../components/ui";
+import { Badge, Coverage, Err, Evidence, Fact, accessKind, demandKind, humanize, priorityKind, verdict } from "../components/ui";
+import Prospects from "./Prospects";
 
 const SECTIONS: [string, string][] = [["critical", "Critical and time-limited"], ["existing_accounts", "Developments in your existing accounts"], ["new_discoveries", "New qualified discoveries outside the master lists"],
   ["relationships", "Relationship re-engagement"], ["deal_blockers", "Active deal blockers"], ["research_review", "Research awaiting review"]];
@@ -29,6 +30,7 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
       </div>
       <div className="opp-grid">
         <div className="opp-body">
+          {(() => { const v = verdict(c); return <div className={`verdict ${v.kind}`}><span className="k">Our read</span>{v.text}</div>; })()}
           {c.tender && <div className="tender"><Badge kind="bad">Tender</Badge> Deadline <b>{fmtDateTime(c.tender.deadline_at)}</b> ({c.tender.deadline_tz ?? "timezone unknown"}). Status last rechecked {fmtDateTime(c.tender.last_status_check_at)}.</div>}
           <p><span className="k">What happened</span>{c.what_happened.summary ?? "No summary"}
             <span className="prov"> Event {fmtDate(c.what_happened.event_date)} · published {fmtDate(c.what_happened.published)} · first seen {fmtDate(c.what_happened.first_observed)} · checked {fmtDateTime(c.last_checked)}</span></p>
@@ -74,9 +76,10 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
 
 export default function Today() {
   const [d, setD] = useState<any>(null);
+  const [ov, setOv] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
   const load = () => api("/api/today").then(setD).catch(setErr);
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); api("/api/overview").then(setOv).catch(() => undefined); }, []);
   if (err) return <div className="page"><Err e={err} /></div>;
   if (!d) return <div className="page muted">Loading</div>;
   const all: any[] = Object.values(d.sections).flat() as any[];
@@ -86,20 +89,36 @@ export default function Today() {
       <header className="hero">
         <div className="eyebrow">{new Date(d.generated_at).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</div>
         <h2>Today</h2>
-        <p className="sub">{d.count === 0 ? "Nothing new needs your attention." : `${d.count} material change${d.count === 1 ? "" : "s"} across your accounts. Repeated coverage of one release is shown once, and dismissed items stay hidden until something material changes.`}</p>
+        <p className="sub">{d.count === 0 ? (ov?.accounts ? `${ov.accounts.toLocaleString()} accounts are loaded from your workbooks. Nothing has been verified from a live source yet, so start with your shortlist below.` : "Nothing new needs your attention.") : `${d.count} material change${d.count === 1 ? "" : "s"} across your accounts. Repeated coverage of one release is shown once, and dismissed items stay hidden until something material changes.`}</p>
         <div className="stats">
           <div className="stat urgent"><div className="n">{count((c) => c.priority === "urgent")}</div><div className="l">Urgent</div></div>
-          <div className="stat"><div className="n">{count((c) => c.priority === "high")}</div><div className="l">High priority</div></div>
-          <div className="stat"><div className="n">{count((c) => c.account.in_master_list)}</div><div className="l">Existing accounts</div></div>
-          <div className="stat"><div className="n">{count((c) => !c.account.in_master_list)}</div><div className="l">New discoveries</div></div>
-          <div className="stat"><div className="n">{d.coverage.monitored_sources}<span style={{ fontSize: 18, opacity: .7 }}>/{d.coverage.monitored_sources + d.coverage.pending_validation_sources}</span></div><div className="l">Sources live</div></div>
+          <div className="stat"><div className="n">{d.count}</div><div className="l">Verified opportunities</div></div>
+          <div className="stat"><div className="n">{ov ? ov.shortlist : "·"}</div><div className="l">On your shortlist</div></div>
+          <div className="stat"><div className="n">{ov ? ov.accounts.toLocaleString() : "·"}</div><div className="l">Accounts loaded</div></div>
+          <div className="stat"><div className="n">{ov ? ov.sources_live : d.coverage.monitored_sources}<span style={{ fontSize: 18, opacity: .7 }}>/{ov ? ov.sources_total : d.coverage.monitored_sources + d.coverage.pending_validation_sources}</span></div><div className="l">Sources live</div></div>
         </div>
       </header>
       <div className="page" style={{ paddingTop: 24 }}>
-        <Coverage c={d.coverage} empty={d.empty_state} />
-        {d.count === 0 && <Empty title="All quiet">{d.empty_state}</Empty>}
+        {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
+        {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
         {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{d.sections[k].map((c: any) => <Card key={c.hypothesis_id} c={c} reload={load} />)}</section> : null))}
+        <Prospects />
       </div>
     </>
+  );
+}
+
+function Setup({ ov, reason }: { ov: any; reason?: string | null }) {
+  const steps = [
+    { done: !!ov?.last_import, t: "Workbooks imported", d: ov?.last_import ? `${ov.accounts.toLocaleString()} accounts and ${ov.contacts.toLocaleString()} contacts loaded.` : "Upload both workbooks in Administration, Imports." },
+    { done: (ov?.sources_live ?? 0) > 0, t: "Live sources checking for changes", d: ov ? `${ov.sources_live} of ${ov.sources_total} sources are live. The rest are waiting for a URL or validation.` : "" },
+    { done: (ov?.verified_opportunities ?? 0) > 0, t: "First verified opportunity", d: "Appears here once a live source change passes verification and the gates." },
+  ];
+  return (
+    <div className="card setup">
+      <div className="eyebrow">Why Today is quiet</div>
+      <p style={{ margin: "0 0 14px" }}>{reason ?? "Nothing has passed verification yet."} Until sources are live, a quiet screen says nothing about your market.</p>
+      <ol className="steps">{steps.map((s) => <li key={s.t} className={s.done ? "done" : ""}><span className="tick" aria-hidden="true">{s.done ? "✓" : "·"}</span><div><b>{s.t}</b><div className="small muted">{s.d}</div></div></li>)}</ol>
+    </div>
   );
 }

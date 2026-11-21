@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
 const STEPS = [
+  { n: "00", t: "Load", d: "Your two workbooks are imported with their tab headers checked. They give the platform your accounts, contacts and starting signals.", see: "Today, From your lists", guard: "Sheet content is shown as unverified until a live source confirms it. A renamed column pauses that tab." },
   { n: "01", t: "Watch", d: "Official tender feeds, company newsrooms and your two account sheets are checked on a schedule.", see: "Administration, Sources", guard: "A failed check is shown as degraded coverage. It is never read as 'nothing happened'." },
   { n: "02", t: "Verify", d: "Each change becomes a claim with a verbatim quote and a link to the original page.", see: "Evidence pills on every card", guard: "A claim without a matching quote cannot trigger a recommendation." },
   { n: "03", t: "Group", d: "Related events are joined into one initiative, such as a core banking programme, so repeat coverage appears once.", see: "Initiative name on the card", guard: "Syndicated copies of one announcement count as one event." },

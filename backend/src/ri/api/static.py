@@ -20,6 +20,11 @@ def mount_frontend(app: FastAPI, dist: Path = DIST) -> bool:
         if path.startswith(("api/", "webhooks/", "metrics", "healthz", "readyz")):
             from fastapi import HTTPException
             raise HTTPException(404)
-        f = dist / path
-        return FileResponse(f if f.is_file() else dist / "index.html")
+        root = dist.resolve()
+        try:
+            f = (root / path).resolve()
+        except (OSError, ValueError):
+            f = root / "index.html"
+        # never serve anything outside the build folder (path traversal): fall back to the SPA shell
+        return FileResponse(f if f.is_file() and f.is_relative_to(root) else root / "index.html")
     return True

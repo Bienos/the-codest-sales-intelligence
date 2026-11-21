@@ -151,3 +151,97 @@ class FixtureSheetsClient:
 
     def get_hyperlinks(self, workbook_id, title, col_index, first_row, last_row):
         return {r: u for (w, t, c, r), u in self.links.items() if (w, t, c) == (workbook_id, title, col_index)}
+
+
+class XlsxSheetsClient:
+    """Reads a Google Sheets .xlsx export (one workbook). Same contract and drift checks as the live API client.
+
+    Used for uploaded exports and the Drive connector. Values are read as displayed text; hyperlinks are taken from cell links.
+    """
+
+    def __init__(self, workbook_id: str, source: Any):
+        import datetime as _dt
+
+        import openpyxl
+
+        self._wb_id = workbook_id
+        self._dt = _dt
+        self._xl = openpyxl.load_workbook(source, read_only=False, data_only=True)
+
+    def _ws(self, workbook_id: str, title: str):
+        if workbook_id != self._wb_id:
+            raise ConnectorBlocked("xlsx snapshot does not contain that workbook")
+        return self._xl[title]
+
+    def _text(self, v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, self._dt.datetime):
+            return v.date().isoformat() if v.time() == self._dt.time(0) else v.isoformat(sep=" ")
+        if isinstance(v, self._dt.date):
+            return v.isoformat()
+        if isinstance(v, float) and v.is_integer():
+            return str(int(v))
+        return str(v).strip()
+
+    def get_tabs(self, workbook_id: str) -> list[TabInfo]:
+        if workbook_id != self._wb_id:
+            raise ConnectorBlocked("xlsx snapshot does not contain that workbook")
+        out = []
+        for ws in self._xl.worksheets:
+            last = 0
+            for r in range(ws.max_row, 0, -1):          # true last non-empty row; exports often carry empty tails
+                if any(c.value not in (None, "") for c in ws[r]):
+                    last = r
+                    break
+            out.append(TabInfo(f"xlsx:{ws.title}", ws.title, last, ws.max_column, 1))   # title-keyed: stable if tabs are reordered
+        return out
+
+    def get_values(self, workbook_id, title, first_row, last_row, last_col):
+        ws = self._ws(workbook_id, title)
+        return [[self._text(c.value) for c in row] for row in
+                ws.iter_rows(min_row=first_row, max_row=last_row, min_col=1, max_col=last_col)]
+
+    def get_hyperlinks(self, workbook_id, title, col_index, first_row, last_row):
+        ws = self._ws(workbook_id, title)
+        out: dict[int, str] = {}
+        for r in range(first_row, last_row + 1):
+            c = ws.cell(row=r, column=col_index)
+            if c.hyperlink and c.hyperlink.target:
+                out[r] = c.hyperlink.target
+            elif isinstance(c.value, str) and (m := _HYPERLINK.match(c.value)):
+                out[r] = m.group(1)
+        return out
+
+
+MAX_XLSX_BYTES = 25 * 1024 * 1024
+MAX_XLSX_UNCOMPRESSED = 250 * 1024 * 1024
+
+
+def detect_workbook(data: bytes) -> str:
+    """Validate an uploaded .xlsx and say which contract workbook it is (A or B). Raises ValueError with a user-safe message."""
+    import io
+    import zipfile
+
+    if len(data) > MAX_XLSX_BYTES:
+        raise ValueError("file is larger than 25 MB")
+    if data[:4] != b"PK\x03\x04":
+        raise ValueError("not an .xlsx file (export the sheet as Microsoft Excel .xlsx)")
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            if sum(i.file_size for i in z.infolist()) > MAX_XLSX_UNCOMPRESSED:
+                raise ValueError("workbook expands to an unreasonable size")
+            if "xl/workbook.xml" not in z.namelist():
+                raise ValueError("not a spreadsheet workbook")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("corrupt .xlsx file") from exc
+    import openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
+    names = set(wb.sheetnames)
+    wb.close()
+    if {"MASTER ACCOUNTS", "BUYING SIGNAL LOG"} <= names:
+        return "A"
+    if {"Accounts", "Priority Outreach"} <= names:
+        return "B"
+    raise ValueError("unrecognised workbook: expected the Financial Sector Master List (A) or Codest Outreach Base (B)")

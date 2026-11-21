@@ -37,6 +37,8 @@ def seed_registry(conn: Conn, path: Path = SEED) -> int:
         if row:
             conn.execute("INSERT INTO source_health(source_id, state) VALUES (%s,'unconfigured') ON CONFLICT DO NOTHING", (s["source_id"],))
             n += 1
+        elif s.get("config"):     # existing deployment: add newly shipped config keys but never overwrite an operator's value
+            conn.execute("UPDATE sources SET config = %s::jsonb || config WHERE source_id=%s", (jb(s["config"]), s["source_id"]))
     return n
 
 

@@ -31,7 +31,35 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     def approval_gate(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         raise RequiresApproval("this job class requires an approval record")
 
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate}
+    def sheet_import_xlsx(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        import io
+
+        from ..db import q1
+        from ..sheets import contracts as C
+        from ..sheets.client import XlsxSheetsClient
+        from ..sheets.importer import import_workbook
+        up = q1(conn, "SELECT * FROM import_uploads WHERE id=%s", (job["payload"]["upload_id"],))
+        if not up or up["content"] is None:
+            raise JobError("upload not found or already consumed", "invalid_payload")
+        conn.execute("UPDATE import_uploads SET status='importing' WHERE id=%s", (up["id"],))
+        # a full import over a remote database can outlast the default 5-minute lease; the importer is idempotent so a crash is safe to reclaim later
+        conn.execute("UPDATE jobs SET lease_expires_at = now() + interval '2 hours' WHERE id=%s", (job["id"],))
+        conn.commit()
+        try:
+            client = XlsxSheetsClient(C.WORKBOOK_IDS[up["workbook_key"]], io.BytesIO(bytes(up["content"])))
+            res = import_workbook(conn, client, up["workbook_key"], actor=f"upload:{up['uploaded_by']}")
+        except Exception as exc:   # noqa: BLE001
+            conn.rollback()
+            conn.execute("UPDATE import_uploads SET status='failed', error=%s, content=NULL, processed_at=now() WHERE id=%s", (f"{type(exc).__name__}: {exc}"[:500], up["id"]))
+            conn.commit()
+            raise JobError(str(exc)[:300], "invalid_payload") from exc
+        conn.execute("UPDATE import_uploads SET status=%s, import_run_id=%s, content=NULL, processed_at=now() WHERE id=%s",
+                     ("completed" if res.status == "completed" else "failed", res.run_id, up["id"]))
+        conn.commit()
+        return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
+
+    sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

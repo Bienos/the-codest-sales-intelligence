@@ -12,6 +12,8 @@ dependencies = [
   "pyyaml>=6",
   "rapidfuzz>=3.9",
   "pyjwt[crypto]>=2.8",
+  "openpyxl>=3.1",
+  "python-multipart>=0.0.9",
 ]
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10", "types-PyYAML"]
