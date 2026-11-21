@@ -78,10 +78,37 @@ def anchor_in_text(anchor: str, text: str) -> bool:
     return _squash(anchor) in _squash(text)
 
 
+def parse_events_json(out: str) -> dict:
+    """Parse the model's JSON. When the reply was cut off (token limit) or has one broken event, keep every COMPLETE event before the break.
+    Nothing is repaired or invented: an event is kept only if it parses whole, and its quote is still checked against the page afterwards."""
+    m = re.search(r"\{.*\}", out, re.S)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except ValueError:
+            pass
+    i = out.find('"events"')
+    j = out.find("[", i) if i >= 0 else -1
+    if j < 0:
+        raise ValueError("no JSON object in model output")
+    dec, pos, events = json.JSONDecoder(), j + 1, []
+    while pos < len(out):
+        while pos < len(out) and out[pos] in " \n\r\t,":
+            pos += 1
+        if pos >= len(out) or out[pos] != "{":
+            break
+        try:
+            obj, pos = dec.raw_decode(out, pos)
+        except ValueError:
+            break
+        events.append(obj)
+    return {"events": events, "_salvaged": True}
+
+
 class AnthropicExtractor:
     """Production extractor. Requires ANTHROPIC_API_KEY; without it the integration is blocked (never faked)."""
 
-    def __init__(self, client: httpx.AsyncClient | None, api_key: str | None, model: str = "claude-haiku-5-5", max_tokens: int = 4000):
+    def __init__(self, client: httpx.AsyncClient | None, api_key: str | None, model: str = "claude-haiku-5-5", max_tokens: int = 8000):
         if not api_key:
             from ..sheets.client import ConnectorBlocked
             raise ConnectorBlocked("ANTHROPIC_API_KEY not set: LLM extraction is blocked")
@@ -105,10 +132,7 @@ class AnthropicExtractor:
         self.last_tokens_in, self.last_tokens_out = int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0))
         self.last_usage_tokens = self.last_tokens_in + self.last_tokens_out
         out = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-        m = re.search(r"\{.*\}", out, re.S)
-        if not m:
-            raise ValueError("no JSON object in model output")
-        return json.loads(m.group(0))
+        return parse_events_json(out)
 
 
 def _run(coro):

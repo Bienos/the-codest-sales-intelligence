@@ -10,8 +10,26 @@ function token(): string | null {
 export function clearToken() { try { sessionStorage.removeItem("ri_token"); } catch { /* storage unavailable */ } }
 export function setToken(t: string) { try { sessionStorage.setItem("ri_token", t); } catch { /* storage unavailable */ } }
 
+function expiresIn(t: string): number | null {        // seconds left on one of our own sessions; null for any other token
+  try { const c = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))); return c.typ === "session" ? c.exp - Date.now() / 1000 : null; } catch { return null; }
+}
+/** Swap a Google token for our 12-hour session (so people are not signed out every hour). Quietly keeps the old token if sessions are not configured. */
+export async function startSession(): Promise<void> {
+  const t = token(); if (!t) return;
+  try {
+    const r = await fetch("/api/auth/session", { method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: "{}" });
+    if (r.ok) { const j = await r.json(); setToken(j.token); }
+  } catch { /* offline: keep what we have */ }
+}
+let renewing = false;
+async function renewSoon() {
+  const t = token(); const left = t ? expiresIn(t) : null;
+  if (left !== null && left < 3 * 3600 && !renewing) { renewing = true; try { await startSession(); } finally { renewing = false; } }
+}
+
 export async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const t = token();
+  void renewSoon();
   const res = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...(t ? { Authorization: `Bearer ${t}` } : {}), ...(init.headers || {}) },

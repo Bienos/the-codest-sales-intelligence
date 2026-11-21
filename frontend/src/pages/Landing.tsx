@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { setToken } from "../api";
+import { setToken, startSession } from "../api";
 import { Brand } from "../components/ui";
 
 export type Notice = { kind: "denied" | "expired"; email?: string } | null;
@@ -15,7 +15,7 @@ function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
     const s = document.createElement("script");
     s.src = "https://accounts.google.com/gsi/client"; s.async = true;
     s.onload = () => {
-      window.google.accounts.id.initialize({ client_id: cfg.google_client_id, callback: (r: any) => { setToken(r.credential); onDone(); } });
+      window.google.accounts.id.initialize({ client_id: cfg.google_client_id, callback: async (r: any) => { setToken(r.credential); await startSession(); onDone(); } });
       window.google.accounts.id.renderButton(document.getElementById("g-btn"), { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", width: 300 });
     };
     s.onerror = () => setErr("Google Sign-In could not be loaded.");
@@ -209,7 +209,7 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
   const words = "See which engineering work is real, and who owns it.".split(" ");
   return (
     <div className="land" ref={root}>
-      <header className="land-nav"><Brand /><a className="land-link" href="#signin">Sign in</a></header>
+      <header className="land-nav"><Brand /><a className="land-jump" href="#signin">Sign in</a></header>
 
       <section className="land-hero" ref={hero} onPointerMove={onMove}>
         <div className="dots" aria-hidden="true" /><div className="dots lit" aria-hidden="true" />
@@ -276,8 +276,7 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
       </section>
 
       <footer className="land-foot">
-        <div className="land-wrap row spread"><Brand sub={false} /><a className="land-link" href="#signin">Sign in</a></div>
-        <div className="land-wrap small">Internal tool of The Codest. Access is limited to people an administrator has added.</div>
+        <div className="land-wrap land-foot-in"><Brand sub={false} /><span className="small">Internal tool of The Codest. Access is limited to people an administrator has added.</span></div>
       </footer>
     </div>
   );

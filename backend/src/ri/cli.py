@@ -82,50 +82,69 @@ def main(argv: list[str] | None = None) -> int:
 
             from .sources.factory import build_connector
 
-            def factory(source_id: str):
-                return build_connector(conn, source_id)
             from . import budget
             from .events.budgeted import BudgetedExtractor
             from .events.extract import AnthropicExtractor
             from .identity.resolver import resolve
+            from .heartbeat import beat
+            from .verify.run import sync_fetch
+            import threading
             period = BudgetedExtractor.period()
             budget.set_cap(conn, "anthropic", "monthly", period, s.anthropic_monthly_token_cap, "tokens")
             budget.set_cap(conn, "exa", "monthly", period, s.exa_monthly_cap_usd, "usd")
             conn.commit()
             print(f"caps for {period}: anthropic={s.anthropic_monthly_token_cap} tokens, exa=${s.exa_monthly_cap_usd}")
-            http = httpx.AsyncClient(timeout=60)
 
-            def extractor_factory(c):
-                if not s.anthropic_api_key:
-                    return None
-                return BudgetedExtractor(AnthropicExtractor(None, s.anthropic_api_key, model=s.anthropic_model), c, price_in=s.anthropic_price_in_per_mtok, price_out=s.anthropic_price_out_per_mtok)
+            def make_handlers(c):
+                """Handlers bound to one database connection: each lane has its own, so a long background job never holds up a button press."""
+                def extractor_factory(cc):
+                    if not s.anthropic_api_key:
+                        return None
+                    return BudgetedExtractor(AnthropicExtractor(None, s.anthropic_api_key, model=s.anthropic_model), cc, price_in=s.anthropic_price_in_per_mtok, price_out=s.anthropic_price_out_per_mtok)
 
-            def resolve_factory(c):
-                return lambda name: (lambda d: d.org_id if d.action == "auto_link" else None)(resolve(c, name=name, allow_create=False)) if name else None
-            from .verify.run import sync_fetch
+                def resolve_factory(cc):
+                    return lambda name: (lambda d: d.org_id if d.action == "auto_link" else None)(resolve(cc, name=name, allow_create=False)) if name else None
 
-            def discovery_factory(c):
-                if not (s.exa_api_key and s.exa_monthly_cap_usd > 0):
-                    return None
-                from .sources.exa import ExaClient
-                budget.set_cap(c, "exa", "monthly", BudgetedExtractor.period(), s.exa_monthly_cap_usd, "usd")
-                c.commit()
-                return {"exa": ExaClient(None, s.exa_api_key), "max_searches": s.discovery_max_searches_per_run,
-                        "max_new_requests": s.discovery_max_new_requests_per_run, "interval_days": s.discovery_interval_days, "est_cost": s.exa_est_cost_per_search}
-            handlers = build_handlers(connector_factory=factory, extractor_factory=extractor_factory, resolve_org_factory=resolve_factory,
+                def discovery_factory(cc):
+                    if not (s.exa_api_key and s.exa_monthly_cap_usd > 0):
+                        return None
+                    from .sources.exa import ExaClient
+                    budget.set_cap(cc, "exa", "monthly", BudgetedExtractor.period(), s.exa_monthly_cap_usd, "usd")
+                    cc.commit()
+                    return {"exa": ExaClient(None, s.exa_api_key), "max_searches": s.discovery_max_searches_per_run,
+                            "max_new_requests": s.discovery_max_new_requests_per_run, "interval_days": s.discovery_interval_days, "est_cost": s.exa_est_cost_per_search}
+                return build_handlers(connector_factory=lambda sid: build_connector(c, sid), extractor_factory=extractor_factory, resolve_org_factory=resolve_factory,
                                       fetch_factory=lambda: sync_fetch(lambda: None), discovery_factory=discovery_factory)
-            from .heartbeat import beat
-            print("worker started; polling queue")
-            last_beat, done = 0.0, 0
-            while True:
-                r = run_one(conn, f"worker-{time.time_ns()}", handlers)
-                done += r is not None
-                if time.time() - last_beat > 60:
-                    beat(conn, "worker", {"jobs_since_start": done})
-                    conn.commit()
-                    last_beat = time.time()
-                if r is None:
-                    time.sleep(5)
+
+            # lanes: what a person is waiting for runs on its own worker; scheduled reading and maintenance run on the other
+            INTERACTIVE = ["account_scan", "verify_url", "sheet_import_xlsx", "sheet_sync", "sources_validate_all", "evaluate_event", "add_company"]
+
+            def lane(name: str, own_conn, kinds_fn):
+                handlers = make_handlers(own_conn)
+                kinds = kinds_fn(list(handlers))
+                print(f"lane {name} started; jobs: {kinds}")
+                last_beat, done = 0.0, 0
+                while True:
+                    try:
+                        r = run_one(own_conn, f"{name}-{time.time_ns()}", handlers, kinds)
+                    except Exception as exc:  # noqa: BLE001 - a lane never dies: log, reconnect-safe rollback, carry on
+                        print(f"lane {name} error: {type(exc).__name__}: {exc}")
+                        try:
+                            own_conn.rollback()
+                        except Exception:  # noqa: BLE001
+                            pass
+                        time.sleep(5)
+                        continue
+                    done += r is not None
+                    if time.time() - last_beat > 60:
+                        beat(own_conn, "worker" if name == "background" else f"worker-{name}", {"jobs_since_start": done})
+                        own_conn.commit()
+                        last_beat = time.time()
+                    if r is None:
+                        time.sleep(3 if name == "interactive" else 5)
+
+            threading.Thread(target=lane, args=("interactive", connect(s.database_url), lambda all_: [k for k in INTERACTIVE if k in all_]), daemon=True).start()
+            lane("background", conn, lambda all_: [k for k in all_ if k not in INTERACTIVE])
         elif a.cmd == "digest":
             from .notify.digest import SlackWebhookSink, send_digest
             from .sheets.client import ConnectorBlocked

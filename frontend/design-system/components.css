@@ -303,3 +303,17 @@ td:nth-child(2), td:nth-child(4) { white-space: nowrap; }
 }
 @media (max-width: 420px) { .stat .l { letter-spacing: .08em; } .opp-side dl { grid-template-columns: 70px 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.tabs .tabn { margin-left: 8px; padding: 1px 6px; background: var(--tint-1); border: 1px solid var(--line); font: 800 11px var(--font-head); color: var(--navy); }
+.tabs button[aria-selected="true"] .tabn { background: var(--navy); color: #fff; border-color: var(--navy); }
+
+.addgrid { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 12px; } .addgrid label { display: grid; gap: 4px; } @media (max-width: 860px) { .addgrid { grid-template-columns: 1fr; } }
+
+/* ---------- funnel ---------- */
+.funnel { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.funnel li { display: grid; grid-template-columns: minmax(180px, 320px) 1fr 70px; gap: 14px; align-items: center; }
+.fn-l { display: grid; line-height: 1.25; } .fn-l b { color: var(--navy); font-size: 14px; }
+.fn-bar { height: 14px; background: var(--tint-1); border: 1px solid var(--line); } .fn-bar i { display: block; height: 100%; background: var(--navy); }
+.funnel li.drop .fn-bar i { background: var(--pink); } .funnel li.drop .fn-l b { color: var(--pink-hover); }
+.fn-n { font: 900 18px var(--font-head); color: var(--navy); text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 860px) { .funnel li { grid-template-columns: 1fr 60px; } .fn-bar { grid-column: 1 / -1; grid-row: 2; } }

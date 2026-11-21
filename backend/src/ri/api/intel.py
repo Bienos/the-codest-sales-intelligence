@@ -273,7 +273,23 @@ def register_pipeline(app: FastAPI) -> None:
             dig = q1(conn, "SELECT max(created_at) AS t FROM notifications_sent WHERE status='sent'") or {}
             imp = q1(conn, "SELECT workbook_key, status, finished_at FROM import_runs WHERE status IN ('completed','paused_schema_drift') ORDER BY finished_at DESC NULLS LAST LIMIT 1")
             bud = {r["provider"]: r for r in qa(conn, "SELECT provider, cap, spent, reserved FROM provider_budgets WHERE kind='monthly' AND period=%s", (usage.period_now(),))}
+            fn = q1(conn, "SELECT (SELECT count(*) FROM source_documents WHERE fetched_at > now() - interval '7 days') AS read, "
+                          "(SELECT count(*) FROM source_documents WHERE fetched_at > now() - interval '7 days' AND coalesce(raw_meta->>'triage','') <> 'skipped_not_relevant') AS relevant, "
+                          "(SELECT count(*) FROM events WHERE first_observed_at > now() - interval '7 days') AS events, "
+                          "(SELECT count(*) FROM events WHERE first_observed_at > now() - interval '7 days' AND proven) AS proven, "
+                          "(SELECT count(*) FROM events WHERE first_observed_at > now() - interval '7 days' AND subject_org_id IS NOT NULL) AS linked, "
+                          "(SELECT count(*) FROM signals s JOIN events e ON e.id=s.event_id WHERE e.first_observed_at > now() - interval '7 days') AS signals, "
+                          "(SELECT count(*) FROM opportunity_hypotheses WHERE state<>'superseded') AS cards, "
+                          "(SELECT count(*) FROM organizations) AS accounts, (SELECT count(*) FROM new_company_candidates WHERE status='pending_qualification') AS candidates") or {}
         sch, wrk = hb.get("scheduler"), hb.get("worker")
+        funnel = [{"key": k, "label": l, "n": int(fn.get(k) or 0), "note": n} for k, l, n in [
+            ("read", "Pages and items read", "Everything the sources returned in the last 7 days."),
+            ("relevant", "Relevant to our work", "Passed the cheap relevance check, so the model reads them."),
+            ("events", "Events extracted", "Atomic facts, each with a quote from the page."),
+            ("proven", "Proven", "Quoted or official, and not stale. True whether or not the company is one of ours."),
+            ("linked", "Linked to an account", "About a company in our database. Without an account nothing can become a signal."),
+            ("signals", "Became a signal", "Matched one of the active rules."),
+            ("cards", "Opportunity cards", "All current cards, from every signal.")]]
 
         def fresh(h, limit):
             return "never" if not h else "ok" if age(h["at"]) < limit else "stale"
@@ -304,7 +320,16 @@ def register_pipeline(app: FastAPI) -> None:
             nexts.append("The worker has not checked in recently. Check the worker service on Render.")
         if not digest_cfg:
             nexts.append("Optional: set the Slack webhook to get the daily digest.")
-        return {"stages": stages, "queue": jobs, "oldest_waiting_s": age(oldest.get("t")), "budgets": {k: {"cap": float(v["cap"]), "used": float(v["spent"]) + float(v["reserved"])} for k, v in bud.items()}, "next_steps": nexts}
+        return {"stages": stages, "queue": jobs, "oldest_waiting_s": age(oldest.get("t")), "budgets": {k: {"cap": float(v["cap"]), "used": float(v["spent"]) + float(v["reserved"])} for k, v in bud.items()}, "next_steps": nexts, "funnel": funnel, "accounts": int(fn.get("accounts") or 0), "candidates": int(fn.get("candidates") or 0),
+                "lanes": {"background": hb.get("worker") and {"at": hb["worker"]["at"]}, "interactive": hb.get("worker-interactive") and {"at": hb["worker-interactive"]["at"]}}}
+
+
+VIEWS = {
+    "accounts": "(e.verification_status='verified' AND e.subject_org_id IS NOT NULL)",
+    "market": "(e.proven AND e.subject_org_id IS NULL AND e.lane='private' AND e.market_tier='core')",
+    "rest": "(e.proven AND e.subject_org_id IS NULL AND e.lane='private' AND e.market_tier IN ('secondary','unknown'))",
+    "public": "(e.proven AND e.lane='public' AND e.market_tier IN ('core','secondary'))",
+}
 
 
 def register_feed(app: FastAPI) -> None:
@@ -317,7 +342,7 @@ def register_feed(app: FastAPI) -> None:
 
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
-                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, limit: int = Query(40, le=100), p: Principal = Depends(require("explorer.read"))):
+                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, le=100), p: Principal = Depends(require("explorer.read"))):
         from .search import all_like, tokens
         toks = tokens(q)
         rule_ids = fd.rules_for_play(play) if play else ([rule] if rule else [])
@@ -326,16 +351,17 @@ def register_feed(app: FastAPI) -> None:
             tw, tp = all_like("(e.summary || ' ' || coalesce(o.display_name,''))", toks) if toks else ("TRUE", [])
             rows = qa(conn,
                 f"SELECT e.id, e.event_type, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verification_status, e.is_historical_replay, o.id AS org_id, o.display_name, o.country_code, o.segment, "   # noqa: S608
-                f"o.employees_estimate, o.employees_uncertain, o.in_master_list, "
+                f"o.employees_estimate, o.employees_uncertain, o.in_master_list, e.proven, e.market_tier, e.lane, e.market_country, "
+                f"coalesce((SELECT pn.buyer_name FROM event_documents ed JOIN procurement_notices pn ON pn.document_id=ed.document_id WHERE ed.event_id=e.id LIMIT 1), e.subject_name_raw) AS buyer_name, "
                 f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=e.id) AS sigs, "
                 f"(SELECT coalesce(array_agg(ec.claim_id), '{{}}') FROM event_claims ec WHERE ec.event_id=e.id) AS claim_ids, "
                 f"(SELECT jsonb_build_object('id', i.id, 'title', i.title, 'stage', i.stage) FROM initiative_events ie JOIN initiatives i ON i.id=ie.initiative_id WHERE ie.event_id=e.id LIMIT 1) AS programme, "
                 f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened "
                 f"FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
-                f"WHERE e.verification_status='verified' AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
+                f"WHERE {VIEWS[view]} AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
                 f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND s.rule_id = ANY(%s))) "
-                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only, rule_ids or None, rule_ids or None, limit * 2])
+                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only and view == "accounts", rule_ids or None, rule_ids or None, limit * 2])
             items = []
             for r in rows:
                 mk = market_focus(r["country_code"], r["segment"])
@@ -348,7 +374,8 @@ def register_feed(app: FastAPI) -> None:
                               "organization": {"id": str(r["org_id"]), "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"],
                                                "in_master_list": r["in_master_list"], "icp": icp_band(r["employees_estimate"], bool(r["employees_uncertain"]), r["segment"])["band"], "market": mk} if r["org_id"] else None,
                               "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in r["sigs"]], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
-                              "evidence": ev, "programme": r["programme"]})
+                              "evidence": ev, "programme": r["programme"],
+                              "scope": {"proven": r["proven"], "linked": bool(r["org_id"]), "tier": r["market_tier"], "lane": r["lane"], "country": r["market_country"], "buyer": r["buyer_name"]}})
                 if len(items) >= limit:
                     break
             names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals")}
@@ -359,9 +386,32 @@ def register_feed(app: FastAPI) -> None:
             cov = coverage_health(conn, p)
             totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified, "
                               "count(*) FILTER (WHERE subject_org_id IS NULL AND verification_status='verified' AND coalesce(event_at, pub_at, first_observed_at) > now() - make_interval(days => %s)) AS market_wide FROM events", (days,)) or {}
-        return {"items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
+            counts = q1(conn, "SELECT " + ", ".join(f"count(*) FILTER (WHERE {w} AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s)) AS {k}" for k, w in VIEWS.items())
+                        + " FROM events e", [days] * len(VIEWS)) or {}
+        return {"view": view, "view_counts": counts, "items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
                 "plays": [{"id": i, "name": n} for i, n in fd.play_ids()],
                 "note": "Only events whose claims quote the original page appear here. Searches and sheet signals that have not been checked are listed as leads, never as findings."}
+
+
+class AddCompanyIn(BaseModel):
+    website: str = Field(min_length=3, max_length=200)
+    name: str | None = Field(default=None, max_length=120)
+    region: str | None = Field(default=None, max_length=40)
+    links: list[str] = Field(default_factory=list, max_length=10)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+DAILY_SCAN_LIMIT = 60          # per person per day: the monthly budgets still apply on top
+
+
+def normalise_domain(raw: str) -> str | None:
+    import re
+    d = raw.strip().lower()
+    d = re.sub(r"^[a-z]+://", "", d).split("/")[0].split("?")[0].split("#")[0].split("@")[-1]
+    d = d.removeprefix("www.").rstrip(".")
+    if not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}", d) or d in {"localhost"} or d.endswith((".local", ".internal", ".invalid")):
+        return None
+    return d
 
 
 class ScanManyIn(BaseModel):
@@ -393,9 +443,52 @@ def register_scan(app: FastAPI) -> None:
             org = q1(conn, f"SELECT o.id, o.display_name, o.country_code, o.canonical_domain FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params])     # noqa: S608
             if not org:
                 raise HTTPException(404, "not found")
+            _quota(conn, p.email)
             res = _queue_one(conn, org, p.email, with_search, datetime.now(timezone.utc).strftime("%Y%m%d%H%M"), rediscover)
             audit(conn, actor=p.email, operation="account_scan_requested", record_type="organization", record_id=oid, detail={"with_search": with_search})
             return {**res, "website": org["canonical_domain"], "note": "Reads the account's own news, press, careers and job-board pages, and runs one search for it. Results appear in the feed as they are verified."}
+
+    def _quota(conn, email: str) -> None:
+        n = (q1(conn, "SELECT count(*) AS n FROM audit_events WHERE actor=%s AND operation IN ('account_scan_requested','company_added') AND at > now() - interval '24 hours'", (email,)) or {"n": 0})["n"]
+        if n >= DAILY_SCAN_LIMIT:
+            raise HTTPException(429, f"Daily limit reached ({DAILY_SCAN_LIMIT} scans or additions per person). It resets 24 hours after the first one.")
+
+    @app.post("/api/accounts/add")
+    def add_company(body: AddCompanyIn, request: Request, p: Principal = Depends(require("research.request"))):
+        domain = normalise_domain(body.website)
+        if not domain:
+            raise HTTPException(400, "That does not look like a company website. Use an address such as example.com.")
+        links = []
+        for ln in body.links:
+            ln = ln.strip()
+            if ln and ln.lower().startswith(("http://", "https://")) and len(ln) < 400:
+                links.append(ln)
+        with tx(request) as conn:
+            _quota(conn, p.email)
+            existing = q1(conn, "SELECT id, display_name FROM organizations WHERE canonical_domain=%s ORDER BY in_master_list DESC LIMIT 1", (domain,))
+            if existing:
+                oid, name, created = str(existing["id"]), existing["display_name"], False
+            else:
+                name = (body.name or "").strip() or domain.split(".")[0].replace("-", " ").title()
+                row = conn.execute("INSERT INTO organizations(display_name, canonical_domain, in_master_list) VALUES (%s,%s,false) RETURNING id", (name, domain)).fetchone()
+                oid, created = str(row["id"]), True    # type: ignore[index]
+                conn.execute("INSERT INTO new_company_candidates(organization_id, icp_note) VALUES (%s,%s)", (oid, f"Added by {p.email}. Not yet qualified."))
+            for kind, val in [*[("link", x) for x in links], *([("note", body.notes.strip())] if body.notes and body.notes.strip() else []), *([("region", body.region.strip())] if body.region and body.region.strip() else [])]:
+                conn.execute("INSERT INTO account_context(organization_id, kind, value, added_by) VALUES (%s,%s,%s,%s)", (oid, kind, val, p.email))
+            jid, _ = enqueue(conn, "account_scan", {"organization_id": oid, "rediscover": True}, idempotency_key=f"account-scan:{oid}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", max_attempts=2)
+            pid = ensure_account_plan(conn, oid, name, None)
+            enqueue(conn, "discovery_run", {"plan_ids": [pid], "requested_by": p.email}, idempotency_key=f"account-search:{oid}:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", max_attempts=1)
+            audit(conn, actor=p.email, operation="company_added", record_type="organization", record_id=oid, detail={"domain": domain, "created": created, "links": len(links)})
+            return {"id": oid, "name": name, "domain": domain, "created": created, "scan_job": jid,
+                    "note": "Reading the company's own site, news, careers page and job board, plus one web search. LinkedIn and other social links are saved for context and are not scraped."}
+
+    @app.get("/api/accounts/{oid}/context")
+    def account_context(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):     # noqa: S608
+                raise HTTPException(404, "not found")
+            return {"items": qa(conn, "SELECT kind, value, added_by, created_at FROM account_context WHERE organization_id=%s ORDER BY created_at", (oid,))}
 
     @app.post("/api/admin/scan-accounts")
     def scan_many(body: ScanManyIn, request: Request, p: Principal = Depends(require("admin.costs"))):

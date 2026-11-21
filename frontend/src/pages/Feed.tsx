@@ -9,12 +9,12 @@ const LEAD: Record<string, [string, string]> = { queued: ["info", "Waiting to be
   no_event: ["", "Checked: nothing quotable"], blocked: ["bad", "Page not allowed"], failed: ["bad", "Could not check"] };
 
 export default function Feed() {
-  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [mine, setMine] = useState(true); const [days, setDays] = useState(60);
+  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [view, setView] = useState("accounts"); const [days, setDays] = useState(60);
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   useEffect(() => {
-    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=${mine}`).then(setD).catch(setErr), q ? 250 : 0);
+    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=true&view=${view}`).then(setD).catch(setErr), q ? 250 : 0);
     return () => clearTimeout(t);
-  }, [q, play, core, days, mine]);
+  }, [q, play, core, days, view]);
   const groups: [string, any[]][] = [];
   d?.items.forEach((it: any) => { const k = dayKey(it.happened); const g = groups.find((x) => x[0] === k); g ? g[1].push(it) : groups.push([k, [it]]); });
   const cov = d?.coverage;
@@ -22,12 +22,16 @@ export default function Feed() {
     <>
       <div className="page-head"><div className="eyebrow">What was found</div><h2>Market feed</h2></div>
       <p className="small muted" style={{ marginTop: 0, maxWidth: "80ch" }}>{d?.note ?? "Verified findings only."} Each item shows the quote, where it came from, which signal it matches and which of our offers it could fit.</p>
+      <div className="tabs" role="tablist" aria-label="What to show">
+        {[["accounts", "Your accounts"], ["market", "Main markets"], ["rest", "Rest of Europe and US"], ["public", "Public sector"]].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}>{l}{d?.view_counts ? <span className="tabn">{Number(d.view_counts[k] ?? 0).toLocaleString()}</span> : null}</button>))}
+      </div>
+      <p className="small muted" style={{ marginTop: -8 }}>{{ accounts: "Proven events about companies on your lists. These can become signals and opportunities.", market: "Proven events about companies that are not on your lists yet: UK, DACH, Nordics and Poland. Each is a candidate for the Leads database.", rest: "The same, for the rest of Europe and the US. A secondary pool.", public: "Government and public bodies, kept apart because they are not your usual buyers." }[view]}</p>
       <div className="feedbar">
         <input aria-label="Search the feed" placeholder="Search company or keyword" value={q} onChange={(e) => setQ(e.target.value)} />
         <select aria-label="Sales play" value={play} onChange={(e) => setPlay(e.target.value)}><option value="">All plays</option>{d?.plays.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         <select aria-label="Time window" value={days} onChange={(e) => setDays(Number(e.target.value))}><option value={14}>Last 2 weeks</option><option value={30}>Last 30 days</option><option value={60}>Last 60 days</option><option value={180}>Last 6 months</option></select>
-        <label className="small row"><input type="checkbox" checked={core} onChange={(e) => setCore(e.target.checked)} /> Main markets only</label>
-        <label className="small row"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Only companies on your lists{d && d.totals.market_wide > 0 && mine ? ` (${d.totals.market_wide.toLocaleString()} market-wide items hidden)` : ""}</label>
+        {view === "accounts" && <label className="small row"><input type="checkbox" checked={core} onChange={(e) => setCore(e.target.checked)} /> Main markets only</label>}
       </div>
       <Err e={err} />
       {cov && !cov.all_monitored_healthy && <div className={`cov ${cov.no_active_monitoring ? "bad" : ""}`}><b>Coverage.</b> {cov.no_active_monitoring ? "No source is live yet, so this feed only shows what you verified yourself or what discovery found. A quiet feed says nothing about the market." : `${cov.unhealthy.length} source(s) are degraded: ${cov.unhealthy.map((u: any) => u.source).join(", ")}.`} <Link to="/admin/pipeline">See what is running</Link></div>}
@@ -41,6 +45,7 @@ export default function Feed() {
                   <div className="row spread" style={{ alignItems: "flex-start" }}>
                     <div className="row small">
                       <Badge kind="info">{humanize(it.type)}</Badge>
+                      {!it.organization && it.scope && <><b>{it.scope.buyer ?? "Company not on your lists"}</b><span className="muted">{[it.scope.country, it.scope.lane === "public" ? "public body" : null].filter(Boolean).join(" · ")}</span><Badge kind="info">Not on your lists yet</Badge></>}
                       {it.organization && <><b>{it.organization.name}</b><span className="muted">{[it.organization.country, ICP_LABEL[it.organization.icp]].filter(Boolean).join(" · ")}</span>
                         {it.organization.market.fit !== "core" && <Badge kind="warn">{it.organization.market.label}</Badge>}{it.organization.in_master_list && <Badge kind="ok">Existing list</Badge>}</>}
                     </div>

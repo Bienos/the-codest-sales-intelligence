@@ -1,9 +1,37 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
 import { Badge, Err, Evidence, humanize, priorityKind } from "../components/ui";
 
+function AddCompany({ onClose }: { onClose: () => void }) {
+  const nav = useNavigate();
+  const [f, setF] = useState({ website: "", name: "", region: "", links: "", notes: "" });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setBusy(true); setErr(null);
+    try { const r = await post("/api/accounts/add", { website: f.website, name: f.name || null, region: f.region || null, notes: f.notes || null, links: f.links.split("\n").map((x) => x.trim()).filter(Boolean) }); nav(`/accounts/${r.id}`); }
+    catch (x) { setErr(x); } finally { setBusy(false); }
+  };
+  return (
+    <form className="card" onSubmit={submit}>
+      <div className="row spread"><b>Add a company</b><button type="button" className="ghost" onClick={onClose}>Close</button></div>
+      <p className="small muted" style={{ margin: "6px 0 12px" }}>A website is enough. The platform reads the company's own site, news, careers page and job board, and runs one web search. Extra context below makes the research sharper.</p>
+      <div className="addgrid">
+        <label className="small">Website *<input id="add-website" required placeholder="example.com" value={f.website} onChange={(e) => setF({ ...f, website: e.target.value })} /></label>
+        <label className="small">Company name (optional)<input id="add-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+        <label className="small">Region (optional)<select id="add-region" value={f.region} onChange={(e) => setF({ ...f, region: e.target.value })}><option value="">Not sure</option><option>UK</option><option>DACH</option><option>Nordics</option><option>Poland</option><option>Rest of Europe</option><option>US</option></select></label>
+      </div>
+      <label className="small" style={{ display: "block", marginTop: 10 }}>Other links, one per line (LinkedIn, press, a tender, anything useful)<textarea id="add-links" rows={3} value={f.links} onChange={(e) => setF({ ...f, links: e.target.value })} placeholder="https://www.linkedin.com/company/…" /></label>
+      <label className="small" style={{ display: "block", marginTop: 10 }}>Why this company? (optional)<textarea id="add-notes" rows={2} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></label>
+      <p className="small muted">LinkedIn and other social links are saved for context. They are not scraped, because their terms forbid it.</p>
+      <Err e={err} />
+      <button className="primary" disabled={busy || f.website.trim().length < 3}>Add and research</button>
+    </form>
+  );
+}
+
 export function Accounts() {
+  const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<any[]>([]);
   const [err, setErr] = useState<unknown>(null);
@@ -11,6 +39,8 @@ export function Accounts() {
   return (
     <>
       <div className="page-head"><div className="eyebrow">Your book</div><h2>Accounts</h2></div><p className="sub" style={{marginTop:-8}}>Only accounts you are authorised to see: your Pipedrive-owned accounts, unowned accounts and explicit shares.</p>
+      <div className="row" style={{ marginBottom: 12 }}><button className="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "Add a company"}</button></div>
+      {adding && <AddCompany onClose={() => setAdding(false)} />}
       <input aria-label="Search accounts" placeholder="Search by name…" value={q} onChange={(e) => setQ(e.target.value)} style={{ minWidth: 280, marginBottom: 12 }} /><Err e={err} />
       <div className="card table-wrap"><table><thead><tr><th>Account</th><th>Country</th><th>List</th><th>Employees</th><th>CRM owner</th><th>Initiatives</th></tr></thead><tbody>
         {rows.map((r) => <tr key={r.id}><td><Link to={`/accounts/${r.id}`}>{r.display_name}</Link></td><td>{r.country_code ?? "n/a"}</td><td>{r.in_master_list ? <Badge kind="ok">master list</Badge> : <Badge kind="info">new</Badge>}</td>

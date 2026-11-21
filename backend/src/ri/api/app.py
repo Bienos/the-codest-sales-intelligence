@@ -124,6 +124,13 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
         """Public, non-secret bootstrap for the SPA (Google OAuth client IDs are public by design)."""
         return {"auth_mode": settings.auth_mode, "google_client_id": settings.google_client_id, "env": settings.env}
 
+    @app.post("/api/auth/session")
+    def start_session(request: Request, p: Principal = Depends(principal_dep)):
+        """Exchange a valid Google (or current session) token for a fresh 12-hour session."""
+        from .auth import issue_session
+        token, exp = issue_session(request.app.state.settings, p.email)
+        return {"token": token, "expires_at": exp}
+
     @app.get("/api/me")
     def me(p: Principal = Depends(principal_dep)):
         return {"email": p.email, "role": p.role, "team": p.team, "permissions": sorted(p.perms), "pipedrive_user_id": p.pipedrive_user_id}

@@ -4,6 +4,27 @@ import { Badge, Err, humanize } from "../components/ui";
 
 const STATE: Record<string, [string, string]> = { ok: ["ok", "Running"], waiting: ["warn", "Waiting for you"], stale: ["bad", "Not checking in"], never: ["bad", "Never checked in"], off: ["", "Off"] };
 
+function Funnel({ f, accounts, candidates }: { f: any[]; accounts: number; candidates: number }) {
+  const max = Math.max(...f.map((x) => x.n), 1);
+  // the biggest relative drop between neighbouring stages is where things are stopping
+  let worst = -1, ratio = 1;
+  f.forEach((x, i) => { if (i > 0 && f[i - 1].n > 0) { const r = x.n / f[i - 1].n; if (r < ratio) { ratio = r; worst = i; } } });
+  return (
+    <div className="card">
+      <div className="eyebrow">Where things stop (last 7 days)</div>
+      <ol className="funnel">
+        {f.map((x, i) => (
+          <li key={x.key} className={i === worst && ratio < 0.5 ? "drop" : ""}>
+            <div className="fn-l"><b>{x.label}</b><span className="small muted">{x.note}</span></div>
+            <div className="fn-bar"><i style={{ width: `${Math.max((x.n / max) * 100, x.n ? 2 : 0)}%` }} /></div>
+            <div className="fn-n">{x.n.toLocaleString()}</div>
+          </li>))}
+      </ol>
+      {worst > 0 && ratio < 0.5 && <p className="small" style={{ margin: "10px 0 0" }}><b>Biggest drop:</b> {f[worst - 1].label.toLowerCase()} to {f[worst].label.toLowerCase()}. {f[worst].key === "linked" && accounts === 0 ? "There are no accounts in the database yet. Load the workbooks or add companies." : f[worst].key === "linked" ? `${candidates} candidate companies are waiting to be qualified.` : ""}</p>}
+    </div>
+  );
+}
+
 export function Pipeline() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   const load = () => api("/api/admin/pipeline").then(setD).catch(setErr);
@@ -13,6 +34,7 @@ export function Pipeline() {
   return (
     <>
       <p className="small muted" style={{ marginTop: 0 }}>What runs by itself, what waits for a person, and what is switched off. This page reads live heartbeats, not documentation.</p>
+      {d.funnel && <Funnel f={d.funnel} accounts={d.accounts} candidates={d.candidates} />}
       <div className="pipe-grid">
         <ol className="pipe" aria-label="Pipeline stages">
           {d.stages.map((s: any, i: number) => {

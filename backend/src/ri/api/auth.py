@@ -1,6 +1,8 @@
 """Authentication. OIDC (RS256 via JWKS) in staging/production; signed dev tokens only when env != production."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import time
 from typing import Any, Callable
 
@@ -10,6 +12,23 @@ from fastapi import Depends, HTTPException, Request
 from ..access import Principal, principal_from_row
 from ..config import Settings
 from ..db import q1
+
+
+SESSION_HOURS = 12
+
+
+def session_key(s: Settings) -> str | None:
+    secret = s.session_secret or s.dev_auth_secret
+    return hmac.new(secret.encode(), b"ri-session-v1", hashlib.sha256).hexdigest() if secret else None
+
+
+def issue_session(s: Settings, email: str, hours: int = SESSION_HOURS) -> tuple[str, int]:
+    """Our own signed session, so a person is not logged out every hour when the Google ID token expires. Still checked against the users table on every request."""
+    key = session_key(s)
+    if not key:
+        raise HTTPException(503, "sessions are not configured: set RI_SESSION_SECRET")
+    exp = int(time.time()) + hours * 3600
+    return jwt.encode({"email": email, "typ": "session", "exp": exp}, key, algorithm="HS256"), exp
 
 
 class TokenVerifier:
@@ -25,7 +44,23 @@ class TokenVerifier:
             self._jwks = jwt.PyJWKClient(self.s.oidc_jwks_url)       # type: ignore[arg-type]
         return self._jwks.get_signing_key_from_jwt(token).key
 
+    def _session_email(self, token: str) -> str | None:
+        key = session_key(self.s)
+        if not key:
+            return None
+        try:
+            claims = jwt.decode(token, key, algorithms=["HS256"], options={"require": ["exp", "email", "typ"]})
+        except jwt.PyJWTError:
+            return None
+        return str(claims["email"]).lower() if claims.get("typ") == "session" else None
+
     def email_for(self, token: str) -> str:
+        sess = self._session_email(token)
+        if sess:
+            dom = self.s.allowed_email_domain
+            if dom and not sess.endswith("@" + dom):
+                raise HTTPException(403, "email domain not allowed")
+            return sess
         try:
             if self.s.auth_mode == "dev":
                 if self.s.env == "production" or not self.s.dev_auth_secret:

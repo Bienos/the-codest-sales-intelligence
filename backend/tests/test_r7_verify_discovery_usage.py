@@ -483,7 +483,10 @@ def test_feed_hides_market_wide_items_by_default_but_can_show_them(api, conn):
     conn.commit()
     f = c.get("/api/feed", headers=h("bdm")).json()
     assert f["count"] == 0 and f["totals"]["market_wide"] == 1                                # hidden, but counted so the page can say so
-    assert c.get("/api/feed?accounts_only=false", headers=h("bdm")).json()["count"] == 1
+    assert c.get("/api/feed?view=public", headers=h("bdm")).json()["count"] == 0              # not yet tagged as a proven public-sector event
+    conn.execute("update events set proven=true, lane='public', market_tier='core' where event_key='k-mw'")
+    conn.commit()
+    assert c.get("/api/feed?view=public", headers=h("bdm")).json()["count"] == 1               # market-wide items live in their own views now
 
 
 def test_triage_skips_irrelevant_items_before_any_model_spend_but_keeps_relevant_ones():

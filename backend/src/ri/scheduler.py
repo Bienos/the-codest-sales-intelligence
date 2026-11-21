@@ -62,5 +62,7 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     from .events.relink import relink_unmatched
     from .opportunity.engine import ensure_hypotheses, evaluate_stale
     from .signals.persist import sweep_expiry
+    from .events.verify import tag_untagged
+    from .identity.discovery import promote_candidates
     now = now or datetime.now(timezone.utc)
-    return {"degraded_sources": evaluate_staleness(conn, now_fn=lambda: now), **sweep_expiry(conn, now), **refresh(conn, now), "relinked_events": relink_unmatched(conn, 150, now)["linked"], "hypotheses_built": ensure_hypotheses(conn, now), "verifications_requeued": requeue_stuck_verifications(conn, now), "reevaluated": evaluate_stale(conn, now)}
+    return {"market_tagged": tag_untagged(conn, 1500), **promote_candidates(conn, 40), "degraded_sources": evaluate_staleness(conn, now_fn=lambda: now), **sweep_expiry(conn, now), **refresh(conn, now), "relinked_events": relink_unmatched(conn, 150, now)["linked"], "hypotheses_built": ensure_hypotheses(conn, now), "verifications_requeued": requeue_stuck_verifications(conn, now), "reevaluated": evaluate_stale(conn, now)}

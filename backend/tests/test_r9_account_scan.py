@@ -135,3 +135,15 @@ def test_sync_endpoint_explains_what_is_missing_and_queues_once_connected(conn, 
         assert c2.get("/api/admin/imports", headers=h).json()["google_sheets"]["service_account_email"] == "sync@example.iam.gserviceaccount.com"
     finally:
         db.close()
+
+
+def test_truncated_model_output_keeps_the_complete_events_and_never_invents_the_rest():
+    from ri.events.extract import parse_events_json
+    whole = '{"events":[{"event_type":"vendor_selected","subject_name":"A"},{"event_type":"programme_announced","subject_name":"B"}]}'
+    assert len(parse_events_json(whole)["events"]) == 2
+    cut = '{"events":[{"event_type":"vendor_selected","subject_name":"A","claims":[]},{"event_type":"programme_announced","subject_name":"B","claims":[{"anchor":"unfinished'
+    out = parse_events_json(cut)
+    assert [e["subject_name"] for e in out["events"]] == ["A"] and out["_salvaged"] is True
+    import pytest
+    with pytest.raises(ValueError):
+        parse_events_json("sorry, no JSON here")
