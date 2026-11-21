@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, api, clearToken } from "./api";
 import Today from "./pages/Today";
 import { Accounts, Account } from "./pages/Accounts";
@@ -26,6 +26,9 @@ export default function App() {
   const [needLogin, setNeedLogin] = useState(false);
   const [n, setN] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
+  const [menu, setMenu] = useState(false);
+  const loc = useLocation();
+  useEffect(() => { setMenu(false); window.scrollTo(0, 0); }, [loc.pathname]);
   useEffect(() => {
     api<Me>("/api/me").then((m) => { setMe(m); setNeedLogin(false); setNotice(null); }).catch((e) => {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
@@ -41,18 +44,23 @@ export default function App() {
   const link = (to: string, label: string, Ico: any) => <NavLink to={to} aria-label={label} className={({ isActive }) => `navlink${isActive ? " active" : ""}`}><Ico /><span>{label}</span></NavLink>;
   return (
     <div className="shell">
-      <nav className="nav" aria-label="Primary">
-        <div className="brand"><Brand /></div>
-        <form className="navsearch" role="search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search everything" placeholder="Search everything" /></form>
-        {can("today.read") && link("/today", "Today", IconToday)}
-        {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
-        {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
-        {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
-        {link("/library", "Library", IconLibrary)}
-        {link("/knowledge", "Knowledge base", IconKnowledge)}
-        {link("/guide", "How it works", IconGuide)}
-        {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", "Administration", IconAdmin)}
-        <div className="who"><b>{me.email}</b>{me.role.replace(/_/g, " ")}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>Sign out</button></div>
+      <nav className={`nav${menu ? " open" : ""}`} aria-label="Primary">
+        <div className="nav-top">
+          <div className="brand"><Brand /></div>
+          <button className="nav-toggle" aria-expanded={menu} aria-controls="nav-panel" onClick={() => setMenu(!menu)}>{menu ? "Close" : "Menu"}</button>
+        </div>
+        <div className="nav-panel" id="nav-panel">
+          <form className="navsearch" role="search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search everything" placeholder="Search everything" /></form>
+          {can("today.read") && link("/today", "Today", IconToday)}
+          {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
+          {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
+          {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
+          {link("/library", "Library", IconLibrary)}
+          {link("/knowledge", "Knowledge base", IconKnowledge)}
+          {link("/guide", "How it works", IconGuide)}
+          {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", "Administration", IconAdmin)}
+          <div className="who"><b>{me.email}</b>{me.role.replace(/_/g, " ")}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>Sign out</button></div>
+        </div>
       </nav>
       <main className="main">
         <Routes>

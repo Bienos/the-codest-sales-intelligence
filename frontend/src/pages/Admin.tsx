@@ -55,19 +55,29 @@ function Connections() {
     <Load path="/api/admin/connections">{(d) => {
       const rows = d.items.filter((r: any) => !filter || r.state === filter);
       return (<>
-        <p className="sub">Every place the platform reads from, what state it is in, what is needed to turn it on and where to get it. “Runs per account” means it is found for each account when you press Scan on that account.</p>
-        <div className="row" style={{ marginBottom: 12, flexWrap: "wrap" }}>
-          <button className={!filter ? "primary" : ""} onClick={() => setFilter("")}>All ({d.items.length})</button>
-          {Object.entries(d.counts).map(([k, n]) => <button key={k} className={filter === k ? "primary" : ""} onClick={() => setFilter(k)}>{d.labels[k]} ({n as number})</button>)}
+        <p className="sub" style={{ marginBottom: 14 }}>Every place the platform reads from, what state it is in, what is needed to turn it on and where to get it. “Runs per account” means it is found for each account when you press Scan on that account.</p>
+        <div className="chips" role="group" aria-label="Filter by state">
+          <button className="chip" aria-pressed={!filter} onClick={() => setFilter("")}>All<b>{d.items.length}</b></button>
+          {Object.entries(d.counts).map(([k, n]) => <button key={k} className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{d.labels[k]}<b>{n as number}</b></button>)}
         </div>
-        <div className="card table-wrap"><table><thead><tr><th>Connection</th><th>State</th><th>Reads</th><th>What to do</th><th>Where to get it</th></tr></thead><tbody>
-          {rows.map((r: any) => <tr key={r.source_id}>
-            <td><b>{r.name}</b><div className="small muted">{humanize(r.family)} · tier {r.tier}{r.countries?.length ? ` · ${r.countries.join(", ")}` : ""}</div></td>
-            <td><Badge kind={STATE_KIND[r.state] ?? "info"}>{r.state_label}</Badge>{r.last_success_at && <div className="small muted">last read {fmtDateTime(r.last_success_at)}</div>}</td>
-            <td className="small">{r.documents ? <>{r.documents.toLocaleString()} documents<div className="muted">latest {fmtDateTime(r.last_document_at)}</div></> : <span className="muted">nothing yet</span>}{r.address && <div className="muted" style={{ wordBreak: "break-all" }}>{r.address}</div>}</td>
-            <td className="small">{r.what_to_do}{r.last_error && <div className="muted">Last error: {r.last_error}</div>}</td>
-            <td className="small">{r.where_to_get ?? <span className="muted">-</span>}</td></tr>)}
-        </tbody></table></div></>);
+        <div className="conn-list">
+          {rows.map((r: any) => <article key={r.source_id} className={`conn ${r.state}`}>
+            <div className="conn-head">
+              <div><div className="conn-name">{r.name}</div><div className="conn-meta">{humanize(r.family)} · tier {r.tier}{r.countries?.length ? ` · ${r.countries.join(", ")}` : ""}</div></div>
+              <Badge kind={STATE_KIND[r.state] ?? "info"}>{r.state_label}</Badge>
+            </div>
+            <div className="conn-cols">
+              <div><span className="k">What to do</span>{r.what_to_do}{r.last_error && <div className="small muted">Last error: {r.last_error}</div>}</div>
+              <div><span className="k">Where to get it</span>{r.where_to_get ?? <span className="muted">Nothing to obtain</span>}</div>
+            </div>
+            <div className="small muted">
+              {r.documents ? <>{r.documents.toLocaleString()} documents read · latest {fmtDateTime(r.last_document_at)}</> : "Nothing read yet"}
+              {r.last_success_at && <> · last success {fmtDateTime(r.last_success_at)}</>}
+              {r.address && <div className="conn-addr">{r.address}</div>}
+            </div>
+          </article>)}
+          {rows.length === 0 && <div className="empty"><b>Nothing in this state</b>Pick another filter.</div>}
+        </div></>);
     }}</Load>
   );
 }
