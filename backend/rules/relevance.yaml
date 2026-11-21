@@ -1,0 +1,7 @@
+# Cheap triage BEFORE any model call: an item is read by the model only if its title or opening text mentions
+# at least one topic AND at least one kind of development. This saves model budget on earnings notes, awards, HR and similar.
+# Tuned for recall (broad terms). A skipped item is recorded as skipped, never silently dropped. Edit freely.
+topics: [bank, banking, payment, payments, fintech, financial, finance, insur, lender, lending, wealth, trading, core, platform, cloud, software, engineering, engineer,
+         digital, ai, data, fraud, regulat, procurement, tender, rfp, framework, supplier, vendor, technology, tech, api, open banking, ledger, card, mortgage, credit]
+developments: [select, chose, choose, launch, announce, partner, appoint, hire, hiring, acquir, acquisition, migrat, moderni, replac, implement, contract, award, programme, program,
+               invest, expand, deploy, go-live, go live, outsourc, tender, framework, supplier, panel, vendor, cto, cio, chief, head of, director, roadmap, transform, build, develop, integrat, rollout, roll out, consult]

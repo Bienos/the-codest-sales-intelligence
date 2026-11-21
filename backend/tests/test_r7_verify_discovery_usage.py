@@ -484,3 +484,35 @@ def test_feed_hides_market_wide_items_by_default_but_can_show_them(api, conn):
     f = c.get("/api/feed", headers=h("bdm")).json()
     assert f["count"] == 0 and f["totals"]["market_wide"] == 1                                # hidden, but counted so the page can say so
     assert c.get("/api/feed?accounts_only=false", headers=h("bdm")).json()["count"] == 1
+
+
+def test_triage_skips_irrelevant_items_before_any_model_spend_but_keeps_relevant_ones():
+    from ri.events.triage import looks_relevant
+    assert looks_relevant("Bank selects Temenos to replace its core banking platform", "")
+    assert looks_relevant("Nordic payments firm appoints new CTO", "")
+    assert looks_relevant("Weekly roundup", "The FCA launched a consultation on payments resilience and supplier outsourcing")
+    assert not looks_relevant("Quarterly earnings call scheduled", "The company will report third quarter results on 3 November")
+    assert not looks_relevant("Local football club wins cup", "A thrilling final in front of a record crowd")
+    assert not looks_relevant("Employee volunteering day", "Staff planted trees")
+
+
+def test_irrelevant_feed_items_cost_nothing_and_are_recorded_as_skipped(conn):
+    import httpx
+    from ri.jobs.queue import enqueue
+    from ri.sources import registry
+    from ri.sources.webwatch import FeedConnector
+    seed_registry(conn)
+    registry.activate(conn, "attention-finextra", {"provider_doc_url": "x", "auth_entitlement_verified": True, "verified_endpoints": ["x"], "data_licence": "t", "technical_owner": "t",
+                                                  "last_tested_date": "2026-11-21", "limits": "n/a", "rollback_path": "p"}, "t")
+    budget.set_cap(conn, "anthropic", "monthly", usage.period_now(), 1_000_000, "tokens")
+    conn.commit()
+    rss = ("<rss><channel><item><title>Bank selects vendor for core banking platform migration</title><link>https://e.invalid/1</link><guid>g1</guid><description>The bank announced a programme.</description></item>"
+           "<item><title>Local football club wins the cup</title><link>https://e.invalid/2</link><guid>g2</guid><description>A thrilling final.</description></item></channel></rss>")
+    http = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(404 if r.url.path == "/robots.txt" else 200, text=rss)))
+    handlers = build_handlers(connector_factory=lambda sid: FeedConnector(http, "https://e.invalid/feed", source_id=sid), extractor_factory=lambda cn: BudgetedExtractor(FakeInner(), cn))
+    enqueue(conn, "source_run", {"source_id": "attention-finextra"}, idempotency_key="sr-t")
+    conn.commit()
+    assert run_one(conn, "w", handlers) == "completed"
+    assert conn.execute("select count(*) c from provider_usage where provider='anthropic'").fetchone()["c"] == 1              # only the relevant item was read by the model
+    skipped = conn.execute("select count(*) c from source_documents where raw_meta->>'triage'='skipped_not_relevant'").fetchone()["c"]
+    assert skipped == 1

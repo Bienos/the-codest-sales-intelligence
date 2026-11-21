@@ -47,8 +47,14 @@ def process_run(conn: Conn, res: RunResult, *, extractor: EventExtractor | None 
     if extractor is not None:
         pending = [str(r["id"]) for r in conn.execute("SELECT id FROM source_documents WHERE raw_meta->>'pending_extraction'='true' AND content_text IS NOT NULL ORDER BY fetched_at LIMIT 50").fetchall()]
         for doc_id in [*res.new_doc_ids, *res.changed_doc_ids, *[p for p in pending if p not in res.new_doc_ids]]:
-            d = q1(conn, "SELECT raw_meta FROM source_documents WHERE id=%s", (doc_id,))
+            d = q1(conn, "SELECT raw_meta, title, coalesce(content_text, excerpt) AS body FROM source_documents WHERE id=%s", (doc_id,))
             if not d or (d["raw_meta"] or {}).get("structured"):
+                continue
+            from ..events.triage import looks_relevant
+            if not looks_relevant(d["title"], d["body"]):
+                # saves model budget: recorded as skipped (never silently dropped), text purged for licence-restricted sources by the normal retention rule
+                conn.execute("UPDATE source_documents SET raw_meta = (raw_meta - 'pending_extraction') || '{\"triage\": \"skipped_not_relevant\"}'::jsonb WHERE id=%s", (doc_id,))
+                summary["skipped_not_relevant"] = summary.get("skipped_not_relevant", 0) + 1
                 continue
             if hasattr(extractor, "ctx"):
                 extractor.ctx = {"document_id": doc_id}
