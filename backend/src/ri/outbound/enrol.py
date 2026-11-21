@@ -135,8 +135,10 @@ def execute_enrolment(conn: Conn, approval_id: str, client: LemlistClient | None
     except (LemlistError, OSError) as exc:
         if isinstance(exc, LemlistError) and exc.status and exc.status < 500 and exc.status != 429:
             appr.mark_done(conn, approval_id, False, {"error": str(exc)[:200]})
+            conn.commit()                 # the caller turns this into an HTTP error, which would roll the failure record back
             raise
         conn.execute("UPDATE approvals SET status='approved' WHERE id=%s AND status='executing'", (approval_id,))      # ambiguous: a retry resumes from the stored campaign id
+        conn.commit()
         raise
 
 

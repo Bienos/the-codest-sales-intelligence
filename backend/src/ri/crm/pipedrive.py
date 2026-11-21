@@ -279,7 +279,9 @@ def execute_approved(conn: Conn, approval_id: str, writer: PipedriveWriter | Non
     except (httpx.TransportError, httpx.TimeoutException, ConnectorBlocked) as exc:
         # AMBIGUOUS outcome (the write may have landed): hand the approval back so a retry runs fetch-before-write reconciliation
         conn.execute("UPDATE approvals SET status='approved', result=%s WHERE id=%s AND status='executing'", (jb({"ambiguous": type(exc).__name__}), approval_id))
+        conn.commit()          # the API rolls the request back on error; the retryable state must already be saved
         raise
     except Exception as exc:  # noqa: BLE001
         mark_done(conn, approval_id, False, {"error": type(exc).__name__})
+        conn.commit()
         raise

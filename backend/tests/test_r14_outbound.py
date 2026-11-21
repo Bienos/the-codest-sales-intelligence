@@ -244,3 +244,44 @@ def test_canary_reports_failures_once_per_change_and_recovers(conn):
     sync_rule_versions(conn)
     out2 = canary.run_canary(conn, S(), t, sink)
     assert out2["canary_failing"] == 0 and "all checks pass" in sink.sent[-1]
+
+
+def test_failure_records_survive_the_request_rollback_and_ambiguous_failures_can_be_retried(conn, db_url):
+    """The API rolls back the request transaction on any error. The failed/retryable state must already be committed."""
+    from ri.db import Database
+    org, ids, did = seed(conn)
+    r = enrol.request_enrolment(conn, did, [ids[0]], by="bdm@x", requester_crm_user=None)
+    approve(conn, r["approval_id"])
+    db = Database(db_url, max_size=2)
+    try:
+        class Boom(FakeLemlist):
+            def add_lead(self, cid, email, fields):
+                raise LemlistError("bad lead", 422)
+        with pytest.raises(LemlistError):
+            with db.tx() as c2:
+                enrol.execute_enrolment(c2, r["approval_id"], Boom(), S(outbound_enabled=True))
+        assert conn.execute("select status from approvals where id=%s", (r["approval_id"],)).fetchone()["status"] == "failed"
+    finally:
+        db.close()
+
+
+def test_an_ambiguous_failure_returns_the_approval_to_approved_and_a_retry_reuses_the_campaign(conn, db_url):
+    from ri.db import Database
+    org, ids, did = seed(conn)
+    r = enrol.request_enrolment(conn, did, [ids[0]], by="bdm@x", requester_crm_user=None)
+    approve(conn, r["approval_id"])
+    db = Database(db_url, max_size=2)
+    try:
+        class Flaky(FakeLemlist):
+            def add_lead(self, cid, email, fields):
+                raise LemlistError("Lemlist 503 after retries", 503)
+        with pytest.raises(LemlistError):
+            with db.tx() as c2:
+                enrol.execute_enrolment(c2, r["approval_id"], Flaky(), S(outbound_enabled=True))
+        row = conn.execute("select status, result from approvals where id=%s", (r["approval_id"],)).fetchone()
+        assert row["status"] == "approved" and row["result"]["lemlist_campaign_id"] == "cam_1" and row["result"]["steps_added"] is True
+        good = FakeLemlist()
+        out = enrol.execute_enrolment(conn, r["approval_id"], good, S(outbound_enabled=True))
+        assert out["leads"] == 1 and [c[0] for c in good.calls] == ["lead"]          # no second campaign, no duplicate steps
+    finally:
+        db.close()

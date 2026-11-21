@@ -330,8 +330,10 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                 raise HTTPException(503, "CRM write credential not configured (integration blocked)")
             try:
                 res = pd.execute_approved(conn, aid, wf(), settings)
-            except appr.ApprovalError as exc:
+            except (appr.ApprovalError, ConnectorBlocked) as exc:
                 raise HTTPException(409, str(exc)) from exc
+            except httpx.HTTPError as exc:
+                raise HTTPException(502, f"Pipedrive could not be reached or refused the write ({type(exc).__name__}). The approval stays retryable if the outcome was unclear.") from exc
             return {"status": res.status, "remote_id": res.remote_id, "reconciled": res.reconciled}
 
     # ------------------------------------------------------------------ Webhooks
