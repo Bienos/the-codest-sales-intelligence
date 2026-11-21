@@ -17,14 +17,14 @@ function Daily({ rows, provider, unit }: { rows: any[]; provider: string; unit: 
   );
 }
 
-function Provider({ name, label, unit, b, f, rows, month, cost, prices }: any) {
+function Provider({ name, label, unit, b, f, rows, month, cost, prices, capUsd }: any) {
   const used = b ? Number(b.spent) + Number(b.reserved) : 0;
   const cap = b ? Number(b.cap) : 0;
   const isUsd = unit === "usd";
   return (
     <div className="card kpi">
       <div className="eyebrow">{label}</div>
-      <div className="kpi-n">{isUsd ? usd(used, 3) : num(used)}<span className="kpi-u">{isUsd ? " of " + usd(cap, 2) : ` of ${num(cap)} tokens`}</span></div>
+      <div className="kpi-n">{isUsd ? usd(used, 3) : num(used)}<span className="kpi-u">{isUsd ? " of " + usd(cap, 2) : ` of ${num(cap)} tokens${capUsd != null ? ` (about ${usd(capUsd, 2)})` : ""}`}</span></div>
       <Meter used={used} cap={cap} unit={unit} />
       <div className="small" style={{ marginTop: 10 }}>
         {f ? <>Month-end projection <b>{isUsd ? usd(f.projected_month_end, 2) : num(Math.round(f.projected_month_end))}</b> {f.will_exceed ? <Badge kind="bad">would exceed cap</Badge> : <Badge kind="ok">within cap</Badge>}</> : <span className="muted">No usage yet this month.</span>}
@@ -76,7 +76,7 @@ export default function Usage() {
     <>
       <p className="small muted" style={{ marginTop: 0 }}>Every metered call is recorded with what it was for. Month: <b>{d.period}</b>. {d.notes.join(" ")}</p>
       <div className="kpis">
-        <Provider name="anthropic" label="Anthropic, model reads" unit="tokens" b={d.budgets.anthropic} f={d.forecast.anthropic} rows={d.daily} month={m("anthropic")} cost={cost("anthropic")} prices={d.prices} />
+        <Provider name="anthropic" label="Anthropic, model reads" unit="tokens" b={d.budgets.anthropic} f={d.forecast.anthropic} rows={d.daily} month={m("anthropic")} cost={cost("anthropic")} prices={d.prices} capUsd={d.anthropic_cap_usd_estimate} />
         <Provider name="exa" label="Exa, discovery searches" unit="usd" b={d.budgets.exa} f={d.forecast.exa} rows={d.daily} month={m("exa")} cost={cost("exa")} prices={d.prices} />
         <div className="card kpi">
           <div className="eyebrow">What the spend bought</div>

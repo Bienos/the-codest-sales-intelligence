@@ -11,7 +11,7 @@ class NoConnector(NotImplementedError):
 
 
 def build_connector(conn: Conn, source_id: str):
-    from .procurement import FindTenderConnector, TedConnector
+    from .procurement import ContractsFinderConnector, FindTenderConnector, TedConnector
     from .webwatch import FeedConnector, PageWatchConnector
     src = registry.get(conn, source_id)
     cfg = src["config"] or {}
@@ -20,6 +20,8 @@ def build_connector(conn: Conn, source_id: str):
         return TedConnector(client, query=cfg["query"])
     if source_id == "procurement-uk-fts":
         return FindTenderConnector(client)
+    if source_id == "procurement-uk-contracts-finder":
+        return ContractsFinderConnector(client)
     url = cfg.get("url")
     if url:
         if src["collection_method"] == "feed":

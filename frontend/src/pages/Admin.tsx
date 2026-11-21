@@ -46,6 +46,49 @@ function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () =
   );
 }
 
+
+const STATE_KIND: Record<string, "ok" | "warn" | "bad" | "info"> = { live: "ok", built_in: "ok", per_account: "info", needs_address: "warn", blocked_by_site: "bad", needs_credential: "warn", not_built: "info", deferred: "info", needs_retest: "warn", testing: "info" };
+
+function Connections() {
+  const [filter, setFilter] = useState("");
+  return (
+    <Load path="/api/admin/connections">{(d) => {
+      const rows = d.items.filter((r: any) => !filter || r.state === filter);
+      return (<>
+        <p className="sub">Every place the platform reads from, what state it is in, what is needed to turn it on and where to get it. “Runs per account” means it is found for each account when you press Scan on that account.</p>
+        <div className="row" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+          <button className={!filter ? "primary" : ""} onClick={() => setFilter("")}>All ({d.items.length})</button>
+          {Object.entries(d.counts).map(([k, n]) => <button key={k} className={filter === k ? "primary" : ""} onClick={() => setFilter(k)}>{d.labels[k]} ({n as number})</button>)}
+        </div>
+        <div className="card table-wrap"><table><thead><tr><th>Connection</th><th>State</th><th>Reads</th><th>What to do</th><th>Where to get it</th></tr></thead><tbody>
+          {rows.map((r: any) => <tr key={r.source_id}>
+            <td><b>{r.name}</b><div className="small muted">{humanize(r.family)} · tier {r.tier}{r.countries?.length ? ` · ${r.countries.join(", ")}` : ""}</div></td>
+            <td><Badge kind={STATE_KIND[r.state] ?? "info"}>{r.state_label}</Badge>{r.last_success_at && <div className="small muted">last read {fmtDateTime(r.last_success_at)}</div>}</td>
+            <td className="small">{r.documents ? <>{r.documents.toLocaleString()} documents<div className="muted">latest {fmtDateTime(r.last_document_at)}</div></> : <span className="muted">nothing yet</span>}{r.address && <div className="muted" style={{ wordBreak: "break-all" }}>{r.address}</div>}</td>
+            <td className="small">{r.what_to_do}{r.last_error && <div className="muted">Last error: {r.last_error}</div>}</td>
+            <td className="small">{r.where_to_get ?? <span className="muted">-</span>}</td></tr>)}
+        </tbody></table></div></>);
+    }}</Load>
+  );
+}
+
+function ScanTop() {
+  const [n, setN] = useState(25); const [search, setSearch] = useState(true); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const go = async () => { setBusy(true); setErr(null); setMsg(""); try { const r = await post("/api/admin/scan-accounts", { limit: n, with_search: search }); setMsg(`Queued ${r.queued} accounts. ${r.note} Results appear in the Market feed as they are verified.`); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  return (
+    <div className="card">
+      <b>Find signals for your priority accounts</b>
+      <div className="small muted" style={{ margin: "4px 0 10px" }}>Reads each account's own news, press, careers and job-board pages{search ? " and runs one search per account" : ""}. Nothing runs on a timer: it happens when you press the button. Cost is capped by the Usage budgets.</div>
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <label className="small">How many accounts <input type="number" min={1} max={300} value={n} onChange={(e) => setN(Number(e.target.value))} style={{ width: 80 }} /></label>
+        <label className="small row"><input type="checkbox" checked={search} onChange={(e) => setSearch(e.target.checked)} /> include one web search per account (uses Exa budget)</label>
+        <button className="primary" disabled={busy || n < 1} onClick={go}>Scan priority accounts</button>
+      </div>
+      {msg && <div className="okmsg" role="status" style={{ marginTop: 10 }}>{msg}</div>}<Err e={err} />
+    </div>
+  );
+}
+
 function Sources({ canEdit }: { canEdit: boolean }) {
   const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
   const bulk = async (activate: boolean) => {
@@ -53,6 +96,7 @@ function Sources({ canEdit }: { canEdit: boolean }) {
     try { await post("/api/admin/sources/validate-all", { activate }); setMsg(activate ? "Testing every source from the server now. Each one that passes is activated. Refresh in a minute to see the result on each card." : "Testing every source from the server now. Nothing is activated."); } catch (e) { setErr(e); } finally { setBusy(false); }
   };
   return (<>
+    {canEdit && <ScanTop />}
     {canEdit && <div className="card row spread"><div><b>Test all sources</b><div className="small muted">Runs each source's test from the server. Pages are read only where robots.txt allows. Sources without an address or credential are skipped and say why.</div></div>
       <div className="row"><button disabled={busy} onClick={() => bulk(false)}>Test only</button><button className="primary" disabled={busy} onClick={() => bulk(true)}>Test and activate passing</button></div></div>}
     {msg && <div className="okmsg" role="status" style={{ marginBottom: 12 }}>{msg}</div>}<Err e={err} />
@@ -159,9 +203,9 @@ export default function Admin({ me }: { me: { permissions: string[] } }) {
   return (
     <>
       <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
-      <div className="tabs">{p("admin.jobs") && <NavLink to="/admin/pipeline">Pipeline</NavLink>}{p("sources.read") && <NavLink to="/admin" end> Sources</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("admin.sources") && <NavLink to="/admin/knowledge"> Knowledge</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
+      <div className="tabs">{p("admin.jobs") && <NavLink to="/admin/pipeline">Pipeline</NavLink>}{p("sources.read") && <NavLink to="/admin" end> Sources</NavLink>}{p("sources.read") && <NavLink to="/admin/connections"> Connections</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("admin.sources") && <NavLink to="/admin/knowledge"> Knowledge</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
         {p("sources.read") && <NavLink to="/admin/verification"> Verification</NavLink>}{p("admin.costs") && <><NavLink to="/admin/discovery"> Discovery</NavLink><NavLink to="/admin/usage"> Usage</NavLink></>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
-      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
+      <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
         <Route path="rules" element={<Rules />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
     </>
   );

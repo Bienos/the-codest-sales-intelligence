@@ -36,9 +36,8 @@ def _score(v) -> float:
     return float(m.group()) if m else 0.0
 
 
-def sync_account_plans(conn: Conn, limit: int = 100) -> int:
-    """The lead monitor: one weekly search per priority account. Your shortlist first (by its own rank), then P1 and P2 accounts by signal score.
-    The search looks for the account's own announcements, programmes, vendor choices, hiring and leadership changes; hits still only become verification requests."""
+def priority_accounts(conn: Conn, limit: int = 100) -> list[dict]:
+    """Your shortlist first (by its own rank), then P1 and P2 accounts by signal score."""
     from ..db import qa
     short = qa(conn, "SELECT DISTINCT ON (r.organization_id) r.organization_id, o.display_name, o.country_code, r.original FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
                      "WHERE r.kind='priority_outreach' ORDER BY r.organization_id, r.observed_at DESC")
@@ -53,12 +52,23 @@ def sync_account_plans(conn: Conn, limit: int = 100) -> int:
             chosen.append(r)
         if len(chosen) >= limit:
             break
+    return chosen
+
+
+def ensure_account_plan(conn: Conn, org_id: str, name: str, country: str | None) -> str:
+    """The search for one account (created on demand; it only runs when somebody presses the button)."""
+    pid = sha("account-watch", str(org_id))[:16]
+    q = f'"{name}" announces technology programme, platform or vendor selection, engineering hiring, or new technology leadership'
+    conn.execute("INSERT INTO discovery_plans(plan_id, signal_rule_id, theme, geography, language, recency_days, query, organization_id) VALUES (%s,'ACCOUNT','account_watch',%s,'en',45,%s,%s) "
+                 "ON CONFLICT (plan_id) DO NOTHING", (pid, country or "n/a", q, org_id))
+    return pid
+
+
+def sync_account_plans(conn: Conn, limit: int = 100) -> int:
+    """Creates the per-account search plans for the priority accounts. They run on demand only, never on a timer."""
     n = 0
-    for r in chosen:
-        pid = sha("account-watch", str(r["organization_id"]))[:16]
-        q = f'"{r["display_name"]}" announces technology programme, platform or vendor selection, engineering hiring, or new technology leadership'
-        row = conn.execute(
-            "INSERT INTO discovery_plans(plan_id, signal_rule_id, theme, geography, language, recency_days, query, organization_id) VALUES (%s,'ACCOUNT','account_watch',%s,'en',45,%s,%s) "
-            "ON CONFLICT (plan_id) DO NOTHING RETURNING plan_id", (pid, r["country_code"] or "n/a", q, r["organization_id"])).fetchone()
-        n += bool(row)
+    for r in priority_accounts(conn, limit):
+        before = conn.execute("SELECT 1 FROM discovery_plans WHERE plan_id=%s", (sha("account-watch", str(r["organization_id"]))[:16],)).fetchone()
+        ensure_account_plan(conn, r["organization_id"], r["display_name"], r["country_code"])
+        n += 0 if before else 1
     return n

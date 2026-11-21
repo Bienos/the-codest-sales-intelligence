@@ -55,8 +55,8 @@ class Settings:
     anthropic_monthly_token_cap: float = 0.0     # tokens/month; 0 = model extraction cannot run
     exa_monthly_cap_usd: float = 0.0
     exa_est_cost_per_search: float | None = None  # reservation estimate only; real cost is taken from each Exa response. None => 0.01 default
-    anthropic_price_in_per_mtok: float | None = None   # optional list prices: dollars are shown only when both are set
-    anthropic_price_out_per_mtok: float | None = None
+    anthropic_price_in_per_mtok: float | None = 0.10   # list price, Claude Haiku 5.5 (prompts up to 100K tokens); override with RI_ANTHROPIC_PRICE_IN_PER_MTOK
+    anthropic_price_out_per_mtok: float | None = 0.50
     discovery_interval_days: int = 7
     discovery_max_searches_per_run: int = 16
     discovery_max_new_requests_per_run: int = 5
@@ -89,8 +89,8 @@ class Settings:
             google_client_id=os.environ.get("RI_GOOGLE_CLIENT_ID") or None,
             anthropic_monthly_token_cap=_f("RI_ANTHROPIC_MONTHLY_TOKEN_CAP", 0.0),
             exa_monthly_cap_usd=_f("RI_EXA_MONTHLY_CAP_USD", 0.0),
-            anthropic_price_in_per_mtok=float(os.environ["RI_ANTHROPIC_PRICE_IN_PER_MTOK"]) if os.environ.get("RI_ANTHROPIC_PRICE_IN_PER_MTOK") else None,
-            anthropic_price_out_per_mtok=float(os.environ["RI_ANTHROPIC_PRICE_OUT_PER_MTOK"]) if os.environ.get("RI_ANTHROPIC_PRICE_OUT_PER_MTOK") else None,
+            anthropic_price_in_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_IN_PER_MTOK") or 0.10),
+            anthropic_price_out_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_OUT_PER_MTOK") or 0.50),
             discovery_interval_days=int(os.environ.get("RI_DISCOVERY_INTERVAL_DAYS", "7")),
             discovery_max_searches_per_run=int(os.environ.get("RI_DISCOVERY_MAX_SEARCHES_PER_RUN", "16")),
             discovery_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_MAX_NEW_REQUESTS_PER_RUN", "5")),

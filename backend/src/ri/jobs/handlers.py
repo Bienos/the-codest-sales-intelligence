@@ -121,9 +121,19 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     source_run.own_transactions = True  # type: ignore[attr-defined]     # run_source commits per page of work; it must not sit inside a wrapping transaction
     sources_validate_all.own_transactions = True  # type: ignore[attr-defined]
     verify_url.own_transactions = True  # type: ignore[attr-defined]
+    def account_scan(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..sources.account_scan import run_scan
+        from ..sources.safe import SafeClient
+        resolver = resolve_org_factory(conn) if resolve_org_factory else None
+        ex = extractor_factory(conn) if extractor_factory else None
+        if ex is not None and hasattr(ex, "reserve_fraction"):
+            ex.reserve_fraction = 0.3
+        return run_scan(conn, job["payload"]["organization_id"], client=SafeClient(timeout=30), extractor=ex, resolver=resolver, force_discover=bool(job["payload"].get("rediscover")))
+
+    account_scan.own_transactions = True  # type: ignore[attr-defined]
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all}
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

@@ -207,10 +207,16 @@ def register(app: FastAPI) -> None:
             spent = float(b["spent"])
             proj = spent / elapsed * days_in
             forecast[prov] = {"spent": spent, "projected_month_end": round(proj, 4), "cap": float(b["cap"]), "will_exceed": bool(b["cap"] and proj > float(b["cap"]))}
-        return {"period": period, "budgets": budgets, "months": months, "daily": daily, "by_source": by_source, "by_plan": by_plan, "forecast": forecast,
+        pin, pout = s.anthropic_price_in_per_mtok, s.anthropic_price_out_per_mtok
+        cur = next((m for m in months if m["period"] == period and m["provider"] == "anthropic"), None)
+        mix_in = (float(cur["tokens_in"]) / max(float(cur["tokens_in"]) + float(cur["tokens_out"]), 1)) if cur and (cur["tokens_in"] or cur["tokens_out"]) else 0.85
+        blended = (mix_in * pin + (1 - mix_in) * pout) / 1_000_000 if pin is not None and pout is not None else None
+        cap_tokens = float(budgets["anthropic"]["cap"]) if "anthropic" in budgets else 0.0
+        return {"period": period, "anthropic_cap_usd_estimate": round(cap_tokens * blended, 2) if blended is not None else None,
+                "anthropic_usd_per_million_tokens_blended": round(blended * 1_000_000, 3) if blended is not None else None, "budgets": budgets, "months": months, "daily": daily, "by_source": by_source, "by_plan": by_plan, "forecast": forecast,
                 "verification_outcomes": outcomes, "cost_per_verified_event_usd": cost_per_verified,
                 "prices": {"anthropic_in_per_mtok": s.anthropic_price_in_per_mtok, "anthropic_out_per_mtok": s.anthropic_price_out_per_mtok},
-                "notes": ["Exa cost is the amount Exa reports on each response.", "Model usage is counted in tokens. Dollars appear only when list prices are configured (RI_ANTHROPIC_PRICE_IN_PER_MTOK and _OUT_)."]}
+                "notes": ["Exa cost is the amount Exa reports on each response.", "Model usage is counted in tokens and shown in dollars at list price (default: Claude Haiku 5.5, $0.10 in / $0.50 out per million tokens). Change with RI_ANTHROPIC_PRICE_IN_PER_MTOK and _OUT_."]}
 
     @app.get("/api/admin/usage/ledger")
     def usage_ledger(request: Request, provider: str = "", source: str = "", status: str = "", limit: int = Query(50, le=200), offset: int = Query(0, ge=0),
@@ -356,3 +362,71 @@ def register_feed(app: FastAPI) -> None:
         return {"items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
                 "plays": [{"id": i, "name": n} for i, n in fd.play_ids()],
                 "note": "Only events whose claims quote the original page appear here. Searches and sheet signals that have not been checked are listed as leads, never as findings."}
+
+
+class ScanManyIn(BaseModel):
+    limit: int = Field(25, ge=1, le=300)
+    with_search: bool = True
+
+
+def register_scan(app: FastAPI) -> None:
+    """On-demand signal capture. Nothing here runs on a timer: somebody presses the button."""
+    from ..discovery.plans import ensure_account_plan, priority_accounts
+
+    def tx(request: Request):
+        return request.app.state.db.tx()
+
+    def _queue_one(conn, org: dict, by: str, with_search: bool, stamp: str, rediscover: bool = False) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        jid, created = enqueue(conn, "account_scan", {"organization_id": str(org["id"]), "rediscover": rediscover}, idempotency_key=f"account-scan:{org['id']}:{stamp}", max_attempts=2)
+        out["scan_job"] = jid
+        if with_search:
+            pid = ensure_account_plan(conn, str(org["id"]), org["display_name"], org.get("country_code"))
+            sid, _ = enqueue(conn, "discovery_run", {"plan_ids": [pid], "requested_by": by}, idempotency_key=f"account-search:{org['id']}:{stamp}", max_attempts=1)
+            out["search_job"] = sid
+        return out
+
+    @app.post("/api/accounts/{oid}/scan")
+    def scan_account(oid: str, request: Request, with_search: bool = True, rediscover: bool = False, p: Principal = Depends(require("research.request"))):
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            org = q1(conn, f"SELECT o.id, o.display_name, o.country_code, o.canonical_domain FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params])     # noqa: S608
+            if not org:
+                raise HTTPException(404, "not found")
+            res = _queue_one(conn, org, p.email, with_search, datetime.now(timezone.utc).strftime("%Y%m%d%H%M"), rediscover)
+            audit(conn, actor=p.email, operation="account_scan_requested", record_type="organization", record_id=oid, detail={"with_search": with_search})
+            return {**res, "website": org["canonical_domain"], "note": "Reads the account's own news, press, careers and job-board pages, and runs one search for it. Results appear in the feed as they are verified."}
+
+    @app.post("/api/admin/scan-accounts")
+    def scan_many(body: ScanManyIn, request: Request, p: Principal = Depends(require("admin.costs"))):
+        with tx(request) as conn:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H")
+            accounts = priority_accounts(conn, body.limit)
+            n = 0
+            for a in accounts:
+                _queue_one(conn, {"id": a["organization_id"], "display_name": a["display_name"], "country_code": a["country_code"]}, p.email, body.with_search, stamp)
+                n += 1
+            audit(conn, actor=p.email, operation="account_scan_batch_requested", record_type="organization", record_id="batch", detail={"count": n, "with_search": body.with_search})
+            return {"queued": n, "note": "Priority accounts first: your shortlist, then P1 and P2 by signal score."}
+
+    @app.get("/api/accounts/{oid}/endpoints")
+    def account_endpoints(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):     # noqa: S608
+                raise HTTPException(404, "not found")
+            rows = qa(conn, "SELECT kind, url, provider, board, found_at, last_scanned_at, last_status, last_detail, docs_seen FROM account_endpoints WHERE organization_id=%s ORDER BY kind, url", (oid,))
+            return {"items": rows}
+
+
+def register_connections(app: FastAPI) -> None:
+    @app.get("/api/admin/connections")
+    def connections(request: Request, p: Principal = Depends(require("sources.read"))):
+        from ..connections import LABELS, directory
+
+        with request.app.state.db.tx() as conn:
+            rows = directory(conn)
+        counts: dict[str, int] = {}
+        for r in rows:
+            counts[r["state"]] = counts.get(r["state"], 0) + 1
+        return {"items": rows, "counts": counts, "labels": LABELS}

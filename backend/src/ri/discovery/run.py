@@ -32,9 +32,9 @@ def run_discovery(conn: Conn, exa: ExaClient, *, max_searches: int, max_new_requ
     now = now or datetime.now(timezone.utc)
     est = est_cost if est_cost is not None else DEFAULT_EST
     due = qa(conn,
-             "SELECT * FROM discovery_plans WHERE enabled AND (%s::text[] IS NULL OR plan_id = ANY(%s)) AND "
+             "SELECT * FROM discovery_plans WHERE enabled AND (%s::text[] IS NULL OR plan_id = ANY(%s)) AND (%s::text[] IS NOT NULL OR theme <> 'account_watch') AND "
              "(%s::text[] IS NOT NULL OR last_run_at IS NULL OR last_run_at < %s) ORDER BY last_run_at NULLS FIRST, plan_id LIMIT %s",
-             (plan_ids, plan_ids, plan_ids, now - timedelta(days=interval_days), max_searches))
+             (plan_ids, plan_ids, plan_ids, plan_ids, now - timedelta(days=interval_days), max_searches))
     out: dict[str, Any] = {"searches": 0, "results": 0, "requests_created": 0, "cost_usd": 0.0, "stopped": None}
     for p in due:
         if out["requests_created"] >= max_new_requests:
@@ -93,5 +93,5 @@ def run_discovery(conn: Conn, exa: ExaClient, *, max_searches: int, max_new_requ
 
 def due_count(conn: Conn, interval_days: int, now: datetime | None = None) -> int:
     now = now or datetime.now(timezone.utc)
-    r = q1(conn, "SELECT count(*) AS n FROM discovery_plans WHERE enabled AND (last_run_at IS NULL OR last_run_at < %s)", (now - timedelta(days=interval_days),))
+    r = q1(conn, "SELECT count(*) AS n FROM discovery_plans WHERE enabled AND theme <> 'account_watch' AND (last_run_at IS NULL OR last_run_at < %s)", (now - timedelta(days=interval_days),))
     return int(r["n"]) if r else 0

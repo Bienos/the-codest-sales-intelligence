@@ -6,6 +6,9 @@ build time; the sandbox egress proxy blocked live calls, so they have NOT been v
 """
 from __future__ import annotations
 
+import re
+from datetime import timedelta
+
 from datetime import datetime
 from typing import Any
 
@@ -167,3 +170,59 @@ class FindTenderConnector:
         vkey = sha(r["ocid"], r.get("date"), r.get("id"), deadline_raw, status)
         return SourceDocumentDraft(r["ocid"], vkey, url, tender.get("title"), parse_dt(r.get("date")), None, excerpt(tender.get("description")),
                                    raw_meta={"tags": sorted(tags)}, structured=rec, kind="procurement_notice")
+
+
+CF_URL = "https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search"
+_SOFTWARE_CPV = ("72", "48", "73")      # IT services, software packages, R&D/consulting
+_SOFTWARE_WORDS = re.compile(r"\b(software|digital|cloud|platform|application|api|data|ai|machine learning|cyber|payments?|banking|engineering|"
+                             r"development|devops|integration|modernis|migration|IT services?)\b", re.I)
+
+
+def is_software_notice(release: dict) -> bool:
+    """The Contracts Finder search has no CPV filter, so relevance is decided here: an IT/software CPV code, or software wording in the title."""
+    tender = release.get("tender") or {}
+    cpvs = [str((it.get("classification") or {}).get("id") or "") for it in tender.get("items", [])]
+    cpvs += [str((a or {}).get("id") or "") for a in (tender.get("additionalClassifications") or [])]
+    if any(c.startswith(_SOFTWARE_CPV) for c in cpvs):
+        return True
+    return bool(_SOFTWARE_WORDS.search(f"{tender.get('title') or ''}"))
+
+
+class ContractsFinderConnector(FindTenderConnector):
+    """UK Contracts Finder (OCDS search: publishedFrom, publishedTo, stages, limit, cursor). Same release shape as Find a Tender; filtered to software work."""
+
+    def __init__(self, client: httpx.AsyncClient, *, source_id: str = "procurement-uk-contracts-finder", stages: str = "tender,award", now_fn=utcnow):
+        super().__init__(client, source_id=source_id, stages=stages, now_fn=now_fn)
+
+    def describe(self) -> SourceDescriptor:
+        return SourceDescriptor(self.source_id, "UK Contracts Finder", "official_api", "S1", "1.0")
+
+    async def health_check(self) -> HealthCheck:
+        try:
+            await request_json(self.client, "GET", CF_URL, params={"limit": 1, "stages": "tender"}, retries=0)
+            return HealthCheck(True)
+        except Exception as exc:  # noqa: BLE001
+            return HealthCheck(False, str(exc), getattr(exc, "error_class", "transient_network"))
+
+    async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
+        requested = self.now()
+        if cursor and cursor.startswith("http"):
+            data = await request_json(self.client, "GET", cursor)
+        else:
+            since = cursor.removeprefix("since:") if cursor else (requested - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%S")
+            data = await request_json(self.client, "GET", CF_URL, params={"limit": min(limit, 100), "stages": self.stages, "publishedFrom": since,
+                                                                          "publishedTo": requested.strftime("%Y-%m-%dT%H:%M:%S")})
+        if not isinstance(data, dict) or "releases" not in data:
+            raise SchemaDrift("OCDS package has no 'releases'")
+        items = [RawItem(external_id=r["ocid"], version=r.get("date"), payload=r) for r in data["releases"] if r.get("ocid") and is_software_notice(r)]
+        nxt = (data.get("links") or {}).get("next")
+        return FetchBatch(items, nxt or f"since:{requested.strftime('%Y-%m-%dT%H:%M:%S')}", bool(nxt), requested, "ocds-1.1", quota_usage={"requests": 1})
+
+    def canonicalize(self, item: RawItem) -> SourceDocumentDraft:
+        d = super().canonicalize(item)
+        nid = str(item.payload.get("ocid", "")).split("-")[-1]
+        url = f"https://www.contractsfinder.service.gov.uk/Notice/{nid}" if nid else None
+        if d.structured:
+            d.structured["official_url"] = url
+        d.canonical_url = url
+        return d

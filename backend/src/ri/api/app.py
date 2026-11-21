@@ -100,6 +100,15 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
         return h
 
     # ------------------------------------------------------------------ meta
+    @app.get("/brand/logo", include_in_schema=False)
+    async def brand_logo():
+        from fastapi.responses import Response
+        from ..brand import fetch_logo
+        data, ctype = await fetch_logo()
+        if not data:
+            raise HTTPException(404, "logo not available")
+        return Response(data, media_type=ctype, headers={"Cache-Control": "public, max-age=86400", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox", "X-Content-Type-Options": "nosniff"})
+
     @app.get("/healthz")
     def healthz():
         return {"ok": True}
@@ -399,6 +408,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     intel.register(app)
     intel.register_pipeline(app)
     intel.register_feed(app)
+    intel.register_scan(app)
+    intel.register_connections(app)
     from . import search as search_api
     search_api.register(app)
     search_api.register_kb_admin(app)

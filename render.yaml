@@ -27,7 +27,7 @@ services:
       - {key: RI_ALLOWED_EMAIL_DOMAIN, value: thecodest.co}
       - {key: PIPEDRIVE_DOMAIN, value: thecodestltd}
       - {key: RI_EXA_MONTHLY_CAP_USD, value: "20"}                 # hard monthly cap for Exa (USD)
-      - {key: RI_ANTHROPIC_MONTHLY_TOKEN_CAP, value: "2000000"}    # hard monthly cap on model tokens; raise deliberately
+      - {key: RI_ANTHROPIC_MONTHLY_TOKEN_CAP, value: "10000000"}   # hard monthly cap on model tokens (about $1.60 at Haiku list price); raise deliberately
       - {fromGroup: ri-secrets}
   - type: worker
     name: ri-worker

@@ -97,10 +97,13 @@ export const Empty = ({ title, children }: { title: string; children?: ReactNode
 
 /** Brand mark: the official logo file when it has been supplied, otherwise the plain text mark. Never redrawn here. */
 export function Brand({ sub = true }: { sub?: boolean }) {
-  const [ok, setOk] = useState(true);
+  // 0 = logo file supplied with the app, 1 = the logo from thecodest.co (served by our API, shown white on navy), 2 = plain text mark
+  const [stage, setStage] = useState(0);
+  const ok = stage < 2;
   return (
     <div className="brand" style={{ border: 0, padding: 0, margin: 0 }}>
-      {ok ? <img className="brand-logo" src="/brand/logo-white.svg" alt="The Codest" width={140} onError={() => setOk(false)} />
+      {ok ? <img className="brand-logo" src={stage === 0 ? "/brand/logo-white.svg" : "/brand/logo"} alt="The Codest" width={140}
+                 style={stage === 1 ? { filter: "brightness(0) invert(1)" } : undefined} onError={() => setStage(stage + 1)} />
         : <div className="brand-row"><span className="brand-mark" /><div className="brand-name">The Codest</div></div>}
       {sub && <div className="brand-sub" style={{ marginTop: 0 }}>Revenue Intelligence</div>}
     </div>

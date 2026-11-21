@@ -1,0 +1,36 @@
+# Directory of every connection: what it is, what state it is in, what is needed to turn it on and where to get that.
+# `state` here is only used when the source is NOT live; a live source is always shown as live.
+# States: per_account | built_in | needs_address | blocked_by_site | needs_credential | not_built | deferred | needs_retest
+connections:
+  ats-greenhouse: {state: per_account, todo: "Press Scan on an account. The scan finds the account's Greenhouse board from its careers page and reads the open roles.", where: "Nothing to obtain: public job boards."}
+  ats-lever: {state: per_account, todo: "Press Scan on an account. The scan finds the account's Lever board from its careers page.", where: "Nothing to obtain: public job boards."}
+  ats-ashby: {state: per_account, todo: "Press Scan on an account. The scan finds the account's Ashby board from its careers page.", where: "Nothing to obtain: public job boards."}
+  ats-workday: {state: not_built, todo: "Workday has no public postings API. Careers pages that allow it are read by the account scan; nothing else is planned.", where: "-"}
+  attention-bitkom: {state: blocked_by_site, todo: "The site refuses automated reads. Needs permission from Bitkom or a licensed feed; do not work around it.", where: "Ask Bitkom's press office for a feed or written permission."}
+  attention-techuk: {state: blocked_by_site, todo: "The site refuses automated reads. Needs permission from techUK or a licensed feed.", where: "Ask techUK's press office for a feed or written permission."}
+  attention-fintechfutures: {state: blocked_by_site, todo: "The site refuses automated reads. Finextra, The Paypers and Fintech Times cover the same ground and are live.", where: "Ask FinTech Futures about a licensed feed."}
+  standards-swift: {state: blocked_by_site, todo: "The site refuses automated reads. ECB, EPC and EBA cover the standards news that matters.", where: "Ask Swift about a feed or API access."}
+  vendor-finastra-news: {state: blocked_by_site, todo: "The press page refuses automated reads. Finastra news still reaches us through Finextra and The Paypers.", where: "Ask Finastra's press office for an RSS feed."}
+  attention-ebaday: {state: needs_address, todo: "Needs the address of the speakers or agenda page. Send me the link or I will search for it.", where: "EBAday website, programme page."}
+  attention-leaddev: {state: needs_address, todo: "Needs the address of LeadDev's news or events page. Send me the link or I will search for it.", where: "LeadDev website, news and events."}
+  corporate-ir-newsrooms: {state: per_account, todo: "Press Scan on an account. The scan finds the account's own newsroom, press page and feed.", where: "Nothing to obtain."}
+  discovery-exa: {state: built_in, todo: "Runs from the Discovery tab and from each account's Scan button. Costs are capped.", where: "Exa dashboard, API keys."}
+  internal-pipedrive: {state: deferred, todo: "CRM sync is switched off until you approve it. Approvals are already in the product.", where: "Pipedrive, Settings, Personal preferences, API."}
+  internal-sheets: {state: built_in, todo: "Upload the two workbooks in Administration, Imports.", where: "The two .xlsx exports of your Google Sheets."}
+  verify-original-page: {state: built_in, todo: "Used by the Verify button and by discovery. Nothing to set up.", where: "-"}
+  verify-company-page: {state: built_in, todo: "Used by the Verify button. Nothing to set up.", where: "-"}
+  verify-vendor-page: {state: built_in, todo: "Used by the Verify button. Nothing to set up.", where: "-"}
+  verify-official-page: {state: built_in, todo: "Used by the Verify button. Nothing to set up.", where: "-"}
+  procurement-bank-portals: {state: per_account, todo: "Only portals you have permission to monitor. Tell me which banks and I will add each address.", where: "Your procurement contacts at each bank."}
+  procurement-msp-vms: {state: per_account, todo: "Only portals you have access to and permission to monitor.", where: "Your MSP or VMS portal administrators."}
+  procurement-doffin: {state: not_built, todo: "Norwegian notices above the EU threshold already arrive through TED. A national connector needs the API terms confirmed.", where: "Doffin's developer documentation (ask Digdir for access terms)."}
+  procurement-dtvp: {state: not_built, todo: "German notices above the EU threshold already arrive through TED.", where: "DTVP provider terms."}
+  procurement-udbud: {state: not_built, todo: "Danish notices above the EU threshold already arrive through TED.", where: "Udbud.dk terms."}
+  procurement-ezamowienia: {state: not_built, todo: "The Polish BZP web service is free and needs no registration. I need the parameter list from the official specification before building it, so it is not guessed.", where: "ezamowienia.gov.pl, API documentation (Swagger)."}
+  procurement-mercell: {state: needs_credential, todo: "Commercial service. Needs a paid entitlement before any use.", where: "Mercell sales."}
+  procurement-uk-fts: {state: needs_retest, todo: "Timed out on the first test. Retested with a longer timeout; if it still fails it is the service, not us.", where: "Nothing to obtain: open data."}
+  procurement-uk-contracts-finder: {state: needs_retest, todo: "Connector built. Run Test all sources to activate it.", where: "Nothing to obtain: open data."}
+  registry-companies-house: {state: needs_credential, todo: "Free key. Adds director appointments and filings for UK accounts. Worth it only once UK accounts are loaded.", where: "developer.company-information.service.gov.uk, create an application and a REST key."}
+  registry-gleif: {state: not_built, todo: "Identity data only (legal entity identifiers). Low value for signals; not planned.", where: "-"}
+  registry-national: {state: not_built, todo: "Per country. Add only where an account needs it.", where: "-"}
+  si-nttdata-news: {state: needs_retest, todo: "Press page returned an error on the first test. Retest or send a working address.", where: "NTT DATA press releases page."}

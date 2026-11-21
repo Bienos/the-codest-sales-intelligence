@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, fmtDate, fmtDateTime } from "../api";
+import { api, fmtDate, fmtDateTime, post } from "../api";
 import { Badge, Err, Evidence, humanize, priorityKind } from "../components/ui";
 
 export function Accounts() {
@@ -27,13 +27,22 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const [d, setD] = useState<any>(null);
   const [tab, setTab] = useState(TABS[0]);
   const [err, setErr] = useState<unknown>(null);
-  useEffect(() => { api(`/api/accounts/${id}`).then(setD).catch(setErr); }, [id]);
+  const [eps, setEps] = useState<any[]>([]);
+  const [scan, setScan] = useState<{ busy: boolean; msg: string; err: unknown }>({ busy: false, msg: "", err: null });
+  useEffect(() => { api(`/api/accounts/${id}`).then(setD).catch(setErr); api(`/api/accounts/${id}/endpoints`).then((r) => setEps(r.items)).catch(() => setEps([])); }, [id]);
   if (err) return <Err e={err} />;
   if (!d) return <p className="muted">Loading…</p>;
   const a = d.account;
+  const canScan = me.permissions.includes("research.request");
+  const runScan = async () => {
+    setScan({ busy: true, msg: "", err: null });
+    try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? `Scanning ${r.website} and searching the web. New findings appear in the Market feed once verified; reload this tab in a minute.` : "Queued. This account has no website recorded, so only the web search will run.", err: null }); }
+    catch (e) { setScan({ busy: false, msg: "", err: e }); }
+  };
   return (
     <>
-      <h2>{a.display_name}</h2>
+      <div className="row spread"><h2 style={{ margin: 0 }}>{a.display_name}</h2>{canScan && <button className="primary" disabled={scan.busy} onClick={runScan}>Find signals now</button>}</div>
+      {scan.msg && <div className="okmsg" role="status" style={{ margin: "8px 0" }}>{scan.msg}</div>}<Err e={scan.err} />
       <div className="row"><Badge kind={a.in_master_list ? "ok" : "info"}>{a.in_master_list ? "in master list" : "new candidate"}</Badge><Badge>{a.country_code ?? "country unknown"}</Badge><Badge kind={d.ownership_verified ? "ok" : "warn"}>{d.ownership_verified ? `Pipedrive owner ${d.crm.owner_id}` : "ownership unverified"}</Badge>
         <Badge>{a.employees_estimate?.toLocaleString() ?? "?"} employees{a.employees_uncertain ? " (estimate)" : ""}</Badge></div>
       <div className="tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}</div>
@@ -58,6 +67,9 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         <h3>Master-list source rows</h3><ul className="tight small">{d.source_rows.map((r: any, i: number) => <li key={i}>{r.sheet_title} (row {r.row_number}, workbook …{r.source_file_id.slice(-6)})</li>)}</ul></div>}
       {tab === "Research & coverage" && <div className="card"><p className="small">{d.source_coverage_note}</p><table><thead><tr><th>Source family</th><th>State</th><th>Last success</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{c.source_family}</td><td>{c.coverage_state}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
         {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">No account-level coverage recorded yet: visibility is unknown, not “nothing happening”.</td></tr>}</tbody></table>
+        <h3>Where this account publishes</h3>
+        {eps.length === 0 ? <p className="small muted">Nothing found yet. Press “Find signals now” to look for this account's news feed, press page, careers page and job board.</p>
+          : <table><thead><tr><th>Kind</th><th>Address</th><th>Last read</th><th>Items</th></tr></thead><tbody>{eps.map((e, i) => <tr key={i}><td>{humanize(e.kind)}{e.provider ? ` (${e.provider})` : ""}</td><td className="small" style={{ wordBreak: "break-all" }}>{e.url}</td><td className="small">{e.last_scanned_at ? <>{fmtDateTime(e.last_scanned_at)} <Badge kind={e.last_status === "ok" ? "ok" : "bad"}>{e.last_status}</Badge>{e.last_detail && <div className="muted">{e.last_detail}</div>}</> : "not yet"}</td><td>{e.docs_seen}</td></tr>)}</tbody></table>}
         <h3>Evidence</h3>{d.opportunities.slice(0, 3).map((o: any) => <Evidence key={o.hypothesis_id} items={o.evidence} />)}</div>}
     </>
   );

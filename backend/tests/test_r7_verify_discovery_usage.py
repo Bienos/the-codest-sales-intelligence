@@ -215,7 +215,7 @@ def test_usage_endpoints_summarise_by_provider_source_and_plan_with_forecast(api
     d = c.get("/api/admin/usage", headers=h("admin")).json()
     assert {m["provider"] for m in d["months"]} == {"exa", "anthropic"}
     assert any(s["source_id"] == "discovery-exa" for s in d["by_source"]) and d["by_plan"][0]["plan_id"] == "p1"
-    assert d["forecast"]["exa"]["cap"] == 20.0 and d["prices"]["anthropic_in_per_mtok"] is None
+    assert d["forecast"]["exa"]["cap"] == 20.0 and d["prices"]["anthropic_in_per_mtok"] == 0.10 and d["anthropic_cap_usd_estimate"] is not None
     led = c.get("/api/admin/usage/ledger?provider=exa", headers=h("admin")).json()
     assert led["total"] == 1 and led["items"][0]["query"] == "q"
     assert c.get("/api/admin/library", headers=h("admin")).json()["items"]
@@ -516,3 +516,18 @@ def test_irrelevant_feed_items_cost_nothing_and_are_recorded_as_skipped(conn):
     assert conn.execute("select count(*) c from provider_usage where provider='anthropic'").fetchone()["c"] == 1              # only the relevant item was read by the model
     skipped = conn.execute("select count(*) c from source_documents where raw_meta->>'triage'='skipped_not_relevant'").fetchone()["c"]
     assert skipped == 1
+
+
+def test_contracts_finder_keeps_only_software_notices_and_links_to_the_notice_page():
+    import httpx, asyncio
+    from datetime import datetime, timezone
+    from ri.sources.procurement import ContractsFinderConnector, is_software_notice
+    rel = lambda ocid, title, cpv: {"ocid": ocid, "date": "2026-11-20T10:00:00Z", "tag": ["tender"], "buyer": {"name": "Home Office"},
+                                    "tender": {"title": title, "status": "active", "items": [{"classification": {"id": cpv}}] if cpv else []}}
+    pkg = {"releases": [rel("ocds-b5fd17-aaaa1111", "Core payments platform modernisation", "72000000"), rel("ocds-b5fd17-bbbb2222", "Grounds maintenance", "77300000")], "links": {}}
+    c = ContractsFinderConnector(httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=pkg))), now_fn=lambda: datetime(2026, 11, 21, tzinfo=timezone.utc))
+    batch = asyncio.run(c.fetch(None, 50))
+    assert [i.external_id for i in batch.items] == ["ocds-b5fd17-aaaa1111"]
+    d = c.canonicalize(batch.items[0])
+    assert d.canonical_url.endswith("/Notice/aaaa1111")
+    assert is_software_notice(rel("x", "Cloud migration services", None)) and not is_software_notice(rel("y", "Road resurfacing", "45233000"))
