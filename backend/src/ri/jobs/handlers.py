@@ -161,6 +161,41 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
 
     account_brief.own_transactions = True  # type: ignore[attr-defined]
 
+    def campaign_draft(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        """Writes and brand-checks a draft email sequence for one company. Drafts only."""
+        from ..config import Settings
+        from ..db import q1 as _q1
+        from ..ingest.pipeline import _run
+        from ..outbound.writer import write
+        from ..sources.base import BudgetExceeded
+        from .modelcall import make_call
+        st = Settings.from_env(require_auth=False)
+        did = job["payload"]["draft_id"]
+        d = _q1(conn, "SELECT * FROM campaign_drafts WHERE id=%s", (did,))
+        if not d:
+            raise JobError("draft not found", "not_found")
+        if not st.anthropic_api_key:
+            conn.execute("UPDATE campaign_drafts SET status='failed', error='AI is not configured (no API key).', finished_at=now() WHERE id=%s", (did,))
+            return {"status": "failed"}
+        conn.execute("UPDATE campaign_drafts SET status='running' WHERE id=%s", (did,))
+        conn.commit()
+        call = make_call(conn, st, org_id=str(d["organization_id"]), operation="campaign_draft", key_prefix=f"draft:{did}", models=[st.anthropic_research_model, st.anthropic_model])
+        try:
+            r = write(conn, str(d["organization_id"]), d["role"], call, _run)
+        except BudgetExceeded as exc:
+            conn.rollback()
+            conn.execute("UPDATE campaign_drafts SET status='failed', error=%s, finished_at=now() WHERE id=%s", (f"Not enough AI budget left this month: {exc}"[:300], did))
+            return {"status": "failed", "reason": "budget"}
+        except Exception as exc:  # noqa: BLE001
+            conn.rollback()
+            conn.execute("UPDATE campaign_drafts SET status='failed', error=%s, finished_at=now() WHERE id=%s", (f"{type(exc).__name__}: {exc}"[:300], did))
+            return {"status": "failed", "reason": type(exc).__name__}
+        conn.execute("UPDATE campaign_drafts SET status=%s, steps=%s, review=%s, rounds=%s, facts=%s, model=%s, tokens_in=%s, tokens_out=%s, finished_at=now() WHERE id=%s",
+                     (r["status"], jb(r["steps"]), jb(r["review"]), r["rounds"], jb(r["facts"]), r["model"], r["tokens_in"], r["tokens_out"], did))
+        return {"status": r["status"], "rounds": r["rounds"]}
+
+    campaign_draft.own_transactions = True  # type: ignore[attr-defined]
+
     def verify_url(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..verify.run import run_verification
         if extractor_factory is None or fetch_factory is None:
@@ -227,7 +262,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief}
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

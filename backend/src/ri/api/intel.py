@@ -393,6 +393,14 @@ def register_feed(app: FastAPI) -> None:
                 "note": "Only events whose claims quote the original page appear here. Searches and sheet signals that have not been checked are listed as leads, never as findings."}
 
 
+class CampaignIn(BaseModel):
+    role: str | None = Field(default=None, max_length=80)
+
+
+class DecisionIn(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
+
+
 class AddCompanyIn(BaseModel):
     website: str = Field(min_length=3, max_length=200)
     name: str | None = Field(default=None, max_length=120)
@@ -505,6 +513,47 @@ def register_scan(app: FastAPI) -> None:
                 raise HTTPException(404, "not found")
             rows = qa(conn, "SELECT id, status, model, content, dropped, error, requested_by, created_at, finished_at FROM account_briefs WHERE organization_id=%s ORDER BY created_at DESC LIMIT 5", (oid,))
             return {"items": [dict(r, id=str(r["id"])) for r in rows]}
+
+    @app.post("/api/accounts/{oid}/campaign")
+    def request_campaign(oid: str, body: CampaignIn, request: Request, p: Principal = Depends(require("draft.create"))):
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):     # noqa: S608
+                raise HTTPException(404, "not found")
+            if q1(conn, "SELECT 1 FROM campaign_drafts WHERE organization_id=%s AND status IN ('queued','running') AND created_at > now() - interval '15 minutes'", (oid,)):
+                raise HTTPException(409, "A draft for this company is already being written.")
+            _quota(conn, p.email)
+            row = conn.execute("INSERT INTO campaign_drafts(organization_id, requested_by, role) VALUES (%s,%s,%s) RETURNING id", (oid, p.email, (body.role or "").strip() or None)).fetchone()
+            did = str(row["id"])     # type: ignore[index]
+            enqueue(conn, "campaign_draft", {"draft_id": did}, idempotency_key=f"draft:{did}", max_attempts=1)
+            audit(conn, actor=p.email, operation="account_scan_requested", record_type="organization", record_id=oid, detail={"campaign": True})
+            return {"draft_id": did, "status": "queued", "note": "Drafts only. Nothing is sent from this system."}
+
+    @app.get("/api/accounts/{oid}/campaigns")
+    def list_campaigns(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        with tx(request) as conn:
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):     # noqa: S608
+                raise HTTPException(404, "not found")
+            rows = qa(conn, "SELECT id, status, role, steps, review, rounds, model, error, requested_by, decided_by, decided_at, created_at, finished_at FROM campaign_drafts WHERE organization_id=%s ORDER BY created_at DESC LIMIT 5", (oid,))
+            crm = q1(conn, "SELECT owner_id FROM crm_organizations WHERE organization_id=%s AND link_status='linked'", (oid,))
+            return {"items": [dict(r, id=str(r["id"])) for r in rows], "ownership_checked": bool(crm), "note": "Ownership in Pipedrive is not checked until Pipedrive is connected. Check it before anything is sent."}
+
+    @app.post("/api/campaigns/{did}/decision")
+    def decide_campaign(did: str, body: DecisionIn, request: Request, p: Principal = Depends(require("draft.create"))):
+        with tx(request) as conn:
+            d = q1(conn, "SELECT organization_id, status, review FROM campaign_drafts WHERE id=%s", (did,))
+            if not d:
+                raise HTTPException(404, "not found")
+            where, params = org_scope_sql(p, "o.id")
+            if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [str(d["organization_id"]), *params]):     # noqa: S608
+                raise HTTPException(404, "not found")
+            if body.decision == "approve" and d["status"] != "draft":
+                raise HTTPException(409, "Only a draft that passed the brand review can be approved. Fix or rewrite it first.")
+            status = "approved" if body.decision == "approve" else "rejected"
+            conn.execute("UPDATE campaign_drafts SET status=%s, decided_by=%s, decided_at=now() WHERE id=%s", (status, p.email, did))
+            audit(conn, actor=p.email, operation=f"campaign_{status}", record_type="campaign_draft", record_id=did, detail={})
+            return {"status": status, "note": "Approved means a person has read it. Sending is a separate step that is not built yet."}
 
     @app.get("/api/accounts/{oid}/context")
     def account_context(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):

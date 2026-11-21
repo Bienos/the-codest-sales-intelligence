@@ -134,7 +134,41 @@ function BriefTab({ briefs }: { briefs: any[] }) {
   );
 }
 
-const TABS = ["Overview", "Research brief", "Initiatives", "Signals & evidence", "Suppliers", "Buyers", "Access & CRM", "Research & coverage"];
+function CampaignTab({ camps, canDraft, make, decide }: { camps: any; canDraft: boolean; make: (role: string) => void; decide: (id: string, d: string) => void }) {
+  const [role, setRole] = useState("");
+  const [copied, setCopied] = useState("");
+  const b = camps.items[0];
+  const busy = b && (b.status === "queued" || b.status === "running");
+  const copy = async (k: string, t: string) => { try { await navigator.clipboard.writeText(t); setCopied(k); setTimeout(() => setCopied(""), 1500); } catch { /* clipboard unavailable */ } };
+  return (
+    <div className="card">
+      <p className="small muted" style={{ marginTop: 0 }}>Three emails written from this company's verified facts and checked against The Codest's brand rules. Drafts only: nothing is sent from here. {!camps.ownership_checked && camps.note}</p>
+      {canDraft && <div className="row" style={{ marginBottom: 12 }}>
+        <label className="small">Who is it for?<select id="camp-role" value={role} onChange={(e) => setRole(e.target.value)} style={{ marginLeft: 8 }}><option value="">Technology or delivery leader</option><option>CTO</option><option>Head of Engineering</option><option>Head of Payments</option><option>Head of Delivery or PMO</option><option>Procurement lead</option></select></label>
+        <button className="primary" disabled={busy} onClick={() => make(role)}>Write outreach sequence</button></div>}
+      {!b && <p className="muted">No draft yet. Write a research brief first for the best result: the emails are built from what it found.</p>}
+      {busy && <p>Writing and checking the draft… about a minute.</p>}
+      {b?.status === "failed" && <Err e={new Error(b.error || "The draft could not be written.")} />}
+      {b && (b.status === "draft" || b.status === "needs_work" || b.status === "approved" || b.status === "rejected") && <>
+        <div className="row" style={{ margin: "6px 0 12px" }}>
+          <Badge kind={b.status === "approved" ? "ok" : b.status === "draft" ? "info" : b.status === "rejected" ? "" : "warn"}>{b.status === "draft" ? "Passed the brand review" : b.status === "needs_work" ? "Needs work" : humanize(b.status)}</Badge>
+          <span className="small muted">{b.rounds > 1 ? `Rewritten ${b.rounds - 1} time(s) to fix rule breaks. ` : ""}Written by {b.model ?? "n/a"} · {fmtDateTime(b.finished_at)}{b.decided_by ? ` · ${b.status} by ${b.decided_by}` : ""}</span></div>
+        {b.review?.breaks?.length > 0 && <div className="err" role="alert"><b>Rule breaks to fix before approving:</b><ul className="tight">{b.review.breaks.map((x: any, i: number) => <li key={i}>{x.step ? `Email ${x.step}: ` : ""}{x.detail}</li>)}</ul></div>}
+        {(b.steps ?? []).map((st: any, i: number) => (
+          <article key={i} className="fcard">
+            <div className="row spread"><b>Email {i + 1}</b><span className="row small muted">{st.day === 0 ? "Day 0" : `Day ${st.day}`}<button className="chip" onClick={() => copy(`${b.id}-${i}`, `Subject: ${st.subject}\n\n${st.body}`)}>{copied === `${b.id}-${i}` ? "Copied" : "Copy"}</button></span></div>
+            <p style={{ margin: "8px 0 4px" }}><b>Subject:</b> {st.subject}</p>
+            <div style={{ whiteSpace: "pre-wrap" }}>{st.body}</div>
+            <div className="small muted" style={{ marginTop: 8 }}>Claims used: {st.claims_used.join(", ") || "none"} · built on {st.fact_refs.join(", ") || "no fact"}</div>
+          </article>))}
+        {canDraft && b.status === "draft" && <div className="row"><button className="primary" onClick={() => decide(b.id, "approve")}>Approve draft</button><button onClick={() => decide(b.id, "reject")}>Reject</button></div>}
+        {b.facts && Object.keys(b.facts).length > 0 && <details style={{ marginTop: 12 }}><summary>Verified facts it was built on</summary><ul className="tight small">{Object.entries(b.facts).map(([k, v]: any) => <li key={k}><b>{k}</b> {v}</li>)}</ul></details>}
+      </>}
+    </div>
+  );
+}
+
+const TABS = ["Overview", "Research brief", "Outreach drafts", "Initiatives", "Signals & evidence", "Suppliers", "Buyers", "Access & CRM", "Research & coverage"];
 
 export function Account({ me }: { me: { permissions: string[] } }) {
   const { id } = useParams();
@@ -152,6 +186,12 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const loadBriefs = () => api(`/api/accounts/${id}/briefs`).then((r) => setBriefs(r.items)).catch(() => setBriefs([]));
   useEffect(() => { loadBriefs(); }, [id]);
   useEffect(() => { if (!briefs.some((b) => b.status === "queued" || b.status === "running")) return; const t = setInterval(loadBriefs, 6000); return () => clearInterval(t); }, [briefs]);
+  const [camps, setCamps] = useState<any>({ items: [] });
+  const loadCamps = () => api(`/api/accounts/${id}/campaigns`).then(setCamps).catch(() => setCamps({ items: [] }));
+  useEffect(() => { loadCamps(); }, [id]);
+  useEffect(() => { if (!camps.items.some((b: any) => b.status === "queued" || b.status === "running")) return; const t = setInterval(loadCamps, 6000); return () => clearInterval(t); }, [camps]);
+  const makeCampaign = async (role: string) => { try { await post(`/api/accounts/${id}/campaign`, { role: role || null }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
+  const decideCampaign = async (did: string, decision: string) => { try { await post(`/api/campaigns/${did}/decision`, { decision }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const makeBrief = async () => { try { await post(`/api/accounts/${id}/brief`); await loadBriefs(); setTab("Research brief"); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const runScan = async () => {
     setScan({ busy: true, msg: "", err: null });
@@ -188,6 +228,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       {tab === "Access & CRM" && <div className="card"><p>{d.crm ? <>Linked to Pipedrive organisation {d.crm.crm_id}; open deals {d.crm.open_deals_count ?? "?"}; mirror synced {fmtDateTime(d.crm.synced_at)}. Pipedrive remains the source of truth for owner and deal stage.</> : "Not linked to Pipedrive · ownership cannot be checked, so outreach and CRM proposals are disabled for this account."}</p>
         <h3>Master-list source rows</h3><ul className="tight small">{d.source_rows.map((r: any, i: number) => <li key={i}>{r.sheet_title} (row {r.row_number}, workbook …{r.source_file_id.slice(-6)})</li>)}</ul></div>}
       {tab === "Research brief" && <BriefTab briefs={briefs} />}
+      {tab === "Outreach drafts" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} make={makeCampaign} decide={decideCampaign} />}
       {tab === "Research & coverage" && <div className="card"><p className="small">{d.source_coverage_note}</p><table><thead><tr><th>Source family</th><th>State</th><th>Last success</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{c.source_family}</td><td>{c.coverage_state}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
         {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">No account-level coverage recorded yet: visibility is unknown, not “nothing happening”.</td></tr>}</tbody></table>
         <h3>Where this account publishes</h3>

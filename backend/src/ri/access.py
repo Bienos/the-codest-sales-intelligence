@@ -16,7 +16,7 @@ PERMS: dict[str, set[str]] = {
     "research_analyst": {"accounts.read", "today.read", "hypothesis.review", "research.request", "explorer.read", "identity.manage", "claims.validate", "initiatives.review", "sources.read"},
     "marketing": {"proof.manage"},
     "delivery_expert": {"accounts.read", "hypothesis.read", "delivery.validate", "explorer.read"},
-    "admin": {"accounts.read", "today.read", "explorer.read", "research.request", "admin.sources", "admin.jobs", "admin.rules", "admin.costs", "admin.users", "admin.identity", "audit.read", "sources.read", "identity.manage"},
+    "admin": {"accounts.read", "today.read", "explorer.read", "research.request", "draft.create", "admin.sources", "admin.jobs", "admin.rules", "admin.costs", "admin.users", "admin.identity", "audit.read", "sources.read", "identity.manage"},
     "compliance": {"audit.read", "privacy.manage", "admin.costs"},
 }
 

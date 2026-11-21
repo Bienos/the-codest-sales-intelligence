@@ -1,0 +1,23 @@
+# The Codest brand rules for anything a prospect will read (from the brand skill; the claims register in the cody-agent repo wins if they differ).
+# Only claims that are public WITHOUT conditions may appear in a draft. Everything else needs a register entry and a person's clearance first.
+usable_claims:
+  CLM-001: "We take responsibility for the systems your business makes money on, as if they were our own."
+  CLM-003: "We offer Product Development, Staff Augmentation and AI."
+not_usable_without_clearance: [CLM-002, CLM-004, CLM-005, CLM-007, CLM-008, CLM-011, CLM-017]
+never_in_drafts: [CLM-006, CLM-009, CLM-010, CLM-012, CLM-013, CLM-014, CLM-015, CLM-016]
+blocked_names: [MUFG, Allegro]
+blocked_markets: ['United States', 'USA', 'U.S.', 'US market']
+avoid_words: [top-notch, world-class, best-in-class, cutting-edge, state-of-the-art, game-changing, revolutionary, boost, supercharge, unlock, seamless, effortless, frictionless,
+              innovative, groundbreaking, disruptive, transformative, leverage, robust, holistic, synergy, empower, streamline, rockstar, ninja, top talent, journey, end-to-end,
+              trusted partner, guaranteed, risk-free, 10x, ai-first, ai-native, premium, resources, headcount, talent pool, hire developers, contact us, get a quote]
+avoid_phrases: ["in today's", "i hope this finds you", "feel free to reach out", "just checking in", "touch base", "circle back", "game changer", "hope you are well", "hope you're well"]
+ctas:
+  - "Let's talk through the problem"
+  - "Let's test the direction on a prototype"
+  - "Let's plan the responsibility and the team model"
+  - "Let's check the fit with your programme and procurement process"
+  - "Start an evidence review"
+offers:
+  staff_augmentation: "Staff Augmentation: extend capacity"
+  team_extension: "Product Development / Team Extension with Delivery Responsibility: own a defined area"
+  ai_services: "AI Services: test or implement AI in a real process"
