@@ -38,7 +38,9 @@ def seed_registry(conn: Conn, path: Path = SEED) -> int:
             conn.execute("INSERT INTO source_health(source_id, state) VALUES (%s,'unconfigured') ON CONFLICT DO NOTHING", (s["source_id"],))
             n += 1
         elif s.get("config"):     # existing deployment: add newly shipped config keys but never overwrite an operator's value
-            conn.execute("UPDATE sources SET config = %s::jsonb || config WHERE source_id=%s", (jb(s["config"]), s["source_id"]))
+            # shipped config refreshes addresses nobody edited by hand; an operator's own address ("set by ...") is never overwritten
+            conn.execute("UPDATE sources SET config = CASE WHEN coalesce(config->>'url_basis','') LIKE 'set by %%' THEN %s::jsonb || config ELSE config || %s::jsonb END WHERE source_id=%s",
+                         (jb(s["config"]), jb(s["config"]), s["source_id"]))
         if not row and s.get("collection_method"):      # an uncertified source may have its collection method corrected; certified ones never change silently
             conn.execute("UPDATE sources SET collection_method=%s WHERE source_id=%s AND status='pending_connector_validation'", (s["collection_method"], s["source_id"]))
     return n

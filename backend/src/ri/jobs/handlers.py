@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from ..db import Conn
+from ..db import Conn, jb
 from ..ingest.pipeline import run_source
 from ..ingest.process import finish_event, process_run
 from ..sources.base import ConnectorError
@@ -69,7 +69,20 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
                          ('{"reason": "no Anthropic API key configured on the worker"}', job["payload"]["request_id"]))
             return {"status": "waiting_budget", "reason": "no model key"}
         resolver = resolve_org_factory(conn) if resolve_org_factory else None
-        return run_verification(conn, job["payload"]["request_id"], fetch=fetch_factory(), extractor=ex, resolver=resolver)
+        rid = job["payload"]["request_id"]
+        try:
+            return run_verification(conn, rid, fetch=fetch_factory(), extractor=ex, resolver=resolver)
+        except JobError as exc:
+            conn.rollback()
+            retry = exc.error_class in {"rate_limited", "transient_network", "server_error", "timeout"} and int(job.get("attempts") or 1) < int(job.get("max_attempts") or 3)
+            conn.execute("UPDATE verification_requests SET status=%s, updated_at=now(), result=%s WHERE id=%s", ("queued" if retry else "failed", jb({"reason": str(exc)[:300], "error_class": exc.error_class}), rid))
+            conn.commit()
+            raise
+        except Exception as exc:  # noqa: BLE001
+            conn.rollback()
+            conn.execute("UPDATE verification_requests SET status='failed', updated_at=now(), result=%s WHERE id=%s", (jb({"reason": f"{type(exc).__name__}: {exc}"[:300]}), rid))
+            conn.commit()
+            raise JobError(f"{type(exc).__name__}: {exc}"[:300], "invalid_payload") from exc
 
     def discovery_run(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..discovery.run import run_discovery

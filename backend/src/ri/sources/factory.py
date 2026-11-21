@@ -15,7 +15,7 @@ def build_connector(conn: Conn, source_id: str):
     from .webwatch import FeedConnector, PageWatchConnector
     src = registry.get(conn, source_id)
     cfg = src["config"] or {}
-    client = SafeClient()
+    client = SafeClient(timeout=60)
     if source_id == "procurement-ted":
         return TedConnector(client, query=cfg["query"])
     if source_id == "procurement-uk-fts":

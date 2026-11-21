@@ -82,6 +82,8 @@ async def fetch_page(client: httpx.AsyncClient, url: str, *, robots: RobotsCache
                 if r.status_code in (301, 302, 303, 307, 308) and r.headers.get("location"):
                     cur = urljoin(cur, r.headers["location"])
                     continue
+                if r.status_code >= 400:
+                    await r.aread()                       # classify() reads the body for diagnostics; a streamed response must be read first
                 classify(r)
                 ctype = r.headers.get("content-type", "").split(";")[0].strip().lower()
                 if ctype and ctype not in {"text/html", "application/xhtml+xml", "text/plain"}:

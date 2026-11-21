@@ -383,3 +383,57 @@ def test_fetched_pages_get_an_authority_tier_from_their_address(conn, world):
     assert t("https://www.fca.org.uk/news/x") == "S1" and t("https://www.bundesregierung.gov.pl/x") == "S1"              # official
     assert t("https://random-blog.invalid/post") == "S4" and t("https://example-bank.invalid.evil.example/x") == "S4"      # unknown, and no look-alike trick
     assert t("https://example-bank.invalid/x", None) == "S4"                                                               # no account known: lowest tier
+
+
+# ---------------------------------------------------------------- production fixes: tolerant feeds, address refresh, lead monitor
+def test_feed_parser_tolerates_html_entities_and_bare_ampersands():
+    import xml.etree.ElementTree as ET
+    from ri.sources.webwatch import xml_safe
+    t = '<rss><channel><item><title>A&nbsp;B &eacute; C & D &amp; E &#8217;</title><guid>1</guid></item></channel></rss>'
+    assert ET.fromstring(xml_safe(t)).find(".//title").text.startswith("A B é C & D & E")
+    assert ET.fromstring(xml_safe("<a>x\x07y</a>")).text == "xy"
+
+
+def test_seed_refreshes_shipped_addresses_but_never_an_operators_own(conn):
+    seed_registry(conn)
+    conn.execute("update sources set config = jsonb_set(jsonb_set(config,'{url}','\"https://old.invalid/404\"'),'{url_basis}','\"derived earlier\"') where source_id='vendor-thoughtmachine-news'")
+    conn.execute("update sources set config = jsonb_set(jsonb_set(config,'{url}','\"https://www.fca.org.uk/mine\"'),'{url_basis}','\"set by admin@x\"') where source_id='regulator-fca'")
+    conn.commit()
+    seed_registry(conn)
+    q = lambda sid: conn.execute("select config->>'url' u from sources where source_id=%s", (sid,)).fetchone()["u"]  # noqa: E731
+    assert q("vendor-thoughtmachine-news") == "https://www.thoughtmachine.net/press" and q("regulator-fca") == "https://www.fca.org.uk/mine"
+
+
+def test_lead_monitor_creates_one_weekly_plan_per_priority_account_and_skips_seen_pages(conn, world):
+    from ri.discovery.plans import sync_account_plans
+    link = conn.execute("insert into account_source_links(organization_id, source_system, source_file_id, sheet_id, sheet_title, row_identity, row_number, imported_hash, raw_company_name, observed_at) "
+                        "values (%s,'google_sheets','wb','s','Priority Outreach','r1',2,'h','x',now()) returning id", (world["org"],)).fetchone()["id"]
+    conn.execute("insert into legacy_account_research(organization_id, source_link_id, kind, original, observed_at) values (%s,%s,'priority_outreach',%s,now())", (world["org"], link, jb({"Rank": "3"})))
+    conn.commit()
+    assert sync_account_plans(conn) == 1 and sync_account_plans(conn) == 0
+    plan = conn.execute("select * from discovery_plans where theme='account_watch'").fetchone()
+    assert str(plan["organization_id"]) == world["org"] and "Synthetic Example Bank AG" in plan["query"]
+    budget.set_cap(conn, "exa", "monthly", usage.period_now(), 20.0, "usd")
+    conn.execute("insert into verification_requests(url, origin, requested_by) values ('https://news.invalid/%s/1','sheet_signal','t')" % plan["plan_id"])    # one hit was already seen
+    conn.commit()
+    out = run_discovery(conn, FakeExa(), max_searches=1, max_new_requests=5, interval_days=7, est_cost=None, plan_ids=[plan["plan_id"]])
+    urls = [r["url"] for r in conn.execute("select url from verification_requests where origin='exa_discovery'")]
+    assert out["requests_created"] == 3 and f"https://news.invalid/{plan['plan_id']}/1" not in urls          # the seen page was skipped
+    assert all(str(r["organization_id"]) == world["org"] for r in conn.execute("select organization_id from verification_requests where origin='exa_discovery'"))
+
+
+def test_scheduler_requeues_stuck_verifications_twice_then_fails_them(conn, world):
+    from datetime import timedelta
+    from ri.scheduler import requeue_stuck_verifications
+    rid = mk_request(conn, world["org"], url="https://stuck.invalid/1")
+    conn.execute("update verification_requests set status='extracting', updated_at = now() - interval '2 hours' where id=%s", (rid,))
+    conn.commit()
+    assert requeue_stuck_verifications(conn) == 1
+    assert conn.execute("select status from verification_requests where id=%s", (rid,)).fetchone()["status"] == "queued"
+    for expected in (1, 0):
+        conn.execute("update verification_requests set status='extracting', updated_at = now() - interval '2 hours' where id=%s", (rid,))
+        assert requeue_stuck_verifications(conn) == expected
+    assert conn.execute("select status from verification_requests where id=%s", (rid,)).fetchone()["status"] == "failed"
+    fresh = mk_request(conn, world["org"], url="https://fresh.invalid/1")
+    conn.execute("update verification_requests set status='extracting' where id=%s", (fresh,))
+    assert requeue_stuck_verifications(conn) == 0                      # recent work is left alone

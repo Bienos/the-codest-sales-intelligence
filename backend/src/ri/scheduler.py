@@ -27,16 +27,32 @@ def schedule_due(conn: Conn, now: datetime | None = None) -> int:
 
 def schedule_discovery(conn: Conn, now: datetime | None = None, *, enabled: bool = True) -> int:
     """One discovery run per day when Exa is configured; the run itself enforces the hard budget and per-run limits."""
-    from .discovery.plans import sync_plans
+    from .discovery.plans import sync_account_plans, sync_plans
     from .discovery.run import due_count
     now = now or datetime.now(timezone.utc)
-    sync_plans(conn)                       # plans are visible in Administration even before Exa is configured
+    sync_plans(conn)
+    sync_account_plans(conn)                 # the lead monitor: a weekly search per priority account                       # plans are visible in Administration even before Exa is configured
     if not enabled:
         return 0
     if due_count(conn, 7, now) == 0:
         return 0
     _, created = enqueue(conn, "discovery_run", {}, idempotency_key=f"discovery:{now.date().isoformat()}", max_attempts=2, correlation_id="sched-discovery")
     return int(created)
+
+
+def requeue_stuck_verifications(conn: Conn, now: datetime | None = None, minutes: int = 20) -> int:
+    """A request left 'fetching' or 'extracting' after its job died is retried, at most twice; after that it is marked failed with a reason."""
+    from datetime import timedelta
+    now = now or datetime.now(timezone.utc)
+    n = 0
+    for r in qa(conn, "SELECT id, coalesce((result->>'requeues')::int, 0) AS rq FROM verification_requests WHERE status IN ('fetching','extracting') AND updated_at < %s", (now - timedelta(minutes=minutes),)):
+        if r["rq"] >= 2:
+            conn.execute("UPDATE verification_requests SET status='failed', updated_at=now(), result=%s WHERE id=%s", ('{"reason": "stopped responding after two retries"}', r["id"]))
+            continue
+        conn.execute("UPDATE verification_requests SET status='queued', updated_at=now(), result=jsonb_build_object('requeues', %s) WHERE id=%s", (r["rq"] + 1, r["id"]))
+        enqueue(conn, "verify_url", {"request_id": str(r["id"])}, idempotency_key=f"verify:{r['id']}:requeue{r['rq'] + 1}", max_attempts=3)
+        n += 1
+    return n
 
 
 def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
@@ -46,4 +62,4 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     from .opportunity.engine import ensure_hypotheses, evaluate_stale
     from .signals.persist import sweep_expiry
     now = now or datetime.now(timezone.utc)
-    return {"degraded_sources": evaluate_staleness(conn, now_fn=lambda: now), **sweep_expiry(conn, now), **refresh(conn, now), "hypotheses_built": ensure_hypotheses(conn, now), "reevaluated": evaluate_stale(conn, now)}
+    return {"degraded_sources": evaluate_staleness(conn, now_fn=lambda: now), **sweep_expiry(conn, now), **refresh(conn, now), "hypotheses_built": ensure_hypotheses(conn, now), "verifications_requeued": requeue_stuck_verifications(conn, now), "reevaluated": evaluate_stale(conn, now)}

@@ -258,7 +258,8 @@ def register_pipeline(app: FastAPI) -> None:
             src = q1(conn, "SELECT count(*) FILTER (WHERE status='active') AS active, count(*) FILTER (WHERE status='pending_connector_validation' AND collection_method<>'internal') AS pending, "
                            "count(*) FILTER (WHERE collection_method<>'internal') AS total, count(*) FILTER (WHERE config->>'url' IS NOT NULL AND status<>'active' AND collection_method<>'internal') AS ready_to_test FROM sources") or {}
             failing = qa(conn, "SELECT s.display_name, h.error_class, h.consecutive_failures FROM sources s JOIN source_health h USING (source_id) WHERE s.status IN ('active','degraded') AND h.state IN ('degraded','failed','blocked') LIMIT 10")
-            disc = q1(conn, "SELECT max(last_run_at) AS last_run, count(*) FILTER (WHERE enabled AND (last_run_at IS NULL OR last_run_at < now() - make_interval(days => %s))) AS due, count(*) AS plans FROM discovery_plans", (s.discovery_interval_days,)) or {}
+            disc = q1(conn, "SELECT max(last_run_at) AS last_run, count(*) FILTER (WHERE enabled AND (last_run_at IS NULL OR last_run_at < now() - make_interval(days => %s))) AS due, count(*) AS plans, "
+                            "count(*) FILTER (WHERE theme='account_watch') AS accounts FROM discovery_plans", (s.discovery_interval_days,)) or {}
             ver = {r["status"]: r["n"] for r in qa(conn, "SELECT status, count(*) AS n FROM verification_requests GROUP BY status")}
             ev = q1(conn, "SELECT count(*) AS n, count(*) FILTER (WHERE first_observed_at > now() - interval '7 days') AS week FROM events") or {}
             ini = q1(conn, "SELECT count(*) AS n FROM initiatives WHERE status='active'") or {}
@@ -277,7 +278,7 @@ def register_pipeline(app: FastAPI) -> None:
             {"key": "sources", "label": "Source watching", "mode": "automatic once a source is live", "state": "ok" if src.get("active") else "waiting",
              "note": f"{src.get('active', 0)} of {src.get('total', 0)} sources are live. {src.get('ready_to_test', 0)} have an address and are waiting for you to test and activate them in Administration, Sources.", "detail": [dict(f) for f in failing]},
             {"key": "discovery", "label": "Exa discovery", "mode": "automatic", "state": "ok" if (s.exa_api_key and s.exa_monthly_cap_usd > 0) else "off", "last": disc.get("last_run"),
-             "note": f"{disc.get('plans', 0)} search plans, {disc.get('due', 0)} due now. Runs once a day within the monthly cap of ${s.exa_monthly_cap_usd:g}. Hits are only leads: each is queued for verification."},
+             "note": f"{disc.get('plans', 0)} search plans ({disc.get('accounts', 0)} watch one priority account each, weekly), {disc.get('due', 0)} due now. Runs once a day within the monthly cap of ${s.exa_monthly_cap_usd:g}. Hits are only leads: each is queued for verification."},
             {"key": "verification", "label": "Verification", "mode": "automatic after a trigger", "state": "ok",
              "note": "Fetches the original page, extracts quoted events, keeps only what the page proves. Triggered by a seller, or by a discovery hit. " + (f"{ver.get('waiting_budget', 0)} waiting for model budget." if ver.get("waiting_budget") else ""), "counts": ver},
             {"key": "opportunities", "label": "Events to opportunities", "mode": "automatic", "state": "ok",

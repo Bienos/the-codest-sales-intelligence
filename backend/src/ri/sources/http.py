@@ -30,7 +30,12 @@ def classify(resp: httpx.Response) -> None:
         raise RateLimited("429 rate limited", retry_after=float(ra) if ra and ra.isdigit() else None, status=s)
     if s >= 500:
         raise ServerError(f"{s} server error", status=s)
-    raise SchemaDrift(f"unexpected status {s}", status=s)
+    body = ""
+    try:
+        body = resp.text[:240].replace("\n", " ")        # providers explain 4xx errors in the body; keep it so failures are diagnosable
+    except Exception:  # noqa: BLE001  (a streaming response that was not read)
+        pass
+    raise SchemaDrift(f"unexpected status {s}" + (f": {body}" if body else ""), status=s)
 
 
 async def request_json(client: httpx.AsyncClient, method: str, url: str, *, retries: int = 2, backoff: float = 0.5,

@@ -71,6 +71,24 @@ def extract_section(html: str, selector: str | None) -> tuple[str, list[str]]:
     return text, p.links
 
 
+_XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
+
+
+def xml_safe(text: str) -> str:
+    """Real-world RSS often contains HTML entities (&nbsp;, &eacute;) that strict XML rejects, and stray control characters. Make it parseable without changing the meaning."""
+    import html.entities as he
+
+    def fix(m: re.Match) -> str:
+        n = m.group(1)
+        if n in _XML_ENTITIES:
+            return m.group(0)
+        cp = he.name2codepoint.get(n)
+        return f"&#{cp};" if cp else "&amp;" + n + ";"
+    text = re.sub(r"&([A-Za-z][A-Za-z0-9]{1,31});", fix, text)
+    text = re.sub(r"&(?!(?:[A-Za-z][A-Za-z0-9]{1,31}|#\d+|#x[0-9A-Fa-f]+);)", "&amp;", text)       # bare ampersands
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+
+
 class RobotsCache:
     def __init__(self):
         self._c: dict[str, urllib.robotparser.RobotFileParser | None] = {}
@@ -167,7 +185,7 @@ class FeedConnector:
         resp = await self.client.get(self.url, headers={"User-Agent": UA}, follow_redirects=True)
         classify(resp)
         try:
-            root = ET.fromstring(resp.text)
+            root = ET.fromstring(xml_safe(resp.text))
         except ET.ParseError as exc:
             raise SchemaDrift(f"feed is not valid XML: {exc}") from exc
         items = []

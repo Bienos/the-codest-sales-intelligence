@@ -69,12 +69,14 @@ def run_discovery(conn: Conn, exa: ExaClient, *, max_searches: int, max_new_requ
             if created >= PER_PLAN_TOP or out["requests_created"] + created >= max_new_requests:
                 break
             url = it.payload["url"]
+            if q1(conn, "SELECT 1 FROM verification_requests WHERE url=%s UNION ALL SELECT 1 FROM source_documents WHERE canonical_url=%s LIMIT 1", (url, url)):
+                continue                                 # already seen: never pay to read the same page twice
             host = (urlparse(url).hostname or "").lower()
             if any(host == d or host.endswith("." + d) for d in SOCIAL):
                 continue
             row = conn.execute(
-                "INSERT INTO verification_requests(url, origin, claimed_text, claimed_date, plan_id, requested_by) VALUES (%s,'exa_discovery',%s,%s,%s,%s) "
-                "ON CONFLICT (url, origin) DO NOTHING RETURNING id", (url, (it.payload.get("title") or "")[:300], it.payload.get("published"), p["plan_id"], requested_by)).fetchone()
+                "INSERT INTO verification_requests(organization_id, url, origin, claimed_text, claimed_date, plan_id, requested_by) VALUES (%s,%s,'exa_discovery',%s,%s,%s,%s) "
+                "ON CONFLICT (url, origin) DO NOTHING RETURNING id", (p.get("organization_id"), url, (it.payload.get("title") or "")[:300], it.payload.get("published"), p["plan_id"], requested_by)).fetchone()
             if row:
                 jid, _ = enqueue(conn, "verify_url", {"request_id": str(row["id"])}, idempotency_key=f"verify:{row['id']}", max_attempts=3)
                 conn.execute("UPDATE verification_requests SET job_id=%s WHERE id=%s", (jid, row["id"]))

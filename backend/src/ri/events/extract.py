@@ -94,7 +94,7 @@ class AnthropicExtractor:
 
     async def extract(self, *, title, text, published_at):
         user = f"<document title={json.dumps(title or '')} published={json.dumps(published_at)}>\n{text[:30000]}\n</document>"
-        payload = {"model": self.model, "max_tokens": self.max_tokens, "temperature": 0, "system": self._system, "messages": [{"role": "user", "content": user}]}
+        payload = {"model": self.model, "max_tokens": self.max_tokens, "system": self._system, "messages": [{"role": "user", "content": user}]}
         hdrs = {"x-api-key": self.key, "anthropic-version": "2023-06-01"}
         if self.client is None:       # one client per call: an AsyncClient is bound to the event loop that first used it
             async with httpx.AsyncClient(timeout=90) as c:
