@@ -64,7 +64,7 @@ def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist,
             continue
         if shortlist and not r["shortlist"]:
             continue
-        if not public and r["entity_type"] == "public_body":
+        if not public and (r["entity_type"] == "public_body" or r["candidate_status"] == "rejected"):
             continue
         out.append(r)
     return out

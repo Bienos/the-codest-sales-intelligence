@@ -32,9 +32,9 @@ def test_public_bodies_go_to_their_own_lane_and_banks_never_do():
     assert not is_public_body("") and lane_for("Anything", "public_body") == "public"
 
 
-def _event(conn, name, summary, *, org=None, verified_anchor=True, country_src=None, etype="vendor_selected", days_ago=3):
+def _event(conn, name, summary, *, org=None, verified_anchor=True, country_src=None, etype="vendor_selected", days_ago=3, attrs=None):
     cid = add_claim(conn, subject=name, predicate="selected_vendor", obj={}, doc_id=None, anchor=summary[:60], kind="quote", anchor_verified=verified_anchor)
-    eid, _ = store_event(conn, event_type=etype, subject_name=name, subject_org_id=org, summary=summary, attrs={}, key_parts=(summary,),
+    eid, _ = store_event(conn, event_type=etype, subject_name=name, subject_org_id=org, summary=summary, attrs=attrs or {}, key_parts=(summary,),
                          event_at=NOW - timedelta(days=days_ago), pub_at=NOW - timedelta(days=days_ago), claim_ids=[cid], document_ids=[])
     return eid
 
@@ -65,7 +65,7 @@ def test_proven_events_about_unknown_core_market_companies_become_candidates_onc
     for name, summ in (("Synthetic Nordic Bank AB", "Synthetic Nordic Bank AB selected a vendor to replace its core platform"),
                        ("Synthetic Nordic Bank AB", "Synthetic Nordic Bank AB announced a payments programme"),
                        ("Gemeinde Syntheticdorf", "Gemeinde Syntheticdorf selected a vendor for its website")):
-        eid = _event(conn, name, summ, etype="vendor_selected")
+        eid = _event(conn, name, summ, etype="vendor_selected", attrs={"role_of_subject": "bank"})
         did = conn.execute("insert into source_documents(source_id, external_id, version_key, title) values ('t-src',%s,'v','t') returning id", (summ,)).fetchone()["id"]
         conn.execute("insert into event_documents(event_id, document_id) values (%s,%s)", (eid, did))
         verify_event(conn, eid)
@@ -165,3 +165,29 @@ def test_one_failing_maintenance_step_is_reported_and_the_others_still_run(conn,
     monkeypatch.setattr(scoring, "recompute_scores", boom)
     out = scheduler.run_maintenance(conn)
     assert out["score_error"].startswith("RuntimeError") and "market_tagged" in out and "reevaluated" in out
+
+
+def test_candidate_gate_keeps_commercial_buyers_and_rejects_public_bodies_events_and_regulators():
+    from ri.market import candidate_ok
+    for n in ("PGE Dystrybucja S.A.", "Green Tech Valley Cluster GmbH", "Sparkasse Köln", "Nieruchomości i Opłaty Lokalne spółka z ograniczoną odpowiedzialnością"):
+        assert candidate_ok(n, via_tender=True)[0], n
+    for n in ("Narodowy Fundusz Zdrowia", "Försäkringskassan", "Universitätsklinikum Frankfurt", "UK SHARED BUSINESS SERVICES LIMITED", "OLG Köln", "Kammarkollegiet, egen verksamhet"):
+        assert not candidate_ok(n, via_tender=True)[0], n
+    assert candidate_ok("PayNow", role="fintech")[0] and not candidate_ok("Temenos AG", role="vendor")[0]
+    for n in ("Singapore Fintech Festival", "Regulatory Sandbox", "BaFin", "UK financial regulator (unnamed in text)"):
+        assert not candidate_ok(n, role="bank")[0], n
+
+
+def test_reclassify_rejects_earlier_junk_candidates_and_sets_aside_what_was_built_on_them_but_leaves_added_companies_alone(conn):
+    from ri.identity.discovery import reclassify_candidates
+    junk = conn.execute("insert into organizations(display_name, country_code) values ('Narodowy Fundusz Zdrowia','PL') returning id").fetchone()["id"]
+    good = conn.execute("insert into organizations(display_name, country_code) values ('PGE Dystrybucja S.A.','PL') returning id").fetchone()["id"]
+    mine = conn.execute("insert into organizations(display_name, canonical_domain) values ('Stiftung Meine Firma','mine.example') returning id").fetchone()["id"]
+    for o, note in ((junk, "Found through a proven procurement published event. Not yet qualified."), (good, "Found through a proven procurement published event. Not yet qualified."), (mine, "Added by bdm@x. Not yet qualified.")):
+        conn.execute("insert into new_company_candidates(organization_id, icp_note) values (%s,%s)", (o, note))
+    conn.execute("insert into events(event_key,event_type,subject_org_id,summary,extraction_model_version) values ('kk','procurement_published',%s,'s','t')", (junk,))
+    conn.commit()
+    assert reclassify_candidates(conn)["candidates_rejected"] == 1
+    st = {str(r["organization_id"]): r["status"] for r in conn.execute("select organization_id, status from new_company_candidates").fetchall()}
+    assert st[str(junk)] == "rejected" and st[str(good)] == "pending_qualification" and st[str(mine)] == "pending_qualification"
+    assert conn.execute("select entity_type from organizations where id=%s", (junk,)).fetchone()["entity_type"] == "public_body"

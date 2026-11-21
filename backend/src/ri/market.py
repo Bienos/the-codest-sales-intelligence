@@ -42,8 +42,12 @@ _STRONG = re.compile(
     r"gemeinde|stadt|landkreis|landratsamt|kommune\w*|kommun|länsstyrelse\w*|gmina|powiat|urząd\w*|starostwo|miasto|województwo|"
     r"nhs|hospital|krankenhaus|klinik\w*|sjukhus|szpital\w*|university|universität|universitet\w*|uniwersytet|politechnika|"
     r"police|polizei|polis\w*|policja|fire (and rescue )?service|bundesamt|bundesagentur|government|regierung|regering|rząd|parliament|embassy|armed forces|bundeswehr|"
-    r"transport for|network rail|crown commercial|national (health|archives|library)|federal (office|ministry|agency))\b", re.I)
-_WEAK = re.compile(r"\b(department (of|for)|county|bezirk|region(en)?|college|school|schule|agency|agentur|amt|verwaltung|administration|authority|defence|defense|army|navy|"
+    r"transport for|network rail|crown commercial|national (health|archives|library)|federal (office|ministry|agency)|shared (business )?services|"
+    r"fundusz|fonds|stiftung|foundation|endowment|kuratorium|studierendenwerk|studentenwerk|vergabestelle|landesamt|olg|gericht|court|staatsanwalt|\w*onkolog\w*|\w*klinikum|\w*sykehus\w*|"
+    r"kantonal\w*|cantonal|service cantonal|kaupunki|kaupungin|rahasto|fjársýsla|ríkis\w*|hyvinvointialue|sairaanhoito|kela|\w*kassan|\w*kollegiet|statsforvalter\w*|stats\w*|skatte\w*|"
+    r"instytut|institut|institute|politechnika|akademia|academy|muzeum|museum|biblioteka|library|inspektorat|zarząd|zakład|urząd|służba|straż|pogotowie|"
+    r"resortu|resort|bundesanstalt|landratsamt|hochschule|forschungs\w*|\w*staatsforsten|wohnhäuser|sozial\w*)\b", re.I)
+_WEAK = re.compile(r"\b(department (of|for)|county|bezirk|region(en)?|college|school|schule|agency|agentur|amt|verwaltung|administration|authority|defence|defense|army|navy|centrum|centre|center|"
                    r"public (health|transport|body)|sveriges|statens|státní|bund)\b", re.I)
 # financial buyers are never public-sector noise even when the word "state" or "national" appears in the name
 _FIN = re.compile(r"\b(bank|banco|banque|sparkasse|volksbank|raiffeisen|insur\w*|versicherung\w*|assicura\w*|pension\w*|payments?|payment|fintech|kredit\w*|credit|finans\w*|finance|"
@@ -78,3 +82,26 @@ def region_for(country: str | None) -> str:
         if c in members:
             return key
     return "other"
+
+
+_LEGAL_FORM = re.compile(r"((?<!\w)(ag|gmbh|kg|kgaa|ug|se|sa|s\.a\.|spa|s\.p\.a\.|srl|nv|bv|b\.v\.|ab|asa|as|a/s|aps|oy|oyj|plc|ltd|limited|llc|inc|corp|corporation|s\.r\.o\.|sp\. z o\.o\.)(?!\w)|spółka akcyjna|aktiengesellschaft|spółka z ograniczoną odpowiedzialnością)", re.I)
+_NOT_A_BUYER = re.compile(r"\b(festival|summit|conference|congress|expo|forum|sandbox|taskforce|task force|project|scheme|programme|initiative|week|awards?|ambassadors?|regulator|supervisor|"
+                          r"unnamed|veteran card|association|council|consortium|working group|standard|framework)\b|\(unnamed", re.I)
+_REGULATORS = {"bafin", "finma", "fca", "pra", "ecb", "eba", "eiopa", "esma", "bis", "sec", "finra", "bundesbank", "riksbank", "fsa"}
+
+
+def candidate_ok(name: str | None, *, role: str | None = None, via_tender: bool = False, strict: bool = True) -> tuple[bool, str]:
+    """Is this a company worth qualifying as a lead? Tender buyers must look like commercial companies; press subjects must be a bank or fintech.
+    Public bodies, regulators, events and programmes are rejected with the reason, so the list stays about buyers."""
+    n = (name or "").strip()
+    if len(n) < 3:
+        return False, "name too short"
+    if is_public_body(n):
+        return False, "public body (kept in the public-sector lane)"
+    if n.lower() in _REGULATORS or _NOT_A_BUYER.search(n):
+        return False, "not a company (regulator, event, programme or scheme)"
+    if not strict:
+        return True, ""
+    if via_tender:
+        return (True, "") if (_LEGAL_FORM.search(n) or _FIN.search(n)) else (False, "tender buyer without a company form")
+    return (True, "") if role in ("bank", "fintech") else (False, f"role is {role or 'unknown'}, not a bank or fintech")

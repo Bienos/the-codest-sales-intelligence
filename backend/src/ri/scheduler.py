@@ -59,7 +59,7 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     """Idempotent housekeeping. Every step runs in its own savepoint: one failing step is reported and the rest still run, so the scheduler heartbeat never goes quiet."""
     from .events.relink import relink_unmatched
     from .events.verify import tag_untagged
-    from .identity.discovery import promote_candidates
+    from .identity.discovery import promote_candidates, reclassify_candidates
     from .ingest.pipeline import evaluate_staleness
     from .initiatives.lifecycle import refresh
     from .opportunity.engine import ensure_hypotheses, evaluate_stale
@@ -82,6 +82,7 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
 
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     step("candidates", lambda: promote_candidates(conn, 40))
+    step("candidate_gate", lambda: reclassify_candidates(conn, 300))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))
     step("expiry", lambda: sweep_expiry(conn, now))
     step("initiatives", lambda: refresh(conn, now))

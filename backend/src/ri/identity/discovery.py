@@ -31,7 +31,8 @@ def promote_candidates(conn: Conn, limit: int = 40, tiers: tuple[str, ...] = ("c
     They are not in the master list and wait for qualification. The relinking job then attaches their events, so signals and cards can form."""
     from ..db import qa
     made = skipped = 0
-    rows = qa(conn, "SELECT e.id, e.subject_name_raw AS name, e.market_country AS country, e.event_type FROM events e "
+    from ..market import candidate_ok
+    rows = qa(conn, "SELECT e.id, e.subject_name_raw AS name, e.market_country AS country, e.event_type, e.attrs->>'role_of_subject' AS role FROM events e "
                     "WHERE e.proven AND e.subject_org_id IS NULL AND e.lane='private' AND e.market_tier = ANY(%s) AND e.event_type = ANY(%s) "
                     "AND e.subject_name_raw IS NOT NULL AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - interval '120 days' "
                     "ORDER BY e.first_observed_at DESC LIMIT %s", (list(tiers), list(CANDIDATE_EVENT_TYPES), limit * 4))
@@ -43,6 +44,10 @@ def promote_candidates(conn: Conn, limit: int = 40, tiers: tuple[str, ...] = ("c
             skipped += 1
             continue
         seen.add(key)
+        ok, _why = candidate_ok(name, role=r["role"], via_tender=r["event_type"].startswith("procurement"))
+        if not ok:
+            skipped += 1
+            continue
         oid, how = register_discovered_company(conn, name=name, country=r["country"], domain=None, event_id=str(r["id"]))
         if how == "new_candidate_pending_qualification":
             conn.execute("UPDATE new_company_candidates SET icp_note=%s WHERE organization_id=%s", (f"Found through a proven {r['event_type'].replace('_', ' ')} event. Not yet qualified.", oid))
@@ -52,3 +57,27 @@ def promote_candidates(conn: Conn, limit: int = 40, tiers: tuple[str, ...] = ("c
         if made >= limit:
             break
     return {"candidates_created": made, "skipped": skipped}
+
+
+def reclassify_candidates(conn: Conn, limit: int = 300) -> dict[str, int]:
+    """Re-run the quality gate over candidates the platform created (never over companies a person added). Failures are rejected with the reason, public bodies move
+    to the public-sector lane, and anything built on them (cards, programmes, open signals) is set aside, not deleted."""
+    from ..db import qa
+    from ..market import candidate_ok, is_public_body
+    rows = qa(conn, "SELECT c.organization_id AS oid, o.display_name AS name, e.attrs->>'role_of_subject' AS role, coalesce(e.event_type,'') AS et FROM new_company_candidates c "
+                    "JOIN organizations o ON o.id=c.organization_id LEFT JOIN events e ON e.id=c.discovered_via_event_id "
+                    "WHERE c.status='pending_qualification' AND coalesce(c.icp_note,'') NOT LIKE 'Added by%%' ORDER BY c.created_at LIMIT %s", (limit,))
+    rejected = 0
+    for r in rows:
+        ok, why = candidate_ok(r["name"], role=r["role"], via_tender=r["et"].startswith("procurement"), strict=bool(r["et"]))
+        if ok:
+            continue
+        oid = str(r["oid"])
+        conn.execute("UPDATE new_company_candidates SET status='rejected', icp_note=%s WHERE organization_id=%s", (f"Rejected by the quality gate: {why}.", oid))
+        if is_public_body(r["name"]):
+            conn.execute("UPDATE organizations SET entity_type='public_body' WHERE id=%s", (oid,))
+        conn.execute("UPDATE opportunity_hypotheses SET state='superseded' WHERE organization_id=%s AND state<>'superseded'", (oid,))
+        conn.execute("UPDATE initiatives SET status='superseded' WHERE owner_org_id=%s AND status='active'", (oid,))
+        conn.execute("UPDATE signals SET status='expired' WHERE organization_id=%s AND status='active'", (oid,))
+        rejected += 1
+    return {"candidates_rejected": rejected}
