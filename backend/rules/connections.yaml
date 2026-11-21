@@ -26,7 +26,7 @@ connections:
   procurement-doffin: {state: not_built, todo: "Norwegian notices above the EU threshold already arrive through TED. A national connector needs the API terms confirmed.", where: "Doffin's developer documentation (ask Digdir for access terms)."}
   procurement-dtvp: {state: not_built, todo: "German notices above the EU threshold already arrive through TED.", where: "DTVP provider terms."}
   procurement-udbud: {state: not_built, todo: "Danish notices above the EU threshold already arrive through TED.", where: "Udbud.dk terms."}
-  procurement-ezamowienia: {state: not_built, todo: "The Polish BZP web service is free and needs no registration. I need the parameter list from the official specification before building it, so it is not guessed.", where: "ezamowienia.gov.pl, API documentation (Swagger)."}
+  procurement-ezamowienia: {state: needs_retest, todo: "Connector built against the live service. Run Test all sources to activate it.", where: "Nothing to obtain: open data."}
   procurement-mercell: {state: needs_credential, todo: "Commercial service. Needs a paid entitlement before any use.", where: "Mercell sales."}
   procurement-uk-fts: {state: needs_retest, todo: "Timed out on the first test. Retested with a longer timeout; if it still fails it is the service, not us.", where: "Nothing to obtain: open data."}
   procurement-uk-contracts-finder: {state: needs_retest, todo: "Connector built. Run Test all sources to activate it.", where: "Nothing to obtain: open data."}

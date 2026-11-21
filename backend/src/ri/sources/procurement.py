@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from datetime import timedelta
+from urllib.parse import quote
 
 from datetime import datetime
 from typing import Any
@@ -226,3 +227,91 @@ class ContractsFinderConnector(FindTenderConnector):
             d.structured["official_url"] = url
         d.canonical_url = url
         return d
+
+
+BZP_URL = "https://ezamowienia.gov.pl/mo-board/api/v1/Board/Search"
+BZP_PAGE = 10                    # the service returns at most 10 notices per page whatever PageSize says (checked against the live service)
+BZP_PAGES_PER_RUN = 40
+_BZP_CODE = re.compile(r"\b(\d{8})-\d\b")
+_BZP_WORDS = re.compile(r"(oprogramowani|system\w* informatyczn|informatyk|aplikacj|licencj|wdro[zż]eni\w* system|rozw[oó]j system|chmur|cyberbezpiecz|"
+                        r"integracj\w* system|hosting|us[lł]ug\w* it\b|portal|platform\w* (cyfrow|internet|e-))", re.I)
+
+
+def bzp_codes(raw: str | None) -> list[str]:
+    return _BZP_CODE.findall(raw or "")
+
+
+def is_bzp_software(n: dict) -> bool:
+    """The BZP search filters poorly by CPV, so relevance is decided here: any IT CPV code (72, 48, 73) or Polish software wording in the subject."""
+    if any(c.startswith(_SOFTWARE_CPV) for c in bzp_codes(n.get("cpvCode"))):
+        return True
+    return bool(_BZP_WORDS.search(n.get("orderObject") or ""))
+
+
+class PolishBzpConnector:
+    """Polish Biuletyn Zamówień Publicznych via the open e-Zamówienia board API. Public, no key. Contract notices and tender results.
+    Verified against the live service: GET /Board/Search with NoticeType, PublicationDateFrom/To, PageNumber (max 10 per page); an empty page ends the window."""
+
+    def __init__(self, client: httpx.AsyncClient, *, source_id: str = "procurement-ezamowienia", now_fn=utcnow, backfill_days: int = 3):
+        self.client, self.source_id, self.now, self.backfill = client, source_id, now_fn, backfill_days
+
+    def describe(self) -> SourceDescriptor:
+        return SourceDescriptor(self.source_id, "e-Zamówienia (BZP)", "official_api", "S1", "v1")
+
+    async def health_check(self) -> HealthCheck:
+        try:
+            data = await request_json(self.client, "GET", BZP_URL, params={"NoticeType": "ContractNotice", "PageSize": 1}, retries=0)
+            if not isinstance(data, list):
+                raise SchemaDrift("BZP search did not return a list")
+            return HealthCheck(True)
+        except Exception as exc:  # noqa: BLE001
+            return HealthCheck(False, str(exc), getattr(exc, "error_class", "transient_network"))
+
+    async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
+        """Cursor is 'from=<iso>;kind=<ContractNotice|TenderResultNotice>;page=<n>'. A finished window restarts from the time it began."""
+        started = self.now()
+        st = dict(p.split("=", 1) for p in (cursor or "").split(";") if "=" in p)
+        since = st.get("from") or (started - timedelta(days=self.backfill)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        kind, page = st.get("kind", "ContractNotice"), int(st.get("page", 1))
+        items: list[RawItem] = []
+        done_window = False
+        for _ in range(BZP_PAGES_PER_RUN):
+            data = await request_json(self.client, "GET", BZP_URL, params={"NoticeType": kind, "PageSize": BZP_PAGE, "PageNumber": page, "PublicationDateFrom": since})
+            if not isinstance(data, list):
+                raise SchemaDrift("BZP search did not return a list")
+            if data and "noticeNumber" not in data[0]:
+                raise SchemaDrift("BZP notice has no noticeNumber")
+            items += [RawItem(external_id=str(n["noticeNumber"]), version=str(n.get("publicationDate")), payload=n) for n in data if n.get("noticeNumber") and is_bzp_software(n)]
+            if len(data) < BZP_PAGE:
+                if kind == "ContractNotice":
+                    kind, page = "TenderResultNotice", 1
+                else:
+                    done_window = True
+                    break
+            else:
+                page += 1
+        if done_window:
+            nxt = f"from={started.strftime('%Y-%m-%dT%H:%M:%SZ')};kind=ContractNotice;page=1"
+        else:
+            nxt = f"from={since};kind={kind};page={page}"
+        return FetchBatch(items, nxt, not done_window, started, "v1", quota_usage={"requests": 1})
+
+    def canonicalize(self, item: RawItem) -> SourceDocumentDraft:
+        n = item.payload
+        deadline_raw = n.get("submittingOffersDate")
+        deadline = parse_dt(deadline_raw)
+        result = (n.get("procedureResult") or "").lower()
+        is_result = n.get("noticeType") == "TenderResultNotice"
+        kind = "award" if is_result and result == "zawarcieumowy" else "contract_notice"
+        cancelled = is_result and result != "zawarcieumowy"          # annulled or no contract concluded: never shown as open or awarded
+        status = derive_status(self.now(), kind=kind, deadline=deadline, cancelled=cancelled)
+        pub = parse_dt(n.get("publicationDate"))
+        num = str(n["noticeNumber"])
+        url = "https://ezamowienia.gov.pl/mo-client-board/bzp/notice-details/id/" + quote(num, safe="")
+        title = (n.get("orderObject") or "").strip("„”\" ") or None
+        rec = {"notice_id": num, "buyer_name": n.get("organizationName"), "title": title, "procedure": n.get("tenderType"), "service_codes": bzp_codes(n.get("cpvCode")),
+               "country": n.get("organizationCountry") or "PL", "published_at": pub, "deadline_at": deadline, "deadline_tz": tz_of(deadline_raw), "status": status,
+               "official_url": url, "notice_kind": kind, "below_eu_threshold": n.get("isTenderAmountBelowEU"), "order_type": n.get("orderType"),
+               "awarded_to": [c.get("contractorName") for c in (n.get("contractors") or []) if c.get("contractorName")] if kind == "award" else []}
+        vkey = sha(num, str(n.get("publicationDate")), deadline_raw, status)
+        return SourceDocumentDraft(num, vkey, url, title, pub, None, excerpt(title), raw_meta={"notice_type": n.get("noticeType")}, structured=rec, kind="procurement_notice")

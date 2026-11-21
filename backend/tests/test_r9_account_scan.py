@@ -147,3 +147,74 @@ def test_truncated_model_output_keeps_the_complete_events_and_never_invents_the_
     import pytest
     with pytest.raises(ValueError):
         parse_events_json("sorry, no JSON here")
+
+
+# ---------------------------------------------------------------- Polish BZP connector (fixture is a recorded sample of the live service, identifiers redacted)
+def _bzp_sample():
+    import json
+    from pathlib import Path
+    return json.loads((Path(__file__).parent / "fixtures" / "bzp_sample.json").read_text())
+
+
+def test_bzp_relevance_uses_cpv_codes_and_polish_wording():
+    from ri.sources.procurement import bzp_codes, is_bzp_software
+    assert bzp_codes("72000000-5 (Usługi IT),45000000-7 (Roboty)") == ["72000000", "45000000"]
+    assert is_bzp_software({"cpvCode": "72000000-5 (Usługi IT)", "orderObject": "x"})
+    assert is_bzp_software({"cpvCode": "45000000-7 (Roboty)", "orderObject": "Zakup licencji na oprogramowanie"})
+    assert not is_bzp_software({"cpvCode": "15100000-9 (Mięso)", "orderObject": "Dostawa mięsa"})
+
+
+def test_bzp_connector_reads_pages_filters_and_canonicalises_recorded_notices():
+    import asyncio
+    from datetime import datetime, timezone
+    import httpx
+    from ri.sources.procurement import PolishBzpConnector
+    sample = _bzp_sample()
+    notices = [n for n in sample if n["noticeType"] == "ContractNotice"]
+    results = [n for n in sample if n["noticeType"] == "TenderResultNotice"]
+    seen = []
+
+    def handler(req):
+        q = dict(req.url.params)
+        seen.append((q["NoticeType"], q.get("PageNumber")))
+        if q["NoticeType"] == "ContractNotice":
+            return httpx.Response(200, json=notices if q["PageNumber"] == "1" else [])
+        return httpx.Response(200, json=results if q["PageNumber"] == "1" else [])
+    now = datetime(2026, 11, 21, 12, tzinfo=timezone.utc)
+    c = PolishBzpConnector(httpx.AsyncClient(transport=httpx.MockTransport(handler)), now_fn=lambda: now)
+    batch = asyncio.run(c.fetch(None, 100))
+    assert [k for k, _ in seen] == ["ContractNotice", "TenderResultNotice"]         # short page ends the kind; both kinds are read
+    assert len(batch.items) == 3 and all(i.payload["cpvCode"].startswith("48") for i in batch.items)          # only the software notices of the five contract notices
+    assert batch.next_cursor.startswith("from=2026-11-21T12:00:00Z") and not batch.has_more
+    d = c.canonicalize(batch.items[0])
+    assert d.kind == "procurement_notice" and d.canonical_url.startswith("https://ezamowienia.gov.pl/mo-client-board/bzp/notice-details/id/2026%2FBZP%20")
+    assert d.structured["country"] == "PL" and d.structured["service_codes"][0].startswith("48") and d.structured["notice_kind"] == "contract_notice"
+
+
+def test_bzp_results_are_awarded_only_when_a_contract_was_concluded_and_never_open():
+    from datetime import datetime, timezone
+    import httpx
+    from ri.sources.base import RawItem
+    from ri.sources.procurement import PolishBzpConnector
+    c = PolishBzpConnector(httpx.AsyncClient(), now_fn=lambda: datetime(2026, 11, 21, tzinfo=timezone.utc))
+    base = {"noticeNumber": "2026/BZP 1/01", "noticeType": "TenderResultNotice", "orderObject": "Wdrożenie systemu", "cpvCode": "72000000-5 (IT)", "publicationDate": "2026-11-20T10:00:00Z",
+            "submittingOffersDate": None, "organizationName": "X", "contractors": [{"contractorName": "Vendor sp. z o.o."}]}
+    won = c.canonicalize(RawItem("a", None, {**base, "procedureResult": "zawarcieUmowy"}))
+    assert won.structured["status"] == "awarded" and won.structured["awarded_to"] == ["Vendor sp. z o.o."]
+    annulled = c.canonicalize(RawItem("b", None, {**base, "procedureResult": "uniewaznienie", "contractors": None}))
+    assert annulled.structured["status"] == "cancelled" and annulled.structured["awarded_to"] == []
+
+
+def test_bzp_schema_drift_and_resume_cursor():
+    import asyncio
+    import httpx
+    import pytest
+    from ri.sources.base import SchemaDrift
+    from ri.sources.procurement import BZP_PAGE, PolishBzpConnector
+    full = [{"noticeNumber": f"n{i}", "cpvCode": "15100000-9 (x)", "orderObject": "y"} for i in range(BZP_PAGE)]
+    c = PolishBzpConnector(httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=full))))
+    b = asyncio.run(c.fetch("from=2026-11-20T00:00:00Z;kind=ContractNotice;page=1", 100))
+    assert b.has_more and b.next_cursor == "from=2026-11-20T00:00:00Z;kind=ContractNotice;page=41"          # full pages forever: stop after the per-run limit and resume
+    bad = PolishBzpConnector(httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"oops": 1}))))
+    with pytest.raises(SchemaDrift):
+        asyncio.run(bad.fetch(None, 10))
