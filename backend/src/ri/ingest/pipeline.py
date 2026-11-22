@@ -164,10 +164,16 @@ def run_source(conn: Conn, connector: SourceConnector, *, resolve_org=None, limi
     res = RunResult(run_id, "running")
     seen_jobs: dict[tuple[str, str], set[str]] = {}
     complete_listing = False
+    usage: dict[str, Any] = {}
     try:
         for _ in range(max_pages):
             batch = _run(connector.fetch(cursor, limit))
             complete_listing = batch.complete_listing
+            usage["pages"] = usage.get("pages", 0) + 1
+            usage["items"] = usage.get("items", 0) + len(batch.items)
+            for k, v in (batch.quota_usage or {}).items():          # what the connector saw versus kept: a run that fetches nothing is visible, not a silent "success"
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    usage[k] = usage.get(k, 0) + v
             with conn.transaction():
                 for item in batch.items:
                     d = connector.canonicalize(item)
@@ -206,8 +212,8 @@ def run_source(conn: Conn, connector: SourceConnector, *, resolve_org=None, limi
             conn.commit()
             if not batch.has_more:
                 break
-        conn.execute("UPDATE monitoring_runs SET status='success', finished_at=now(), items_new=%s, items_changed=%s, items_unchanged=%s, cursor_after=%s WHERE id=%s",
-                     (res.new, res.changed, res.unchanged, cursor, run_id))
+        conn.execute("UPDATE monitoring_runs SET status='success', finished_at=now(), items_new=%s, items_changed=%s, items_unchanged=%s, cursor_after=%s, usage=%s WHERE id=%s",
+                     (res.new, res.changed, res.unchanged, cursor, jb(usage), run_id))
         _record_success(conn, desc.source_id, now)
         res.status = "success"
     except Exception as exc:  # noqa: BLE001

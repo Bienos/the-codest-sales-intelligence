@@ -28,6 +28,10 @@ def run_checks(conn: Conn) -> list[dict[str, str]]:
     check("no_documents_24h", not active or docs > 0, f"{active} sources are active but nothing was read in the last 24 hours.")
     ev = q1(conn, "SELECT count(*) AS n FROM events WHERE first_observed_at > now() - interval '72 hours'")["n"]  # type: ignore[index]
     check("no_events_72h", not active or ev > 0, "No new events in 72 hours.")
+    silent = [r["source_id"] for r in qa(conn, "SELECT s.source_id FROM sources s WHERE s.status='active' "
+                                             "AND (SELECT count(*) FROM monitoring_runs m WHERE m.source_id=s.source_id AND m.status='success') >= 3 "
+                                             "AND NOT EXISTS (SELECT 1 FROM source_documents d WHERE d.source_id=s.source_id)")]
+    check("silent_sources", not silent, f"Active sources that have run at least three times and never returned a single item: {', '.join(silent)}. Check their connector.")
     rules = q1(conn, "SELECT count(*) AS n FROM signal_rule_versions WHERE status='active'")["n"]  # type: ignore[index]
     check("no_active_rules", rules > 0, "No signal rule is active.")
     dl = q1(conn, "SELECT count(*) AS n FROM dead_letters WHERE replayed_at IS NULL AND created_at > now() - interval '24 hours'")["n"]  # type: ignore[index]

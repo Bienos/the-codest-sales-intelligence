@@ -81,3 +81,23 @@ def test_today_keeps_tenders_in_their_own_capped_lane_and_private_work_first(con
     assert _pre_section({**base, "route_type": "direct"}, rel) == "critical"
     assert _pre_section({**base, "route_type": "direct", "priority": "medium"}, rel) == "new_discoveries"
     assert PUBLIC_TENDER_LIMIT == 5
+
+
+def test_every_run_records_what_it_saw_and_the_canary_names_sources_that_never_return_anything(conn):
+    from datetime import datetime, timezone
+    from ri import canary
+    from ri.ingest.pipeline import run_source
+    from ri.sources.base import FetchBatch, SourceDescriptor
+    conn.execute("insert into sources(source_id, display_name, source_tier, source_type, source_family, provider, status, collection_method) values ('silent-x','x','S1','procurement','procurement','t','active','official_api')")
+
+    class Nothing:
+        def describe(self):
+            return SourceDescriptor("silent-x", "X", "official_api", "S1", "v")
+
+        async def fetch(self, cursor, limit):
+            return FetchBatch([], None, False, datetime.now(timezone.utc), quota_usage={"requests": 1, "releases_seen": 100, "releases_kept": 0})
+    for _ in range(3):
+        run_source(conn, Nothing())
+    u = conn.execute("select usage from monitoring_runs where source_id='silent-x' order by started_at desc limit 1").fetchone()["usage"]
+    assert u["pages"] == 1 and u["items"] == 0 and u["releases_seen"] == 100 and u["releases_kept"] == 0
+    assert "silent_sources" in {b["code"] for b in canary.run_checks(conn)}

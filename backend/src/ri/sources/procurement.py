@@ -143,7 +143,7 @@ class FindTenderConnector:
         nxt = (data.get("links") or {}).get("next")
         # window cursor only advances once the whole window has been read
         return FetchBatch(items, nxt or f"since:{requested.strftime('%Y-%m-%dT%H:%M:%S')}", bool(nxt), requested, "ocds-1.1",
-                          quota_usage={"requests": 1})
+                          quota_usage={"requests": 1, "releases_seen": len(data["releases"]), "releases_kept": len(items)})
 
     async def fetch_by_id(self, external_id: str) -> RawItem | None:
         data = await request_json(self.client, "GET", f"{FTS_URL}/{external_id}")
