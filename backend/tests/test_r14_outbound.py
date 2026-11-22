@@ -340,3 +340,25 @@ def test_public_bodies_regulators_and_research_institutes_are_tagged_and_kept_of
         assert [h["display_name"] for h in hot] == ["Danske Bank A/S"]
     finally:
         db.close()
+
+
+def test_public_sector_lane_is_its_own_view_and_the_default_book_stays_private(conn, db_url):
+    from fastapi.testclient import TestClient
+    from ri.api.app import create_app
+    from ri.api.auth import make_dev_token
+    from ri.db import Database
+    from test_r7_verify_discovery_usage import SECRET
+    mk_user(conn, "boss@x", "admin")
+    conn.execute("insert into organizations(display_name, country_code, entity_type) values ('Synthetic City Council','DE','public_body'), ('Synthetic Private Bank AG','DE','company')")
+    conn.commit()
+    db = Database(db_url, max_size=2)
+    try:
+        c = TestClient(create_app(Settings(env="development", auth_mode="dev", dev_auth_secret=SECRET), db=db))
+        h = {"Authorization": f"Bearer {make_dev_token(SECRET, 'boss@x')}"}
+        names = lambda q: sorted(i["name"] for i in c.get(f"/api/leads{q}", headers=h).json()["items"])      # noqa: E731
+        assert "Synthetic City Council" not in names("") and "Synthetic Private Bank AG" in names("")
+        assert names("?lane=public") == ["Synthetic City Council"]
+        assert c.get("/api/leads.csv?lane=public", headers=h).text.count("Synthetic City Council") == 1
+        assert c.get("/api/leads?lane=bogus", headers=h).status_code == 422
+    finally:
+        db.close()

@@ -36,10 +36,10 @@ const BAND: Record<string, ["ok" | "warn" | "info" | "bad" | "", string]> = { ho
 const GROUP_NAME: Record<string, string> = { SRC: "route", CAP: "capacity", MAN: "leader", PRG: "programme", COM: "business event", REG: "deadline", REL: "relationship" };
 const PRESETS: [string, Record<string, string>][] = [
   ["Hot or warm", { band: "hot" }], ["UK banks and fintechs", { region: "uk" }], ["DACH", { region: "dach" }], ["Nordics", { region: "nordics" }], ["Poland", { region: "poland" }],
-  ["Signal in last 30 days", { signal_days: "30" }], ["Watching", { watched: "true" }], ["Your shortlist", { shortlist: "true" }], ["Added by people", { origin: "added" }], ["Found by the platform", { origin: "discovered" }],
+  ["Signal in last 30 days", { signal_days: "30" }], ["Watching", { watched: "true" }], ["Your shortlist", { shortlist: "true" }], ["Added by people", { origin: "added" }], ["Found by the platform", { origin: "discovered" }], ["Public sector tenders", { lane: "public" }],
 ];
-type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; sort: string; page: number };
-const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", sort: "score", page: 1 };
+type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; lane: string; sort: string; page: number };
+const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", lane: "", sort: "score", page: 1 };
 const qs = (f: Q, extra = "") => { const u = new URLSearchParams(); (Object.entries(f) as [string, any][]).forEach(([k, v]) => { if (v !== "" && v !== 1 && !(k === "sort" && v === "score")) u.set(k, String(v)); }); if (f.page > 1) u.set("page", String(f.page)); return u.toString() + extra; };
 
 export function Accounts({ me }: { me?: { permissions: string[] } }) {
@@ -77,7 +77,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
   return (
     <>
       <div className="page-head"><div className="eyebrow">Your book</div><h2>Leads</h2></div>
-      <p className="sub" style={{ marginTop: -8 }}>Every company the platform knows, with a score built from its verified signals. Filter by region, size and signal strength; press Add a company for one that is missing.</p>
+      <p className="sub" style={{ marginTop: -8 }}>{f.lane === "public" ? "Public bodies that publish tenders, kept apart from your private-sector book because they buy through procurement rules. Scores here come from tender notices only." : "Every company the platform knows, with a score built from its verified signals. Filter by region, size and signal strength; press Add a company for one that is missing."}</p>
       <div className="row" style={{ marginBottom: 12 }}>{can("research.request") && <button className="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "Add a company"}</button>}
         <button onClick={exportCsv}>Export CSV</button>{sel.size > 0 && can("research.request") && <button onClick={scanSelected}>Scan {sel.size} selected</button>}</div>
       {adding && <AddCompany onClose={() => setAdding(false)} />}
