@@ -1,7 +1,23 @@
 # Cheap triage BEFORE any model call: an item is read by the model only if its title or opening text mentions
 # at least one topic AND at least one kind of development. This saves model budget on earnings notes, awards, HR and similar.
-# Tuned for recall (broad terms). A skipped item is recorded as skipped, never silently dropped. Edit freely.
+# Tuned for recall (broad terms) in the languages of the core markets: English, German, Polish, Swedish, Norwegian, Danish, Finnish.
+# Words longer than three letters match as prefixes ("payment" also matches "payments"). A skipped item is recorded as skipped, never silently dropped.
+# Changing this file re-checks recently skipped items automatically (the scheduler compares a version of this list).
 topics: [bank, banking, payment, payments, fintech, financial, finance, insur, lender, lending, wealth, trading, core, platform, cloud, software, engineering, engineer,
-         digital, ai, data, fraud, regulat, procurement, tender, rfp, framework, supplier, vendor, technology, tech, api, open banking, ledger, card, mortgage, credit]
+         digital, ai, data, fraud, regulat, procurement, tender, rfp, framework, supplier, vendor, technology, tech, api, open banking, ledger, card, mortgage, credit,
+         startup, scale-up, scaleup, neobank, crypto, blockchain, saas, it services,
+         # German
+         zahlung, plattform, digitalisier, versicher, finanz, kredit, technologie, daten, ki, rechenzentrum, ausschreibung, sparkasse, volksbank,
+         # Polish
+         płatnoś, platnos, bankow, ubezpiecz, finans, kredyt, technolog, cyfrow, oprogramowan, system, dane, chmur, przetarg, informatyczn,
+         # Nordic
+         betaling, betalning, försäkr, forsikr, finansi, plattform, teknologi, upphandling, anbud, digitalis, pankki, maksu, vakuutus, ohjelmisto]
 developments: [select, chose, choose, launch, announce, partner, appoint, hire, hiring, acquir, acquisition, migrat, moderni, replac, implement, contract, award, programme, program,
-               invest, expand, deploy, go-live, go live, outsourc, tender, framework, supplier, panel, vendor, cto, cio, chief, head of, director, roadmap, transform, build, develop, integrat, rollout, roll out, consult]
+               invest, expand, deploy, go-live, go live, outsourc, tender, framework, supplier, panel, vendor, cto, cio, chief, head of, director, roadmap, transform, build, develop, integrat, rollout, roll out, consult,
+               raise, raises, raised, funding, round, series a, series b, series c, ipo, merger, merge, layoff, restructur, licen, authoris, authoriz, opens, entering, enters,
+               # German
+               wählt, startet, übernimm, übernahme, partnerschaft, ernenn, einführ, umstell, investier, finanzierung, auftrag, vergibt, kooperation, neuer chef, vorstand, expansion,
+               # Polish
+               wybiera, wybrał, uruchami, wdraża, wdroż, migracj, przejęci, przejmuje, inwestuj, inwestycj, finansowani, umow, partnerstw, prezes, dyrektor, zarząd, rozwój, nowy system,
+               # Nordic
+               lanser, väljer, valgt, valt, förvärv, oppkjøp, opkøb, investering, avtal, avtale, aftale, utnämn, ansätt, rekryter, partnerskap, samarbejd, yritysosto, julkist, nimit]

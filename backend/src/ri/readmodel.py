@@ -8,7 +8,8 @@ from typing import Any
 from .access import Principal, org_scope_sql
 from .db import Conn, canonical_json, jb, q1, qa
 
-SECTION_ORDER = ["critical", "existing_accounts", "new_discoveries", "relationships", "deal_blockers", "research_review"]
+SECTION_ORDER = ["critical", "existing_accounts", "new_discoveries", "relationships", "deal_blockers", "research_review", "public_tenders"]
+PUBLIC_TENDER_LIMIT = 5
 
 
 def fingerprint(conn: Conn, h: dict[str, Any]) -> str:
@@ -73,6 +74,8 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
 
 
 def section_of(c: dict[str, Any], h: dict[str, Any], conn: Conn) -> str:
+    if h.get("route_type") == "procurement":
+        return "public_tenders"          # a published tender is public procurement by definition: its own lane, never mixed into the private book
     if c["priority"] == "urgent":
         return "critical"
     if h["state"] in {"engaged", "buyer_need_confirmed", "commercially_qualified", "proposal_procurement"} and c["blockers"]:
@@ -93,28 +96,54 @@ def coverage_health(conn: Conn, p: Principal) -> dict[str, Any]:
             "no_active_monitoring": len(active) == 0}
 
 
+def _pre_section(h: dict[str, Any], rel: set[str]) -> str:
+    """The same rules as section_of, from the hypothesis row alone, so only the cards that will be shown are built."""
+    if h["route_type"] == "procurement":
+        return "public_tenders"
+    if h["priority"] == "urgent":
+        return "critical"
+    if h["state"] in {"engaged", "buyer_need_confirmed", "commercially_qualified", "proposal_procurement"} and h.get("blockers"):
+        return "deal_blockers"
+    if str(h["initiative_id"]) in rel:
+        return "relationships"
+    return "existing_accounts" if h["in_master_list"] else "new_discoveries"
+
+
 def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     where, params = org_scope_sql(p, "h.organization_id")
-    rows = qa(conn, f"SELECT h.* FROM opportunity_hypotheses h WHERE h.state NOT IN ('disqualified','superseded','expired') AND h.priority IN ('urgent','high','medium') AND ({where}) "  # noqa: S608
+    rows = qa(conn, f"SELECT h.*, o.in_master_list FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id "  # noqa: S608
+                    f"WHERE h.state NOT IN ('disqualified','superseded','expired') AND h.priority IN ('urgent','high','medium') AND ({where}) "
                     "ORDER BY CASE h.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, h.score_total DESC", params)
+    rel = {str(r["initiative_id"]) for r in qa(conn, "SELECT DISTINCT ie.initiative_id FROM signals s JOIN initiative_events ie ON ie.event_id=s.event_id WHERE s.rule_id='REL-03' AND s.status='active'")}
+    rank = {"urgent": 0, "high": 1, "medium": 2}
+    rows.sort(key=lambda h: (SECTION_ORDER.index(_pre_section(h, rel)), rank.get(h["priority"], 3), -(h["score_total"] or 0)))
+    states = {str(r["hypothesis_id"]): r for r in qa(conn, "SELECT hypothesis_id, decision, fingerprint, reason FROM hypothesis_user_state WHERE user_id=%s", (p.user_id,))}
     cards: list[dict[str, Any]] = []
+    main = tenders = 0
     for h in rows:
+        pre = _pre_section(h, rel)
+        if (pre == "public_tenders" and tenders >= PUBLIC_TENDER_LIMIT) or (pre != "public_tenders" and main >= limit):
+            continue
         fp = fingerprint(conn, h)
-        us = q1(conn, "SELECT decision, fingerprint, reason FROM hypothesis_user_state WHERE hypothesis_id=%s AND user_id=%s", (h["id"], p.user_id))
+        us = states.get(str(h["id"]))
         if us and us["fingerprint"] == fp and us["decision"] in {"dismissed", "monitor"}:
             continue        # dismissed/monitored AND nothing material changed => never resurfaces
-        # "seen" drives before/after change display and notification dedup ONLY; unanswered items stay in the work queue until the user decides
-        last = q1(conn, "SELECT snapshot FROM hypothesis_seen WHERE hypothesis_id=%s AND fingerprint<>%s ORDER BY first_presented_at DESC LIMIT 1", (h["id"], fp))
         if us and us["decision"] == "accepted" and us["fingerprint"] == fp:
             continue        # accepted and unchanged: it is now active work (Opportunity workspace), not a new development
+        # "seen" drives before/after change display and notification dedup ONLY; unanswered items stay in the work queue until the user decides
+        last = q1(conn, "SELECT snapshot FROM hypothesis_seen WHERE hypothesis_id=%s AND fingerprint<>%s ORDER BY first_presented_at DESC LIMIT 1", (h["id"], fp))
         c = card(conn, h, now, last["snapshot"] if last else None)
         if us and us["decision"] == "dismissed" and us["fingerprint"] != fp:
             c["reopened_after_dismissal"] = {"previous_reason": us["reason"], "note": "material new evidence since you dismissed this"}
         c["section"] = section_of(c, h, conn)
         cards.append(c)
+        if c["section"] == "public_tenders":
+            tenders += 1
+        else:
+            main += 1
         conn.execute("INSERT INTO hypothesis_seen(hypothesis_id, fingerprint, snapshot) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING", (h["id"], fp, jb(snapshot(h, c["next_action"]["action_type"] if c["next_action"] else None))))
-    cards = sorted(cards, key=lambda c: (SECTION_ORDER.index(c["section"]), {"urgent": 0, "high": 1, "medium": 2}.get(c["priority"], 3)))[:limit]
+    cards = sorted(cards, key=lambda c: (SECTION_ORDER.index(c["section"]), rank.get(c["priority"], 3)))
     health = coverage_health(conn, p)
     empty = None
     if not cards:

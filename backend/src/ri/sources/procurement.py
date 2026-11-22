@@ -21,6 +21,7 @@ from .util import excerpt, first_text, parse_dt, sha, tz_of, utcnow
 
 TED_URL = "https://api.ted.europa.eu/v3/notices/search"
 FTS_URL = "https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages"
+FTS_TAGS = {"tender", "tenderUpdate", "tenderAmendment", "tenderCancellation", "award", "awardUpdate"}
 TED_FIELDS = ["publication-number", "notice-title", "buyer-name", "buyer-country", "notice-type", "publication-date",
               "deadline-receipt-tender-date-lot", "classification-cpv", "procedure-type", "links"]
 
@@ -128,14 +129,17 @@ class FindTenderConnector:
         if cursor and cursor.startswith("http"):
             data = await request_json(self.client, "GET", cursor)
         else:
-            since = cursor.removeprefix("since:") if cursor else None
-            params: dict[str, Any] = {"limit": min(limit, 100), "stages": self.stages}
-            if since:
-                params["updatedFrom"] = since
+            # Checked against the live API: a comma-separated "stages" value silently returns no releases, and no updatedFrom pages through all history.
+            # So: always a window (14 days on the first run), no stages filter, and relevance decided here.
+            since = cursor.removeprefix("since:") if cursor else (requested - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%S")
+            params: dict[str, Any] = {"limit": min(limit, 100), "updatedFrom": since}
+            if self.stages and "," not in self.stages:
+                params["stages"] = self.stages
             data = await request_json(self.client, "GET", FTS_URL, params=params)
         if not isinstance(data, dict) or "releases" not in data:
             raise SchemaDrift("OCDS package has no 'releases'")
-        items = [RawItem(external_id=r["ocid"], version=r.get("date"), payload=r) for r in data["releases"] if r.get("ocid")]
+        items = [RawItem(external_id=r["ocid"], version=r.get("date"), payload=r) for r in data["releases"]
+                 if r.get("ocid") and FTS_TAGS.intersection(r.get("tag") or []) and is_software_notice(r)]
         nxt = (data.get("links") or {}).get("next")
         # window cursor only advances once the whole window has been read
         return FetchBatch(items, nxt or f"since:{requested.strftime('%Y-%m-%dT%H:%M:%S')}", bool(nxt), requested, "ocds-1.1",

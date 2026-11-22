@@ -10,7 +10,7 @@ from ..events.structured import emit_job_event, emit_procurement_events
 from ..events.verify import verify_event
 from ..signals.persist import evaluate_event, expire_on_job_closed
 from ..jobs.queue import JobError
-from ..sources.base import BudgetExceeded
+from ..sources.base import BudgetExceeded, ConnectorError
 from .pipeline import RunResult
 
 
@@ -44,6 +44,11 @@ def process_run(conn: Conn, res: RunResult, *, extractor: EventExtractor | None 
             summary["events_created"] += 1
             r = finish_event(conn, eid, recheck=recheck, now=now)
             summary["signals"] += len(r["signals"]); summary["negatives"] += len(r["negatives"])
+    if extractor is None:
+        # no model available right now (no key, or blocked): queue the new text so a later run reads it instead of losing it
+        for doc_id in [*res.new_doc_ids, *res.changed_doc_ids]:
+            conn.execute("UPDATE source_documents SET raw_meta = coalesce(raw_meta,'{}'::jsonb) || '{\"pending_extraction\": true}'::jsonb "
+                         "WHERE id=%s AND content_text IS NOT NULL AND coalesce(raw_meta->>'structured','') = ''", (doc_id,))
     if extractor is not None:
         pending = [str(r["id"]) for r in conn.execute("SELECT id FROM source_documents WHERE raw_meta->>'pending_extraction'='true' AND content_text IS NOT NULL ORDER BY fetched_at LIMIT 50").fetchall()]
         for doc_id in [*res.new_doc_ids, *res.changed_doc_ids, *[p for p in pending if p not in res.new_doc_ids]]:
@@ -67,6 +72,14 @@ def process_run(conn: Conn, res: RunResult, *, extractor: EventExtractor | None 
                 conn.execute("UPDATE source_documents SET raw_meta = raw_meta || '{\"pending_extraction\": true}'::jsonb WHERE id=%s", (doc_id,))
                 summary["deferred_budget"] = summary.get("deferred_budget", 0) + 1
                 continue
+            except ConnectorError as exc:
+                # the model provider failed (out of credit, rate limit, outage): keep this and every remaining document queued and stop calling it for this run
+                left = [doc_id, *[x for x in [*res.new_doc_ids, *res.changed_doc_ids, *pending] if x != doc_id]]
+                conn.execute("UPDATE source_documents SET raw_meta = coalesce(raw_meta,'{}'::jsonb) || '{\"pending_extraction\": true}'::jsonb "
+                             "WHERE id = ANY(%s::uuid[]) AND content_text IS NOT NULL AND coalesce(raw_meta->>'triage','') = '' AND coalesce(raw_meta->>'structured','') = '' "
+                             "AND NOT EXISTS (SELECT 1 FROM event_documents ed WHERE ed.document_id = source_documents.id)", (left,))
+                summary["deferred_provider"] = exc.error_class
+                break
             except JobError as exc:       # one bad document must not abort the run: dead-letter it and carry on
                 conn.execute("INSERT INTO dead_letters(kind, payload, error_class, error) VALUES ('extract_document',%s,%s,%s)", (jb({"document_id": doc_id}), exc.error_class, str(exc)[:500]))
                 conn.execute("UPDATE source_documents SET raw_meta = raw_meta - 'pending_extraction' WHERE id=%s", (doc_id,))

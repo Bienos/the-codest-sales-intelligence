@@ -5,7 +5,7 @@ import { Badge, Coverage, Err, Evidence, Fact, accessKind, demandKind, humanize,
 import Prospects from "./Prospects";
 
 const SECTIONS: [string, string][] = [["critical", "Critical and time-limited"], ["existing_accounts", "Developments in your existing accounts"], ["new_discoveries", "New qualified discoveries outside the master lists"],
-  ["relationships", "Relationship re-engagement"], ["deal_blockers", "Active deal blockers"], ["research_review", "Research awaiting review"]];
+  ["relationships", "Relationship re-engagement"], ["deal_blockers", "Active deal blockers"], ["research_review", "Research awaiting review"], ["public_tenders", "Public sector tenders (separate lane: buyers follow procurement rules)"]];
 const REASONS = ["not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"];
 
 function Deadlines() {

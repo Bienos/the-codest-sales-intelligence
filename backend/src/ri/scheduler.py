@@ -113,6 +113,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     from .market import tag_public_bodies
     step("public_bodies_tagged", lambda: tag_public_bodies(conn, 500))
+    from .events.triage import retriage
+    step("retriaged", lambda: retriage(conn, 500))
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))
