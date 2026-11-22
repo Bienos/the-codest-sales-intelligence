@@ -75,7 +75,7 @@ class Settings:
     anthropic_price_out_per_mtok: float | None = 0.50
     discovery_interval_days: int = 7
     discovery_max_searches_per_run: int = 16
-    discovery_max_new_requests_per_run: int = 5
+    discovery_max_new_requests_per_run: int = 30
     allowed_email_domain: str | None = None
     bootstrap_admin_emails: tuple[str, ...] = ()
 
@@ -121,7 +121,7 @@ class Settings:
             anthropic_price_out_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_OUT_PER_MTOK") or LIST_PRICES.get(os.environ.get("RI_ANTHROPIC_MODEL") or "claude-haiku-5-5", (0.10, 0.50))[1]),
             discovery_interval_days=int(os.environ.get("RI_DISCOVERY_INTERVAL_DAYS", "7")),
             discovery_max_searches_per_run=int(os.environ.get("RI_DISCOVERY_MAX_SEARCHES_PER_RUN", "16")),
-            discovery_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_MAX_NEW_REQUESTS_PER_RUN", "5")),
+            discovery_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_MAX_NEW_REQUESTS_PER_RUN", "30")),
             exa_est_cost_per_search=float(os.environ["RI_EXA_EST_COST_PER_SEARCH"]) if os.environ.get("RI_EXA_EST_COST_PER_SEARCH") else None,
             allowed_email_domain=(os.environ.get("RI_ALLOWED_EMAIL_DOMAIN") or "").lower() or None,
             bootstrap_admin_emails=tuple(e.strip().lower() for e in os.environ.get("RI_BOOTSTRAP_ADMIN_EMAILS", "").split(",") if e.strip()),
