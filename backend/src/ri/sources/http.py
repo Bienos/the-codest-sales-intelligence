@@ -4,9 +4,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import re
+
 import httpx
 
-from .base import (AccessDenied, AuthError, EgressBlocked, NotFound, RateLimited, SchemaDrift, ServerError,
+from .base import (AccessDenied, AuthError, BillingError, EgressBlocked, NotFound, RateLimited, SchemaDrift, ServerError,
                    TransientError)
 
 UA = "CodestRevenueIntelligence/0.1 (+contact: sales-intelligence@thecodest.co)"
@@ -35,6 +37,8 @@ def classify(resp: httpx.Response) -> None:
         body = resp.text[:240].replace("\n", " ")        # providers explain 4xx errors in the body; keep it so failures are diagnosable
     except Exception:  # noqa: BLE001  (a streaming response that was not read)
         pass
+    if s in (400, 402) and re.search(r"credit balance|billing|insufficient (funds|credit)|payment required|quota exceeded", body, re.I):
+        raise BillingError(f"provider billing: {body}", status=s)
     raise SchemaDrift(f"unexpected status {s}" + (f": {body}" if body else ""), status=s)
 
 

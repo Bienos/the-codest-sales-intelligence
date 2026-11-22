@@ -24,6 +24,7 @@ class SchemaDrift(ConnectorError): error_class = "schema_drift"
 class NotFound(ConnectorError): error_class = "not_found"
 class PolicyBlocked(ConnectorError): error_class = "policy_block"      # robots/licence/ToS: collector stops
 class BudgetExceeded(ConnectorError): error_class = "budget_exceeded"
+class BillingError(ConnectorError): error_class = "provider_billing"   # the provider account is out of credit: nothing wrong with the work, retry after a top-up
 class EgressBlocked(ConnectorError): error_class = "access_denied"     # sandbox/proxy refused the host
 
 

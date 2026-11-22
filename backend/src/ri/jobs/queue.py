@@ -75,6 +75,8 @@ def fail(conn: Conn, job: dict[str, Any], exc: Exception) -> str:
     msg = f"{type(exc).__name__}: {exc}"[:2000]
     if isinstance(exc, RequiresApproval):
         status, delay = "requires_approval", None
+    elif ec == "provider_billing":
+        status, delay = "retryable_failed", 3600          # out of provider credit: never dead-letter the work, try again hourly until someone tops up
     elif ec in PERMANENT or job["attempts"] >= job["max_attempts"]:
         status, delay = "permanent_failed", None
     else:

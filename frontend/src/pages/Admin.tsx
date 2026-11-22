@@ -67,6 +67,7 @@ function Integrations() {
         {d.items.map((r: any) => <article key={r.key} className={`conn ${r.configured ? "live" : "needs_credential"}`}>
           <div className="conn-head"><div><div className="conn-name">{r.name}</div><div className="conn-meta">{r.what}</div></div>
             <div className="row"><Badge kind={r.configured ? "ok" : "warn"}>{r.configured ? "Key set" : "Key needed"}</Badge>{r.switch && <Badge kind={r.switch_on ? "ok" : ""}>{r.switch_on ? "Switch on" : "Switch off"}</Badge>}</div></div>
+          {r.blocked_reason && <div className="err" role="alert" style={{ margin: "8px 0" }}>{r.blocked_reason}</div>}
           <div className="conn-cols"><div><span className="k">How to connect</span>{r.how}</div>{r.switch && <div><span className="k">Safety switch</span>{r.switch}: {r.switch_on ? "on" : "off. Nothing is sent or written until it is turned on."}</div>}</div>
           {r.key === "apollo" && <ApolloCap r={r} />}
           {r.testable && <div className="row" style={{ marginTop: 8 }}><button disabled={!r.configured || busy === r.key} onClick={() => test(r.key)}>Test connection</button>

@@ -46,7 +46,9 @@ _STRONG = re.compile(
     r"fundusz|fonds|stiftung|foundation|endowment|kuratorium|studierendenwerk|studentenwerk|vergabestelle|landesamt|olg|gericht|court|staatsanwalt|\w*onkolog\w*|\w*klinikum|\w*sykehus\w*|"
     r"kantonal\w*|cantonal|service cantonal|kaupunki|kaupungin|rahasto|fjársýsla|ríkis\w*|hyvinvointialue|sairaanhoito|kela|\w*kassan|\w*kollegiet|statsforvalter\w*|stats\w*|skatte\w*|"
     r"instytut|institut|institute|politechnika|akademia|academy|muzeum|museum|biblioteka|library|inspektorat|zarząd|zakład|urząd|służba|straż|pogotowie|"
-    r"resortu|resort|aör|anstalt des öffentlichen rechts|körperschaft|bundesanstalt|landratsamt|hochschule|forschungs\w*|\w*staatsforsten|wohnhäuser|sozial\w*)\b", re.I)
+    r"resortu|resort|aör|anstalt des öffentlichen rechts|körperschaft|bundesanstalt|landratsamt|hochschule|forschungs\w*|\w*staatsforsten|wohnhäuser|sozial\w*|"
+    r"\w*myndighet\w*|\w*tilsyn\w*|stad|inköpscentral\w*|inkjøp\w*|jobcent\w*|fraunhofer|max[- ]planck|helmholtz|leibniz|senaatti|bafin|finansinspektionen|finanssivalvonta|"
+    r"regulator\w*|supervisory|central bank|bundesbank|riksbank|nationalbank|narodowy bank|nadzoru|financial conduct authority|prudential regulation)\b", re.I)
 _WEAK = re.compile(r"\b(department (of|for)|county|bezirk|region(en)?|college|school|schule|agency|agentur|amt|verwaltung|administration|authority|defence|defense|army|navy|centrum|centre|center|"
                    r"public (health|transport|body)|sveriges|statens|státní|bund)\b", re.I)
 # financial buyers are never public-sector noise even when the word "state" or "national" appears in the name
@@ -108,3 +110,15 @@ def candidate_ok(name: str | None, *, role: str | None = None, via_tender: bool 
             return False, "tender buyer without a company form"
         return (True, "") if (_FIN.search(n) or _TECH.search(n)) else (False, "no sign of finance or technology in the name")
     return (True, "") if role in ("bank", "fintech") else (False, f"role is {role or 'unknown'}, not a bank or fintech")
+
+
+def tag_public_bodies(conn, limit: int = 500) -> int:
+    """Organisations that were created by a tender feed or the web before the public-body words were known: mark them so they leave the private lists.
+    Master-list accounts are the user's own and are never reclassified here."""
+    from .db import qa
+    n = 0
+    for o in qa(conn, "SELECT id, display_name FROM organizations WHERE entity_type='company' AND NOT in_master_list ORDER BY created_at DESC LIMIT %s", (limit,)):
+        if is_public_body(o["display_name"]):
+            conn.execute("UPDATE organizations SET entity_type='public_body' WHERE id=%s", (o["id"],))
+            n += 1
+    return n

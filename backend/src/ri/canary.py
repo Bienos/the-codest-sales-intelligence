@@ -32,6 +32,9 @@ def run_checks(conn: Conn) -> list[dict[str, str]]:
     check("no_active_rules", rules > 0, "No signal rule is active.")
     dl = q1(conn, "SELECT count(*) AS n FROM dead_letters WHERE replayed_at IS NULL AND created_at > now() - interval '24 hours'")["n"]  # type: ignore[index]
     check("dead_letters", dl <= 20, f"{dl} jobs failed for good in the last 24 hours.")
+    billing = q1(conn, "SELECT count(*) AS n FROM jobs WHERE last_error_class='provider_billing' AND status IN ('retryable_failed','permanent_failed') AND updated_at > now() - interval '12 hours'")["n"]  # type: ignore[index]
+    legacy = q1(conn, "SELECT count(*) AS n FROM dead_letters WHERE replayed_at IS NULL AND error ILIKE '%%credit balance%%' AND created_at > now() - interval '7 days'")["n"]  # type: ignore[index]
+    check("provider_billing", not (billing or legacy), "A provider account is out of credit (Anthropic: 'credit balance is too low'). Reading and extraction are stalled until it is topped up; failed work retries by itself or can be replayed.")
     for b in qa(conn, "SELECT provider, kind, period, cap, reserved, spent FROM provider_budgets WHERE kind='monthly' AND cap > 0 AND period = to_char(now(), 'YYYY-MM')"):
         check(f"budget_{b['provider']}", float(b["spent"]) + float(b["reserved"]) < 0.9 * float(b["cap"]), f"{b['provider']} has used over 90% of this month's cap.")
     return bad

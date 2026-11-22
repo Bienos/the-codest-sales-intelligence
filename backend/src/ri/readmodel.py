@@ -127,7 +127,7 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
     sw, sp = org_scope_sql(p, "o.id")
     hot = qa(conn, f"SELECT o.id, o.display_name, o.country_code, o.segment, s.score, s.band, s.groups, s.signal_count, s.last_signal_at, "      # noqa: S608
                    f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
-                   f"FROM account_scores s JOIN organizations o ON o.id=s.organization_id WHERE s.band IN ('hot','warm') AND NOT s.stopped AND ({sw}) "
+                   f"FROM account_scores s JOIN organizations o ON o.id=s.organization_id WHERE s.band IN ('hot','warm') AND NOT s.stopped AND o.entity_type <> 'public_body' AND ({sw}) "
                    f"ORDER BY s.score DESC LIMIT 8", [p.email, *sp])
     return {"generated_at": now, "count": len(cards), "sections": sections, "empty_state": empty, "coverage": health,
             "hot_accounts": [dict(r, id=str(r["id"]), score=float(r["score"]), groups=list(r["groups"] or [])) for r in hot]}

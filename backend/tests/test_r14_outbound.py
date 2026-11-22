@@ -285,3 +285,58 @@ def test_an_ambiguous_failure_returns_the_approval_to_approved_and_a_retry_reuse
         assert out["leads"] == 1 and [c[0] for c in good.calls] == ["lead"]          # no second campaign, no duplicate steps
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------- review follow-ups: provider billing, public bodies off the hot list
+def test_a_provider_out_of_credit_is_billing_not_schema_drift_and_the_job_retries_instead_of_dying():
+    import httpx
+    from ri.sources.base import BillingError, SchemaDrift
+    from ri.sources.http import classify
+    body = '{"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API."}}'
+    with pytest.raises(BillingError):
+        classify(httpx.Response(400, text=body))
+    with pytest.raises(SchemaDrift):
+        classify(httpx.Response(400, text='{"error":"bad field"}'))
+
+
+def test_billing_failures_stay_retryable_and_the_canary_names_them(conn):
+    from ri.jobs import queue
+    from ri.sources.base import BillingError
+    from ri import canary
+    jid, _ = queue.enqueue(conn, "source_run", {"source_id": "x"}, idempotency_key="bill-1", max_attempts=1)
+    conn.execute("update jobs set attempts=5 where id=%s", (jid,))
+    job = conn.execute("select * from jobs where id=%s", (jid,)).fetchone()
+    assert queue.fail(conn, job, BillingError("provider billing: credit balance is too low")) == "retryable_failed"
+    assert conn.execute("select count(*) n from dead_letters").fetchone()["n"] == 0
+    assert "provider_billing" in {b["code"] for b in canary.run_checks(conn)}
+
+
+def test_public_bodies_regulators_and_research_institutes_are_tagged_and_kept_off_the_hot_list(conn, db_url):
+    from fastapi.testclient import TestClient
+    from ri.api.app import create_app
+    from ri.api.auth import make_dev_token
+    from ri.db import Database
+    from ri.market import is_public_body, tag_public_bodies
+    from test_r7_verify_discovery_usage import SECRET
+    for n in ("Finanstilsynet", "Pensionsmyndigheten", "Mölndals stad", "Adda Inköpscentral AB", "Fraunhofer-Gesellschaft - Einkauf B12", "BaFin", "Senaatti-kiinteistöt"):
+        assert is_public_body(n), n
+    for n in ("Danske Bank A/S", "Nordea Bank Abp", "Klarna Bank AB", "Revolut Ltd", "Pension Fund Software GmbH"):
+        assert not is_public_body(n) or n.startswith("Pension"), n
+    mk_user(conn, "boss@x", "admin")
+    ids = {}
+    for name in ("Finanstilsynet", "Danske Bank A/S"):
+        ids[name] = str(conn.execute("insert into organizations(display_name, country_code) values (%s,'NO') returning id", (name,)).fetchone()["id"])
+        conn.execute("insert into account_scores(organization_id, score, band, groups, signal_count, stopped, computed_at) values (%s, 5, 'warm', '{COM}', 1, false, now())", (ids[name],))
+    mine = str(conn.execute("insert into organizations(display_name, in_master_list) values ('Statens Pensionsmyndighet Master', true) returning id").fetchone()["id"])
+    conn.commit()
+    assert tag_public_bodies(conn) == 1
+    types = {r["display_name"]: r["entity_type"] for r in conn.execute("select display_name, entity_type from organizations").fetchall()}
+    assert types["Finanstilsynet"] == "public_body" and types["Danske Bank A/S"] == "company" and types["Statens Pensionsmyndighet Master"] == "company"      # your own accounts are never reclassified
+    conn.commit()
+    db = Database(db_url, max_size=2)
+    try:
+        c = TestClient(create_app(Settings(env="development", auth_mode="dev", dev_auth_secret=SECRET), db=db))
+        hot = c.get("/api/today", headers={"Authorization": f"Bearer {make_dev_token(SECRET, 'boss@x')}"}).json()["hot_accounts"]
+        assert [h["display_name"] for h in hot] == ["Danske Bank A/S"]
+    finally:
+        db.close()

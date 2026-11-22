@@ -157,7 +157,11 @@ def register_outreach(app: FastAPI, settings: Settings) -> None:
         items = integration_status(settings)
         with tx(request) as conn:
             row = q1(conn, "SELECT cap, spent, reserved FROM provider_budgets WHERE provider='apollo' AND kind='contact_enrichment' AND period=%s", (usage.period_now(),))
+        with tx(request) as conn:
+            blocked = q1(conn, "SELECT max(updated_at) AS at FROM jobs WHERE last_error_class='provider_billing' AND updated_at > now() - interval '12 hours'")
         for i in items:
+            if i["key"] == "anthropic" and blocked and blocked["at"]:
+                i["blocked_reason"] = "Anthropic reports the credit balance is too low. Reading and writing are paused until it is topped up in the Anthropic console."
             if i["key"] == "apollo":
                 i["credits_per_reveal"] = settings.apollo_credits_per_reveal
                 i["cap"] = float(row["cap"]) if row else 0.0
