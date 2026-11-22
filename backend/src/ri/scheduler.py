@@ -25,6 +25,16 @@ def schedule_due(conn: Conn, now: datetime | None = None) -> int:
     return n
 
 
+def schedule_fit(conn: Conn, now: datetime | None = None) -> int:
+    """Once an hour, when findings are waiting for a plain-English fit reason, queue one batch job for the worker (which holds the AI key)."""
+    from .events.fit import pending
+    now = now or datetime.now(timezone.utc)
+    if not pending(conn, 1):
+        return 0
+    _, created = enqueue(conn, "assess_fit", {"batches": 4}, idempotency_key=f"assess-fit:{now.strftime('%Y-%m-%dT%H')}", max_attempts=2, correlation_id="sched-fit")
+    return int(created)
+
+
 def exa_budget_set(conn: Conn) -> bool:
     """Automatic web discovery runs when a monthly Exa budget above zero is saved. The worker, which holds the key, saves it at start-up; the scheduler does not need the key itself."""
     from . import usage
@@ -124,6 +134,7 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("retriaged", lambda: retriage(conn, 500))
     from .events.structured import backfill_procurement_events
     step("procurement_events_backfilled", lambda: backfill_procurement_events(conn, 300))
+    step("fit_queued", lambda: schedule_fit(conn, now))
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))

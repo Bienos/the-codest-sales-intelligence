@@ -8,7 +8,7 @@ from ..config import LIST_PRICES, Settings
 from ..db import Conn
 
 
-def make_call(conn: Conn, st: Settings, *, org_id: str, operation: str, key_prefix: str, models: list[str], max_tokens: int = 4000) -> Callable[[str, str], Awaitable[tuple[str, int, int, str]]]:
+def make_call(conn: Conn, st: Settings, *, org_id: str | None, operation: str, key_prefix: str, models: list[str], max_tokens: int = 4000) -> Callable[[str, str], Awaitable[tuple[str, int, int, str]]]:
     import httpx
 
     from ..sources import http as http_mod

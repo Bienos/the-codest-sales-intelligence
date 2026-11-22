@@ -1,14 +1,68 @@
-# Exa discovery plans (spec 02 §7, 14 §5). Each theme maps to ACTIVE signal rules; one plan = theme x geography.
+# Exa discovery plans (spec 02 §7, 14 §5). Each theme maps to an ACTIVE signal rule; one plan = theme x geography, plus one plan per local language.
 # Results are discovery evidence only: every hit is queued for verification against its original page before it can become an event.
+# Themes follow what The Codest sells: programmes and migrations (team extension), engineering capacity gaps (staff augmentation), AI work (AI services),
+# and business changes that usually create software work (funding, launches, acquisitions, licences, regulatory deadlines).
+# `local` searches in the market's own language: local press reports these first and English searches miss them. Plans run weekly under the Exa cap.
 geographies:
   UK: "United Kingdom"
   DACH: "Germany OR Austria OR Switzerland"
   Nordics: "Sweden OR Denmark OR Norway OR Finland"
   Poland: "Poland"
+local_languages: {DACH: de, Nordics: sv, Poland: pl}
 themes:
-  - {id: core-banking, rule: PRG-01, recency_days: 21, query: "bank announces core banking platform replacement or selects core banking vendor {geo}"}
-  - {id: cloud-data-migration, rule: PRG-02, recency_days: 21, query: "bank announces cloud migration or data platform modernisation programme {geo}"}
-  - {id: payment-rails, rule: PRG-06, recency_days: 30, query: "bank or payment provider instant payments SEPA Instant Verification of Payee integration programme {geo}"}
-  - {id: si-programme-win, rule: SRC-04, recency_days: 30, query: "systems integrator wins bank transformation programme with software development scope {geo}"}
-  - {id: vendor-implementation, rule: SRC-05, recency_days: 21, query: "bank selects Temenos OR Mambu OR Thought Machine OR Finastra OR Form3 implementation {geo}"}
-  - {id: tech-leader-appointed, rule: MAN-01, recency_days: 21, query: "bank or fintech appoints new CTO OR CIO OR Head of Engineering OR Head of Payments {geo}"}
+  - id: core-banking
+    rule: PRG-01
+    recency_days: 21
+    query: "bank announces core banking platform replacement or selects core banking vendor {geo}"
+    local: {DACH: "Bank Kernbankensystem Umstellung Migration neues Kernbankensystem", Nordics: "bank byter kärnbankssystem ny plattform migrering", Poland: "bank wymiana systemu centralnego migracja nowy system bankowy"}
+  - id: cloud-data-migration
+    rule: PRG-02
+    recency_days: 21
+    query: "bank or insurer announces cloud migration or data platform modernisation programme {geo}"
+    local: {DACH: "Bank Versicherung Cloud Migration Datenplattform Modernisierung", Nordics: "bank försäkring molnmigrering dataplattform modernisering", Poland: "bank ubezpieczyciel migracja do chmury modernizacja platformy danych"}
+  - id: payment-rails
+    rule: PRG-06
+    recency_days: 30
+    query: "bank or payment provider instant payments SEPA Instant Verification of Payee integration programme {geo}"
+    local: {DACH: "Bank Echtzeitüberweisung SEPA Instant Empfängerüberprüfung Umsetzung", Nordics: "bank omedelbara betalningar SEPA Instant införande", Poland: "bank przelewy natychmiastowe SEPA Instant weryfikacja odbiorcy wdrożenie"}
+  - id: si-programme-win
+    rule: SRC-04
+    recency_days: 30
+    query: "systems integrator wins bank transformation programme with software development scope {geo}"
+  - id: vendor-implementation
+    rule: SRC-05
+    recency_days: 21
+    query: "bank selects Temenos OR Mambu OR Thought Machine OR Finastra OR Form3 implementation {geo}"
+  - id: tech-leader-appointed
+    rule: MAN-01
+    recency_days: 21
+    query: "bank or fintech appoints new CTO OR CIO OR Head of Engineering OR Head of Payments {geo}"
+    local: {DACH: "Bank Fintech neuer CTO CIO IT-Vorstand ernannt", Nordics: "bank fintech ny CTO teknikchef utnämnd", Poland: "bank fintech nowy dyrektor IT CTO powołany"}
+  - id: engineering-hiring
+    rule: CAP-01
+    recency_days: 30
+    query: "bank OR fintech OR payments company expands engineering team or opens new technology hub hiring software engineers {geo}"
+    local: {DACH: "Bank Fintech baut IT-Team aus Tech-Hub Softwareentwickler gesucht", Nordics: "bank fintech utökar utvecklingsteam nytt tekniknav rekryterar utvecklare", Poland: "bank fintech rozbudowa zespołu IT nowe centrum technologiczne rekrutacja programistów"}
+  - id: ai-programme
+    rule: COM-06
+    recency_days: 30
+    query: "bank OR insurer OR fintech launches generative AI programme or AI assistant in production {geo}"
+    local: {DACH: "Bank Versicherung startet KI-Projekt generative KI im Einsatz", Nordics: "bank försäkring lanserar AI-satsning generativ AI", Poland: "bank ubezpieczyciel wdraża sztuczną inteligencję projekt AI"}
+  - id: growth-funding
+    rule: COM-01
+    recency_days: 21
+    query: "fintech raises Series A OR Series B OR Series C to expand product and engineering {geo}"
+    local: {DACH: "Fintech Finanzierungsrunde Series A Series B Millionen Expansion Produkt", Nordics: "fintech tar in miljoner kapital expansion produktutveckling", Poland: "fintech pozyskał finansowanie runda inwestycyjna rozwój produktu"}
+  - id: market-launch
+    rule: COM-03
+    recency_days: 30
+    query: "fintech OR neobank OR payment company launches in new country or obtains banking licence {geo}"
+    local: {DACH: "Neobank Fintech Markteintritt Banklizenz erhalten Start in Deutschland", Nordics: "fintech neobank lanserar i ny marknad får banklicens", Poland: "fintech neobank wchodzi na rynek licencja bankowa start w Polsce"}
+  - id: acquisition-integration
+    rule: COM-02
+    recency_days: 30
+    query: "bank OR fintech acquisition completed integration of systems or platforms {geo}"
+  - id: regulatory-tech-deadline
+    rule: PRG-06
+    recency_days: 30
+    query: "banks prepare IT changes for DORA OR PSD3 OR instant payments regulation deadline {geo}"

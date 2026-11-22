@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, trackSourceOpened } from "../api";
 import { Badge, Err, humanize } from "../components/ui";
+const SERVICE: Record<string, string> = { staff_augmentation: "Staff Augmentation", team_extension: "Team Extension", ai_services: "AI Services" };
+const LANG: Record<string, string> = { de: "German", pl: "Polish", sv: "Swedish", no: "Norwegian", nb: "Norwegian", da: "Danish", fi: "Finnish", fr: "French", nl: "Dutch", es: "Spanish", it: "Italian", is: "Icelandic" };
 
 const ICP_LABEL: Record<string, string> = { strategic_5000_plus: "5,000+ staff", enterprise_1000_plus: "1,000+ staff", scaleup_500_999: "500 to 999 staff", below_threshold: "Below size threshold", unknown: "Size unknown" };
 const dayKey = (d: string | null) => (d ? new Date(d).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "Date unknown");
@@ -9,12 +11,12 @@ const LEAD: Record<string, [string, string]> = { queued: ["info", "Waiting to be
   no_event: ["", "Checked: nothing quotable"], blocked: ["bad", "Page not allowed"], failed: ["bad", "Could not check"] };
 
 export default function Feed() {
-  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [view, setView] = useState("accounts"); const [days, setDays] = useState(60);
+  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [view, setView] = useState("accounts"); const [days, setDays] = useState(60); const [fitOnly, setFitOnly] = useState(false);
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   useEffect(() => {
-    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=true&view=${view}`).then(setD).catch(setErr), q ? 250 : 0);
+    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=true&view=${view}&fit_only=${fitOnly}`).then(setD).catch(setErr), q ? 250 : 0);
     return () => clearTimeout(t);
-  }, [q, play, core, days, view]);
+  }, [q, play, core, days, view, fitOnly]);
   const groups: [string, any[]][] = [];
   d?.items.forEach((it: any) => { const k = dayKey(it.happened); const g = groups.find((x) => x[0] === k); g ? g[1].push(it) : groups.push([k, [it]]); });
   const cov = d?.coverage;
@@ -32,6 +34,7 @@ export default function Feed() {
         <select aria-label="Sales play" value={play} onChange={(e) => setPlay(e.target.value)}><option value="">All plays</option>{d?.plays.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         <select aria-label="Time window" value={days} onChange={(e) => setDays(Number(e.target.value))}><option value={14}>Last 2 weeks</option><option value={30}>Last 30 days</option><option value={60}>Last 60 days</option><option value={180}>Last 6 months</option></select>
         {view === "accounts" && <label className="small row"><input type="checkbox" checked={core} onChange={(e) => setCore(e.target.checked)} /> Main markets only</label>}
+        <label className="small row"><input type="checkbox" checked={fitOnly} onChange={(e) => setFitOnly(e.target.checked)} /> Only likely work for us</label>
       </div>
       <Err e={err} />
       {cov && !cov.all_monitored_healthy && <div className={`cov ${cov.no_active_monitoring ? "bad" : ""}`}><b>Coverage.</b> {cov.no_active_monitoring ? "No source is live yet, so this feed only shows what you verified yourself or what discovery found. A quiet feed says nothing about the market." : `${cov.unhealthy.length} source(s) are degraded: ${cov.unhealthy.map((u: any) => u.source).join(", ")}.`} <Link to="/admin/pipeline">See what is running</Link></div>}
@@ -52,8 +55,13 @@ export default function Feed() {
                     {it.programme && <Link className="small" to="/today">Programme: {it.programme.title}</Link>}
                   </div>
                   <h3 className="fcard-t">{it.summary}</h3>
+                  {it.why && <div className={`why ${it.why.level}`}>
+                    <span className="k">{it.why.level === "strong" ? "Likely work for The Codest" : it.why.level === "possible" ? "Could become work for The Codest" : "Probably not work for us"}</span>
+                    {it.why.service && it.why.service !== "none" && <Badge kind={it.why.level === "strong" ? "ok" : "info"}>{SERVICE[it.why.service] ?? it.why.service}</Badge>}
+                    <p className="small" style={{ margin: "4px 0 0" }}>{it.why.reason}</p>
+                  </div>}
                   {it.evidence.map((e: any) => (
-                    <blockquote key={e.claim_id} className="fquote">“{e.claim}”
+                    <blockquote key={e.claim_id} className="fquote">“{e.claim}”{e.translation && <span className="trans">In English{it.language && it.language !== "en" ? ` (from ${LANG[it.language] ?? it.language})` : ""}: “{e.translation}”</span>}
                       <cite>{e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" onClick={() => it.organization && trackSourceOpened({ organization_id: it.organization.id, where: "evidence" })}>{e.source ?? "Original source"} ↗</a> : "Structured record"}
                         authority {e.authority ?? "n/a"} · published {fmtDate(e.published_at)} · quote {e.anchor_verified ? "found on the page" : "not matched"}</cite></blockquote>))}
                   <div className="small muted">Event {fmtDate(it.event_at)} · published {fmtDate(it.published)} · first seen {fmtDate(it.first_seen)}</div>

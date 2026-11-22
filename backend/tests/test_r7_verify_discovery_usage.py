@@ -129,10 +129,14 @@ class FakeExa:
 
 
 def test_plans_are_built_from_active_rules_and_sync_is_idempotent(conn):
+    import yaml
+    from pathlib import Path
     plans = build_plans()
-    assert len(plans) == 24 and len({p.plan_id for p in plans}) == 24
-    assert {p.signal_rule_id for p in plans} <= {"PRG-01", "PRG-02", "PRG-06", "SRC-04", "SRC-05", "MAN-01"}
-    assert sync_plans(conn) == 24 and sync_plans(conn) == 0
+    assert len(plans) == len({p.plan_id for p in plans}) >= 24
+    rules = yaml.safe_load((Path(__file__).resolve().parents[1] / "rules" / "signal_rules.yaml").read_text())["rules"]
+    active = {r["id"] for r in rules if r.get("status") == "active"}
+    assert {p.signal_rule_id for p in plans} <= active          # every search serves a rule that can actually fire
+    assert sync_plans(conn) == len(plans) and sync_plans(conn) == 0
 
 
 def test_discovery_reserves_budget_records_reported_cost_and_queues_verification_only(conn):

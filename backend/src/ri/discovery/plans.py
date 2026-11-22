@@ -14,9 +14,13 @@ PATH = Path(__file__).resolve().parents[3] / "rules" / "discovery_plans.yaml"
 def build_plans(path: Path = PATH) -> list[SearchPlan]:
     cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
     out = []
+    langs = cfg.get("local_languages") or {}
     for t in cfg["themes"]:
         for g, geo in cfg["geographies"].items():
             out.append(SearchPlan(t["rule"], t["id"], g, "en", "news_and_press", int(t["recency_days"]), t["query"].format(geo=geo)))
+        for g, q in (t.get("local") or {}).items():            # the same theme in the market's own language
+            if g in cfg["geographies"]:
+                out.append(SearchPlan(t["rule"], t["id"], g, langs.get(g, "local"), "news_and_press", int(t["recency_days"]), q))
     return out
 
 

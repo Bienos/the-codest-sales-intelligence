@@ -165,6 +165,25 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
 
     account_brief.own_transactions = True  # type: ignore[attr-defined]
 
+    def assess_fit(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        """Plain-English 'why it fits The Codest' for findings that do not have one yet, a batch at a time."""
+        import asyncio as _a
+        from ..config import Settings as _S
+        from ..events.fit import assess
+        from .modelcall import make_call
+        st = _S.from_env(require_auth=False)
+        if not st.anthropic_api_key:
+            return {"skipped": "no AI key"}
+        call = make_call(conn, st, org_id=None, operation="assess_fit", key_prefix=f"fit:{job['id']}", models=[st.anthropic_model], max_tokens=4000)
+        out = {"assessed": 0, "batches": 0}
+        for _ in range(int(job["payload"].get("batches", 4))):
+            r = assess(conn, call, lambda c: _a.run(c))
+            conn.commit()
+            out["assessed"] += r["assessed"]; out["batches"] += 1
+            if not r.get("batch"):
+                break
+        return out
+
     def campaign_draft(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         """Writes and brand-checks a draft email sequence for one company. Drafts only."""
         from ..config import Settings
@@ -266,7 +285,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft}
+    return {"source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

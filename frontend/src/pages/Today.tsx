@@ -45,6 +45,7 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
           {c.tender && <div className="tender"><Badge kind="bad">Tender</Badge> Deadline <b>{fmtDateTime(c.tender.deadline_at)}</b> ({c.tender.deadline_tz ?? "timezone unknown"}). Status last rechecked {fmtDateTime(c.tender.last_status_check_at)}.</div>}
           <p><span className="k">What happened</span>{c.what_happened.summary ?? "No summary"}
             <span className="prov"> Event {fmtDate(c.what_happened.event_date)} · published {fmtDate(c.what_happened.published)} · first seen {fmtDate(c.what_happened.first_observed)} · checked {fmtDateTime(c.last_checked)}</span></p>
+          {c.plain_reason && <p><span className="k">In plain words</span>{c.plain_reason}</p>}
           <p><span className="k">Why it matters</span>{c.why_it_matters}</p>
           <div className="facts">
             <Fact label="External demand" value={humanize(c.external_demand_status)} kind={demandKind(c.external_demand_status)} />

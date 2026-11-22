@@ -36,6 +36,7 @@ class XClaim(BaseModel):
     predicate: str = Field(min_length=1, max_length=120)
     object: dict[str, Any] = Field(default_factory=dict)
     anchor: str = Field(min_length=3, max_length=600)
+    anchor_en: str | None = Field(default=None, max_length=900)
 
 
 class XEntity(BaseModel):
@@ -51,6 +52,8 @@ class XEvent(BaseModel):
     attrs: dict[str, Any] = Field(default_factory=dict)
     other_entities: list[XEntity] = Field(default_factory=list)
     claims: list[XClaim] = Field(min_length=1)
+    language: str | None = Field(default=None, max_length=8)
+    fit: dict[str, Any] | None = None
 
     @field_validator("event_date")
     @classmethod
@@ -68,6 +71,24 @@ class EventExtractor(Protocol):
     version: str
 
     async def extract(self, *, title: str | None, text: str, published_at: str | None) -> dict[str, Any]: ...
+
+
+FIT_LEVELS = {"strong", "possible", "none"}
+FIT_SERVICES = {"staff_augmentation", "team_extension", "ai_services", "none"}
+
+
+def clean_fit(fit: dict[str, Any] | None, language: str | None) -> dict[str, Any]:
+    """The model's plain-English view of why a finding could mean work for The Codest. Advisory only: it never creates a signal by itself."""
+    out: dict[str, Any] = {}
+    if language and re.match(r"^[a-z]{2}$", language.strip().lower()):
+        out["language"] = language.strip().lower()
+    if isinstance(fit, dict):
+        level = str(fit.get("level") or "").lower()
+        service = str(fit.get("service") or "").lower()
+        reason = re.sub(r"\s+", " ", str(fit.get("reason") or "")).strip()[:400]
+        if level in FIT_LEVELS:
+            out["fit"] = {"level": level, "service": service if service in FIT_SERVICES else "none", "reason": reason}
+    return out
 
 
 def _squash(s: str) -> str:
@@ -171,11 +192,11 @@ def process_document(conn: Conn, doc_id: str, extractor: EventExtractor, *, reso
         if not good:
             dropped_events += 1
             continue
-        claim_ids = [add_claim(conn, subject=ev.subject_name, predicate=c.predicate, obj=c.object, doc_id=doc_id, anchor=c.anchor[:600],
+        claim_ids = [add_claim(conn, subject=ev.subject_name, predicate=c.predicate, obj={**c.object, **({"anchor_en": c.anchor_en[:900]} if c.anchor_en and c.anchor_en.strip() != c.anchor.strip() else {})}, doc_id=doc_id, anchor=c.anchor[:600],
                                kind="quote", anchor_verified=True, model_version=extractor.version, valid_from=d["published_at"]) for c in good]
         org_id = resolve_org(ev.subject_name) if resolve_org else None
         others = [{"name": o.name, "role": o.role, "org_id": (resolve_org(o.name) if resolve_org else None)} for o in ev.other_entities]
-        attrs = {**ev.attrs, "source_tier": d["source_tier"], "flags": flags}
+        attrs = {**ev.attrs, "source_tier": d["source_tier"], "flags": flags, **clean_fit(ev.fit, ev.language)}
         dk = ev.attrs.get("dedup_key") or norm_key(ev.summary)
         # same fact in mirrored articles shares the origin group => one event; independent first-party issuers do not
         eid, created = store_event(conn, event_type=ev.event_type, subject_name=ev.subject_name, subject_org_id=org_id, summary=ev.summary, attrs=attrs,

@@ -2,3 +2,10 @@
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-bottom: 10px; }
 .grid2 label, .grid2 input { min-width: 0; width: 100%; }
 @media (max-width: 640px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+
+.why { margin: 10px 0 4px; padding: 10px 12px; border-left: 3px solid var(--line, #d9dbe8); background: var(--tint, #F6F7FF); }
+.why.strong { border-left-color: #1f8a5b; }
+.why.possible { border-left-color: #B87DFF; }
+.why.none { opacity: .75; }
+.why .k { display: inline-block; margin-right: 8px; font-weight: 600; font-size: 13px; }
+.fquote .trans { display: block; margin-top: 6px; font-style: normal; font-size: 13px; color: var(--muted, #5a5d80); }

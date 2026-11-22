@@ -39,7 +39,7 @@ def evidence_for(conn: Conn, claim_ids: list[Any], limit: int = 6) -> list[dict[
         shown = r["evidence_anchor"] or (f"{r['predicate'].replace('_', ' ')}: " + ", ".join(f"{k}={v}" for k, v in list(o.items())[:4] if v not in (None, '', [])) if o else r["predicate"].replace("_", " "))
         out.append({"claim_id": str(r["id"]), "claim": shown, "kind": r["claim_kind"], "anchor_verified": r["anchor_verified"], "url": url,
                     "published_at": r["published_at"], "retrieved_at": r["fetched_at"], "authority": r["source_tier"] or ("S1" if (r["object_json"] or {}).get("official_url") else None),
-                    "source": r["display_name"]})
+                    "source": r["display_name"], "translation": o.get("anchor_en")})
     return out
 
 
@@ -48,7 +48,7 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
     ini = q1(conn, "SELECT * FROM initiatives WHERE id=%s", (h["initiative_id"],))
     ws = q1(conn, "SELECT kind, scope_statement, scope_confidence FROM workstreams WHERE id=%s", (h["workstream_id"],)) if h["workstream_id"] else None
     act = q1(conn, "SELECT * FROM recommended_actions WHERE hypothesis_id=%s AND status IN ('proposed','accepted')", (h["id"],))
-    ev = q1(conn, "SELECT e.summary, e.event_at, e.pub_at, e.first_observed_at, e.last_checked_at, e.verified_at FROM events e JOIN initiative_events ie ON ie.event_id=e.id WHERE ie.initiative_id=%s AND ie.role='evidence' ORDER BY coalesce(e.event_at, e.pub_at) DESC NULLS LAST LIMIT 1", (h["initiative_id"],))
+    ev = q1(conn, "SELECT e.summary, e.event_at, e.pub_at, e.first_observed_at, e.last_checked_at, e.verified_at, e.attrs->'fit' AS fit FROM events e JOIN initiative_events ie ON ie.event_id=e.id WHERE ie.initiative_id=%s AND ie.role='evidence' ORDER BY coalesce(e.event_at, e.pub_at) DESC NULLS LAST LIMIT 1", (h["initiative_id"],))
     tender = q1(conn, "SELECT notice_id, deadline_at, deadline_tz, last_status_check_at, status FROM procurement_notices n WHERE n.buyer_org_id=%s AND n.status IN ('open','amended') ORDER BY deadline_at LIMIT 1", (h["organization_id"],)) if h["route_type"] in {"procurement", "direct"} else None
     snap = snapshot(h, act["action_type"] if act else None)
     changes = {k: [last_snapshot.get(k), v] for k, v in snap.items() if last_snapshot and last_snapshot.get(k) != v} if last_snapshot else None
@@ -62,7 +62,7 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
         "initiative": {"id": str(ini["id"]), "title": ini["title"], "official_title": ini["title_is_official"], "stage": ini["stage"], "working_title_label": None if ini["title_is_official"] else "analyst working title"},
         "what_happened": {"summary": ev["summary"] if ev else None, "event_date": ev["event_at"] if ev else None, "published": ev["pub_at"] if ev else None,
                           "first_observed": ev["first_observed_at"] if ev else None, "last_checked": ev["last_checked_at"] if ev else None},
-        "why_it_matters": why, "workstream": ws, "external_demand_status": h["external_demand_status"],
+        "why_it_matters": why, "plain_reason": (ev["fit"] or {}).get("reason") if ev else None, "workstream": ws, "external_demand_status": h["external_demand_status"],
         "route": {"type": h["route_type"], "counterparty": h["counterparty_name"], "access_status": h["access_status"]},
         "buyer_status": h["buyer_status"], "evidence_confidence": h["evidence_confidence"], "research_completeness": float(h["research_completeness"]),
         "evidence": evidence_for(conn, h["supporting_claim_ids"]), "counterevidence": review.get("contradicts", [])[:3], "unknowns": [u["unknown"] for u in (h["critical_unknowns"] or [])][:5],

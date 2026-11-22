@@ -342,7 +342,7 @@ def register_feed(app: FastAPI) -> None:
 
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
-                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, le=100), p: Principal = Depends(require("explorer.read"))):
+                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, le=100), fit_only: bool = False, p: Principal = Depends(require("explorer.read"))):
         from .search import all_like, tokens
         toks = tokens(q)
         rule_ids = fd.rules_for_play(play) if play else ([rule] if rule else [])
@@ -356,12 +356,13 @@ def register_feed(app: FastAPI) -> None:
                 f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=e.id) AS sigs, "
                 f"(SELECT coalesce(array_agg(ec.claim_id), '{{}}') FROM event_claims ec WHERE ec.event_id=e.id) AS claim_ids, "
                 f"(SELECT jsonb_build_object('id', i.id, 'title', i.title, 'stage', i.stage) FROM initiative_events ie JOIN initiatives i ON i.id=ie.initiative_id WHERE ie.event_id=e.id LIMIT 1) AS programme, "
-                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened "
+                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened, e.attrs->'fit' AS ai_fit, e.attrs->>'language' AS lang "
                 f"FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
                 f"WHERE {VIEWS[view]} AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
                 f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND s.rule_id = ANY(%s))) "
-                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only and view == "accounts", rule_ids or None, rule_ids or None, limit * 2])
+                f"AND (NOT %s OR e.attrs->'fit'->>'level' IN ('strong','possible')) "
+                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only and view == "accounts", rule_ids or None, rule_ids or None, fit_only, limit * 2])
             items = []
             for r in rows:
                 mk = market_focus(r["country_code"], r["segment"])
@@ -374,7 +375,7 @@ def register_feed(app: FastAPI) -> None:
                               "organization": {"id": str(r["org_id"]), "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"],
                                                "in_master_list": r["in_master_list"], "icp": icp_band(r["employees_estimate"], bool(r["employees_uncertain"]), r["segment"])["band"], "market": mk} if r["org_id"] else None,
                               "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in r["sigs"]], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
-                              "evidence": ev, "programme": r["programme"],
+                              "evidence": ev, "programme": r["programme"], "why": r["ai_fit"], "language": r["lang"],
                               "scope": {"proven": r["proven"], "linked": bool(r["org_id"]), "tier": r["market_tier"], "lane": r["lane"], "country": r["market_country"], "buyer": r["buyer_name"]}})
                 if len(items) >= limit:
                     break
