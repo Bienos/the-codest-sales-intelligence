@@ -17,11 +17,18 @@ from .webwatch import RobotsCache
 
 NEWS_PATH = re.compile(r"/(news|newsroom|press|press-releases?|media|media-centre|media-center|insights|stories|blog)(/|$|\?)", re.I)
 CAREERS_PATH = re.compile(r"/(careers?|jobs|join-us|work-with-us|vacancies)(/|$|\?)", re.I)
-ATS = [("greenhouse", re.compile(r"(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
-       ("lever", re.compile(r"jobs\.(?:eu\.)?lever\.co/([a-z0-9_-]+)", re.I)),
+ATS = [("greenhouse", re.compile(r"(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
+       ("greenhouse_eu", re.compile(r"(?:boards|job-boards)\.eu\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
+       ("lever", re.compile(r"jobs\.lever\.co/([a-z0-9_-]+)", re.I)),
+       ("lever_eu", re.compile(r"jobs\.eu\.lever\.co/([a-z0-9_-]+)", re.I)),
        ("ashby", re.compile(r"jobs\.ashbyhq\.com/([a-z0-9_.-]+)", re.I)),
        ("smartrecruiters", re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([A-Za-z0-9_-]+)", re.I))]
-BOARD_HOST = {"greenhouse": "boards.greenhouse.io", "lever": "jobs.lever.co", "ashby": "jobs.ashbyhq.com", "smartrecruiters": "jobs.smartrecruiters.com"}
+BOARD_HOST = {"greenhouse": "boards.greenhouse.io", "lever": "jobs.lever.co", "lever_eu": "jobs.eu.lever.co", "ashby": "jobs.ashbyhq.com", "smartrecruiters": "jobs.smartrecruiters.com"}
+
+
+def ats_source(provider: str) -> str:
+    """One registry source per board family: the EU Lever instance shares the Lever source."""
+    return "ats-" + provider.split("_")[0]
 _LEGAL = re.compile(r"\b(ag|gmbh|kg|se|sa|spa|s\.p\.a|ltd|limited|plc|llp|inc|llc|corp|corporation|bv|nv|ab|as|oy|oyj|asa|aps|a/s|sp|zoo|z o\.o|group|holding|holdings|the)\b", re.I)
 
 
@@ -137,6 +144,10 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
         page = await _get(client, robots, careers[0])
         if page:
             ats += parse_page(page, careers[0], domain)["ats"]
+    eu = [b for p, b in ats if p == "greenhouse_eu"]
+    if eu:
+        ats = [(p, b) for p, b in ats if p != "greenhouse_eu"]
+        notes.append(f"{domain}: job board on Greenhouse's EU instance ({', '.join(eu)}); that instance has no public listing API, so it is not read")
     if not ats and org_name:                     # nothing linked from the site: try the company's short name, accepting only a board that names this company
         ats += await probe_boards(client, domain, org_name)
         if ats:
@@ -170,7 +181,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
     from ..db import q1, qa
     from ..ingest.pipeline import RunResult, _run, close_unseen_jobs, upsert_document, upsert_job
     from ..ingest.process import process_run
-    from .ats import AshbyConnector, GreenhouseConnector, LeverConnector, SmartRecruitersConnector
+    from .ats import AshbyConnector, GreenhouseConnector, LeverConnector, LeverEuConnector, SmartRecruitersConnector
     from .util import utcnow
     from .webwatch import FeedConnector, PageWatchConnector
     now = now or utcnow()
@@ -192,7 +203,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
     res = RunResult("account-scan", "completed")
     robots = RobotsCache()
     retention = {r["source_id"]: r["retention_policy"] for r in qa(conn, "SELECT source_id, retention_policy FROM sources WHERE source_id IN ('corporate-ir-newsrooms','ats-greenhouse','ats-lever','ats-ashby','ats-smartrecruiters')")}
-    ats_cls = {"greenhouse": GreenhouseConnector, "lever": LeverConnector, "ashby": AshbyConnector, "smartrecruiters": SmartRecruitersConnector}
+    ats_cls = {"greenhouse": GreenhouseConnector, "lever": LeverConnector, "ashby": AshbyConnector, "smartrecruiters": SmartRecruitersConnector, "lever_eu": LeverEuConnector}
     scanned = 0
     for ep in existing:
         status, detail, seen = "ok", None, 0
@@ -211,12 +222,12 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                         elif st == "changed":
                             res.changed_doc_ids.append(doc_id)
                 elif ep["kind"] == "job_board" and ep["provider"] in ats_cls:
-                    con = ats_cls[ep["provider"]](client, ep["board"], employer_name=org["display_name"], source_id=f"ats-{ep['provider']}")
+                    con = ats_cls[ep["provider"]](client, ep["board"], employer_name=org["display_name"], source_id=ats_source(ep["provider"]))
                     batch = _run(con.fetch(None, 500))
                     ids: set[str] = set()
                     for item in batch.items:
                         d = con.canonicalize(item)
-                        upsert_document(conn, f"ats-{ep['provider']}", d, retention.get(f"ats-{ep['provider']}") or "excerpt")
+                        upsert_document(conn, ats_source(ep["provider"]), d, retention.get(ats_source(ep["provider"])) or "excerpt")
                         jid, ch = upsert_job(conn, d.structured, org_id, now)
                         ids.add(d.structured["job_id"])
                         seen += 1

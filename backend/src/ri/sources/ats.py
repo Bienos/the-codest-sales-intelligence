@@ -92,9 +92,10 @@ class _AtsBase:
 
 class LeverConnector(_AtsBase):
     provider = "lever"
+    API = "https://api.lever.co/v0/postings"
 
     async def _list(self):
-        data = await request_json(self.client, "GET", f"https://api.lever.co/v0/postings/{self.board}", params={"mode": "json"})
+        data = await request_json(self.client, "GET", f"{self.API}/{self.board}", params={"mode": "json"})
         if not isinstance(data, list):
             raise SchemaDrift("Lever postings response is not a list")
         out = []
@@ -106,6 +107,12 @@ class LeverConnector(_AtsBase):
                         "_posted": datetime.fromtimestamp(p["createdAt"] / 1000, tz=timezone.utc) if p.get("createdAt") else None,
                         "_updated": None, "_url": p.get("hostedUrl"), "_desc": desc, "_tech": tech_keywords(f"{p['text']} {desc}")})
         return out
+
+
+class LeverEuConnector(LeverConnector):
+    """Lever's EU instance: same listing API on its own host (host reachable; the data format is Lever's documented one)."""
+    provider = "lever_eu"
+    API = "https://api.eu.lever.co/v0/postings"
 
 
 class GreenhouseConnector(_AtsBase):

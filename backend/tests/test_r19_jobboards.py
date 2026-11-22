@@ -111,3 +111,37 @@ def test_market_jobs_link_the_employer_by_name_and_a_financial_employer_can_beco
     ev = conn.execute("select subject_org_id, attrs from events where subject_name_raw='Nordea Bank Abp'").fetchone()
     assert ev["subject_org_id"] is None and ev["attrs"]["role_of_subject"] == "bank"
     assert employer_role("Agile Resources AB") is None
+
+
+def test_eu_instances_use_the_right_host_and_greenhouse_eu_is_not_read():
+    from ri.sources.account_scan import ats_source, parse_page
+    from ri.sources.ats import LeverConnector, LeverEuConnector
+    html = ('<a href="https://jobs.eu.lever.co/eufintech">a</a><a href="https://jobs.lever.co/usco">b</a>'
+            '<a href="https://boards.eu.greenhouse.io/mangopay">c</a><a href="https://job-boards.greenhouse.io/usgh">d</a>')
+    ats = parse_page(html, "https://x.com/careers", "x.com")["ats"]
+    assert ("lever_eu", "eufintech") in ats and ("lever", "usco") in ats and ("lever", "eufintech") not in ats          # the EU board is not also read as a US board
+    assert ("greenhouse_eu", "mangopay") in ats and ("greenhouse", "usgh") in ats and ("greenhouse", "mangopay") not in ats
+    assert ats_source("lever_eu") == "ats-lever" and ats_source("smartrecruiters") == "ats-smartrecruiters"
+    seen = []
+
+    def handler(req):
+        seen.append(str(req.url))
+        return httpx.Response(200, json=[])
+    for cls, board in ((LeverConnector, "usco"), (LeverEuConnector, "eufintech")):
+        asyncio.run(cls(httpx.AsyncClient(transport=httpx.MockTransport(handler)), board).fetch(None, 10))
+    assert seen[0].startswith("https://api.lever.co/") and seen[1].startswith("https://api.eu.lever.co/")
+
+
+def test_greenhouse_eu_board_is_dropped_with_a_note_and_a_discover_run_keeps_the_rest(conn):
+    from ri.sources.account_scan import discover
+    pages = {"https://eu.example/": '<a href="https://eu.example/careers">Careers</a>',
+             "https://eu.example/careers": '<a href="https://boards.eu.greenhouse.io/mangopay">jobs</a><a href="https://jobs.lever.co/usco">more</a>'}
+
+    def handler(req):
+        u = str(req.url)
+        if u.endswith("/robots.txt"):
+            return httpx.Response(200, text="User-agent: *\nAllow: /")
+        return httpx.Response(200, text=pages[u]) if u in pages else httpx.Response(404)
+    out = asyncio.run(discover(httpx.AsyncClient(transport=httpx.MockTransport(handler)), "eu.example", org_name="Eu Example Ltd"))
+    boards = [(e["provider"], e["board"]) for e in out["endpoints"] if e["kind"] == "job_board"]
+    assert boards == [("lever", "usco")] and any("EU instance" in n for n in out["notes"])
