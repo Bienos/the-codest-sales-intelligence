@@ -190,7 +190,7 @@ def run_source(conn: Conn, connector: SourceConnector, *, resolve_org=None, limi
                         if ch != "unchanged":
                             res.structured_changes.append(("procurement", nid, ch))
                     elif d.kind == "job_posting" and d.structured:
-                        org = (src["config"] or {}).get("organization_id")
+                        org = (src["config"] or {}).get("organization_id") or (resolve_org(d.structured.get("employer_name")) if resolve_org and d.structured.get("employer_name") else None)
                         key = (d.structured["provider"], d.structured["board"])
                         seen_jobs.setdefault(key, set()).add(d.structured["job_id"])
                         jid, ch = upsert_job(conn, d.structured, org, now)

@@ -19,7 +19,47 @@ NEWS_PATH = re.compile(r"/(news|newsroom|press|press-releases?|media|media-centr
 CAREERS_PATH = re.compile(r"/(careers?|jobs|join-us|work-with-us|vacancies)(/|$|\?)", re.I)
 ATS = [("greenhouse", re.compile(r"(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
        ("lever", re.compile(r"jobs\.(?:eu\.)?lever\.co/([a-z0-9_-]+)", re.I)),
-       ("ashby", re.compile(r"jobs\.ashbyhq\.com/([a-z0-9_.-]+)", re.I))]
+       ("ashby", re.compile(r"jobs\.ashbyhq\.com/([a-z0-9_.-]+)", re.I)),
+       ("smartrecruiters", re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([A-Za-z0-9_-]+)", re.I))]
+BOARD_HOST = {"greenhouse": "boards.greenhouse.io", "lever": "jobs.lever.co", "ashby": "jobs.ashbyhq.com", "smartrecruiters": "jobs.smartrecruiters.com"}
+_LEGAL = re.compile(r"\b(ag|gmbh|kg|se|sa|spa|s\.p\.a|ltd|limited|plc|llp|inc|llc|corp|corporation|bv|nv|ab|as|oy|oyj|asa|aps|a/s|sp|zoo|z o\.o|group|holding|holdings|the)\b", re.I)
+
+
+def _name_tokens(name: str) -> set[str]:
+    return {t for t in re.sub(r"[^a-z0-9 ]+", " ", _LEGAL.sub(" ", name.lower())).split() if len(t) > 1}
+
+
+def name_matches(org_name: str, found_name: str | None) -> bool:
+    """A board found by guessing the company's short name is used only when the board's own company name is the same company (all words of the shorter name appear in the other)."""
+    a, b = _name_tokens(org_name), _name_tokens(found_name or "")
+    if not a or not b:
+        return False
+    small, big = (a, b) if len(a) <= len(b) else (b, a)
+    return small <= big
+
+
+async def probe_boards(client: httpx.AsyncClient, domain: str, org_name: str) -> list[tuple[str, str]]:
+    """No job board linked from the website: try the company's short name on boards whose API states the company name, and keep a hit only if that name matches.
+    Lever and Ashby do not state a company name, so they are never guessed."""
+    label = domain.removeprefix("www.").split(".")[0]
+    slugs = list(dict.fromkeys([label, re.sub(r"[^a-z0-9]", "", org_name.lower().split(" ")[0])]))
+    hits: list[tuple[str, str]] = []
+    for slug in [x for x in slugs if len(x) >= 3][:2]:
+        try:
+            r = await client.get(f"https://boards-api.greenhouse.io/v1/boards/{slug}", headers={"User-Agent": UA})
+            if r.status_code == 200 and name_matches(org_name, (r.json() or {}).get("name")):
+                hits.append(("greenhouse", slug))
+        except (httpx.HTTPError, ValueError):
+            pass
+        try:
+            r = await client.get(f"https://api.smartrecruiters.com/v1/companies/{slug}/postings", params={"limit": 1}, headers={"User-Agent": UA})
+            if r.status_code == 200:
+                c = (r.json() or {}).get("content") or []
+                if c and name_matches(org_name, (c[0].get("company") or {}).get("name")):
+                    hits.append(("smartrecruiters", slug))
+        except (httpx.HTTPError, ValueError):
+            pass
+    return hits
 FEED_GUESSES = ("/feed", "/rss.xml", "/news/feed", "/blog/feed")
 MAX_BYTES = 2_000_000
 
@@ -79,7 +119,7 @@ async def _get(client: httpx.AsyncClient, robots: RobotsCache, url: str) -> str 
     return r.text if r.status_code == 200 else None
 
 
-async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache | None = None) -> dict[str, Any]:
+async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache | None = None, org_name: str | None = None) -> dict[str, Any]:
     """Returns {endpoints: [{kind,url,provider,board}], notes: [...]}. Never raises for an unreachable site: that is a finding, not a failure."""
     robots = robots or RobotsCache()
     domain = domain.strip().lower().removeprefix("https://").removeprefix("http://").strip("/")
@@ -97,6 +137,10 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
         page = await _get(client, robots, careers[0])
         if page:
             ats += parse_page(page, careers[0], domain)["ats"]
+    if not ats and org_name:                     # nothing linked from the site: try the company's short name, accepting only a board that names this company
+        ats += await probe_boards(client, domain, org_name)
+        if ats:
+            notes.append(f"{domain}: job board found by name match, not linked from the website: {', '.join(f'{p}/{b}' for p, b in ats)}")
     if news:                                     # a newsroom often advertises its own feed
         page = await _get(client, robots, news[0])
         if page:
@@ -115,7 +159,7 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
     for u in careers[:1]:
         eps.append({"kind": "careers", "url": u, "provider": None, "board": None})
     for prov, board in list(dict.fromkeys(ats))[:3]:
-        eps.append({"kind": "job_board", "url": f"https://{ {'greenhouse': 'boards.greenhouse.io', 'lever': 'jobs.lever.co', 'ashby': 'jobs.ashbyhq.com'}[prov] }/{board}", "provider": prov, "board": board})
+        eps.append({"kind": "job_board", "url": f"https://{BOARD_HOST[prov]}/{board}", "provider": prov, "board": board})
     if not eps:
         notes.append(f"{domain}: no news feed, press page, careers page or job board found on the home page")
     return {"endpoints": eps, "notes": notes}
@@ -126,7 +170,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
     from ..db import q1, qa
     from ..ingest.pipeline import RunResult, _run, close_unseen_jobs, upsert_document, upsert_job
     from ..ingest.process import process_run
-    from .ats import AshbyConnector, GreenhouseConnector, LeverConnector
+    from .ats import AshbyConnector, GreenhouseConnector, LeverConnector, SmartRecruitersConnector
     from .util import utcnow
     from .webwatch import FeedConnector, PageWatchConnector
     now = now or utcnow()
@@ -138,7 +182,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
     existing = qa(conn, "SELECT * FROM account_endpoints WHERE organization_id=%s", (org_id,))
     notes: list[str] = []
     if force_discover or not existing:
-        d = _run(discover(client, org["canonical_domain"]))
+        d = _run(discover(client, org["canonical_domain"], org_name=org["display_name"]))
         notes += d["notes"]
         for e in d["endpoints"]:
             conn.execute("INSERT INTO account_endpoints(organization_id, kind, url, provider, board) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (organization_id, url) DO NOTHING",
@@ -147,8 +191,8 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
         existing = qa(conn, "SELECT * FROM account_endpoints WHERE organization_id=%s", (org_id,))
     res = RunResult("account-scan", "completed")
     robots = RobotsCache()
-    retention = {r["source_id"]: r["retention_policy"] for r in qa(conn, "SELECT source_id, retention_policy FROM sources WHERE source_id IN ('corporate-ir-newsrooms','ats-greenhouse','ats-lever','ats-ashby')")}
-    ats_cls = {"greenhouse": GreenhouseConnector, "lever": LeverConnector, "ashby": AshbyConnector}
+    retention = {r["source_id"]: r["retention_policy"] for r in qa(conn, "SELECT source_id, retention_policy FROM sources WHERE source_id IN ('corporate-ir-newsrooms','ats-greenhouse','ats-lever','ats-ashby','ats-smartrecruiters')")}
+    ats_cls = {"greenhouse": GreenhouseConnector, "lever": LeverConnector, "ashby": AshbyConnector, "smartrecruiters": SmartRecruitersConnector}
     scanned = 0
     for ep in existing:
         status, detail, seen = "ok", None, 0
@@ -178,8 +222,9 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                         seen += 1
                         if ch != "unchanged":
                             res.structured_changes.append(("job", jid, ch))
-                    for closed in close_unseen_jobs(conn, ep["provider"], ep["board"], ids, now):   # only after an affirmative full listing
-                        res.structured_changes.append(("job", closed, "closed"))
+                    if batch.complete_listing:
+                        for closed in close_unseen_jobs(conn, ep["provider"], ep["board"], ids, now):   # only after an affirmative full listing
+                            res.structured_changes.append(("job", closed, "closed"))
             scanned += 1
         except Exception as exc:   # noqa: BLE001 - one bad endpoint must not stop the others
             status, detail = "failed", f"{type(exc).__name__}: {exc}"[:300]

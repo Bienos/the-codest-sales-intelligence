@@ -1,0 +1,1308 @@
+{
+ "smartrecruiters_list": {
+  "offset": 0,
+  "limit": 100,
+  "totalFound": 3,
+  "content": [
+   {
+    "id": "744000163090169",
+    "name": "IN_RBAI_Software Automation expert_IN",
+    "uuid": "de086c9e-93b1-477b-97d3-4919c02743a3",
+    "jobAdId": "35e78e24-3b12-4ff8-8de0-5b7d755d6eaf",
+    "defaultJobAd": true,
+    "refNumber": "REF301503C",
+    "company": {
+     "identifier": "BoschGroup",
+     "name": "Bosch Group"
+    },
+    "releasedDate": "2026-11-22T07:33:06.429Z",
+    "location": {
+     "city": "Bengaluru",
+     "region": "KA",
+     "country": "in",
+     "address": "Naganathapura Main Road",
+     "postalCode": "560100",
+     "remote": false,
+     "hybrid": false,
+     "latitude": "12.8721602",
+     "longitude": "77.6673187",
+     "fullLocation": "Bengaluru, KA, India"
+    },
+    "industry": {
+     "id": "mechanical_engineering",
+     "label": "Mechanical Or Industrial Engineering"
+    },
+    "department": {},
+    "function": {
+     "id": "engineering",
+     "label": "Engineering"
+    },
+    "typeOfEmployment": {
+     "id": "permanent",
+     "label": "Full-time"
+    },
+    "experienceLevel": {
+     "id": "associate",
+     "label": "Associate"
+    },
+    "customField": [
+     {
+      "fieldId": "5abe2a4ab60a5e486a2d9b1d",
+      "fieldLabel": "Contract type",
+      "valueId": "1e46492b-d24f-460c-b095-38cf08a778d8",
+      "valueLabel": "Unlimited"
+     },
+     {
+      "fieldId": "5abe28e96d8bc56863dd9746",
+      "fieldLabel": "Tariff Area",
+      "valueId": "2473485f-051f-4fbc-b802-f3620b73998c",
+      "valueLabel": "India Local Grades"
+     },
+     {
+      "fieldId": "586a997ee4b05fd937b86098",
+      "fieldLabel": "Legal Entity(acronym)",
+      "valueId": "RBAI",
+      "valueLabel": "RBAI"
+     },
+     {
+      "fieldId": "586a99b5e4b0daa006ae1079",
+      "fieldLabel": "Working Location",
+      "valueId": "Naganathapura",
+      "valueLabel": "Naganathapura"
+     },
+     {
+      "fieldId": "5abe295a6d8bc56863dd9747",
+      "fieldLabel": "Global Salary Level",
+      "valueId": "4319a4d2-6690-4a34-ac0f-9d8c126f1af2",
+      "valueLabel": "Junior/ Lower Tariff"
+     },
+     {
+      "fieldId": "69ca83a2489188782a1e9f87",
+      "fieldLabel": "Direct Or Indirect",
+      "valueId": "0d8b2ae9-fc67-447b-9165-201f59f71e90",
+      "valueLabel": "Direct"
+     },
+     {
+      "fieldId": "5abe29f9b60a5e486a2d9b1c",
+      "fieldLabel": "Working hours",
+      "valueId": "60756b3e-dbab-4353-ac3a-0064d2bb27d8",
+      "valueLabel": "Full-time"
+     },
+     {
+      "fieldId": "586a9995e4b0daa006ae1078",
+      "fieldLabel": "Legal Entity",
+      "valueId": "Bosch Automotive Electronics India Private Ltd.",
+      "valueLabel": "Bosch Automotive Electronics India Private Ltd."
+     },
+     {
+      "fieldId": "691cf1c93001c782b9560ab7",
+      "fieldLabel": "Division full name",
+      "valueId": "acbd0fb4-afd1-49f8-8abc-ec454a4e33bd",
+      "valueLabel": "Mobility Electronics"
+     },
+     {
+      "fieldId": "5abe27936d8bc56863dd9745",
+      "fieldLabel": "Position type",
+      "valueId": "c7b4da31-6f38-405a-b2e8-08a76e3c3f2c",
+      "valueLabel": "Professional"
+     },
+     {
+      "fieldId": "COUNTRY",
+      "fieldLabel": "Country/Region",
+      "valueId": "in",
+      "valueLabel": "India"
+     },
+     {
+      "fieldId": "586a971ee4b0daa006ae1077",
+      "fieldLabel": "Brands",
+      "valueId": "default",
+      "valueLabel": "Bosch Group"
+     },
+     {
+      "fieldId": "586a996ce4b05fd937b86097",
+      "fieldLabel": "Working Country",
+      "valueId": "IN",
+      "valueLabel": "India"
+     },
+     {
+      "fieldId": "586a9b22e4b05fd937b8609a",
+      "fieldLabel": "Local Grade",
+      "valueId": "IN_RBAI_GR - 6",
+      "valueLabel": "IN_RBAI_GR - 6"
+     },
+     {
+      "fieldId": "586a99a5e4b05fd937b86099",
+      "fieldLabel": "Division",
+      "valueId": "AE",
+      "valueLabel": "ME"
+     }
+    ],
+    "visibility": "PUBLIC",
+    "ref": "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings/744000163090169",
+    "language": {
+     "code": "en",
+     "label": "English",
+     "labelNative": "English (US)"
+    }
+   },
+   {
+    "id": "744000162795191",
+    "name": "Senior AI Solution Developer - ERP (f/m/div.)",
+    "uuid": "781b4895-e745-4b69-a4e1-e7cfc3096d2e",
+    "jobAdId": "f27525fb-fdb9-4832-96ae-86f64e81b1a0",
+    "defaultJobAd": true,
+    "refNumber": "REF299333K",
+    "company": {
+     "identifier": "BoschGroup",
+     "name": "Bosch Group"
+    },
+    "releasedDate": "2026-11-20T18:05:26.766Z",
+    "location": {
+     "city": "Lisboa",
+     "country": "pt",
+     "address": "Avenida Infante Dom Henrique",
+     "remote": false,
+     "hybrid": true,
+     "fullLocation": "Lisboa, , Portugal"
+    },
+    "industry": {
+     "id": "computer_software",
+     "label": "Computer Software"
+    },
+    "department": {},
+    "function": {
+     "id": "engineering",
+     "label": "Engineering"
+    },
+    "typeOfEmployment": {
+     "id": "permanent",
+     "label": "Full-time"
+    },
+    "experienceLevel": {
+     "id": "associate",
+     "label": "Associate"
+    },
+    "customField": [
+     {
+      "fieldId": "5abe2a4ab60a5e486a2d9b1d",
+      "fieldLabel": "Contract type",
+      "valueId": "75141c2b-6dde-484b-b128-d81d40a9be41",
+      "valueLabel": "According to Arrangement"
+     },
+     {
+      "fieldId": "5abe28e96d8bc56863dd9746",
+      "fieldLabel": "Tariff Area",
+      "valueId": "7174fab4-934a-47da-81a5-cb2d914a4719",
+      "valueLabel": "Portugal Local Grades"
+     },
+     {
+      "fieldId": "586a997ee4b05fd937b86098",
+      "fieldLabel": "Legal Entity(acronym)",
+      "valueId": "6bd00876-3efa-419c-9aac-20d5efb2d4fb",
+      "valueLabel": "TTPO"
+     },
+     {
+      "fieldId": "586a99b5e4b0daa006ae1079",
+      "fieldLabel": "Working Location",
+      "valueId": "ede6a302-2a36-4311-8817-28620866422e",
+      "valueLabel": "Lisboa"
+     },
+     {
+      "fieldId": "5abe295a6d8bc56863dd9747",
+      "fieldLabel": "Global Salary Level",
+      "valueId": "80ae06a1-4738-48e8-8aea-4613f58ecd57",
+      "valueLabel": "Others"
+     },
+     {
+      "fieldId": "69ca83a2489188782a1e9f87",
+      "fieldLabel": "Direct Or Indirect",
+      "valueId": "1aefbf4c-c10a-422e-a975-a504a7117792",
+      "valueLabel": "Indirect"
+     },
+     {
+      "fieldId": "5abe29f9b60a5e486a2d9b1c",
+      "fieldLabel": "Working hours",
+      "valueId": "60756b3e-dbab-4353-ac3a-0064d2bb27d8",
+      "valueLabel": "Full-time"
+     },
+     {
+      "fieldId": "586a9995e4b0daa006ae1078",
+      "fieldLabel": "Legal Entity",
+      "valueId": "18ec5c40-faae-4f76-b08d-ca6504012787",
+      "valueLabel": "Home Comfort"
+     },
+     {
+      "fieldId": "691cf1c93001c782b9560ab7",
+      "fieldLabel": "Division full name",
+      "valueId": "65a82db8-6dd3-40f0-a812-01522dc95503",
+      "valueLabel": "Home Comfort"
+     },
+     {
+      "fieldId": "5abe27936d8bc56863dd9745",
+      "fieldLabel": "Position type",
+      "valueId": "c7b4da31-6f38-405a-b2e8-08a76e3c3f2c",
+      "valueLabel": "Professional"
+     },
+     {
+      "fieldId": "COUNTRY",
+      "fieldLabel": "Country/Region",
+      "valueId": "pt",
+      "valueLabel": "Portugal"
+     },
+     {
+      "fieldId": "586a971ee4b0daa006ae1077",
+      "fieldLabel": "Brands",
+      "valueId": "default",
+      "valueLabel": "Bosch Group"
+     },
+     {
+      "fieldId": "586a996ce4b05fd937b86097",
+      "fieldLabel": "Working Country",
+      "valueId": "5ec12aa3-3c77-41f9-9e2c-af98140190a3",
+      "valueLabel": "Portugal"
+     },
+     {
+      "fieldId": "586a9b22e4b05fd937b8609a",
+      "fieldLabel": "Local Grade",
+      "valueId": "40553c59-5155-4004-a841-6491941fb1bd",
+      "valueLabel": "PT_Tariff"
+     },
+     {
+      "fieldId": "586a99a5e4b05fd937b86099",
+      "fieldLabel": "Division",
+      "valueId": "TT",
+      "valueLabel": "HC"
+     }
+    ],
+    "visibility": "PUBLIC",
+    "ref": "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings/744000162795191",
+    "language": {
+     "code": "en",
+     "label": "English",
+     "labelNative": "English (US)"
+    }
+   },
+   {
+    "id": "744000162788569",
+    "name": "Chief Expert Robotics",
+    "uuid": "39b698f1-3543-4ec5-acd7-ab505ce41cea",
+    "jobAdId": "f89c435d-bce4-4b92-86a1-199dbe2e0dec",
+    "defaultJobAd": true,
+    "refNumber": "REF296825F",
+    "company": {
+     "identifier": "BoschGroup",
+     "name": "Bosch Group"
+    },
+    "releasedDate": "2026-11-20T17:29:41.035Z",
+    "location": {
+     "city": "Sunnyvale",
+     "region": "CA",
+     "country": "us",
+     "address": "384 Santa Trinita Avenue",
+     "postalCode": "94085",
+     "remote": false,
+     "hybrid": false,
+     "latitude": "37.3820466",
+     "longitude": "-121.9996484",
+     "fullLocation": "Sunnyvale, CA, United States"
+    },
+    "industry": {
+     "id": "it_and_services",
+     "label": "Information Technology And Services"
+    },
+    "department": {},
+    "function": {
+     "id": "information_technology",
+     "label": "Information Technology"
+    },
+    "typeOfEmployment": {
+     "id": "permanent",
+     "label": "Full-time"
+    },
+    "experienceLevel": {
+     "id": "director",
+     "label": "Director"
+    },
+    "customField": [
+     {
+      "fieldId": "5abe2a4ab60a5e486a2d9b1d",
+      "fieldLabel": "Contract type",
+      "valueId": "1e46492b-d24f-460c-b095-38cf08a778d8",
+      "valueLabel": "Unlimited"
+     },
+     {
+      "fieldId": "5abe28e96d8bc56863dd9746",
+      "fieldLabel": "Tariff Area",
+      "valueId": "82f1dd4b-de9d-4134-9f1a-8d315be380ae",
+      "valueLabel": "United States Local Grades"
+     },
+     {
+      "fieldId": "586a997ee4b05fd937b86098",
+      "fieldLabel": "Legal Entity(acronym)",
+      "valueId": "RBUS",
+      "valueLabel": "RBUS"
+     },
+     {
+      "fieldId": "586a99b5e4b0daa006ae1079",
+      "fieldLabel": "Working Location",
+      "valueId": "74e3aea0-cc7a-4c14-9adc-c3e33e9f4aef",
+      "valueLabel": "Sunnyvale, CA"
+     },
+     {
+      "fieldId": "5abe295a6d8bc56863dd9747",
+      "fieldLabel": "Global Salary Level",
+      "valueId": "73248dc5-afe5-4862-a61b-f151e58ebb6d",
+      "valueLabel": "SL2"
+     },
+     {
+      "fieldId": "69ca83a2489188782a1e9f87",
+      "fieldLabel": "Direct Or Indirect",
+      "valueId": "1aefbf4c-c10a-422e-a975-a504a7117792",
+      "valueLabel": "Indirect"
+     },
+     {
+      "fieldId": "5abe29f9b60a5e486a2d9b1c",
+      "fieldLabel": "Working hours",
+      "valueId": "60756b3e-dbab-4353-ac3a-0064d2bb27d8",
+      "valueLabel": "Full-time"
+     },
+     {
+      "fieldId": "586a9995e4b0daa006ae1078",
+      "fieldLabel": "Legal Entity",
+      "valueId": "Robert Bosch LLC",
+      "valueLabel": "Robert Bosch LLC"
+     },
+     {
+      "fieldId": "691cf1c93001c782b9560ab7",
+      "fieldLabel": "Division full name",
+      "valueId": "b4e099f0-c66a-4d81-b9ce-b9d1d34e310b",
+      "valueLabel": "CR"
+     },
+     {
+      "fieldId": "5abe27936d8bc56863dd9745",
+      "fieldLabel": "Position type",
+      "valueId": "c7b4da31-6f38-405a-b2e8-08a76e3c3f2c",
+      "valueLabel": "Professional"
+     },
+     {
+      "fieldId": "COUNTRY",
+      "fieldLabel": "Country/Region",
+      "valueId": "us",
+      "valueLabel": "United States"
+     },
+     {
+      "fieldId": "586a971ee4b0daa006ae1077",
+      "fieldLabel": "Brands",
+      "valueId": "default",
+      "valueLabel": "Bosch Group"
+     },
+     {
+      "fieldId": "586a996ce4b05fd937b86097",
+      "fieldLabel": "Working Country",
+      "valueId": "US",
+      "valueLabel": "United States"
+     },
+     {
+      "fieldId": "586a9b22e4b05fd937b8609a",
+      "fieldLabel": "Local Grade",
+      "valueId": "US_SL2",
+      "valueLabel": "US_SL2"
+     },
+     {
+      "fieldId": "586a99a5e4b05fd937b86099",
+      "fieldLabel": "Division",
+      "valueId": "CR",
+      "valueLabel": "CR"
+     }
+    ],
+    "visibility": "PUBLIC",
+    "ref": "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings/744000162788569",
+    "language": {
+     "code": "en",
+     "label": "English",
+     "labelNative": "English (US)"
+    }
+   }
+  ]
+ },
+ "smartrecruiters_detail": {
+  "id": "744000163090169",
+  "name": "IN_RBAI_Software Automation expert_IN",
+  "uuid": "de086c9e-93b1-477b-97d3-4919c02743a3",
+  "jobId": "6fe01d36-6215-431a-9eef-e5237eb1425c",
+  "jobAdId": "35e78e24-3b12-4ff8-8de0-5b7d755d6eaf",
+  "defaultJobAd": true,
+  "refNumber": "REF301503C",
+  "company": {
+   "name": "Bosch Group",
+   "identifier": "BoschGroup"
+  },
+  "location": {
+   "city": "Bengaluru",
+   "region": "KA",
+   "country": "in",
+   "address": "Naganathapura Main Road",
+   "postalCode": "560100",
+   "remote": false,
+   "hybrid": false,
+   "latitude": "12.8721602",
+   "longitude": "77.6673187",
+   "fullLocation": "Bengaluru, KA, India"
+  },
+  "releasedDate": "2026-11-22T07:33:06.429Z",
+  "postingUrl": "https://jobs.smartrecruiters.com/BoschGroup/744000163090169-in-rbai-software-automation-expert-in",
+  "applyUrl": "https://jobs.smartrecruiters.com/BoschGroup/744000163090169-in-rbai-software-automation-expert-in?oga=true",
+  "jobAd": {
+   "sections": {
+    "companyDescription": {
+     "title": "Company Description",
+     "text": "<p>In India, Bosch is a leading supplier of technology and services in the areas of Mobility Solutions, Industrial Technology, Consumer Goods, and Energy and Building Technology. Additionally, Bosch has in India the largest development center outside Germany, for end to end engineering and technology solutions. The Bosch Group operates in India through twelve companies with a combined strength of over 31,500 associates which includes around 15,650 research and development associates.</p><p>Bosch Automotive Electronics India Pvt. Ltd. (RBAI) is a 100% subsidiary of Robert Bosch GmbH . Establish"
+    },
+    "jobDescription": {
+     "title": "Job Description",
+     "text": "<p>The purpose of this position is to administer the RPA BOTs, maintain and implement low-code solutions, define and develop the hyper automation tools, training end users, and ensure compliance through documentation to driveautomation and digital transformation for Logistics Innovation.</p><ul><li><strong>RPA Development:</strong> Develop, administer, monitor, and enhance RPA bots across platforms in line with Bosch standards and planned automation targets.</li><li><strong>Low-Code Application Development:</strong> Maintain existing OutSystems applications, provide Level 2 support, and develo"
+    },
+    "qualifications": {
+     "title": "Qualifications",
+     "text": "<ul><li>Bachelor's in engineering (Mechatronics, CS, &#xa0;instrumentation or related fields)</li><li>Experience * 1-2 years of experience in web application development and robotic process automation&#xa0;development</li></ul>"
+    },
+    "additionalInformation": {
+     "title": "Additional Information",
+     "text": ""
+    }
+   }
+  },
+  "active": true,
+  "visibility": "PUBLIC",
+  "industry": {
+   "id": "mechanical_engineering",
+   "label": "Mechanical Or Industrial Engineering"
+  },
+  "function": {
+   "id": "engineering",
+   "label": "Engineering"
+  },
+  "experienceLevel": {
+   "id": "associate",
+   "label": "Associate"
+  },
+  "typeOfEmployment": {
+   "id": "permanent",
+   "label": "Full-time"
+  },
+  "language": {
+   "code": "en",
+   "label": "English",
+   "labelNative": "English (US)"
+  }
+ },
+ "jobtech": {
+  "total": {
+   "value": 6
+  },
+  "hits": [
+   {
+    "relevance": 1.0,
+    "id": "31635902",
+    "external_id": null,
+    "original_id": null,
+    "label": [],
+    "webpage_url": "https://arbetsformedlingen.se/platsbanken/annonser/31635902",
+    "headline": "Senior Fullstackutvecklare till Svea Bank",
+    "application_deadline": "2027-04-21T23:59:59",
+    "number_of_vacancies": 1,
+    "description": {
+     "text": "Är du en skicklig utvecklare som vill hjälpa till att utforma framtidens finansteknik? VI söker en erfaren och senior Fullstackutvecklare till oss på Svea. I den här utvecklarrollen kommer du att arbeta sida vid sida med dina kollegor för att lösa utmanande problem, bygga smarta, skalbara lösningar och introducera moderna verktyg och arkitekturer som höjer kundupplevelsen som används av tusentals människor varje dag.\nOm rollen Du kommer att ingå i ett utvecklingsteam inom Svea Privat, ett område som stödjer och bygger centrala tjänster inom sparande och lån för privatpersoner. Vi är ett litet autonomt team där alla bidrar med idéer och tankar för att skapa en dynamisk och kreativ utvecklings"
+    },
+    "employment_type": {
+     "concept_id": "PFZr_Syz_cUq",
+     "label": "Vanlig anställning",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_type": {
+     "concept_id": "oG8G_9cW_nRf",
+     "label": "Fast månads- vecko- eller timlön",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_description": null,
+    "duration": {
+     "concept_id": "qQUd_4qe_NDT",
+     "label": "6 månader eller längre",
+     "legacy_ams_taxonomy_id": "2"
+    },
+    "working_hours_type": {
+     "concept_id": "6YE1_gAC_R2G",
+     "label": "Heltid",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "scope_of_work": {
+     "min": 100,
+     "max": 100
+    },
+    "access": null,
+    "employer": {
+     "name": "Svea Bank AB",
+     "organization_number": null,
+     "url": null,
+     "email": null,
+     "phone_number": null
+    },
+    "experience_required": true,
+    "access_to_own_car": false,
+    "driving_license_required": false,
+    "driving_license": null,
+    "occupation": {
+     "concept_id": "71Ji_irM_rSJ",
+     "label": "Fullstack-utvecklare",
+     "legacy_ams_taxonomy_id": "7829"
+    },
+    "occupation_group": {
+     "concept_id": "DJh5_yyF_hEM",
+     "label": "Mjukvaru- och systemutvecklare m.fl.",
+     "legacy_ams_taxonomy_id": "2512"
+    },
+    "occupation_field": {
+     "concept_id": "apaJ_2ja_LuF",
+     "label": "Data/IT",
+     "legacy_ams_taxonomy_id": "3"
+    },
+    "workplace_model": {
+     "concept_id": null,
+     "label": null
+    },
+    "workplace_address": {
+     "municipality": "Solna",
+     "municipality_code": "0184",
+     "municipality_concept_id": "zHxw_uJZ_NJ8",
+     "region": "Stockholms län",
+     "region_code": "01",
+     "region_concept_id": "CifL_Rzy_Mku",
+     "country": "Sverige",
+     "country_code": "199",
+     "country_concept_id": "i46j_HmG_v64",
+     "street_address": "Evenemangsgatan 31 A ",
+     "postcode": "16979",
+     "city": "Solna",
+     "coordinates": [
+      17.9995603604133,
+      59.3705768522981
+     ]
+    },
+    "workplace_addresses": [
+     {
+      "municipality": "Solna",
+      "municipality_code": "0184",
+      "municipality_concept_id": "zHxw_uJZ_NJ8",
+      "region": "Stockholms län",
+      "region_code": "01",
+      "region_concept_id": "CifL_Rzy_Mku",
+      "country": "Sverige",
+      "country_code": "199",
+      "country_concept_id": "i46j_HmG_v64",
+      "street_address": "Evenemangsgatan 31 A ",
+      "postcode": "16979",
+      "city": "Solna",
+      "coordinates": [
+       17.9995603604133,
+       59.3705768522981
+      ]
+     }
+    ],
+    "must_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "nice_to_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "publication_date": "2026-10-23T10:14:03",
+    "last_publication_date": "2027-04-21T23:59:59",
+    "removed": false,
+    "removed_date": null,
+    "source_type": "VIA_JOBPOSTING",
+    "timestamp": 1792743243597
+   },
+   {
+    "relevance": 1.0,
+    "id": "31624181",
+    "external_id": null,
+    "original_id": null,
+    "label": [],
+    "webpage_url": "https://arbetsformedlingen.se/platsbanken/annonser/31624181",
+    "headline": "Senior Backendutvecklare till Svea Bank",
+    "application_deadline": "2027-04-19T23:59:59",
+    "number_of_vacancies": 1,
+    "description": {
+     "text": "Är du en Backend-utvecklare som drivs av komplexa tekniska utmaningar och vill bygga system som hindrar ekonomisk brottslighet? Vi söker en utvecklare till funktionen Financial Crime Prevention. Hos oss blir du en nyckelspelare i ett självorganiserande team där vi kombinerar teknisk spets med djup förståelse för bankverksamhet.\nOm rollen Teamet, som är en del av Financial Crime Prevention, utvecklar applikationer och tjänster för att effektivt arbeta förebyggande mot penningtvätt och finansiering av terrorism. Teamet arbetar tvärfunktionellt mot hela Svea-koncernen och du kommer att ha stora möjligheter att påverka både ditt och teamets arbete. Ditt fokus ligger på backend (.NET/C#), men du "
+    },
+    "employment_type": {
+     "concept_id": "PFZr_Syz_cUq",
+     "label": "Vanlig anställning",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_type": {
+     "concept_id": "oG8G_9cW_nRf",
+     "label": "Fast månads- vecko- eller timlön",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_description": null,
+    "duration": {
+     "concept_id": "a7uU_j21_mkL",
+     "label": "Tills vidare",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "working_hours_type": {
+     "concept_id": "6YE1_gAC_R2G",
+     "label": "Heltid",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "scope_of_work": {
+     "min": 100,
+     "max": 100
+    },
+    "access": null,
+    "employer": {
+     "name": "Svea Bank AB",
+     "organization_number": null,
+     "url": null,
+     "email": null,
+     "phone_number": null
+    },
+    "experience_required": true,
+    "access_to_own_car": false,
+    "driving_license_required": false,
+    "driving_license": null,
+    "occupation": {
+     "concept_id": "7wdX_4rv_33z",
+     "label": "Backend-utvecklare",
+     "legacy_ams_taxonomy_id": "7632"
+    },
+    "occupation_group": {
+     "concept_id": "DJh5_yyF_hEM",
+     "label": "Mjukvaru- och systemutvecklare m.fl.",
+     "legacy_ams_taxonomy_id": "2512"
+    },
+    "occupation_field": {
+     "concept_id": "apaJ_2ja_LuF",
+     "label": "Data/IT",
+     "legacy_ams_taxonomy_id": "3"
+    },
+    "workplace_model": {
+     "concept_id": null,
+     "label": null
+    },
+    "workplace_address": {
+     "municipality": "Solna",
+     "municipality_code": "0184",
+     "municipality_concept_id": "zHxw_uJZ_NJ8",
+     "region": "Stockholms län",
+     "region_code": "01",
+     "region_concept_id": "CifL_Rzy_Mku",
+     "country": "Sverige",
+     "country_code": "199",
+     "country_concept_id": "i46j_HmG_v64",
+     "street_address": "Evenemangsgatan 31 A ",
+     "postcode": "16979",
+     "city": "Solna",
+     "coordinates": [
+      17.9995603604133,
+      59.3705768522981
+     ]
+    },
+    "workplace_addresses": [
+     {
+      "municipality": "Solna",
+      "municipality_code": "0184",
+      "municipality_concept_id": "zHxw_uJZ_NJ8",
+      "region": "Stockholms län",
+      "region_code": "01",
+      "region_concept_id": "CifL_Rzy_Mku",
+      "country": "Sverige",
+      "country_code": "199",
+      "country_concept_id": "i46j_HmG_v64",
+      "street_address": "Evenemangsgatan 31 A ",
+      "postcode": "16979",
+      "city": "Solna",
+      "coordinates": [
+       17.9995603604133,
+       59.3705768522981
+      ]
+     }
+    ],
+    "must_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "nice_to_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "publication_date": "2026-10-21T09:08:55",
+    "last_publication_date": "2027-04-19T23:59:59",
+    "removed": false,
+    "removed_date": null,
+    "source_type": "VIA_JOBPOSTING",
+    "timestamp": 1792566535607
+   },
+   {
+    "relevance": 1.0,
+    "id": "31256538",
+    "external_id": null,
+    "original_id": null,
+    "label": [],
+    "webpage_url": "https://arbetsformedlingen.se/platsbanken/annonser/31256538",
+    "headline": "Principal Engineer till Allica Bank",
+    "application_deadline": "2027-01-03T23:59:59",
+    "number_of_vacancies": 1,
+    "description": {
+     "text": "De flesta utmanarbanker riktar sig mot privatpersoner eller mikroföretag. Allica Bank fokuserar på SME:er: företag med verkliga tillgångar, verklig komplexitet och verkliga bankbehov. Vi kombinerar en modern techplattform med genuina kundrelationer. Resultatet är en bank som är byggd för de behoven små och medelstora företag faktiskt har.\n\nSedan 2019 har vi vuxit till att bli det snabbast växande fintech-bolaget i Storbritanniens historia. Vi har byggt en av UKs mest prisbelönta företagsbankprodukter, är lönsamma och växer snabbt. I februari 2026 stängde vi en Series D-runda på 155 miljoner dollar, dedikerat till expansion utanför UK. Sverige är vår första marknad, och vi vill ha med dig!\n\nR"
+    },
+    "employment_type": {
+     "concept_id": "PFZr_Syz_cUq",
+     "label": "Vanlig anställning",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_type": {
+     "concept_id": "oG8G_9cW_nRf",
+     "label": "Fast månads- vecko- eller timlön",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_description": null,
+    "duration": {
+     "concept_id": "a7uU_j21_mkL",
+     "label": "Tills vidare",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "working_hours_type": {
+     "concept_id": "6YE1_gAC_R2G",
+     "label": "Heltid",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "scope_of_work": {
+     "min": 100,
+     "max": 100
+    },
+    "access": null,
+    "employer": {
+     "name": "ANTS Akademiskt Nätverk av Tekniska Studenter AB",
+     "organization_number": null,
+     "url": null,
+     "email": null,
+     "phone_number": null
+    },
+    "experience_required": true,
+    "access_to_own_car": false,
+    "driving_license_required": false,
+    "driving_license": null,
+    "occupation": {
+     "concept_id": "71Ji_irM_rSJ",
+     "label": "Fullstack-utvecklare",
+     "legacy_ams_taxonomy_id": "7829"
+    },
+    "occupation_group": {
+     "concept_id": "DJh5_yyF_hEM",
+     "label": "Mjukvaru- och systemutvecklare m.fl.",
+     "legacy_ams_taxonomy_id": "2512"
+    },
+    "occupation_field": {
+     "concept_id": "apaJ_2ja_LuF",
+     "label": "Data/IT",
+     "legacy_ams_taxonomy_id": "3"
+    },
+    "workplace_model": {
+     "concept_id": null,
+     "label": null
+    },
+    "workplace_address": {
+     "municipality": "Stockholm",
+     "municipality_code": "0180",
+     "municipality_concept_id": "AvNB_uwa_6n6",
+     "region": "Stockholms län",
+     "region_code": "01",
+     "region_concept_id": "CifL_Rzy_Mku",
+     "country": "Sverige",
+     "country_code": "199",
+     "country_concept_id": "i46j_HmG_v64",
+     "street_address": "Virkesvägen 2",
+     "postcode": "12030",
+     "city": "Stockholm",
+     "coordinates": [
+      18.090788682065,
+      59.3013378370419
+     ]
+    },
+    "workplace_addresses": [
+     {
+      "municipality": "Stockholm",
+      "municipality_code": "0180",
+      "municipality_concept_id": "AvNB_uwa_6n6",
+      "region": "Stockholms län",
+      "region_code": "01",
+      "region_concept_id": "CifL_Rzy_Mku",
+      "country": "Sverige",
+      "country_code": "199",
+      "country_concept_id": "i46j_HmG_v64",
+      "street_address": "Virkesvägen 2",
+      "postcode": "12030",
+      "city": "Stockholm",
+      "coordinates": [
+       18.090788682065,
+       59.3013378370419
+      ]
+     }
+    ],
+    "must_have": {
+     "skills": [],
+     "languages": [
+      {
+       "weight": 10,
+       "concept_id": "zSLA_vw2_FXN",
+       "label": "Svenska",
+       "legacy_ams_taxonomy_id": "502"
+      },
+      {
+       "weight": 10,
+       "concept_id": "NVxJ_hLg_TYS",
+       "label": "Engelska",
+       "legacy_ams_taxonomy_id": "283"
+      }
+     ],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "nice_to_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [
+      {
+       "weight": 5,
+       "concept_id": "FHxz_HhN_3Mk",
+       "label": "Data",
+       "legacy_ams_taxonomy_id": "14"
+      }
+     ],
+     "education_level": [
+      {
+       "weight": 5,
+       "concept_id": "asZm_TEQ_Srk",
+       "label": "Eftergymnasial utbildning två år eller längre",
+       "legacy_ams_taxonomy_id": "6"
+      }
+     ]
+    },
+    "publication_date": "2026-07-07T16:34:09",
+    "last_publication_date": "2027-01-03T23:59:59",
+    "removed": false,
+    "removed_date": null,
+    "source_type": "VIA_JOBPOSTING",
+    "timestamp": 1783434849507
+   },
+   {
+    "relevance": 0.9738744176645812,
+    "id": "31752630",
+    "external_id": null,
+    "original_id": null,
+    "label": [],
+    "webpage_url": "https://arbetsformedlingen.se/platsbanken/annonser/31752630",
+    "headline": "Teknisk systemansvarig inom bank och finans",
+    "application_deadline": "2026-12-14T23:59:59",
+    "number_of_vacancies": 1,
+    "description": {
+     "text": "Om tjänsten\nTa ett tekniskt helhetsgrepp om applikationer och bli länken mellan IT och verksamheten. Du arbetar med systemförvaltning, felsökning och kravhantering samt säkerställer att systemen möter krav på säkerhet, regelefterlevnad och dokumentation. Du blir en del av ett agilt team med fem tekniska systemansvariga och ungefär lika många utvecklare, i en teknikmiljö med fokus på .NET och C#.\nVem vi tror att du är\nDu är i början av din karriär eller har några års erfarenhet och vill utvecklas i en bred teknisk roll nära verksamheten. Som person är du strukturerad, nyfiken och kommunikativ. Du förklarar teknik pedagogiskt och tar hjälp av andra för att komma framåt.\nDu har:\n\nRelevant utbil"
+    },
+    "employment_type": {
+     "concept_id": "PFZr_Syz_cUq",
+     "label": "Vanlig anställning",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_type": {
+     "concept_id": "oG8G_9cW_nRf",
+     "label": "Fast månads- vecko- eller timlön",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_description": null,
+    "duration": {
+     "concept_id": "qQUd_4qe_NDT",
+     "label": "6 månader eller längre",
+     "legacy_ams_taxonomy_id": "2"
+    },
+    "working_hours_type": {
+     "concept_id": "6YE1_gAC_R2G",
+     "label": "Heltid",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "scope_of_work": {
+     "min": 100,
+     "max": 100
+    },
+    "access": null,
+    "employer": {
+     "name": "Xamera AB",
+     "organization_number": null,
+     "url": null,
+     "email": null,
+     "phone_number": null
+    },
+    "experience_required": true,
+    "access_to_own_car": false,
+    "driving_license_required": false,
+    "driving_license": null,
+    "occupation": {
+     "concept_id": "wNG8_Rsg_RQc",
+     "label": "Systemansvarig",
+     "legacy_ams_taxonomy_id": "5996"
+    },
+    "occupation_group": {
+     "concept_id": "cBBa_ngH_fCx",
+     "label": "Systemförvaltare m.fl.",
+     "legacy_ams_taxonomy_id": "2515"
+    },
+    "occupation_field": {
+     "concept_id": "apaJ_2ja_LuF",
+     "label": "Data/IT",
+     "legacy_ams_taxonomy_id": "3"
+    },
+    "workplace_model": {
+     "concept_id": null,
+     "label": null
+    },
+    "workplace_address": {
+     "municipality": "Södertälje",
+     "municipality_code": "0181",
+     "municipality_concept_id": "g6hK_M1o_hiU",
+     "region": "Stockholms län",
+     "region_code": "01",
+     "region_concept_id": "CifL_Rzy_Mku",
+     "country": "Sverige",
+     "country_code": "199",
+     "country_concept_id": "i46j_HmG_v64",
+     "street_address": "Funckens gränd 5",
+     "postcode": "11127",
+     "city": "Stockholm",
+     "coordinates": [
+      17.625689,
+      59.195362
+     ]
+    },
+    "workplace_addresses": [
+     {
+      "municipality": "Södertälje",
+      "municipality_code": "0181",
+      "municipality_concept_id": "g6hK_M1o_hiU",
+      "region": "Stockholms län",
+      "region_code": "01",
+      "region_concept_id": "CifL_Rzy_Mku",
+      "country": "Sverige",
+      "country_code": "199",
+      "country_concept_id": "i46j_HmG_v64",
+      "street_address": "Funckens gränd 5",
+      "postcode": "11127",
+      "city": "Stockholm",
+      "coordinates": [
+       17.625689,
+       59.195362
+      ]
+     }
+    ],
+    "must_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "nice_to_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "publication_date": "2026-11-19T11:42:55",
+    "last_publication_date": "2026-12-14T23:59:59",
+    "removed": false,
+    "removed_date": null,
+    "source_type": "VIA_JOBPOSTING",
+    "timestamp": 1795084975588
+   },
+   {
+    "relevance": 0.9331658926527304,
+    "id": "31714959",
+    "external_id": null,
+    "original_id": null,
+    "label": [],
+    "webpage_url": "https://arbetsformedlingen.se/platsbanken/annonser/31714959",
+    "headline": "Hands-on IT Project Manager to major bank!",
+    "application_deadline": "2027-05-10T23:59:59",
+    "number_of_vacancies": 1,
+    "description": {
+     "text": "Join our customer's team to drive key software development life cycle projects and manage critical risk remediation plans in a dynamic, supportive environment.\nAbout the role\nIn this operational, hands-on role, you will manage deliveries related to the Software Development Life Cycle (SDLC) and coordinate integrated risk management tasks. Working closely with the engineering team, you will ensure project timelines, budgets, and quality controls are strictly maintained without the burden of strategic stakeholder coaching.\nYou are offered\nA long-term consulting engagement running at least until the end of 2027, offering a stable and highly operational environment to hone your project coordinat"
+    },
+    "employment_type": {
+     "concept_id": "PFZr_Syz_cUq",
+     "label": "Vanlig anställning",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_type": {
+     "concept_id": "oG8G_9cW_nRf",
+     "label": "Fast månads- vecko- eller timlön",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_description": null,
+    "duration": {
+     "concept_id": "Sy9J_aRd_ALx",
+     "label": "11 dagar – upp till 3 månader",
+     "legacy_ams_taxonomy_id": "7"
+    },
+    "working_hours_type": {
+     "concept_id": "6YE1_gAC_R2G",
+     "label": "Heltid",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "scope_of_work": {
+     "min": 100,
+     "max": 100
+    },
+    "access": null,
+    "employer": {
+     "name": "Academic Work Sweden AB",
+     "organization_number": null,
+     "url": null,
+     "email": null,
+     "phone_number": null
+    },
+    "experience_required": true,
+    "access_to_own_car": false,
+    "driving_license_required": false,
+    "driving_license": null,
+    "occupation": {
+     "concept_id": "z5AM_ayf_WcL",
+     "label": "Projektledare, IT",
+     "legacy_ams_taxonomy_id": "5388"
+    },
+    "occupation_group": {
+     "concept_id": "DJh5_yyF_hEM",
+     "label": "Mjukvaru- och systemutvecklare m.fl.",
+     "legacy_ams_taxonomy_id": "2512"
+    },
+    "occupation_field": {
+     "concept_id": "apaJ_2ja_LuF",
+     "label": "Data/IT",
+     "legacy_ams_taxonomy_id": "3"
+    },
+    "workplace_model": {
+     "concept_id": null,
+     "label": null
+    },
+    "workplace_address": {
+     "municipality": "Stockholm",
+     "municipality_code": "0180",
+     "municipality_concept_id": "AvNB_uwa_6n6",
+     "region": "Stockholms län",
+     "region_code": "01",
+     "region_concept_id": "CifL_Rzy_Mku",
+     "country": "Sverige",
+     "country_code": "199",
+     "country_concept_id": "i46j_HmG_v64",
+     "street_address": "Solnavägen 3H",
+     "postcode": "11363",
+     "city": "Stockholm",
+     "coordinates": [
+      18.0307250985521,
+      59.3472636884668
+     ]
+    },
+    "workplace_addresses": [
+     {
+      "municipality": "Stockholm",
+      "municipality_code": "0180",
+      "municipality_concept_id": "AvNB_uwa_6n6",
+      "region": "Stockholms län",
+      "region_code": "01",
+      "region_concept_id": "CifL_Rzy_Mku",
+      "country": "Sverige",
+      "country_code": "199",
+      "country_concept_id": "i46j_HmG_v64",
+      "street_address": "Solnavägen 3H",
+      "postcode": "11363",
+      "city": "Stockholm",
+      "coordinates": [
+       18.0307250985521,
+       59.3472636884668
+      ]
+     }
+    ],
+    "must_have": {
+     "skills": [],
+     "languages": [
+      {
+       "weight": 10,
+       "concept_id": "NVxJ_hLg_TYS",
+       "label": "Engelska",
+       "legacy_ams_taxonomy_id": "283"
+      }
+     ],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "nice_to_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "publication_date": "2026-11-11T10:02:20",
+    "last_publication_date": "2027-05-10T23:59:59",
+    "removed": false,
+    "removed_date": null,
+    "source_type": "VIA_JOBPOSTING",
+    "timestamp": 1794387740462
+   },
+   {
+    "relevance": 0.8861930787231257,
+    "id": "31717497",
+    "external_id": null,
+    "original_id": null,
+    "label": [],
+    "webpage_url": "https://arbetsformedlingen.se/platsbanken/annonser/31717497",
+    "headline": "2nd Line Support - Onboarding & Partner Specialist till Svea Bank",
+    "application_deadline": "2027-05-10T23:59:59",
+    "number_of_vacancies": 1,
+    "description": {
+     "text": "Har du några års erfarenhet av teknisk support och ett intresse för integrationer, e-handel och betallösningar? Vill du arbeta i en roll där du får kombinera teknisk problemlösning med kundkontakt och koordinering av integrationsprojekt? Då kan det här vara en spännande möjlighet!\nNu söker vi en konsult till Svea Bank för ett föräldravikariat med start i januari 2027. Uppdraget löper tom. januari 2028.\nOm rollen 💜\nSom Onboarding & Partner Specialist blir du en del av Svea Banks engagerade team om 14 personer. Du arbetar med teknisk support på 2nd line-nivå, där du hanterar mer komplexa ärenden och hjälper kunder och partners att få sina tekniska integrationer att fungera smidigt.\nEn viktig d"
+    },
+    "employment_type": {
+     "concept_id": "1paU_aCR_nGn",
+     "label": "Behovsanställning",
+     "legacy_ams_taxonomy_id": "4"
+    },
+    "salary_type": {
+     "concept_id": "oG8G_9cW_nRf",
+     "label": "Fast månads- vecko- eller timlön",
+     "legacy_ams_taxonomy_id": "1"
+    },
+    "salary_description": null,
+    "duration": {
+     "concept_id": null,
+     "label": null,
+     "legacy_ams_taxonomy_id": null
+    },
+    "working_hours_type": {
+     "concept_id": null,
+     "label": null,
+     "legacy_ams_taxonomy_id": null
+    },
+    "scope_of_work": {
+     "min": null,
+     "max": null
+    },
+    "access": null,
+    "employer": {
+     "name": "The Place AB",
+     "organization_number": null,
+     "url": null,
+     "email": null,
+     "phone_number": null
+    },
+    "experience_required": true,
+    "access_to_own_car": false,
+    "driving_license_required": false,
+    "driving_license": null,
+    "occupation": {
+     "concept_id": "KQty_E1u_cia",
+     "label": "Helpdesktekniker/Supporttekniker",
+     "legacy_ams_taxonomy_id": "7020"
+    },
+    "occupation_group": {
+     "concept_id": "hmaC_cfi_UKg",
+     "label": "Supporttekniker, IT",
+     "legacy_ams_taxonomy_id": "3512"
+    },
+    "occupation_field": {
+     "concept_id": "apaJ_2ja_LuF",
+     "label": "Data/IT",
+     "legacy_ams_taxonomy_id": "3"
+    },
+    "workplace_model": {
+     "concept_id": null,
+     "label": null
+    },
+    "workplace_address": {
+     "municipality": "Solna",
+     "municipality_code": "0184",
+     "municipality_concept_id": "zHxw_uJZ_NJ8",
+     "region": "Stockholms län",
+     "region_code": "01",
+     "region_concept_id": "CifL_Rzy_Mku",
+     "country": "Sverige",
+     "country_code": "199",
+     "country_concept_id": "i46j_HmG_v64",
+     "street_address": "Solna centrum",
+     "postcode": "17145",
+     "city": "Solna",
+     "coordinates": [
+      17.99928319441483,
+      59.35989205591278
+     ]
+    },
+    "workplace_addresses": [
+     {
+      "municipality": "Solna",
+      "municipality_code": "0184",
+      "municipality_concept_id": "zHxw_uJZ_NJ8",
+      "region": "Stockholms län",
+      "region_code": "01",
+      "region_concept_id": "CifL_Rzy_Mku",
+      "country": "Sverige",
+      "country_code": "199",
+      "country_concept_id": "i46j_HmG_v64",
+      "street_address": "Solna centrum",
+      "postcode": "17145",
+      "city": "Solna",
+      "coordinates": [
+       17.99928319441483,
+       59.35989205591278
+      ]
+     }
+    ],
+    "must_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "nice_to_have": {
+     "skills": [],
+     "languages": [],
+     "work_experiences": [],
+     "education": [],
+     "education_level": []
+    },
+    "publication_date": "2026-11-11T14:52:36",
+    "last_publication_date": "2027-05-10T23:59:59",
+    "removed": false,
+    "removed_date": null,
+    "source_type": "VIA_JOBPOSTING",
+    "timestamp": 1794405156877
+   }
+  ]
+ }
+}

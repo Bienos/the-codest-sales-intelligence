@@ -5,6 +5,8 @@ connections:
   ats-greenhouse: {state: per_account, todo: "Press Scan on an account. The scan finds the account's Greenhouse board from its careers page and reads the open roles.", where: "Nothing to obtain: public job boards."}
   ats-lever: {state: per_account, todo: "Press Scan on an account. The scan finds the account's Lever board from its careers page.", where: "Nothing to obtain: public job boards."}
   ats-ashby: {state: per_account, todo: "Press Scan on an account. The scan finds the account's Ashby board from its careers page.", where: "Nothing to obtain: public job boards."}
+  ats-smartrecruiters: {state: per_account, todo: "Press Scan on an account. The scan finds the account's SmartRecruiters board from its careers page, or by matching the company name.", where: "Nothing to obtain: public job boards."}
+  jobs-jobtech-se: {state: needs_retest, todo: "Built against the live service. Run Test all sources to activate it. It lists IT roles in Sweden at banks, payment, fintech and insurance employers, even before they are accounts.", where: "Nothing to obtain: open government data."}
   ats-workday: {state: not_built, todo: "Workday has no public postings API. Careers pages that allow it are read by the account scan; nothing else is planned.", where: "-"}
   attention-bitkom: {state: blocked_by_site, todo: "The site refuses automated reads. Needs permission from Bitkom or a licensed feed; do not work around it.", where: "Ask Bitkom's press office for a feed or written permission."}
   attention-techuk: {state: blocked_by_site, todo: "The site refuses automated reads. Needs permission from techUK or a licensed feed.", where: "Ask techUK's press office for a feed or written permission."}

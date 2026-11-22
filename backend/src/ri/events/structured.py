@@ -1,6 +1,7 @@
 """Deterministic event emission for structured sources: procurement notices and job postings (spec 02 §7)."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -47,6 +48,20 @@ def emit_procurement_events(conn: Conn, notice_id: str, change: str, *, replay: 
     return eid if created else None
 
 
+_BANKISH = re.compile(r"\b(bank|banken|sparbank|sparkasse|volksbank|raiffeisen|banco|banque|bankas|pankki|sparebank)\b", re.I)
+_FINTECHISH = re.compile(r"\b(pay|payments?|fintech|betal\w*|finans\w*|financial|kredit|capital|insur\w*|försäkring\w*|forsikring|versicherung\w*)\b", re.I)
+
+
+def employer_role(name: str | None) -> str | None:
+    """A hint from the employer's NAME only (never from the advert), used so a financial employer can be offered as a candidate account. Unknown stays unknown."""
+    n = name or ""
+    if _BANKISH.search(n):
+        return "bank"
+    if _FINTECHISH.search(n):
+        return "fintech"
+    return None
+
+
 def emit_job_event(conn: Conn, job_row_id: str, change: str, *, now: datetime | None = None, replay: bool = False) -> str | None:
     j = q1(conn, "SELECT * FROM job_postings WHERE id=%s", (job_row_id,))
     if not j:
@@ -64,6 +79,9 @@ def emit_job_event(conn: Conn, job_row_id: str, change: str, *, now: datetime | 
     attrs = {"provider": j["provider"], "board": j["board"], "job_id": j["job_id"], "title": j["title"], "team": j["team"], "location": j["location"],
              "employment_type": j["employment_type"], "tech_keywords": list(j["tech_keywords"] or []), "posting_age_days": age,
              "job_url": j["url"], "open_status": j["open_status"], "source_tier": "S2", "agency_eligibility": "unknown"}   # role != supplier eligibility
+    role = employer_role(j["employer_name"])
+    if role:
+        attrs["role_of_subject"] = role
     claim = add_claim(conn, subject=j["employer_name"] or j["board"], predicate="advertises_role",
                       obj={"title": j["title"], "employment_type": j["employment_type"], "url": j["url"]}, doc_id=None, anchor=j["title"])
     eid, created = store_event(conn, event_type=etype, subject_name=j["employer_name"], subject_org_id=str(j["organization_id"]) if j["organization_id"] else None,

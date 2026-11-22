@@ -19,7 +19,7 @@ from .util import excerpt, parse_dt, sha, utcnow
 _CONTRACT = re.compile(r"\b(contract(or)?|freelance|interim|fixed[- ]term|temporary|b2b|6[- ]month|12[- ]month|day rate)\b", re.I)
 _PERM = re.compile(r"\b(full[- ]time|permanent|part[- ]time)\b", re.I)
 _TECH = ["ruby on rails", "rails", "python", "java", "kotlin", "react", "vue", "typescript", "node", "aws", "azure", "gcp", "kubernetes",
-         "terraform", "kafka", "golang", "go", ".net", "c#", "mainframe", "cobol", "temenos", "mambu", "thought machine", "finastra",
+         "terraform", "kafka", "golang", ".net", "c#", "mainframe", "cobol", "temenos", "mambu", "thought machine", "finastra",
          "iso 20022", "sepa", "llm", "rag", "mlops", "langchain", "sre", "test automation", "playwright", "selenium"]
 
 
@@ -35,9 +35,16 @@ def classify_employment(commitment: str | None, title: str, body: str = "") -> s
     return "unknown"
 
 
+# "Go" is also an ordinary English word ("go further"): it counts as the language only in a clear technical phrase
+_GO_LANG = re.compile(r"\b(go(?:lang)?\s*(?:/|,|\)|\(|developer|engineer|backend|services?|microservices?|programming)|\((?:go|golang)\)|(?:python|java|kotlin|rust)\s*(?:,|/)\s*go\b)", re.I)
+
+
 def tech_keywords(text: str) -> list[str]:
     t = text.lower()
-    return sorted({k for k in _TECH if re.search(rf"(?<![a-z0-9]){re.escape(k)}(?![a-z0-9])", t)})
+    found = {k for k in _TECH if re.search(rf"(?<![a-z0-9]){re.escape(k)}(?![a-z0-9])", t)}
+    if _GO_LANG.search(text):
+        found.add("golang")
+    return sorted(found)
 
 
 class _AtsBase:
@@ -139,3 +146,53 @@ class AshbyConnector(_AtsBase):
                         "_posted": parse_dt(j.get("publishedAt")), "_updated": j.get("publishedAt"), "_url": j.get("jobUrl"),
                         "_desc": desc, "_tech": tech_keywords(f"{j['title']} {desc}")})
         return out
+
+
+
+class SmartRecruitersConnector(_AtsBase):
+    """SmartRecruiters public Posting API (checked against the live service): list pages with the company name, then one detail call per ENGINEERING posting
+    (capped) for the text, so tech keywords come from the real advert. Only a fully read listing counts as complete, so a half-read board never closes jobs."""
+    provider = "smartrecruiters"
+    DETAIL_CAP = 80
+
+    async def _list(self):
+        base = f"https://api.smartrecruiters.com/v1/companies/{self.board}/postings"
+        rows: list[dict[str, Any]] = []
+        total = 0
+        for off in range(0, 2000, 100):
+            data = await request_json(self.client, "GET", base, params={"limit": 100, "offset": off})
+            if not isinstance(data, dict) or "content" not in data:
+                raise SchemaDrift("SmartRecruiters response has no 'content'")
+            rows += data["content"]
+            total = int(data.get("totalFound") or 0)
+            if off + 100 >= total or not data["content"]:
+                break
+        self.complete = len(rows) >= total
+        from ..events.classify import engineering_relevant
+        details = 0
+        out = []
+        for p in rows:
+            title = p.get("name") or ""
+            desc = ""
+            if engineering_relevant(title) and details < self.DETAIL_CAP:
+                details += 1
+                try:
+                    d = await request_json(self.client, "GET", f"{base}/{p['id']}")
+                    sec = ((d.get("jobAd") or {}).get("sections") or {})
+                    desc = re.sub(r"<[^>]+>", " ", " ".join((sec.get(k) or {}).get("text", "") for k in ("jobDescription", "qualifications", "additionalInformation")))
+                except Exception:  # noqa: BLE001 - a missing detail only loses keywords, never the posting
+                    desc = ""
+            et = ((p.get("typeOfEmployment") or {}).get("id") or "").lower()
+            emp = {"permanent": "permanent", "contract": "contract", "temporary": "contract", "intern": "internship", "internship": "internship"}.get(et) or classify_employment(et, title, desc)
+            loc = (p.get("location") or {}).get("fullLocation")
+            out.append({"_id": p["id"], "_title": title, "_team": (p.get("function") or {}).get("label") or (p.get("department") or {}).get("label"), "_location": loc,
+                        "_employment": emp, "_posted": parse_dt(p.get("releasedDate")), "_updated": p.get("releasedDate"),
+                        "_url": f"https://jobs.smartrecruiters.com/{self.board}/{p['id']}", "_desc": desc, "_tech": tech_keywords(f"{title} {desc}"),
+                        "_company": (p.get("company") or {}).get("name")})
+        self.company_name = next((o["_company"] for o in out if o.get("_company")), None)
+        return out
+
+    async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
+        jobs = await self._list()
+        items = [RawItem(external_id=str(j["_id"]), version=j.get("_updated"), payload=j) for j in jobs]
+        return FetchBatch(items, None, False, self.now(), "v1", quota_usage={"requests": 1, "postings": len(items)}, complete_listing=bool(getattr(self, "complete", False)))
