@@ -46,15 +46,18 @@ class LemlistClient:
     def team(self) -> dict[str, Any]:
         return self._req("GET", "/team")
 
-    def create_campaign(self, name: str) -> dict[str, Any]:
-        return self._req("POST", "/campaigns", json={"name": name})
+    def create_campaign(self, name: str, timezone: str = "Europe/London") -> dict[str, Any]:
+        return self._req("POST", "/campaigns", json={"name": name, "timezone": timezone})
 
     def sequences(self, campaign_id: str) -> Any:
         return self._req("GET", f"/campaigns/{campaign_id}/sequences")
 
-    def add_step(self, campaign_id: str, sequence_id: str, *, subject: str, message: str, delay_days: int) -> dict[str, Any]:
-        return self._req("POST", f"/campaigns/{campaign_id}/sequences/{sequence_id}/steps",
-                         json={"type": "email", "delay": delay_days, "subject": subject, "message": message})
+    def add_step(self, campaign_id: str, sequence_id: str, *, subject: str | None, message: str, delay_days: int) -> dict[str, Any]:
+        """A follow-up with no subject is sent as a reply in the first email's thread (Lemlist's behaviour); only the first step carries a subject."""
+        body: dict[str, Any] = {"type": "email", "delay": delay_days, "message": message}
+        if subject:
+            body["subject"] = subject
+        return self._req("POST", f"/campaigns/{campaign_id}/sequences/{sequence_id}/steps", json=body)
 
     def add_lead(self, campaign_id: str, email: str, fields: dict[str, Any]) -> dict[str, Any]:
         return self._req("POST", f"/campaigns/{campaign_id}/leads/{quote(email, safe='@')}", json=fields)

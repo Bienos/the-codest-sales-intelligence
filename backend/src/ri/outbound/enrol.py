@@ -16,6 +16,7 @@ from .lemlist import LemlistClient, LemlistError
 KIND, SYSTEM, OP = "sequence_enrolment", "lemlist", "enrol"
 STATUS_FROM_EVENT = {"emailsReplied": "replied", "emailsBounced": "bounced", "emailsUnsubscribed": "unsubscribed", "interested": "interested", "notInterested": "not_interested",
                      "emailsInterested": "interested", "emailsNotInterested": "not_interested"}
+TRACKED = set(STATUS_FROM_EVENT) | {"emailsSendFailed"}
 RANK = {"pushed": 0, "replied": 1, "not_interested": 2, "interested": 3, "bounced": 4, "unsubscribed": 5, "failed": 0}
 
 
@@ -114,8 +115,8 @@ def execute_enrolment(conn: Conn, approval_id: str, client: LemlistClient | None
             seq_id = (seqs[0] if isinstance(seqs, list) and seqs else (list(seqs.values())[0] if isinstance(seqs, dict) and seqs else {})).get("_id") if seqs else None
             if not seq_id:
                 raise LemlistError("Lemlist returned no sequence for the new campaign")
-            for s in p["steps"]:
-                client.add_step(cid, seq_id, subject=s["subject"], message=s["body"].replace("\n", "<br>"), delay_days=s["delay_days"])
+            for i, s in enumerate(p["steps"]):
+                client.add_step(cid, seq_id, subject=s["subject"] if i == 0 else None, message=s["body"].replace("\n", "<br>"), delay_days=s["delay_days"])
             conn.execute("UPDATE approvals SET result = coalesce(result,'{}'::jsonb) || %s::jsonb WHERE id=%s", (jb({"steps_added": True}), approval_id))
             conn.commit()
         done_emails = {r["e"] for r in qa(conn, "SELECT lower(email) AS e FROM outbound_enrolments WHERE campaign_draft_id=%s", (p["draft_id"],))}
@@ -149,6 +150,8 @@ def verify_webhook_secret(given: str | None, expected: str | None) -> bool:
 def record_event(conn: Conn, body: dict[str, Any]) -> dict[str, Any]:
     """Lemlist webhook payload -> enrolment status. Unsubscribes and bounces suppress the person everywhere. Replays are harmless."""
     typ = str(body.get("type") or "")
+    if typ and typ not in TRACKED:
+        return {"recorded": False, "reason": "ignored type"}
     email = str(body.get("leadEmail") or body.get("email") or "").lower()
     cid = body.get("campaignId")
     if not typ or not email:

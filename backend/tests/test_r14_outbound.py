@@ -111,6 +111,7 @@ def test_approved_enrolment_builds_the_campaign_but_never_launches_and_is_single
     kinds = [c[0] for c in fake.calls]
     assert kinds == ["campaign", "sequences", "step", "step", "step", "lead"] and "launch" not in kinds
     assert [c[2] for c in fake.calls if c[0] == "step"] == [0, 4, 5]          # delays between emails, not days since the first
+    assert [c[1] for c in fake.calls if c[0] == "step"] == ["S1", None, None]          # follow-ups carry no subject so they thread as replies
     assert "<br>" in fake.calls[2][3]
     assert conn.execute("select status from outbound_enrolments").fetchone()["status"] == "pushed"
     with pytest.raises(appr.ApprovalError):

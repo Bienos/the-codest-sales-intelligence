@@ -140,3 +140,19 @@ def test_notices_left_without_events_are_backfilled_once(conn):
     conn.execute("insert into procurement_notices(source_id, notice_id, buyer_name, title, status, service_codes, country, official_url) values ('proc-y','N-9','Buyer','Data platform build','open','{72000000}','GB','https://example.invalid/9')")
     assert backfill_procurement_events(conn) == 1
     assert backfill_procurement_events(conn) == 0
+
+
+def test_automatic_discovery_follows_the_saved_exa_budget_not_the_key(conn):
+    from ri import budget, usage
+    from ri.scheduler import exa_budget_set
+    assert exa_budget_set(conn) is False
+    budget.set_cap(conn, "exa", "monthly", usage.period_now(), 0, "usd")
+    assert exa_budget_set(conn) is False
+    budget.set_cap(conn, "exa", "monthly", usage.period_now(), 20, "usd")
+    assert exa_budget_set(conn) is True
+
+
+def test_lemlist_activity_we_do_not_use_is_not_stored(conn):
+    from ri.outbound import enrol
+    assert enrol.record_event(conn, {"type": "emailsOpened", "campaignId": "c", "leadEmail": "a@example.invalid", "_id": "1"}) == {"recorded": False, "reason": "ignored type"}
+    assert conn.execute("select count(*) n from outbound_events").fetchone()["n"] == 0

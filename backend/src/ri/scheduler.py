@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from .db import Conn, qa
+from .db import Conn, q1, qa
 from .jobs.queue import enqueue
 
 SCHEDULED_STATUSES = ("active", "degraded")      # pending/blocked/failed/paused sources are never polled
@@ -23,6 +23,13 @@ def schedule_due(conn: Conn, now: datetime | None = None) -> int:
         _, created = enqueue(conn, "source_run", {"source_id": s["source_id"]}, idempotency_key=f"source_run:{s['source_id']}:{bucket}", correlation_id=f"sched-{bucket}")
         n += created
     return n
+
+
+def exa_budget_set(conn: Conn) -> bool:
+    """Automatic web discovery runs when a monthly Exa budget above zero is saved. The worker, which holds the key, saves it at start-up; the scheduler does not need the key itself."""
+    from . import usage
+    r = q1(conn, "SELECT cap FROM provider_budgets WHERE provider='exa' AND kind='monthly' AND period=%s", (usage.period_now(),))
+    return bool(r and float(r["cap"]) > 0)
 
 
 def schedule_discovery(conn: Conn, now: datetime | None = None, *, enabled: bool = True) -> int:
