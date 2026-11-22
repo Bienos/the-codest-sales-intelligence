@@ -115,6 +115,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("public_bodies_tagged", lambda: tag_public_bodies(conn, 500))
     from .events.triage import retriage
     step("retriaged", lambda: retriage(conn, 500))
+    from .events.structured import backfill_procurement_events
+    step("procurement_events_backfilled", lambda: backfill_procurement_events(conn, 300))
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))

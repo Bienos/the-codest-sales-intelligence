@@ -6,6 +6,7 @@ build time; the sandbox egress proxy blocked live calls, so they have NOT been v
 """
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import timedelta
 from urllib.parse import quote
@@ -113,6 +114,7 @@ class FindTenderConnector:
     def __init__(self, client: httpx.AsyncClient, *, source_id: str = "procurement-uk-fts", stages: str = "tender,award",
                  now_fn=utcnow):
         self.client, self.source_id, self.stages, self.now = client, source_id, stages, now_fn
+        self.page_pause = 1.5
 
     def describe(self) -> SourceDescriptor:
         return SourceDescriptor(self.source_id, "UK Find a Tender", "official_api", "S1", "1.0")
@@ -127,6 +129,7 @@ class FindTenderConnector:
     async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
         requested = self.now()
         if cursor and cursor.startswith("http"):
+            await asyncio.sleep(self.page_pause)          # the live API answers 429 when pages are requested back to back
             data = await request_json(self.client, "GET", cursor)
         else:
             # Checked against the live API: a comma-separated "stages" value silently returns no releases, and no updatedFrom pages through all history.

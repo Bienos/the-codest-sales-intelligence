@@ -72,3 +72,16 @@ def emit_job_event(conn: Conn, job_row_id: str, change: str, *, now: datetime | 
                                pub_at=j["posted_at"], claim_ids=[claim], document_ids=[], origin_group=f"official:{j['provider']}:{j['board']}:{j['job_id']}",
                                replay=replay)
     return eid if created else None
+
+
+def backfill_procurement_events(conn: Conn, limit: int = 300) -> int:
+    """Notices stored by a run that stopped before its events were made (rate limit, outage): make them now. Idempotent: events are keyed on the notice."""
+    from ..ingest.process import finish_event
+    n = 0
+    for r in conn.execute("SELECT n.id FROM procurement_notices n WHERE n.status IN ('open','amended','awarded') AND NOT EXISTS "
+                          "(SELECT 1 FROM events e WHERE e.attrs->>'notice_id' = n.notice_id) ORDER BY n.published_at DESC NULLS LAST LIMIT %s", (limit,)).fetchall():
+        eid = emit_procurement_events(conn, str(r["id"]), "new")
+        if eid:
+            finish_event(conn, eid)
+            n += 1
+    return n

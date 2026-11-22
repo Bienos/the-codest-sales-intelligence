@@ -101,3 +101,42 @@ def test_every_run_records_what_it_saw_and_the_canary_names_sources_that_never_r
     u = conn.execute("select usage from monitoring_runs where source_id='silent-x' order by started_at desc limit 1").fetchone()["usage"]
     assert u["pages"] == 1 and u["items"] == 0 and u["releases_seen"] == 100 and u["releases_kept"] == 0
     assert "silent_sources" in {b["code"] for b in canary.run_checks(conn)}
+
+
+def test_a_run_that_stops_part_way_still_turns_what_it_stored_into_events_then_retries(conn):
+    from datetime import datetime, timezone
+    from ri.jobs.handlers import build_handlers
+    from ri.jobs.queue import enqueue, run_one
+    from ri.sources.base import FetchBatch, RateLimited, RawItem, SourceDescriptor, SourceDocumentDraft
+    conn.execute("insert into sources(source_id, display_name, source_tier, source_type, source_family, provider, status, collection_method) values ('proc-x','x','S1','procurement','procurement','t','active','official_api')")
+
+    class TwoPagesThenLimited:
+        calls = 0
+
+        def describe(self):
+            return SourceDescriptor("proc-x", "X", "official_api", "S1", "v")
+
+        async def fetch(self, cursor, limit):
+            TwoPagesThenLimited.calls += 1
+            if TwoPagesThenLimited.calls == 2:
+                raise RateLimited("429 rate limited", retry_after=60)
+            return FetchBatch([RawItem("n1", None, {})], "http://next", True, datetime.now(timezone.utc))
+
+        def canonicalize(self, item):
+            rec = {"notice_id": "N-1", "buyer_name": "Synthetic Buyer Ltd", "title": "Software development framework", "service_codes": ["72000000"], "country": "GB",
+                   "published_at": datetime(2026, 11, 20, tzinfo=timezone.utc), "deadline_at": datetime(2026, 12, 20, tzinfo=timezone.utc), "deadline_tz": "Z", "status": "open",
+                   "official_url": "https://example.invalid/n1", "notice_kind": "contract_notice"}
+            return SourceDocumentDraft("n1", "v1", "https://example.invalid/n1", rec["title"], rec["published_at"], None, rec["title"], structured=rec, kind="procurement_notice")
+    enqueue(conn, "source_run", {"source_id": "proc-x"}, idempotency_key="px")
+    conn.commit()
+    st = run_one(conn, "w", build_handlers(connector_factory=lambda sid: TwoPagesThenLimited()))
+    assert st == "retryable_failed"
+    assert conn.execute("select count(*) n from events where attrs->>'notice_id'='N-1'").fetchone()["n"] == 1
+
+
+def test_notices_left_without_events_are_backfilled_once(conn):
+    from ri.events.structured import backfill_procurement_events
+    conn.execute("insert into sources(source_id, display_name, source_tier, source_type, source_family, provider, status, collection_method) values ('proc-y','y','S1','procurement','procurement','t','active','official_api')")
+    conn.execute("insert into procurement_notices(source_id, notice_id, buyer_name, title, status, service_codes, country, official_url) values ('proc-y','N-9','Buyer','Data platform build','open','{72000000}','GB','https://example.invalid/9')")
+    assert backfill_procurement_events(conn) == 1
+    assert backfill_procurement_events(conn) == 0

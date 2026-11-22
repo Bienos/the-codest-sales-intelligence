@@ -18,7 +18,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         connector = connector_factory(sid)
         resolver = resolve_org_factory(conn) if resolve_org_factory else None
         res = run_source(conn, connector, resolve_org=resolver, job_id=str(job["id"]))
-        if res.status in {"failed", "partial"} and res.error_class:
+        if res.status == "failed" and res.error_class:
             raise JobError(res.error or "source run failed", res.error_class)
         if res.status == "skipped":
             return {"skipped": res.error}
@@ -26,6 +26,10 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         if ex is not None and hasattr(ex, "reserve_fraction"):
             ex.reserve_fraction = 0.3          # monitoring never uses the last 30% of the model budget: sellers' checks come first
         out = process_run(conn, res, extractor=ex, resolve_org=resolver)
+        if res.status == "partial" and res.error_class:
+            # what was stored before the stop has now become events and signals; the retry resumes from the saved cursor
+            conn.commit()
+            raise JobError(res.error or "source run stopped part-way", res.error_class)
         return {"run_id": res.run_id, "new": res.new, "changed": res.changed, "unchanged": res.unchanged, **out}
 
     def evaluate(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
