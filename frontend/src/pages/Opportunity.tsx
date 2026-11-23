@@ -23,19 +23,19 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
     <>
       <PageHeader eyebrow={`${d.account.name} · ${lab("route", d.route.type)}`} title={d.initiative.title}
         right={<Link to={`/accounts/${d.account.id}`}><button>Open account</button></Link>}
-        sub={<span className="row" style={{ marginTop: 4 }}><Badge kind={priorityKind(d.priority)}>{lab("priority", d.priority)}</Badge><Badge>{lab("state", d.state)}</Badge><Badge>Via {d.route.counterparty}</Badge>
+        sub={<span className="row mt-1"><Badge kind={priorityKind(d.priority)}>{lab("priority", d.priority)}</Badge><Badge>{lab("state", d.state)}</Badge><Badge>Via {d.route.counterparty}</Badge>
           <Badge kind={d.evidence_confidence === "high" ? "ok" : "warn"}>Sources: {d.evidence_confidence}</Badge><Badge><span title="How many of the seven checks below have an answer">{Math.round(d.research_completeness * 7)} of 7 checks answered</span></Badge>{d.score != null && <Badge><span title="Ranks what to look at first. It is not a chance of winning.">Opportunity score {d.score}/100</span></Badge>}</span>} />
       {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} />
 
-      <div className={`verdict ${verdict(d).kind}`} style={{ marginTop: 6 }}><span className="k">What to do</span>{verdict(d).text}</div>
-      <div className="section-title" style={{ marginTop: 6 }}>Seven checks before this is a real deal</div>
+      <div className={`verdict ${verdict(d).kind} mt-2`}><span className="k">What to do</span>{verdict(d).text}</div>
+      <div className="section-title mt-2">Seven checks before this is a real deal</div>
       <GateBar gates={d.gates} />
-      <p className="small muted" style={{ marginTop: 8 }}>You can act on this now. It is not qualified until checks 4 to 7 are answered, and most of those need a conversation with the buyer. The score ranks what to look at first; it is not a chance of winning.</p>
+      <p className="small muted mt-2">You can act on this now. It is not qualified until checks 4 to 7 are answered, and most of those need a conversation with the buyer. The score ranks what to look at first; it is not a chance of winning.</p>
 
-      <div className="ws" style={{ marginTop: 8 }}>
+      <div className="ws mt-2">
         <div>
           <div className="section-title">What happened and why it matters</div>
-          <div className="card"><p style={{ marginTop: 0 }}><b>What happened:</b> {d.what_happened.summary}</p><p><b>Why it matters:</b> {d.why_it_matters}</p><Evidence items={d.evidence} hypothesisId={id} /></div>
+          <div className="card"><p className="mt-0"><b>What happened:</b> {d.what_happened.summary}</p><p><b>Why it matters:</b> {d.why_it_matters}</p><Evidence items={d.evidence} hypothesisId={id} /></div>
 
           <div className="section-title">What we know and what we are guessing</div>
           <div className="card"><Badge kind={pb.meeting_brief.buyer_confirmed ? "ok" : "warn"}>{pb.meeting_brief.buyer_confirmed ? "The buyer has confirmed the need" : "The buyer has not confirmed the need yet"}</Badge>
@@ -44,7 +44,7 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
             {d.review?.falsifiers && <details><summary>What would prove this wrong?</summary><ul className="tight">{d.review.falsifiers.map((f: string, i: number) => <li key={i}>{f}</li>)}</ul></details>}</div>
 
           <div className="section-title">Who to talk to and how to get in</div>
-          <div className="card"><p className="small" style={{ marginTop: 0 }}>Sales play: <b>{pb.play.name ?? "none"}</b>. Usual buyer: {String(pb.play.primary_buyer ?? "not known").replace(/\.$/, "")}.{(() => { const r = String(pb.play.reason ?? "").replace(/\s*active signal\(s\) \[.*?\]\.?/i, "").replace(/[.\s]+$/, ""); return r ? ` ${r}.` : ""; })()}</p>
+          <div className="card"><p className="small mt-0">Sales play: <b>{pb.play.name ?? "none"}</b>. Usual buyer: {String(pb.play.primary_buyer ?? "not known").replace(/\.$/, "")}.{(() => { const r = String(pb.play.reason ?? "").replace(/\s*active signal\(s\) \[.*?\]\.?/i, "").replace(/[.\s]+$/, ""); return r ? ` ${r}.` : ""; })()}</p>
             <p className="small"><b>Not yet identified:</b> {pb.committee.missing.map((m: string) => lab("committee", m)).join(", ") || "none"} {pb.committee.single_threaded && <Badge kind="warn">Only one contact so far</Badge>}</p>
             <p className="small muted">A job title does not prove they hold the budget. We treat budget authority as a guess until the buyer confirms it.</p>
             <h3>Ways in, most reliable first</h3>{pb.access_routes.length ? <ol className="tight">{pb.access_routes.map((r: any, i: number) => <li key={i}>{humanize(r.kind)} {r.verified ? <Badge kind="ok">confirmed</Badge> : <Badge kind="warn">not confirmed</Badge>} {r.context_only && <Badge>background only</Badge>} <span className="muted">{r.evidence}</span></li>)}</ol> : <p className="small muted">No way in recorded yet. Attending the same event is not a relationship.</p>}</div>
@@ -53,8 +53,8 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
           <div className="card"><ul className="tight">{pb.discovery_questions.map((q: any, i: number) => <li key={i}><Badge>{({ G1: "Account fit", G2: "Real programme", G3: "Engineering fit", G4: "Outside demand", G5: "Supplier access", G6: "Buyer path", G7: "Delivery", play: "Sales play" } as Record<string, string>)[q.gate] ?? q.gate}</Badge> {q.question}</li>)}</ul></div>
 
           <div className="section-title">Pipedrive deal</div>
-          <div className="card">{pb.deal.has_open_deal ? <><p style={{ marginTop: 0 }}><b>{pb.deal.deal.title}</b>. Stage {pb.deal.deal.stage}, last updated {pb.deal.deal.age_days_since_update ?? "an unknown number of"} days ago {pb.deal.aging_flag && <Badge kind="warn">going stale</Badge>}</p>
-            {pb.deal.stage_vs_evidence_gap && <p className="small"><Badge kind="warn">Stage looks ahead of the evidence</Badge> {pb.deal.stage_vs_evidence_gap}</p>}<p className="small"><b>Suggested next step:</b> {pb.deal.next_step_guidance.description}. You will know it worked when: {pb.deal.next_step_guidance.verify_success}.</p></> : <p className="muted" style={{ margin: 0 }}>There is no Pipedrive deal for this yet. An opportunity here is not a deal. Propose one below and a colleague will approve it first.</p>}</div>
+          <div className="card">{pb.deal.has_open_deal ? <><p className="mt-0"><b>{pb.deal.deal.title}</b>. Stage {pb.deal.deal.stage}, last updated {pb.deal.deal.age_days_since_update ?? "an unknown number of"} days ago {pb.deal.aging_flag && <Badge kind="warn">going stale</Badge>}</p>
+            {pb.deal.stage_vs_evidence_gap && <p className="small"><Badge kind="warn">Stage looks ahead of the evidence</Badge> {pb.deal.stage_vs_evidence_gap}</p>}<p className="small"><b>Suggested next step:</b> {pb.deal.next_step_guidance.description}. You will know it worked when: {pb.deal.next_step_guidance.verify_success}.</p></> : <p className="muted m-0">There is no Pipedrive deal for this yet. An opportunity here is not a deal. Propose one below and a colleague will approve it first.</p>}</div>
 
           <div className="section-title">How this was scored</div>
           <details className="card"><summary>Show the score breakdown and history</summary>
@@ -65,26 +65,26 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
 
         <aside className="ws-side" aria-label="Actions">
           <div className="action">
-            <div className="eyebrow" style={{ marginBottom: 6 }}>Next action</div>
+            <div className="eyebrow mb-2">Next action</div>
             {a ? <><div className="atype">{lab("action", a.action_type)}</div><div><b className="k">Goal</b> {a.objective}</div><div><b className="k">When</b> {a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</div>
-              <div><b className="k">Good result</b> {a.expected_outcome}</div><div><b className="k">Stop when</b> {a.stop_condition}</div><div className="small muted" style={{ marginTop: 8 }}>{a.reason}</div></> : <span className="muted">Nothing to do right now.</span>}
+              <div><b className="k">Good result</b> {a.expected_outcome}</div><div><b className="k">Stop when</b> {a.stop_condition}</div><div className="small muted mt-2">{a.reason}</div></> : <span className="muted">Nothing to do right now.</span>}
           </div>
-          <div className="card" style={{ margin: 0 }}>
+          <div className="card m-0">
             <div className="eyebrow">Draft a message</div>
-            <p className="small" style={{ margin: "0 0 12px" }}>This only writes a draft. Nothing is sent from here.</p>
+            <p className="small mt-0 mb-3">This only writes a draft. Nothing is sent from here.</p>
             {can("draft.create") && <button onClick={() => run(async () => setDraft(await post(`/api/hypotheses/${id}/draft`, {})), "Draft written below")}>Write a draft</button>}
             {draft && (draft.status === "blocked" ? <div className="err" role="alert"><b>We could not write this draft</b><ul className="tight">{draft.blocked_reasons.map((b: any, i: number) => <li key={i}>{humanize(b.code)}: {b.detail}</li>)}</ul></div>
-              : <div style={{ marginTop: 12 }}><p style={{ margin: "0 0 6px" }}><b>{draft.subject}</b></p><pre style={{ whiteSpace: "pre-wrap", font: "inherit" }}>{draft.body}</pre><p className="small muted">{draft.note}</p></div>)}
+              : <div className="mt-3"><p className="mt-0 mb-2"><b>{draft.subject}</b></p><pre className="plain-pre">{draft.body}</pre><p className="small muted">{draft.note}</p></div>)}
           </div>
-          <div className="card" style={{ margin: 0 }}>
+          <div className="card m-0">
             <div className="eyebrow">Add a Pipedrive activity</div>
-            <p className="small" style={{ margin: "0 0 12px" }}>A colleague has to approve it before anything reaches Pipedrive.</p>
+            <p className="small mt-0 mb-3">A colleague has to approve it before anything reaches Pipedrive.</p>
             {can("crm.propose") ? <>
-              <label className="small" htmlFor="crm-subject">What is the activity for?</label><input id="crm-subject" placeholder="A specific purpose, not 'follow up'" value={crmForm.subject} onChange={(e) => setCrm({ ...crmForm, subject: e.target.value })} style={{ width: "100%", marginBottom: 8 }} />
-              <label className="small" htmlFor="crm-why">Why now?</label><input id="crm-why" placeholder="One sentence" value={crmForm.justification} onChange={(e) => setCrm({ ...crmForm, justification: e.target.value })} style={{ width: "100%", marginBottom: 12 }} />
+              <label className="small" htmlFor="crm-subject">What is the activity for?</label><input id="crm-subject" placeholder="A specific purpose, not 'follow up'" value={crmForm.subject} onChange={(e) => setCrm({ ...crmForm, subject: e.target.value })} className="w-full mb-2" />
+              <label className="small" htmlFor="crm-why">Why now?</label><input id="crm-why" placeholder="One sentence" value={crmForm.justification} onChange={(e) => setCrm({ ...crmForm, justification: e.target.value })} className="w-full mb-3" />
               <button className="primary" disabled={crmForm.subject.length < 3 || crmForm.justification.length < 3} onClick={() => run(async () => setProposal(await post("/api/crm/propose-activity", { hypothesis_id: id, ...crmForm })), "Sent for approval. A colleague will see it under Administration, Approvals.")}>Ask for approval</button>
-              {proposal && <div className="action" style={{ marginTop: 16 }}><b>Waiting for approval</b><div className="small" style={{ margin: "6px 0" }}>{Object.entries(proposal.diff.payload ?? {}).map(([k, v]: any) => <div key={k}><b>{humanize(k)}:</b> {String(v)}</div>)}</div><div className="small muted">Someone other than you must approve it by {fmtDateTime(proposal.expires_at)}.</div></div>}</> : <p className="muted small">Your role cannot add Pipedrive activities.</p>}
-            <p style={{ margin: "14px 0 0" }}><Link to="/admin/approvals" className="small">See what is waiting for approval</Link></p>
+              {proposal && <div className="action mt-4"><b>Waiting for approval</b><div className="small mt-2 mb-2">{Object.entries(proposal.diff.payload ?? {}).map(([k, v]: any) => <div key={k}><b>{humanize(k)}:</b> {String(v)}</div>)}</div><div className="small muted">Someone other than you must approve it by {fmtDateTime(proposal.expires_at)}.</div></div>}</> : <p className="muted small">Your role cannot add Pipedrive activities.</p>}
+            <p className="mt-4 mb-0"><Link to="/admin/approvals" className="small">See what is waiting for approval</Link></p>
           </div>
         </aside>
       </div>

@@ -27,21 +27,21 @@ function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () =
   const v = s.validation;
   return (
     <div className="src-ctl">
-      {s.url_basis && s.url && <p className="small muted" style={{ margin: "0 0 8px" }}>Why this address: {s.url_basis}</p>}
+      {s.url_basis && s.url && <p className="small muted mt-0 mb-2">Why this address: {s.url_basis}</p>}
       <div className="row">
-        <input aria-label={`Page URL for ${s.display_name}`} placeholder={`https://… on ${s.canonical_domain}`} value={url} onChange={(e) => setUrl(e.target.value)} style={{ flex: 1, minWidth: 260 }} disabled={!can} />
+        <input aria-label={`Page URL for ${s.display_name}`} placeholder={`https://… on ${s.canonical_domain}`} value={url} onChange={(e) => setUrl(e.target.value)} className="grow field-md" disabled={!can} />
         <button disabled={!can || busy || url.length < 12} onClick={() => wrap(() => put(`/api/admin/sources/${s.source_id}/config`, { url }), () => "Address saved. Test it next.")}>Save URL</button>
         <button disabled={!can || busy || !s.url} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/validate`), (r) => (r.ok ? "Test passed." : `Test failed: ${r.detail}`))}>Test from server</button>
       </div>
-      {v && <p className="small" style={{ margin: "8px 0 0" }}><Badge kind={v.ok ? "ok" : "bad"}>{v.ok ? "Test passed" : "Test failed"}</Badge> {v.detail} <span className="muted">· {fmtDateTime(v.at)}</span></p>}
+      {v && <p className="small mt-2 mb-0"><Badge kind={v.ok ? "ok" : "bad"}>{v.ok ? "Test passed" : "Test failed"}</Badge> {v.detail} <span className="muted">· {fmtDateTime(v.at)}</span></p>}
       {can && v?.ok && s.status !== "active" && (
-        <div style={{ marginTop: 12 }}>
+        <div className="mt-3">
           <label className="small">Permission note: why we may read this page<br /><textarea value={licence} onChange={(e) => setLicence(e.target.value)} /></label>
-          <label className="small row" style={{ margin: "8px 0" }}><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> I have checked that monitoring this page is permitted</label>
+          <label className="small row mt-2 mb-2"><input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> I have checked that monitoring this page is permitted</label>
           <button className="primary" disabled={busy || !ok || licence.length < 10} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/activate`, { licence_note: licence, confirm_permitted: ok }), () => "Source switched on. It will start within five minutes.")}>Switch source on</button>
         </div>)}
-      {can && s.status === "active" && <button style={{ marginTop: 10 }} disabled={busy} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/pause`, { reason: "paused by administrator" }), () => "Source paused.")}>Pause</button>}
-      {msg && <div className="okmsg" role="status" style={{ marginTop: 10 }}>{msg}</div>}<Err e={err} />
+      {can && s.status === "active" && <button className="mt-3" disabled={busy} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/pause`, { reason: "paused by administrator" }), () => "Source paused.")}>Pause</button>}
+      {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
     </div>
   );
 }
@@ -52,8 +52,8 @@ const STATE_KIND: Record<string, "ok" | "warn" | "bad" | "info"> = { live: "ok",
 function ApolloCap({ r }: { r: any }) {
   const [v, setV] = useState(String(r.cap ?? 0)); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null);
   const save = async () => { setErr(null); try { await post("/api/admin/integrations/apollo/cap", { credits: Number(v) }); setMsg("Saved for this month."); } catch (e) { setErr(e); } };
-  return <div style={{ marginTop: 8 }}><span className="k">Credits this month</span>
-    <div className="row"><input aria-label="Monthly credit cap" type="number" min={0} value={v} onChange={(e) => setV(e.target.value)} style={{ width: 110 }} /><button onClick={save}>Set cap</button><span className="small muted">Spent {r.spent ?? 0}. Price per reveal: {r.credits_per_reveal ?? "not set (RI_APOLLO_CREDITS_PER_REVEAL)"}. At zero, no reveal can run.</span></div>
+  return <div className="mt-2"><span className="k">Credits this month</span>
+    <div className="row"><input aria-label="Monthly credit cap" type="number" min={0} value={v} onChange={(e) => setV(e.target.value)} className="field-sm" /><button onClick={save}>Set cap</button><span className="small muted">Spent {r.spent ?? 0}. Price per reveal: {r.credits_per_reveal ?? "not set (RI_APOLLO_CREDITS_PER_REVEAL)"}. At zero, no reveal can run.</span></div>
     {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} /></div>;
 }
 
@@ -62,15 +62,15 @@ function Integrations() {
   const test = async (k: string) => { setBusy(k); try { const r = await post(`/api/admin/integrations/${k}/test`); setRes((x) => ({ ...x, [k]: r })); } catch (e) { setRes((x) => ({ ...x, [k]: { ok: false, detail: e instanceof Error ? e.message : "Test failed" } })); } finally { setBusy(""); } };
   return (
     <Load path="/api/admin/integrations">{(d) => (<>
-      <p className="sub" style={{ marginBottom: 14 }}>The accounts we connect to for outreach, Pipedrive and contact data. Keys are stored on the server and never shown here. A passing test only proves the key works. Sending and Pipedrive changes also need their switch turned on and a colleague's approval.</p>
+      <p className="sub mb-4">The accounts we connect to for outreach, Pipedrive and contact data. Keys are stored on the server and never shown here. A passing test only proves the key works. Sending and Pipedrive changes also need their switch turned on and a colleague's approval.</p>
       <div className="conn-list">
         {d.items.map((r: any) => <article key={r.key} className={`conn ${r.configured ? "live" : "needs_credential"}`}>
           <div className="conn-head"><div><div className="conn-name">{r.name}</div><div className="conn-meta">{r.what}</div></div>
             <div className="row"><Badge kind={r.configured ? "ok" : "warn"}>{r.configured ? "Connected" : "Not connected"}</Badge>{r.switch && <Badge kind={r.switch_on ? "ok" : ""}>{r.switch_on ? "Switched on" : "Switched off"}</Badge>}</div></div>
-          {r.blocked_reason && <div className="err" role="alert" style={{ margin: "8px 0" }}>{r.blocked_reason}</div>}
+          {r.blocked_reason && <div className="err mt-2 mb-2" role="alert">{r.blocked_reason}</div>}
           <div className="conn-cols"><div><span className="k">How to connect it</span>{r.how}</div>{r.switch && <div><span className="k">Safety switch</span>{r.switch}: {r.switch_on ? "on" : "off. Nothing is sent or changed until it is turned on."}</div>}</div>
           {r.key === "apollo" && <ApolloCap r={r} />}
-          {r.testable && <div className="row" style={{ marginTop: 8 }}><button disabled={!r.configured || busy === r.key} onClick={() => test(r.key)}>Test the connection</button>
+          {r.testable && <div className="row mt-2"><button disabled={!r.configured || busy === r.key} onClick={() => test(r.key)}>Test the connection</button>
             {res[r.key] && <span className={res[r.key].ok ? "okmsg" : "small"} role="status">{res[r.key].detail}</span>}</div>}
         </article>)}
       </div></>)}</Load>
@@ -87,14 +87,14 @@ function DeadlinesAdmin() {
     return (<>
       <p className="sub">A date only shows for sellers once it has an official link, the sentence that states it, and a colleague's approval. Nothing is guessed.</p>
       <div className="card"><b>Propose a deadline</b>
-        <div className="grid2" style={{ marginTop: 8 }}>
+        <div className="grid2 mt-2">
           <label className="small">Title<input value={f.title} onChange={set("title")} /></label><label className="small">Regulation<input value={f.regime} onChange={set("regime")} placeholder="e.g. DORA" /></label>
           <label className="small">Date<input type="date" value={f.deadline_date} onChange={set("deadline_date")} /></label><label className="small">Applies to<input value={f.applies_to} onChange={set("applies_to")} placeholder="e.g. banks in the EU" /></label>
           <label className="small">Region<input value={f.region} onChange={set("region")} placeholder="EU, UK, DACH…" /></label><label className="small">Official page (https)<input value={f.source_url} onChange={set("source_url")} /></label>
         </div>
-        <label className="small">The sentence on that page that states the date<textarea rows={2} value={f.source_quote} onChange={set("source_quote")} style={{ width: "100%" }} /></label>
+        <label className="small">The sentence on that page that states the date<textarea rows={2} value={f.source_quote} onChange={set("source_quote")} className="w-full" /></label>
         <button className="primary" disabled={!f.title || !f.regime || !f.deadline_date || !f.source_url || f.source_quote.length < 15} onClick={add}>Propose</button>
-        {msg && <div className="okmsg" role="status" style={{ marginTop: 8 }}>{msg}</div>}<Err e={err} /></div>
+        {msg && <div className="okmsg mt-2" role="status">{msg}</div>}<Err e={err} /></div>
       <div className="card table-wrap"><table><thead><tr><th>Deadline</th><th>Date</th><th>Quote from the official page</th><th>Status</th><th /></tr></thead><tbody>
         {d.items.map((x: any) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a><div className="small muted">{x.regime} · proposed by {x.proposed_by}</div></td><td>{x.deadline_date}</td><td className="small">“{x.source_quote}”</td>
           <td><Badge kind={x.status === "approved" ? "ok" : x.status === "proposed" ? "warn" : ""}>{x.status === "proposed" ? "Waiting for a second approver" : humanize(x.status)}</Badge></td>
@@ -124,7 +124,7 @@ const Precision = () => <Load path="/api/admin/precision">{(d) => (<>
     {d.rules.map((r: any) => <tr key={r.rule_id}><td>{r.rule_id}</td><td>{r.fired}</td><td>{r.accepted}</td><td>{r.dismissed}</td><td>{r.dismissal_rate === null ? "n/a" : `${Math.round(r.dismissal_rate * 100)}%`}<div className="small muted">{r.enough_data ? `likely range ${Math.round(r.interval_95[0] * 100)} to ${Math.round(r.interval_95[1] * 100)}%` : "Too few decisions to judge"}</div></td>
       <td className="small">{r.top_dismiss_reason ? lab("dismiss", r.top_dismiss_reason) : "None"}</td><td>{r.flag && <Badge kind="bad">Look at this</Badge>}</td></tr>)}
     {d.rules.length === 0 && <tr><td colSpan={7} className="muted">No signals fired in this period.</td></tr>}</tbody></table></div>
-  <div className="card"><b>Outreach results</b><div className="chips" style={{ marginTop: 6 }}>{Object.keys(d.outreach).length === 0 ? <span className="muted small">Nobody added to a sequence yet.</span> : Object.entries(d.outreach).map(([k, n]) => <Badge key={k}>{humanize(k)}: {n as number}</Badge>)}</div></div>
+  <div className="card"><b>Outreach results</b><div className="chips mt-2">{Object.keys(d.outreach).length === 0 ? <span className="muted small">Nobody added to a sequence yet.</span> : Object.entries(d.outreach).map(([k, n]) => <Badge key={k}>{humanize(k)}: {n as number}</Badge>)}</div></div>
   <ul className="tight small muted">{d.caveats.map((c: string, i: number) => <li key={i}>{c}</li>)}</ul></>)}</Load>;
 
 function Connections() {
@@ -133,7 +133,7 @@ function Connections() {
     <Load path="/api/admin/connections">{(d) => {
       const rows = d.items.filter((r: any) => !filter || r.state === filter);
       return (<>
-        <p className="sub" style={{ marginBottom: 14 }}>Every place we read from, what state it is in, what it needs to be switched on, and where to get that. “Runs per account” means it is found for each account when you press “Check for news” on that account.</p>
+        <p className="sub mb-4">Every place we read from, what state it is in, what it needs to be switched on, and where to get that. “Runs per account” means it is found for each account when you press “Check for news” on that account.</p>
         <div className="chips" role="group" aria-label="Filter by state">
           <button className="chip" aria-pressed={!filter} onClick={() => setFilter("")}>All<b>{d.items.length}</b></button>
           {Object.entries(d.counts).map(([k, n]) => <button key={k} className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{d.labels[k]}<b>{n as number}</b></button>)}
@@ -166,13 +166,13 @@ function ScanTop() {
   return (
     <div className="card">
       <b>Check your priority accounts for news</b>
-      <div className="small muted" style={{ margin: "4px 0 10px" }}>Reads each account's own news, press, careers and job-board pages{search ? " and runs one web search per account" : ""}. This only runs when you press the button. Cost stays within the monthly limits under Usage and cost.</div>
-      <div className="row" style={{ flexWrap: "wrap" }}>
-        <label className="small">How many accounts <input type="number" min={1} max={300} value={n} onChange={(e) => setN(Number(e.target.value))} style={{ width: 80 }} /></label>
+      <div className="small muted mt-1 mb-3">Reads each account's own news, press, careers and job-board pages{search ? " and runs one web search per account" : ""}. This only runs when you press the button. Cost stays within the monthly limits under Usage and cost.</div>
+      <div className="row">
+        <label className="small">How many accounts <input type="number" min={1} max={300} value={n} onChange={(e) => setN(Number(e.target.value))} className="field-xs" /></label>
         <label className="small row"><input type="checkbox" checked={search} onChange={(e) => setSearch(e.target.checked)} /> Include one web search per account (uses the Exa budget)</label>
         <button className="primary" disabled={busy || n < 1} onClick={go}>Check these accounts</button>
       </div>
-      {msg && <div className="okmsg" role="status" style={{ marginTop: 10 }}>{msg}</div>}<Err e={err} />
+      {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
     </div>
   );
 }
@@ -187,7 +187,7 @@ function Sources({ canEdit }: { canEdit: boolean }) {
     {canEdit && <ScanTop />}
     {canEdit && <div className="card row spread"><div><b>Test all sources</b><div className="small muted">Tests each source from the server. We only read pages the site allows (robots.txt). Sources missing an address or a key are skipped and say why.</div></div>
       <div className="row"><button disabled={busy} onClick={() => bulk(false)}>Test only</button><button className="primary" disabled={busy} onClick={() => bulk(true)}>Test, then switch on those that pass</button></div></div>}
-    {msg && <div className="okmsg" role="status" style={{ marginBottom: 12 }}>{msg}</div>}<Err e={err} />
+    {msg && <div className="okmsg mb-3" role="status">{msg}</div>}<Err e={err} />
     <Library render={(s, reload) => <SourceControls s={s} can={canEdit} reload={reload} />} />
   </>);
 }
@@ -196,10 +196,10 @@ const Identity = () => <Load path="/api/admin/identity-reviews">{(d, reload) => 
 function IdentityList({ d, reload }: { d: any; reload: () => void }) {
   const [err, setErr] = useState<unknown>(null); const [note, setNote] = useState("");
   const act = async (id: string, decision: string, org?: string) => { try { await post(`/api/admin/identity-reviews/${id}/resolve`, { decision, organization_id: org, note }); reload(); } catch (e) { setErr(e); } };
-  return <><Err e={err} /><p className="small muted">A parent company and its subsidiary are linked, never merged. Every decision needs a reason and is logged.</p><input aria-label="Your reason" placeholder="Your reason (required)" value={note} onChange={(e) => setNote(e.target.value)} style={{ minWidth: 360, marginBottom: 10 }} />
+  return <><Err e={err} /><p className="small muted">A parent company and its subsidiary are linked, never merged. Every decision needs a reason and is logged.</p><input aria-label="Your reason" placeholder="Your reason (required)" value={note} onChange={(e) => setNote(e.target.value)} className="field-lg mb-3" />
     {d.items.length === 0 && <div className="empty"><b>Nothing to match</b>Every company name from your workbooks has been matched.</div>}
     {d.items.map((r: any) => <div key={r.id} className="card"><b>{r.raw_company_name}</b> <Badge kind="warn">{r.reason === "ambiguous_match" ? "Could be more than one company" : humanize(r.reason)}</Badge> <span className="muted small">{r.sheet_title ? `from ${r.sheet_title}, row ${r.row_number}` : ""}</span>
-      <div className="row" style={{ marginTop: 8 }}>{r.candidates.map((c: any) => <button key={c.id} disabled={note.length < 3} onClick={() => act(r.id, "link", c.id)}>Link to {c.display_name} ({c.country_code ?? "?"})</button>)}
+      <div className="row mt-2">{r.candidates.map((c: any) => <button key={c.id} disabled={note.length < 3} onClick={() => act(r.id, "link", c.id)}>Link to {c.display_name} ({c.country_code ?? "?"})</button>)}
         <button disabled={note.length < 3} onClick={() => act(r.id, "new")}>It is a new company</button><button disabled={note.length < 3} onClick={() => act(r.id, "reject")}>Ignore this row</button></div></div>)}</>;
 }
 
@@ -209,8 +209,8 @@ function ApprovalList({ d, reload }: { d: any; reload: () => void }) {
   const go = async (path: string, body?: unknown, done = "Done.") => { setErr(null); setMsg(""); try { await post(path, body); setMsg(done); reload(); } catch (e) { setErr(e); } };
   return <><Err e={err} />{msg && <div className="okmsg" role="status">{msg}</div>}{d.items.length === 0 && <div className="empty"><b>Nothing waiting</b>Requests for Pipedrive changes, outreach and email reveals show up here for a second person to approve.</div>}
     {d.items.map((a: any) => <div key={a.id} className="card"><div className="row spread"><b>{lab("approval", a.kind)}{a.payload?.subject ? `: ${a.payload.subject}` : ""}</b><Badge kind={a.status === "approved" ? "ok" : a.status === "pending" ? "warn" : a.status === "executed" ? "info" : ""}>{({ pending: "Waiting for approval", approved: "Approved, not run yet", executed: "Done", rejected: "Rejected", expired: "Expired" } as Record<string, string>)[a.status] ?? humanize(a.status)}</Badge></div>
-      <div className="small">For {humanize(a.target_system)} · asked by {a.requested_by} · expires {fmtDateTime(a.expires_at)}</div><div className="small" style={{ margin: "6px 0" }}>{Object.entries(a.payload ?? {}).map(([k, v]: any) => <div key={k}><b>{humanize(k)}:</b> {typeof v === "object" ? JSON.stringify(v) : String(v)}</div>)}</div><div className="small muted">Why: {a.justification}</div>
-      <div className="row" style={{ marginTop: 8 }}>{a.status === "pending" && <><button className="primary" onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: true }, "Approved. Press Run now to carry it out.")}>Approve this</button><button onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: false }, "Rejected.")}>Reject</button></>}
+      <div className="small">For {humanize(a.target_system)} · asked by {a.requested_by} · expires {fmtDateTime(a.expires_at)}</div><div className="small mt-2 mb-2">{Object.entries(a.payload ?? {}).map(([k, v]: any) => <div key={k}><b>{humanize(k)}:</b> {typeof v === "object" ? JSON.stringify(v) : String(v)}</div>)}</div><div className="small muted">Why: {a.justification}</div>
+      <div className="row mt-2">{a.status === "pending" && <><button className="primary" onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: true }, "Approved. Press Run now to carry it out.")}>Approve this</button><button onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: false }, "Rejected.")}>Reject</button></>}
         {a.status === "approved" && <button onClick={() => go(`/api/approvals/${a.id}/execute`, undefined, "Done.")}>Run now</button>}</div></div>)}</>;
 }
 
@@ -236,7 +236,7 @@ const QUALITY_LABELS: Record<string, [string, string]> = {
   unauthorised_writes_detected: ["Unapproved changes detected", "Writes to Pipedrive or outreach without an approval. Should be zero."],
   pending_approvals: ["Approvals waiting", "Requests waiting for a second person. See Approvals."],
 };
-const Quality = () => <Load path="/api/admin/metrics">{(d) => <><p className="sub" style={{ marginBottom: 14 }}>Health checks on the platform itself. Anything marked "should be zero" and isn't is worth a look.</p>
+const Quality = () => <Load path="/api/admin/metrics">{(d) => <><p className="sub mb-4">Health checks on the platform itself. Anything marked "should be zero" and isn't is worth a look.</p>
   <div className="kpis">{Object.entries(d).filter(([, v]) => typeof v === "number").map(([k, v]: any) => { const [t, hint] = QUALITY_LABELS[k] ?? [humanize(k), ""]; return <div key={k} className="card kpi"><div className="eyebrow">{t}</div><div className="kpi-n">{v}</div>{hint && <div className="small muted">{hint}</div>}</div>; })}</div>
   <Load path="/api/admin/funnel">{(f) => <><h3>Outcome funnel</h3>{Object.keys(f.cohorts).length === 0 && <div className="empty"><b>No outcomes recorded yet</b>Nothing here is inferred.</div>}{Object.entries(f.cohorts).map(([k, c]: any) => <div key={k} className="card"><b>{humanize(k)}</b> · presented {c.presented} {c.insufficient_sample && <Badge kind="warn">too few to judge</Badge>}</div>)}<ul className="tight small muted">{f.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>}</Load></>}</Load>;
 
@@ -257,14 +257,14 @@ function Imports() {
     <>
       <div className="card">
         <div className="eyebrow">Connect Google Sheets (no uploads needed)</div>
-        {gs?.configured ? <p style={{ marginTop: 0 }}><Badge kind="ok">Connected</Badge> Share both workbooks with <b>{gs.service_account_email ?? "the service account"}</b> as Viewer, then press Sync. Each sync re-reads the sheets and keeps the data up to date.</p>
-          : <ol className="small" style={{ marginTop: 0 }}>
+        {gs?.configured ? <p className="mt-0"><Badge kind="ok">Connected</Badge> Share both workbooks with <b>{gs.service_account_email ?? "the service account"}</b> as Viewer, then press Sync. Each sync re-reads the sheets and keeps the data up to date.</p>
+          : <ol className="small mt-0">
               <li>In Google Cloud, create a service account in any project and enable the Google Sheets API. Create a JSON key for it.</li>
               <li>In Render, add the whole JSON as the secret <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> on the API and the worker.</li>
               <li>Open each workbook in Google Sheets, press Share, and add the service account's email as Viewer.</li>
               <li>Come back here and press Sync. If your Google admin blocks sharing outside the company, upload the exports below instead.</li>
             </ol>}
-        <div className="row" style={{ flexWrap: "wrap" }}>
+        <div className="row">
           <button className="primary" disabled={busy || !gs?.configured} onClick={() => sync("A")}>Sync workbook A</button>
           <button className="primary" disabled={busy || !gs?.configured} onClick={() => sync("B")}>Sync workbook B</button>
           {gs?.workbooks && <><a href={gs.workbooks.A} target="_blank" rel="noreferrer">Open A</a><a href={gs.workbooks.B} target="_blank" rel="noreferrer">Open B</a></>}
@@ -272,10 +272,10 @@ function Imports() {
       </div>
       <div className="card">
         <div className="eyebrow">Or upload a workbook export</div>
-        <p style={{ marginTop: 0 }}>In Google Sheets choose <b>File, Download, Microsoft Excel (.xlsx)</b> for each workbook, then upload it here. We work out which workbook it is, check every tab's column headings against the agreed layout, and load it in the background. A renamed or reordered column pauses that tab instead of guessing.</p>
+        <p className="mt-0">In Google Sheets choose <b>File, Download, Microsoft Excel (.xlsx)</b> for each workbook, then upload it here. We work out which workbook it is, check every tab's column headings against the agreed layout, and load it in the background. A renamed or reordered column pauses that tab instead of guessing.</p>
         <input type="file" accept=".xlsx" aria-label="Workbook file (.xlsx)" disabled={busy} onChange={(e) => { void send(e.target.files?.[0]); e.target.value = ""; }} />
-        {msg && <div className="okmsg" role="status" style={{ marginTop: 12 }}>{msg}</div>}<Err e={err} />
-        <p className="small muted" style={{ marginBottom: 0 }}>Uploading the same file again changes nothing. We delete the file after loading it and keep only its fingerprint and the result.</p>
+        {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
+        <p className="small muted mb-0">Uploading the same file again changes nothing. We delete the file after loading it and keep only its fingerprint and the result.</p>
       </div>
       <h3>Recent uploads</h3>
       {!d ? <p className="muted">Loading</p> : d.uploads.length === 0 ? <div className="empty">No uploads yet.</div> :
@@ -299,15 +299,15 @@ function Users() {
     <>
       <div className="card">
         <div className="eyebrow">Add a person</div>
-        <p className="small muted" style={{ marginTop: 0 }}>They sign in with Google using this address{d?.domain ? ` (only @${d.domain} is accepted)` : ""}. Sellers see accounts with no Pipedrive owner, plus their own and any shared with them.</p>
+        <p className="small muted mt-0">They sign in with Google using this address{d?.domain ? ` (only @${d.domain} is accepted)` : ""}. Sellers see accounts with no Pipedrive owner, plus their own and any shared with them.</p>
         <div className="row">
-          <input aria-label="Work email" placeholder="name@thecodest.co" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} style={{ minWidth: 240 }} />
+          <input aria-label="Work email" placeholder="name@thecodest.co" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} className="field-md" />
           <input aria-label="Display name" placeholder="Display name" value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
           <select aria-label="Role" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{ROLES.map((r) => <option key={r} value={r}>{lab("role", r)}</option>)}</select>
-          <input aria-label="Team" placeholder="Team" value={f.team} onChange={(e) => setF({ ...f, team: e.target.value })} style={{ width: 120 }} />
+          <input aria-label="Team" placeholder="Team" value={f.team} onChange={(e) => setF({ ...f, team: e.target.value })} className="field-sm" />
           <button className="primary" disabled={!f.email.includes("@") || !f.display_name} onClick={() => run(async () => { await post("/api/admin/users", f); setF({ ...f, email: "", display_name: "" }); }, "Person added. They can sign in now.")}>Add</button>
         </div>
-        {msg && <div className="okmsg" role="status" style={{ marginTop: 12 }}>{msg}</div>}<Err e={err} />
+        {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
       </div>
       {d && <div className="card table-wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Team</th><th>Status</th><th><span className="sr">Actions</span></th></tr></thead><tbody>{d.items.map((u: any) => <tr key={u.id}>
         <td>{u.display_name}<div className="small muted">{u.email}</div></td>

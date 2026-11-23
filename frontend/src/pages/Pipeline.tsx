@@ -11,8 +11,8 @@ export function Verification() {
   useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [status, origin]);
   return (
     <>
-      <p className="small muted" style={{ marginTop: 0 }}>Each row is a page we were asked to check, from your workbooks or from a search. We read the original page, pull out events with word-for-word quotes, and keep only those whose quote is really on the page.</p>
-      {d && <div className="chips" style={{ marginBottom: 12 }}>{Object.entries(d.counts).map(([k, v]: any) => <button key={k} className={`chip ${status === k ? "on" : ""}`} onClick={() => setStatus(status === k ? "" : k)}>{VLABEL[k] ?? humanize(k)} <b>{v}</b></button>)}
+      <p className="small muted mt-0">Each row is a page we were asked to check, from your workbooks or from a search. We read the original page, pull out events with word-for-word quotes, and keep only those whose quote is really on the page.</p>
+      {d && <div className="chips mb-3">{Object.entries(d.counts).map(([k, v]: any) => <button key={k} className={`chip ${status === k ? "on" : ""}`} onClick={() => setStatus(status === k ? "" : k)}>{VLABEL[k] ?? humanize(k)} <b>{v}</b></button>)}
         <select aria-label="Origin" value={origin} onChange={(e) => setOrigin(e.target.value)}><option value="">All origins</option><option value="sheet_signal">From your workbooks</option><option value="exa_discovery">From web search</option><option value="seller_miss">Reported by sellers</option></select></div>}
       <Err e={err} />
       {d && d.items.length === 0 && <div className="empty"><b>Nothing here yet</b>Check a company from Today, or run a web search under Admin, Web search.</div>}
@@ -39,16 +39,16 @@ export function Discovery() {
       <div className="card">
         <div className="row spread">
           <div><div className="eyebrow">Web search (Exa)</div>
-            <p style={{ margin: 0 }}>{d.plans.length} saved searches across {new Set(d.plans.map((p: any) => p.theme)).size} topics and {new Set(d.plans.map((p: any) => p.geography)).size} regions. Each runs at most once every {d.interval_days} days, with up to {d.max_searches_per_run} searches per run, so spend stays within the monthly limit.</p></div>
+            <p className="m-0">{d.plans.length} saved searches across {new Set(d.plans.map((p: any) => p.theme)).size} topics and {new Set(d.plans.map((p: any) => p.geography)).size} regions. Each runs at most once every {d.interval_days} days, with up to {d.max_searches_per_run} searches per run, so spend stays within the monthly limit.</p></div>
           <button className="primary" onClick={() => run()}>Run due searches now</button>
         </div>
-        <div className="row small" style={{ marginTop: 12 }}>
+        <div className="row small mt-3">
           <Badge kind={d.cap_usd > 0 ? "ok" : "bad"}>Monthly limit {d.cap_usd > 0 ? `$${d.cap_usd}` : "not set"}</Badge>
           {b && <Badge>Spent ${Number(b.spent).toFixed(2)} · set aside ${Number(b.reserved).toFixed(2)}</Badge>}
           <Badge kind={d.key_present_on_api ? "ok" : "warn"}>{d.key_present_on_api ? "Key connected" : "Key not visible here (set on the worker)"}</Badge>
         </div>
-        <p className="small muted" style={{ marginBottom: 0 }}>{d.note} Each search's cost comes from Exa's own response and is recorded under Usage and cost.</p>
-        {msg && <div className="okmsg" role="status" style={{ marginTop: 12 }}>{msg}</div>}<Err e={err} />
+        <p className="small muted mb-0">{d.note} Each search's cost comes from Exa's own response and is recorded under Usage and cost.</p>
+        {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
       </div>
       <div className="card table-wrap"><table><thead><tr><th>Search</th><th>Signal</th><th>Last run</th><th>Runs</th><th>Results</th><th>Sent to check</th><th>Spent</th><th>On</th><th><span className="sr">Action</span></th></tr></thead><tbody>
         {d.plans.map((p: any) => <tr key={p.plan_id}><td><b>{humanize(p.theme)}</b> · {p.geography}<div className="small muted">{p.query}</div>{p.last_error && <div className="small"><Badge kind="bad">{p.last_error === "rate_limited" ? "The search provider asked us to slow down" : humanize(p.last_error)}</Badge></div>}</td>

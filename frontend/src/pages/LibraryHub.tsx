@@ -18,7 +18,7 @@ function Signals({ q }: { q: string }) {
   if (!d) return <p className="muted">Loading…</p>;
   return (
     <>
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="row mb-3">
         <select aria-label="Signal group" value={group} onChange={(e) => setGroup(e.target.value)}><option value="">All groups</option>{d.groups.map((g: string) => <option key={g}>{g}</option>)}</select>
         <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Any status</option><option value="active">On: detected automatically</option><option value="defined_not_activated">Not yet on</option></select>
         <span className="small muted">{d.items.length} {d.items.length === 1 ? "signal" : "signals"}</span>
@@ -31,7 +31,7 @@ function Signals({ q }: { q: string }) {
             <span className="sigrow-t">{s.signal}</span>
             <span className="sigrow-m"><Strength n={s.strength} /><Badge kind={s.status === "active" ? "ok" : ""}>{s.status === "active" ? "On" : "Not yet on"}</Badge></span>
           </summary>
-          <dl className="lib-facts" style={{ gridTemplateColumns: "150px 1fr" }}>
+          <dl className="lib-facts wide">
             <dt>Group</dt><dd>{s.grp}</dd>
             <dt>Stays relevant for</dt><dd>{s.fresh_for_days} days{s.window_note ? `. ${s.window_note}` : ""}</dd>
             <dt>How to spot it</dt><dd>{s.how_to_spot ?? "Not recorded"}</dd>
@@ -39,7 +39,7 @@ function Signals({ q }: { q: string }) {
             <dt>Check it is genuine</dt><dd>{s.check_it_is_real ?? "Not recorded"}</dd>
             {s.pairs_best_with && <><dt>Pairs best with</dt><dd>{s.pairs_best_with}</dd></>}
             {s.stop_effect && <><dt>What cancels it</dt><dd>{s.stop_effect}</dd></>}
-            <dt>Comes from</dt><dd>{s.fed_by?.length ? s.fed_by.map((f: string) => <span key={f} className="pill" style={{ marginRight: 4 }}>{f}</span>) : <span className="muted">No source connected yet</span>}</dd>
+            <dt>Comes from</dt><dd>{s.fed_by?.length ? s.fed_by.map((f: string) => <span key={f} className="pill">{f}</span>) : <span className="muted">No source connected yet</span>}</dd>
           </dl>
         </details>))}
       </div>
@@ -54,7 +54,7 @@ function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   if (!d) return <p className="muted">Loading…</p>;
   return (
     <>
-      <div className="section-title" style={{ marginTop: 0 }}>Pages and feeds we watch</div>
+      <div className="section-title mt-0">Pages and feeds we watch</div>
       <div className="card table-wrap"><table><thead><tr><th>Source</th><th>Tier</th><th>Status</th><th>Address</th></tr></thead><tbody>
         {d.feeds.filter((f: any) => !q || `${f.display_name} ${f.url}`.toLowerCase().includes(q.toLowerCase())).map((f: any) => (
           <tr key={f.source_id}><td>{f.display_name}<div className="small muted">{humanize(f.collection_method)}</div></td><td>{f.source_tier}</td><td><Badge kind={f.status === "active" ? "ok" : "warn"}>{f.status === "active" ? "Live" : "Not set up yet"}</Badge></td>
@@ -80,12 +80,12 @@ export default function LibraryHub() {
     <>
       <div className="page-head"><div className="eyebrow">Reference</div><h1>Library</h1></div>
       <div className="row spread">
-        <div className="tabs" style={{ margin: 0, border: 0 }} role="tablist">
+        <div className="tabs flush" role="tablist">
           {([["signals", "Signals"], ["sources", "Sources"], ["urls", "Pages and feeds"]] as [Tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => set({ tab: k })}>{l}</button>)}
         </div>
-        <input aria-label="Filter by keyword" placeholder="Filter by keyword" value={q} onChange={(e) => setSp({ tab, ...(e.target.value ? { q: e.target.value } : {}) })} style={{ width: 260 }} />
+        <input aria-label="Filter by keyword" placeholder="Filter by keyword" value={q} onChange={(e) => setSp({ tab, ...(e.target.value ? { q: e.target.value } : {}) })} className="field-md" />
       </div>
-      <div style={{ marginTop: 16 }}>
+      <div className="mt-4">
         {tab === "signals" && <Signals q={q} />}
         {tab === "sources" && <Library render={() => null} query={q} canSetup={false} />}
         {tab === "urls" && <Urls q={q} setQ={(v) => set({ q: v })} />}

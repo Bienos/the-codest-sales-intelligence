@@ -13,7 +13,7 @@ function Deadlines() {
   const [items, setItems] = useState<any[]>([]);
   useEffect(() => { api("/api/deadlines").then((r) => setItems(r.items.filter((x: any) => x.days_left <= 240).slice(0, 6))).catch(() => setItems([])); }, []);
   if (!items.length) return null;
-  return <section><div className="section-title">Regulation deadlines</div><p className="small muted" style={{ margin: "-4px 0 10px" }}>Each date was checked against an official page and approved by a second person. Buyers facing a hard deadline tend to need extra delivery capacity.</p>
+  return <section><div className="section-title">Regulation deadlines</div><p className="small muted sec-note">Each date was checked against an official page and approved by a second person. Buyers facing a hard deadline tend to need extra delivery capacity.</p>
     <div className="card flush table-wrap"><table><thead><tr><th>Deadline</th><th>Regulation</th><th>Who it applies to</th><th>Date</th></tr></thead><tbody>
       {items.map((x) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a></td><td className="small">{x.regime}</td><td className="small">{x.applies_to ?? "Not specified"}</td>
         <td><b>{fmtDate(x.deadline_date)}</b> <span className="small muted">in {x.days_left} days</span></td></tr>)}
@@ -34,7 +34,7 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
           <div className="opp-init">{c.initiative.title}
             {c.initiative.working_title_label && <Badge kind="warn">{c.initiative.working_title_label}</Badge>}<Badge>{humanize(c.initiative.stage)}</Badge></div>
         </div>
-        <div className="row" style={{ alignItems: "flex-start" }}>
+        <div className="row start">
           <Badge kind={priorityKind(c.priority)}>{lab("priority", c.priority)}</Badge>
           <Badge kind={c.account.in_master_list ? "ok" : "info"}>{c.account.in_master_list ? "On your lists" : "New company"}</Badge>
           {!c.account.ownership_verified && <Badge kind="warn">No owner in Pipedrive</Badge>}
@@ -61,10 +61,10 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
               <div><span className="k">Points against it</span>{c.counterevidence?.length ? <ul>{c.counterevidence.map((x: any, i: number) => <li key={i}>{x.detail}</li>)}</ul> : <span className="small muted">None found</span>}</div>
               <div><span className="k">Not known yet</span><ul>{c.unknowns.slice(0, 4).map((u: string, i: number) => <li key={i}>{unknownText(u)}</li>)}</ul></div>
             </div>)}
-          {open && <div style={{ marginTop: 14 }}><span className="k" style={{ font: "800 11px var(--font-head)", letterSpacing: ".12em", textTransform: "uppercase" }}>Original sources</span><Evidence items={c.evidence} hypothesisId={c.hypothesis_id} /></div>}
+          {open && <div className="mt-4"><span className="k label-caps">Original sources</span><Evidence items={c.evidence} hypothesisId={c.hypothesis_id} /></div>}
         </div>
-        <aside className="opp-side" aria-label="Next action">
-          <div className="eyebrow" style={{ margin: 0 }}>Next action</div>
+        <aside className="opp-side" aria-label={`Next action: ${c.initiative.title}, ${lab("route", c.route.type)}`}>
+          <div className="eyebrow m-0">Next action</div>
           {a ? <>
             <div className="atype">{lab("action", a.action_type)}</div>
             <dl><dt>Goal</dt><dd>{a.objective}</dd><dt>Owner</dt><dd>{a.owner_id ? `Pipedrive user ${a.owner_id}` : a.owner_note ?? "Not assigned"}</dd><dt>Due</dt><dd>{a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</dd></dl>
@@ -80,9 +80,9 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
         <button onClick={() => decide("monitor")}>Keep watching</button>
         <select aria-label="Reason for dismissing" value={reason} onChange={(e) => setReason(e.target.value)}><option value="">Why dismiss?</option>{REASONS.map((r) => <option key={r} value={r}>{lab("dismiss", r)}</option>)}</select>
         <button disabled={!reason} onClick={() => decide("dismissed", reason)}>Dismiss</button>
-        <span style={{ marginLeft: "auto" }}><Link to={`/accounts/${c.account.id}`} className="small">Open account</Link></span>
+        <span className="ml-auto"><Link to={`/accounts/${c.account.id}`} className="small">Open account</Link></span>
       </div>
-      <div style={{ padding: "0 24px" }}><Err e={err} /></div>
+      <div className="opp-pad"><Err e={err} /></div>
     </article>
   );
 }
@@ -101,27 +101,27 @@ export default function Today() {
     <>
       <header className="hero">
         <div className="eyebrow">{new Date(d.generated_at).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</div>
-        <h2>Today</h2>
+        <h1>Today</h1>
         <p className="sub">{d.count === 0 ? (ov?.accounts ? `${ov.accounts.toLocaleString()} ${ov.accounts === 1 ? "account is" : "accounts are"} loaded from your workbooks. Nothing has been checked against a live source yet, so start with your shortlist below.` : "Nothing new needs your attention.") : `${d.count} ${d.count === 1 ? "thing" : "things"} to review. Each story is shown once. Anything you dismiss stays hidden unless it changes.`}</p>
         <div className="stats">
           <div className="stat urgent"><div className="n">{count((c) => c.priority === "urgent")}</div><div className="l">Urgent</div></div>
           <div className="stat"><div className="n">{d.count}</div><div className="l">To review</div></div>
           <div className="stat"><div className="n">{ov ? ov.shortlist : "·"}</div><div className="l">On your shortlist</div></div>
           <div className="stat"><div className="n">{ov ? ov.accounts.toLocaleString() : "·"}</div><div className="l">Accounts</div></div>
-          <div className="stat"><div className="n">{ov ? ov.sources_live : d.coverage.monitored_sources}<span style={{ fontSize: 18, opacity: .7 }}>/{ov ? ov.sources_total : d.coverage.monitored_sources + d.coverage.pending_validation_sources}</span></div><div className="l">Sources switched on</div></div>
+          <div className="stat"><div className="n">{ov ? ov.sources_live : d.coverage.monitored_sources}<span className="of">/{ov ? ov.sources_total : d.coverage.monitored_sources + d.coverage.pending_validation_sources}</span></div><div className="l">Sources switched on</div></div>
         </div>
       </header>
-      <div className="page" style={{ paddingTop: 24 }}>
+      <div className="page pt-5">
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
-        {d.hot_accounts?.length > 0 && <section><div className="section-title">Hot accounts</div><p className="small muted" style={{ margin: "-4px 0 10px" }}>Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.</p>
+        {d.hot_accounts?.length > 0 && <section><div className="section-title">Hot accounts</div><p className="small muted sec-note">Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.</p>
           <div className="card flush table-wrap"><table><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest</th></tr></thead><tbody>
             {d.hot_accounts.map((a: any) => <tr key={a.id}><td><Link to={`/accounts/${a.id}`}>{a.display_name}</Link><div className="small muted">{[a.country_code, a.segment].filter(Boolean).join(" · ")}</div></td>
               <td><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
               <td className="small">{a.signal_count} · {a.groups.map(groupName).join(", ")}</td><td className="small">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}
           </tbody></table></div></section>}
         <Deadlines />
-        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted" style={{ margin: "-4px 0 10px" }}>{TENDER_NOTE}</p>}{d.sections[k].map((c: any) => <Card key={c.hypothesis_id} c={c} reload={load} />)}</section> : null))}
+        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{d.sections[k].map((c: any) => <Card key={c.hypothesis_id} c={c} reload={load} />)}</section> : null))}
         <Prospects />
       </div>
     </>
@@ -137,7 +137,7 @@ function Setup({ ov, reason }: { ov: any; reason?: string | null }) {
   return (
     <div className="card setup">
       <div className="eyebrow">Why Today is quiet</div>
-      <p style={{ margin: "0 0 14px" }}>{reason ?? "Nothing has been checked against a source yet."} Until sources are switched on, a quiet screen says nothing about your market.</p>
+      <p className="mt-0 mb-4">{reason ?? "Nothing has been checked against a source yet."} Until sources are switched on, a quiet screen says nothing about your market.</p>
       <ol className="steps">{steps.map((s) => <li key={s.t} className={s.done ? "done" : ""}><span className="setup-tick" aria-hidden="true">{s.done ? "✓" : "·"}</span><div><b>{s.t}</b><div className="small muted">{s.d}</div></div></li>)}</ol>
     </div>
   );

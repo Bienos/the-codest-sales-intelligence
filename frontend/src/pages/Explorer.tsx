@@ -15,7 +15,7 @@ const COLUMNS: Record<string, Col[]> = {
     { h: "Score", cell: (r) => (r.score_total != null ? `${r.score_total}/100` : "None") },
     { h: "How we would get in", cell: (r) => `${lab("route", r.route_type)}${r.counterparty_name ? ` (${r.counterparty_name})` : ""}` },
     { h: "Will they use outside help?", cell: (r) => lab("demand", r.external_demand_status) },
-    { h: "Sources", cell: (r) => (r.evidence_confidence ? <span style={{ whiteSpace: "nowrap" }}>{String(r.evidence_confidence).replace(/^./, (c: string) => c.toUpperCase())}</span> : "None") },
+    { h: "Sources", cell: (r) => (r.evidence_confidence ? <span className="nw">{String(r.evidence_confidence).replace(/^./, (c: string) => c.toUpperCase())}</span> : "None") },
   ],
   companies: [
     { h: "Company", cell: (r) => <Link to={`/accounts/${r.id}`}>{r.display_name}</Link> },
@@ -55,11 +55,11 @@ export default function Explorer() {
   return (
     <>
       <div className="page-head"><div className="eyebrow">Look across the market</div><h1>Explorer</h1><p className="sub">Search and filter everything we hold. Results are limited to what you can see, and no result does not mean nothing is happening: we only see the sources we watch.</p></div>
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="row mb-3">
         <label className="sr" htmlFor="ex-show">Show</label>
         <select id="ex-show" value={entity} onChange={(e) => setEntity(e.target.value)}>{SHOW.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
         <input aria-label="Search" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
-        {(entity === "opportunities" || entity === "companies") && <input aria-label="Country code" placeholder="Country (GB, DE…)" value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} style={{ width: 130 }} />}
+        {(entity === "opportunities" || entity === "companies") && <input aria-label="Country code" placeholder="Country (GB, DE…)" value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} className="field-sm" />}
         {entity === "companies" && <select aria-label="List membership" value={existing} onChange={(e) => setExisting(e.target.value)}><option value="">All companies</option><option value="true">On your lists</option><option value="false">Not on your lists</option></select>}
       </div>
       <Err e={err} />

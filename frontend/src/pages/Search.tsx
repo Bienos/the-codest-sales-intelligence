@@ -37,10 +37,10 @@ export default function Search() {
     <>
       <div className="page-head"><div className="eyebrow">Find anything</div><h1>Search</h1></div>
       <form onSubmit={(e) => { e.preventDefault(); setSp(text.trim() ? { q: text.trim() } : {}); }} className="searchbar" role="search">
-        <input autoFocus aria-label="Search everything" placeholder="A company, a keyword, a signal, a source or a URL" value={text} onChange={(e) => setText(e.target.value)} style={{ maxWidth: 560 }} />
+        <input autoFocus aria-label="Search everything" placeholder="A company, a keyword, a signal, a source or a URL" value={text} onChange={(e) => setText(e.target.value)} />
         <button className="primary" type="submit">Search</button>
       </form>
-      <p className="small muted" style={{ marginTop: 0 }}>Searches accounts, signals, sources, findings and the knowledge base. Every word you type must match.</p>
+      <p className="small muted mt-0">Searches accounts, signals, sources, findings and the knowledge base. Every word you type must match.</p>
       <Err e={err} />
       {!q && <div className="card"><div className="eyebrow">Try one of these</div><div className="chips">{EXAMPLES.map((x) => <button key={x} className="chip" onClick={() => setSp({ q: x })}>{x}</button>)}</div></div>}
       {d && d.total === 0 && <div className="empty"><b>No matches for “{d.query}”</b>Try fewer or shorter words, or check the spelling.</div>}

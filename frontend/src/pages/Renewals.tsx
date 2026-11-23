@@ -23,7 +23,7 @@ export default function Renewals() {
   return (
     <>
       <div className="page-head"><div className="eyebrow">Work that comes round again</div><h1>Renewals</h1></div>
-      <p className="small muted" style={{ marginTop: 0, maxWidth: "80ch" }}>Public bodies award IT contracts for a fixed term, then usually buy again. Each card is an official award notice with the supplier who won. We add the contract length in the notice to the date the notice was sent to estimate when it ends. If the notice gives no length, we assume 3 years and label the date as an estimate.</p>
+      <p className="small muted mt-0 measure">Public bodies award IT contracts for a fixed term, then usually buy again. Each card is an official award notice with the supplier who won. We add the contract length in the notice to the date the notice was sent to estimate when it ends. If the notice gives no length, we assume 3 years and label the date as an estimate.</p>
       <div className="tabs" role="tablist" aria-label="What to show">
         <button role="tab" aria-selected={tab === "ending"} onClick={() => setTab("ending")}>Contracts ending</button>
         <button role="tab" aria-selected={tab === "winners"} onClick={() => setTab("winners")}>Current suppliers</button>
@@ -42,10 +42,10 @@ export default function Renewals() {
             <article key={r.notice_id} className="card">
               <div className="row"><Badge kind={r.months_left <= 6 ? "warn" : "info"}>{when(r.months_left)}</Badge><Badge>{COUNTRY[r.buyer_country] ?? r.buyer_country}</Badge>
                 {r.on_lists && <Badge kind="ok">On your lists</Badge>}<Badge kind={r.end_basis === "stated" ? "" : "warn"}>{r.end_basis === "stated" ? `Ends about ${endMonth(r.expected_end)}` : `Ends about ${endMonth(r.expected_end)} (estimate: no length in the notice)`}</Badge></div>
-              <h3 style={{ margin: "8px 0 2px" }}>{r.buyer_org_id ? <Link to={`/accounts/${r.buyer_org_id}`}>{r.buyer_name}</Link> : r.buyer_name ?? "Buyer not named in the notice"}</h3>
-              <p style={{ margin: "0 0 6px" }}>{(r.title ?? "").replace(/^[^–]+ – [^–]+ – /, "")}</p>
-              <p className="small muted" style={{ margin: 0 }}><b>Current supplier:</b> {r.winners.length ? r.winners.join(", ") : "not named in the notice"}{r.winner_size ? ` (${SIZE[r.winner_size] ?? r.winner_size})` : ""}</p>
-              <p className="small muted" style={{ margin: "2px 0 0" }}>Notice sent {fmtDate(r.awarded_on)} · <a href={r.official_url} target="_blank" rel="noreferrer noopener">official notice ↗</a></p>
+              <h2 className="mt-2 mb-1 h-sub">{r.buyer_org_id ? <Link to={`/accounts/${r.buyer_org_id}`}>{r.buyer_name}</Link> : r.buyer_name ?? "Buyer not named in the notice"}</h2>
+              <p className="mt-0 mb-2">{(r.title ?? "").replace(/^[^–]+ – [^–]+ – /, "")}</p>
+              <p className="small muted m-0"><b>Current supplier:</b> {r.winners.length ? r.winners.join(", ") : "not named in the notice"}{r.winner_size ? ` (${SIZE[r.winner_size] ?? r.winner_size})` : ""}</p>
+              <p className="small muted mt-1 mb-0">Notice sent {fmtDate(r.awarded_on)} · <a href={r.official_url} target="_blank" rel="noreferrer noopener">official notice ↗</a></p>
             </article>))}</div>
         </>
       ) : (

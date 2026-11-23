@@ -29,12 +29,12 @@ function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
       {notice?.kind === "denied" && <div className="err" role="alert"><b>{notice.email ?? "This Google account"} has not been given access.</b><br />Ask an administrator to add you, then sign in again. If you have more than one Google account, choose your work account.</div>}
       {notice?.kind === "expired" && <div className="okmsg" role="status">Your session ended. Sign in again to continue.</div>}
       {cfg?.google_client_id ? <div id="g-btn" style={{ minHeight: 44 }} /> :
-        cfg && cfg.env !== "production" ? <><p className="sub" style={{ margin: "0 0 12px" }}>Development environment. Paste a signed development token.</p>
+        cfg && cfg.env !== "production" ? <><p className="sub mt-0 mb-3">Development environment. Paste a signed development token.</p>
           <input aria-label="Development token" type="password" value={t} onChange={(e) => setT(e.target.value)} placeholder="Development token" style={{ width: "100%", marginBottom: 14 }} />
           <button className="primary" onClick={() => { setToken(t); onDone(); }}>Continue</button></> :
         cfg ? <div className="err">Sign-in is not configured. An administrator must set RI_GOOGLE_CLIENT_ID.</div> : <span className="muted">Loading</span>}
       {err && <div className="err" role="alert">{err}</div>}
-      <p className="small muted" style={{ margin: "16px 0 0" }}>Access is limited to people an administrator has added.</p>
+      <p className="small muted mt-4 mb-0">Access is limited to people an administrator has added.</p>
     </div>
   );
 }

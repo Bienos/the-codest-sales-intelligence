@@ -38,15 +38,15 @@ export default function Prospects() {
       <div className="callout">
         <b>From your workbooks. Not checked yet.</b> Open the source and confirm it before you act, or press “Check this source” and we will read the page for you.
       </div>
-      <div className="row spread" style={{ margin: "14px 0" }}>
-        <div className="tabs" style={{ margin: 0, border: 0 }} role="tablist">
+      <div className="row spread mt-4 mb-4">
+        <div className="tabs flush" role="tablist">
           <button role="tab" aria-selected={lane === "shortlist"} onClick={() => setLane("shortlist")}>Your shortlist</button>
           <button role="tab" aria-selected={lane === "signals"} onClick={() => setLane("signals")}>Recent signals</button>
         </div>
-        <div className="row"><input aria-label="Search accounts" placeholder="Search accounts" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
+        <div className="row"><input aria-label="Search accounts" placeholder="Search accounts" value={q} onChange={(e) => setQ(e.target.value)} className="field-md" />
           <button onClick={batch} title="Reads the first 10 unchecked items in this list and keeps only what it can quote from the page">Check the top 10</button></div>
       </div>
-      {msg && <div className="okmsg" role="status" style={{ marginBottom: 12 }}>{msg}</div>}
+      {msg && <div className="okmsg mb-3" role="status">{msg}</div>}
       <Err e={err} />
       {!d && !err && <p className="muted">Loading your workbook list…</p>}
       {d && d.items.length === 0 && <Empty title="Nothing matches">Try the other list, or clear the search box.</Empty>}
@@ -55,7 +55,7 @@ export default function Prospects() {
           <li key={it.organization.id} className="pro">
             <div className="pro-rank" aria-label={it.rank ? `Rank ${it.rank}` : "Signal"}>{it.rank ?? (it.priority || "·")}</div>
             <div className="pro-main">
-              <div className="row spread" style={{ alignItems: "flex-start" }}>
+              <div className="row spread start">
                 <div>
                   <div className="pro-name">{it.organization.name}</div>
                   <div className="small muted">{[it.organization.country, it.organization.segment, it.organization.employees ? `${it.organization.employees.toLocaleString()} staff` : null].filter(Boolean).join(" · ")}</div>
@@ -69,13 +69,13 @@ export default function Prospects() {
               </div>
               <p className="pro-signal">{it.signal}</p>
               <div className="small muted">{it.signal_type ? `${it.signal_type} · ` : ""}{it.signal_date ?? "Date not given"} · {age(it.age_days)}</div>
-              {it.why && <p className="small" style={{ margin: "8px 0 0" }}><b>Possible engineering need (our guess).</b> {it.why}</p>}
-              {it.caveat && <p className="small" style={{ margin: "6px 0 0" }}><b>Be aware:</b> {it.caveat}</p>}
-              <div className="row small" style={{ marginTop: 10 }}>
+              {it.why && <p className="small mt-2 mb-0"><b>Possible engineering need (our guess).</b> {it.why}</p>}
+              {it.caveat && <p className="small mt-2 mb-0"><b>Be aware:</b> {it.caveat}</p>}
+              <div className="row small mt-3">
                 {it.buyer_role && <span><b>Likely buyer</b> {it.buyer_name ? `${it.buyer_name}, ` : ""}{it.buyer_role}</span>}
                 {it.service_fit && <span><b>Our offer</b> {({ staff_augmentation: "Staff augmentation", team_extension: "Team extension", ai_services: "AI services" } as Record<string, string>)[it.service_fit] ?? humanize(it.service_fit)}</span>}
               </div>
-              <div className="row" style={{ marginTop: 12 }}>
+              <div className="row mt-3">
                 {it.source_url ? <a className="pill" href={it.source_url} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: it.organization.id, where: "prospect" })}>Open source ↗</a> : <Badge kind="warn">No source link: find one first</Badge>}
                 {it.source_url && !it.verification && <button className="primary" onClick={() => verify(it.organization.id)}>Check this source</button>}
                 {it.verification && <><Badge kind={VSTATE[it.verification.status]?.[0]}>{VSTATE[it.verification.status]?.[1] ?? it.verification.status}</Badge>{it.verification.status === "verified" && <span className="small">{it.verification.events} {it.verification.events === 1 ? "finding" : "findings"} added</span>}{it.verification.reason && <span className="small muted">{it.verification.reason}</span>}</>}

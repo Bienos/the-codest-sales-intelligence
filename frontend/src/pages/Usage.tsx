@@ -26,10 +26,10 @@ function Provider({ name, label, unit, b, f, rows, month, cost, prices, capUsd }
       <div className="eyebrow">{label}</div>
       <div className="kpi-n">{isUsd ? usd(used) : capUsd != null && cap > 0 ? usd((used / cap) * capUsd) : num(used)}<span className="kpi-u">{isUsd ? ` of ${usd(cap)} limit` : capUsd != null && cap > 0 ? ` of about ${usd(capUsd)} limit` : " tokens used"}</span></div>{!isUsd && <div className="small muted">{num(used)} of {num(cap)} tokens. A token is a small chunk of text the AI reads or writes.</div>}
       <Meter used={used} cap={cap} unit={unit} />
-      <div className="small" style={{ marginTop: 10 }}>
+      <div className="small mt-3">
         {f ? <>On this pace the month ends at <b>{isUsd ? usd(f.projected_month_end) : capUsd != null && cap > 0 ? usd((f.projected_month_end / cap) * capUsd) : num(Math.round(f.projected_month_end))}</b> {f.will_exceed ? <Badge kind="bad">Would go over the limit</Badge> : <Badge kind="ok">Within the limit</Badge>}</> : <span className="muted">Nothing used yet this month.</span>}
       </div>
-      <div className="small muted" style={{ marginTop: 6 }}>
+      <div className="small muted mt-2">
         {month ? `${num(month.calls)} calls${month.errors ? `, ${month.errors} failed` : ""}` : "No calls yet"}
         {name === "anthropic" && month ? ` · ${num(month.tokens_in)} in / ${num(month.tokens_out)} out` : ""}
         {name === "anthropic" ? ` · ${prices.anthropic_in_per_mtok !== null ? `estimated cost ${usd(cost)}` : "price per token not set"}` : cost !== null && cost !== undefined ? ` · reported cost ${usd(cost)}` : ""}
@@ -45,7 +45,7 @@ function Ledger() {
   useEffect(() => { api(`/api/admin/usage/ledger?provider=${f.provider}&status=${f.status}&limit=50&offset=${off}`).then(setD).catch(setErr); }, [f, off]);
   return (
     <>
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="row mb-3">
         <select aria-label="Service" value={f.provider} onChange={(e) => { setOff(0); setF({ ...f, provider: e.target.value }); }}><option value="">All services</option><option value="anthropic">Anthropic</option><option value="exa">Exa</option></select>
         <select aria-label="Status" value={f.status} onChange={(e) => { setOff(0); setF({ ...f, status: e.target.value }); }}><option value="">Any status</option><option value="ok">OK</option></select>
         {d && <span className="small muted">{num(d.total)} calls</span>}
@@ -74,15 +74,15 @@ export default function Usage() {
   const total = Object.values(outcomes).reduce((a, b) => a + b, 0);
   return (
     <>
-      <p className="small muted" style={{ marginTop: 0 }}>Every paid call is recorded with what it was for. Month: <b>{d.period}</b>. {d.notes.join(" ")}</p>
+      <p className="small muted mt-0">Every paid call is recorded with what it was for. Month: <b>{d.period}</b>. {d.notes.join(" ")}</p>
       <div className="kpis">
         <Provider name="anthropic" label="AI reading (Anthropic)" unit="tokens" b={d.budgets.anthropic} f={d.forecast.anthropic} rows={d.daily} month={m("anthropic")} cost={cost("anthropic")} prices={d.prices} capUsd={d.anthropic_cap_usd_estimate} />
         <Provider name="exa" label="Web search (Exa)" unit="usd" b={d.budgets.exa} f={d.forecast.exa} rows={d.daily} month={m("exa")} cost={cost("exa")} prices={d.prices} />
         <div className="card kpi">
           <div className="eyebrow">What the spend bought</div>
           <div className="kpi-n">{outcomes.verified ?? 0}<span className="kpi-u"> of {total} pages gave a checked finding</span></div>
-          <div className="chips" style={{ marginTop: 8 }}>{Object.entries(outcomes).map(([k, v]) => <Badge key={k} kind={k === "verified" ? "ok" : k === "failed" || k === "blocked" ? "bad" : k === "waiting_budget" ? "warn" : ""}>{humanize(k)} {v}</Badge>)}</div>
-          <p className="small" style={{ margin: "12px 0 0" }}>{d.cost_per_verified_event_usd === null ? "The cost of each checked finding appears once there is spend and a result." : <>Cost of each checked finding: <b>{usd(d.cost_per_verified_event_usd)}</b></>}</p>
+          <div className="chips mt-2">{Object.entries(outcomes).map(([k, v]) => <Badge key={k} kind={k === "verified" ? "ok" : k === "failed" || k === "blocked" ? "bad" : k === "waiting_budget" ? "warn" : ""}>{humanize(k)} {v}</Badge>)}</div>
+          <p className="small mt-3 mb-0">{d.cost_per_verified_event_usd === null ? "The cost of each checked finding appears once there is spend and a result." : <>Cost of each checked finding: <b>{usd(d.cost_per_verified_event_usd)}</b></>}</p>
         </div>
       </div>
       <div className="tabs" role="tablist">{([["overview", "By month"], ["source", "By source"], ["plan", "By saved search"], ["ledger", "Every call"]] as [Tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>

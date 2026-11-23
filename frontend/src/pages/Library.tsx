@@ -20,28 +20,28 @@ export default function Library({ render, query, canSetup = true }: { render: (s
   const live = d.items.filter((s: any) => s.status === "active" && s.collection_method !== "internal").length;
   return (
     <>
-      <div className="row spread" style={{ marginBottom: 6 }}>
-        <p className="small muted" style={{ margin: 0 }}><b>{d.items.length}</b> sources, <b>{live}</b> live. A source only runs once it has passed a test and someone has confirmed we may read it.</p>
-        {query === undefined && <input aria-label="Search sources" placeholder="Search sources" value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 240 }} />}
+      <div className="row spread mb-2">
+        <p className="small muted m-0"><b>{d.items.length}</b> sources, <b>{live}</b> live. A source only runs once it has passed a test and someone has confirmed we may read it.</p>
+        {query === undefined && <input aria-label="Search sources" placeholder="Search sources" value={q} onChange={(e) => setQ(e.target.value)} className="field-md" />}
       </div>
       {groups.map(([t, list]) => (
         <section key={t}><div className="section-title">{TIERS[t]}</div>
           <div className="lib-grid">{list.map((s) => (
             <article key={s.source_id} className="lib-card">
-              <div className="row spread" style={{ alignItems: "flex-start" }}>
+              <div className="row spread start">
                 <div><b className="lib-name">{s.display_name}</b><div className="small muted">{s.provider ?? s.source_id} · {humanize(s.source_family)}</div></div>
                 <div className="row">{s.validation && s.status !== "active" && <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? "Test passed" : "Test failed"}</Badge>}<Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{s.status === "pending_connector_validation" ? "Not set up yet" : humanize(s.status)}</Badge></div>
               </div>
               <dl className="lib-facts">
                 <dt>How</dt><dd>{METHOD[s.collection_method] ?? humanize(s.collection_method)}, every {every(s.poll_interval_s)}</dd>
                 <dt>Status</dt><dd><Badge kind={hk(s.health)}>{HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health)}</Badge>{s.last_success_at && <span className="small muted"> last worked {fmtDateTime(s.last_success_at)}</span>}</dd>
-                <dt>Feeds signals</dt><dd>{s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill" style={{ marginRight: 4 }}>{r}</span>) : <span className="muted">None yet</span>}</dd>
+                <dt>Feeds signals</dt><dd>{s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill">{r}</span>) : <span className="muted">None yet</span>}</dd>
                 <dt>So far</dt><dd>{s.documents} pages read, {s.events} findings{Number(s.cost_usd_month) > 0 && <span className="small muted"> · ${Number(s.cost_usd_month).toFixed(3)} this month</span>}</dd>
                 <dt>Permission</dt><dd className="small">{s.licence_notes ?? humanize(s.retention_policy)}</dd>
                 {s.url && <><dt>Page</dt><dd className="small"><a href={s.url} target="_blank" rel="noreferrer noopener">{s.url.replace(/^https?:\/\//, "").slice(0, 52)} ↗</a></dd></>}
               </dl>
               {canSetup && s.canonical_domain && ["feed", "change_monitor"].includes(s.collection_method) && <button className="ghost" aria-expanded={open === s.source_id} onClick={() => setOpen(open === s.source_id ? null : s.source_id)}>{open === s.source_id ? "Close setup" : s.url ? "Manage" : "Set up"}</button>}
-              {open === s.source_id && <div style={{ marginTop: 10 }}>{render(s, load)}</div>}
+              {open === s.source_id && <div className="mt-3">{render(s, load)}</div>}
             </article>))}</div>
         </section>))}
     </>

@@ -56,8 +56,8 @@ export const lab = (dict: keyof typeof LABELS, v?: string | null): string => { c
 export const groupName = (g: string) => (LABELS.group as Record<string, string>)[g] ?? g;
 
 export const PageHeader = ({ eyebrow, title, sub, right }: { eyebrow?: string; title: string; sub?: ReactNode; right?: ReactNode }) => (
-  <div className="page-head row spread" style={{ alignItems: "flex-end" }}>
-    <div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h2>{title}</h2>{sub && <p className="sub">{sub}</p>}</div>{right}
+  <div className="page-head row spread end">
+    <div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1>{sub && <p className="sub">{sub}</p>}</div>{right}
   </div>
 );
 
@@ -140,7 +140,7 @@ export function GateBar({ gates }: { gates: Record<string, { status: string; rea
           );
         })}
       </div>
-      <p className="small muted" style={{ marginTop: 8 }}>Green: confirmed. Amber: not known yet, which is normal early on. Red: blocked.</p>
+      <p className="small muted mt-2">Green: confirmed. Amber: not known yet, which is normal early on. Red: blocked.</p>
     </>
   );
 }
@@ -151,10 +151,10 @@ export function Evidence({ items, hypothesisId }: { items: any[]; hypothesisId?:
   return (
     <div>
       {items.map((e) => (
-        <div key={e.claim_id} className="small" style={{ margin: "8px 0" }}>
+        <div key={e.claim_id} className="small mt-2 mb-2">
           {e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" title="Open the original source" onClick={() => hypothesisId && trackSourceOpened({ hypothesis_id: hypothesisId })}>{e.source ?? "Original source"} ↗</a> : <span className="pill">Structured record, no link</span>}
           <span className="prov">{[e.authority ? TIER[e.authority] ?? e.authority : null, e.published_at ? `published ${fmtDate(e.published_at)}` : null, e.retrieved_at ? `read ${fmtDate(e.retrieved_at)}` : null].filter(Boolean).join(" · ")}</span>
-          {e.claim && <div style={{ marginTop: 4 }}>“{e.claim}” {!e.anchor_verified && e.kind === "quote" && <Badge kind="warn">quote not matched</Badge>}</div>}
+          {e.claim && <div className="mt-1">“{e.claim}” {!e.anchor_verified && e.kind === "quote" && <Badge kind="warn">quote not matched</Badge>}</div>}
         </div>
       ))}
     </div>
@@ -169,7 +169,7 @@ export function Coverage({ c, empty }: { c: any; empty?: string | null }) {
       <b>Source health.</b> We are watching {c.monitored_sources} {c.monitored_sources === 1 ? "source" : "sources"}; {c.pending_validation_sources} more {c.pending_validation_sources === 1 ? "is" : "are"} not set up yet.
       {c.unhealthy?.length > 0 && <> <b>Having problems:</b> {c.unhealthy.map((u: any) => u.source).join(", ")}.</>}
       {c.no_active_monitoring && <> <b>No source is switched on yet</b>, so a quiet screen does not mean nothing happened.</>}
-      {empty && <div style={{ marginTop: 4 }}>{empty}</div>}
+      {empty && <div className="mt-1">{empty}</div>}
     </div>
   );
 }
@@ -180,7 +180,7 @@ export function Err({ e, onRetry }: { e: unknown; onRetry?: () => void }) {
   const net = e instanceof TypeError;
   const plain = st === 401 || st === 403 ? "You do not have access to this, or your session has ended. Sign in again, or ask an administrator."
     : st === 404 ? "This item no longer exists or has moved." : (st && st >= 500) || net ? "The server did not respond. Try again in a minute." : null;
-  return <div className="err" role="alert">{plain ?? msg}{plain && msg && !net && <details><summary>Technical detail</summary>{msg}</details>}{onRetry && <div style={{ marginTop: 8 }}><button onClick={onRetry}>Try again</button></div>}</div>;
+  return <div className="err" role="alert">{plain ?? msg}{plain && msg && !net && <details><summary>Technical detail</summary>{msg}</details>}{onRetry && <div className="mt-2"><button onClick={onRetry}>Try again</button></div>}</div>;
 }
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{title}</b>{children}</div>;
 
@@ -190,11 +190,11 @@ export function Brand({ sub = true }: { sub?: boolean }) {
   const [stage, setStage] = useState(0);
   const ok = stage < 2;
   return (
-    <div className="brand" style={{ border: 0, padding: 0, margin: 0 }}>
+    <div className="brand brand-bare">
       {ok ? <img className="brand-logo" src={stage === 0 ? "/brand/logo-white.svg" : "/brand/logo"} alt="The Codest" width={140}
                  style={stage === 1 ? { filter: "brightness(0) invert(1)" } : undefined} onError={() => setStage(stage + 1)} />
         : <div className="brand-row"><span className="brand-mark" /><div className="brand-name">The Codest</div></div>}
-      {sub && <div className="brand-sub" style={{ marginTop: 0 }}>Revenue Intelligence</div>}
+      {sub && <div className="brand-sub mt-0">Revenue Intelligence</div>}
     </div>
   );
 }

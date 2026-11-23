@@ -13,6 +13,17 @@
   --white: #FFFFFF;
   /* status dots only: text always stays navy/body so contrast holds. Green is OUTSIDE the brand palette - needs brand-owner sign-off. */
   --dot-ok: #1FA971; --dot-warn: var(--orange); --dot-bad: var(--pink); --dot-info: var(--purple);
+  /* text and surfaces added in the design review (contrast measured against white, tint-1, tint-2 and tint-3) */
+  --muted: #5A5D85;          /* secondary text: 5.7:1 or better on every surface. Replaces opacity-based greying. */
+  --pink-solid: #CC085D;     /* fill for solid pink buttons: white text on it is 5.6:1 (on --pink it is only 4.2:1). Needs brand-owner sign-off. */
+  --pink-solid-hover: #A8064C;
+  --off: #A9ABC9;            /* switched off or blocked: borders and fills only, never text */
+  --ok-tint: #E5F4EC;
+  --on-navy: #D6D8F2; --on-navy-muted: #B9BCE3;
+  --navy-glass: rgba(255,255,255,.04); --navy-hover: rgba(255,255,255,.08); --navy-active: rgba(255,255,255,.12);
+  --navy-line: rgba(255,255,255,.14); --navy-line-strong: rgba(255,255,255,.28); --navy-outline: rgba(255,255,255,.55);
+  /* type scale: every font size in the app is one of these */
+  --fs-label: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px; --fs-base: 15px; --fs-input: 16px; --fs-lg: 18px; --fs-xl: 22px; --fs-2xl: 30px; --fs-3xl: 38px;
   --font-head: "Iosevka", ui-monospace, "SFMono-Regular", Menlo, monospace;
   --font-body: "Fira Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --radius: 0;              /* square-edged */
