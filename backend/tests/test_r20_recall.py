@@ -110,3 +110,25 @@ def test_report_a_miss_endpoint_accepts_a_json_body_and_admin_recall_is_admin_on
         assert c.get("/api/admin/recall", headers=h("bdm@x")).status_code == 403
     finally:
         db.close()
+
+
+def test_ted_probe_reports_which_fields_exist_and_never_stops_on_an_unknown_one():
+    import asyncio
+
+    import httpx
+
+    from ri.sources.ted_probe import probe
+
+    def handler(req):
+        import json
+        body = json.loads(req.content)
+        if "winner-name" in body["fields"]:
+            return httpx.Response(200, json={"notices": [{"publication-number": "1-2026", "winner-name": {"eng": ["Acme Ltd"]}}], "totalNoticeCount": 1})
+        if "bogus-field" in body["fields"] or "winner-country" in body["fields"]:
+            return httpx.Response(400, json={"message": "unknown field"})
+        return httpx.Response(200, json={"notices": [{"publication-number": "1-2026"}], "totalNoticeCount": 1234})
+    out = asyncio.run(probe(httpx.AsyncClient(transport=httpx.MockTransport(handler)), pause=0))
+    assert out["fields"]["winner-name"]["ok"] and out["fields"]["winner-name"]["sample"].startswith("{")
+    assert not out["fields"]["winner-country"]["ok"]
+    assert "winner-name" in out["working_fields"] and "winner-country" not in out["working_fields"]
+    assert out["it_award_notices"]["2023_core_markets"] == 1234
