@@ -160,7 +160,8 @@ def test_bzp_relevance_uses_cpv_codes_and_polish_wording():
     from ri.sources.procurement import bzp_codes, is_bzp_software
     assert bzp_codes("72000000-5 (Usługi IT),45000000-7 (Roboty)") == ["72000000", "45000000"]
     assert is_bzp_software({"cpvCode": "72000000-5 (Usługi IT)", "orderObject": "x"})
-    assert is_bzp_software({"cpvCode": "45000000-7 (Roboty)", "orderObject": "Zakup licencji na oprogramowanie"})
+    assert is_bzp_software({"cpvCode": "45000000-7 (Roboty)", "orderObject": "Wdrożenie systemu informatycznego do obsługi płatności"})
+    assert not is_bzp_software({"cpvCode": "48000000-8 (Pakiety)", "orderObject": "Przedłużenie rocznej subskrypcji licencji oprogramowania"})      # a licence renewal is not work for us
     assert not is_bzp_software({"cpvCode": "15100000-9 (Mięso)", "orderObject": "Dostawa mięsa"})
 
 
@@ -184,7 +185,7 @@ def test_bzp_connector_reads_pages_filters_and_canonicalises_recorded_notices():
     c = PolishBzpConnector(httpx.AsyncClient(transport=httpx.MockTransport(handler)), now_fn=lambda: now)
     batch = asyncio.run(c.fetch(None, 100))
     assert [k for k, _ in seen] == ["ContractNotice", "TenderResultNotice"]         # short page ends the kind; both kinds are read
-    assert len(batch.items) == 3 and all(i.payload["cpvCode"].startswith("48") for i in batch.items)          # only the software notices of the five contract notices
+    assert len(batch.items) == 2 and all(i.payload["cpvCode"].startswith("48") for i in batch.items)          # the software work of the five notices (a licence renewal is not)
     assert batch.next_cursor.startswith("from=2026-11-21T12:00:00Z") and not batch.has_more
     d = c.canonicalize(batch.items[0])
     assert d.kind == "procurement_notice" and d.canonical_url.startswith("https://ezamowienia.gov.pl/mo-client-board/bzp/notice-details/id/2026%2FBZP%20")

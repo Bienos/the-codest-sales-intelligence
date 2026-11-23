@@ -48,7 +48,8 @@ _STRONG = re.compile(
     r"instytut|institut|institute|politechnika|akademia|academy|muzeum|museum|biblioteka|library|inspektorat|zarząd|zakład|urząd|służba|straż|pogotowie|"
     r"resortu|resort|aör|anstalt des öffentlichen rechts|körperschaft|bundesanstalt|landratsamt|hochschule|forschungs\w*|\w*staatsforsten|wohnhäuser|sozial\w*|"
     r"\w*myndighet\w*|\w*tilsyn\w*|stad|inköpscentral\w*|inkjøp\w*|jobcent\w*|fraunhofer|max[- ]planck|helmholtz|leibniz|senaatti|bafin|finansinspektionen|finanssivalvonta|"
-    r"regulator\w*|supervisory|central bank|bundesbank|riksbank|nationalbank|narodowy bank|nadzoru|financial conduct authority|prudential regulation)\b", re.I)
+    r"uczelni\w*|zesp[oó]ł szk[oó]ł|szkoł\w*|opieki zdrowotnej|zakład\w* opieki|s[aą]d okr[eę]gowy|s[aą]d rejonowy|s[aą]d apelacyjny|komend\w*|ministrstvo|ministarstvo|ministeri\w*|"
+    r"ubezpiecze[nń] społecznych|ubezpieczenia społecznego|regulator\w*|supervisory|central bank|bundesbank|riksbank|nationalbank|narodowy bank|nadzoru|financial conduct authority|prudential regulation)\b", re.I)
 _WEAK = re.compile(r"\b(department (of|for)|county|bezirk|region(en)?|college|school|schule|agency|agentur|amt|verwaltung|administration|authority|defence|defense|army|navy|centrum|centre|center|"
                    r"public (health|transport|body)|sveriges|statens|státní|bund)\b", re.I)
 # financial buyers are never public-sector noise even when the word "state" or "national" appears in the name
@@ -67,7 +68,10 @@ def is_public_body(name: str | None) -> bool:
     return bool(_WEAK.search(n))
 
 
-def lane_for(name: str | None, entity_type: str | None = None) -> str:
+def lane_for(name: str | None, entity_type: str | None = None, event_type: str | None = None, from_tender: bool = False) -> str:
+    """A published tender is public procurement whoever the buyer is (state-owned companies included), so it always sits in the public lane."""
+    if from_tender or (event_type or "").startswith("procurement"):
+        return "public"
     return "public" if (entity_type == "public_body" or is_public_body(name)) else "private"
 
 

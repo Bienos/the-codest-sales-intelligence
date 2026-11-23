@@ -249,10 +249,9 @@ def bzp_codes(raw: str | None) -> list[str]:
 
 
 def is_bzp_software(n: dict) -> bool:
-    """The BZP search filters poorly by CPV, so relevance is decided here: any IT CPV code (72, 48, 73) or Polish software wording in the subject."""
-    if any(c.startswith(_SOFTWARE_CPV) for c in bzp_codes(n.get("cpvCode"))):
-        return True
-    return bool(_BZP_WORDS.search(n.get("orderObject") or ""))
+    """Same test as every other tender source: real software or IT services work, not goods with a software code somewhere in a long list."""
+    from ..events.classify import services_relevant
+    return services_relevant(n.get("orderObject"), None, bzp_codes(n.get("cpvCode")))
 
 
 class PolishBzpConnector:

@@ -69,7 +69,7 @@ def verify_event(conn: Conn, event_id: str, *, recheck_notice: Callable[[str], d
 def tag_market(conn: Conn, event_id: str) -> None:
     """Which market the event belongs to and whether the buyer is public sector. Country comes from the linked account, else the official notice, else a single-country source."""
     from ..market import alpha2, lane_for, tier_for
-    ev = q1(conn, "SELECT e.subject_org_id, e.subject_name_raw, e.summary, o.display_name, o.country_code, o.entity_type FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE e.id=%s", (event_id,))
+    ev = q1(conn, "SELECT e.subject_org_id, e.subject_name_raw, e.summary, e.event_type, e.attrs ? 'notice_id' AS from_tender, o.display_name, o.country_code, o.entity_type FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE e.id=%s", (event_id,))
     if not ev:
         return
     country, name = ev["country_code"], ev["display_name"] or ev["subject_name_raw"]
@@ -82,7 +82,7 @@ def tag_market(conn: Conn, event_id: str) -> None:
         cs = [c for c in ((src or {}).get("countries") or []) if alpha2(c) and len(c) <= 3]
         country = cs[0] if len(cs) == 1 else None
     conn.execute("UPDATE events SET market_tier=%s, lane=%s, market_country=%s, market_tagged_at=now() WHERE id=%s",
-                 (tier_for(country), lane_for(name, ev["entity_type"]), alpha2(country), event_id))
+                 (tier_for(country), lane_for(name, ev["entity_type"], ev["event_type"], bool(ev["from_tender"])), alpha2(country), event_id))
 
 
 def tag_untagged(conn: Conn, limit: int = 1500) -> int:

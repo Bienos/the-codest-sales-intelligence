@@ -103,3 +103,21 @@ def backfill_procurement_events(conn: Conn, limit: int = 300) -> int:
             finish_event(conn, eid)
             n += 1
     return n
+
+
+RELEVANCE_V = "v2"
+
+
+def recheck_procurement_relevance(conn: Conn, limit: int = 2000) -> dict[str, int]:
+    """Tender events judged under the older, looser software test are judged again once. Those that are really goods or a product licence lose their tender signal."""
+    checked = dropped = 0
+    rows = conn.execute("SELECT id, attrs FROM events WHERE (event_type LIKE 'procurement%%' OR event_type = 'negative_cancellation') AND attrs ? 'notice_id' "
+                        "AND coalesce(attrs->>'relevance_v', '') <> %s LIMIT %s", (RELEVANCE_V, limit)).fetchall()
+    for r in rows:
+        a = r["attrs"] or {}
+        rel = services_relevant(a.get("scope"), None, list(a.get("service_codes") or []))
+        conn.execute("UPDATE events SET attrs = attrs || jsonb_build_object('relevant_services', %s::boolean, 'relevance_v', %s::text) WHERE id=%s", (rel, RELEVANCE_V, r["id"]))
+        checked += 1
+        if not rel and a.get("relevant_services"):
+            dropped += conn.execute("UPDATE signals SET status='superseded' WHERE event_id=%s AND rule_id IN ('SRC-01','SRC-06') AND status='active'", (r["id"],)).rowcount
+    return {"tenders_rechecked": checked, "tender_signals_dropped": dropped}

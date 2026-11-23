@@ -356,7 +356,7 @@ def register_feed(app: FastAPI) -> None:
                 f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=e.id) AS sigs, "
                 f"(SELECT coalesce(array_agg(ec.claim_id), '{{}}') FROM event_claims ec WHERE ec.event_id=e.id) AS claim_ids, "
                 f"(SELECT jsonb_build_object('id', i.id, 'title', i.title, 'stage', i.stage) FROM initiative_events ie JOIN initiatives i ON i.id=ie.initiative_id WHERE ie.event_id=e.id LIMIT 1) AS programme, "
-                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened, e.attrs->'fit' AS ai_fit, e.attrs->>'language' AS lang "
+                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened, e.attrs->'fit' AS ai_fit, e.attrs->>'language' AS lang, e.attrs->>'summary_en' AS summary_en "
                 f"FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
                 f"WHERE {VIEWS[view]} AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
@@ -375,7 +375,7 @@ def register_feed(app: FastAPI) -> None:
                               "organization": {"id": str(r["org_id"]), "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"],
                                                "in_master_list": r["in_master_list"], "icp": icp_band(r["employees_estimate"], bool(r["employees_uncertain"]), r["segment"])["band"], "market": mk} if r["org_id"] else None,
                               "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in r["sigs"]], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
-                              "evidence": ev, "programme": r["programme"], "why": r["ai_fit"], "language": r["lang"],
+                              "evidence": ev, "programme": r["programme"], "why": r["ai_fit"], "language": r["lang"], "summary_en": r["summary_en"],
                               "scope": {"proven": r["proven"], "linked": bool(r["org_id"]), "tier": r["market_tier"], "lane": r["lane"], "country": r["market_country"], "buyer": r["buyer_name"]}})
                 if len(items) >= limit:
                     break

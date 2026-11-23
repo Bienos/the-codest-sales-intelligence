@@ -134,6 +134,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("retriaged", lambda: retriage(conn, 500))
     from .events.structured import backfill_procurement_events
     step("procurement_events_backfilled", lambda: backfill_procurement_events(conn, 300))
+    from .events.structured import recheck_procurement_relevance
+    step("tender_relevance", lambda: recheck_procurement_relevance(conn, 2000))
     step("fit_queued", lambda: schedule_fit(conn, now))
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))

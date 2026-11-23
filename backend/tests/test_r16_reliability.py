@@ -156,3 +156,48 @@ def test_lemlist_activity_we_do_not_use_is_not_stored(conn):
     from ri.outbound import enrol
     assert enrol.record_event(conn, {"type": "emailsOpened", "campaignId": "c", "leadEmail": "a@example.invalid", "_id": "1"}) == {"recorded": False, "reason": "ignored type"}
     assert conn.execute("select count(*) n from outbound_events").fetchone()["n"] == 0
+
+
+# ---------------------------------------------------------------- tender relevance and lane (review of real production tenders)
+import pytest as _pt
+
+
+@_pt.mark.parametrize("title,codes,expected", [
+    ("Zakup, dostawa i wdrożenie interaktywnych eksponatów edukacyjnych", ["39162000", "32322000", "48190000", "72263000"], False),      # museum exhibits
+    ("Ekspertyza specjalistyczna tzw. tabulatury pelplińskiej", ["72312000", "79131000"], False),                                    # data entry, not engineering
+    ("BEZ BARIER DO KARIER (sprzęt sportowy, meble, klimatyzacja do sal)", ["37440000", "48000000", "48190000"], False),
+    ("Usługa wsparcia technicznego dla oprogramowania ManageEngine", ["72253200"], False),                                           # vendor product support
+    ("Dzierżawa i serwis drukarek oraz urządzeń wielofunkcyjnych", ["30121300", "48000000"], False),
+    ("Supply of laptops", ["30213100"], False),
+    ("Dostawa i wdrożenie systemu klasy DLP", ["48000000", "72263000"], True),
+    ("Aktualizacja oprogramowania DSpace i integracja z oprogramowaniem ScienceCloud", ["72262000"], True),
+    ("Enterprise Resource Planning (ERP) Solution", ["72000000", "48000000"], True),
+    ("Core banking platform migration and integration services", [], True),
+    ("Digitalisierungskonzept", ["48000000"], True),
+])
+def test_only_real_software_work_counts_as_a_relevant_tender(title, codes, expected):
+    from ri.events.classify import services_relevant
+    assert services_relevant(title, None, codes) is expected
+
+
+def test_tenders_are_always_public_and_schools_courts_hospitals_central_banks_are_public_bodies():
+    from ri.market import is_public_body, lane_for
+    assert lane_for("Hydro-Tech Sp. z o.o.", None, "procurement_published") == "public"
+    assert lane_for("Hydro-Tech Sp. z o.o.", None, "negative_cancellation", from_tender=True) == "public"
+    for n in ("PAŃSTWOWA UCZELNIA ZAWODOWA W SUWAŁKACH", "Zespół Szkół im. A. Średniawskiego", "SPECJALISTYCZNY PSYCHIATRYCZNY ZESPÓŁ OPIEKI ZDROWOTNEJ W ŁODZI",
+              "Sąd Okręgowy w Gorzowie Wielkopolskim", "Central Bank of Ireland", "MINISTRSTVO ZA NOTRANJE ZADEVE IN JAVNO UPRAVO", "Kasa Rolniczego Ubezpieczenia Społecznego Centrala"):
+        assert is_public_body(n), n
+    assert lane_for("Nordea Bank Abp") == "private"
+
+
+def test_old_tender_events_are_rechecked_once_and_wrongly_matched_signals_are_withdrawn(conn):
+    from ri.events.structured import recheck_procurement_relevance
+    ev = str(conn.execute("insert into events(event_key, event_type, summary, extraction_model_version, verification_status, attrs) values ('t-goods','procurement_published','x','t','verified',"
+                          "'{\"notice_id\":\"N1\",\"scope\":\"Dzierżawa i serwis drukarek\",\"service_codes\":[\"30121300\",\"48000000\"],\"relevant_services\":true}') returning id").fetchone()["id"])
+    from ri.signals.baseline import import_baseline
+    import_baseline(conn)
+    conn.execute("insert into signals(event_id, rule_id, rule_version, strength, demand_tier, verification_status, effective_from, reason_code) values (%s,'SRC-01','1',3,'D1','verified',now(),'r')", (ev,))
+    out = recheck_procurement_relevance(conn)
+    assert out == {"tenders_rechecked": 1, "tender_signals_dropped": 1}
+    assert recheck_procurement_relevance(conn)["tenders_rechecked"] == 0
+    assert conn.execute("select status from signals").fetchone()["status"] == "superseded"

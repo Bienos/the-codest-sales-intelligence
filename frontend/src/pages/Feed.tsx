@@ -54,7 +54,8 @@ export default function Feed() {
                     </div>
                     {it.programme && <Link className="small" to="/today">Programme: {it.programme.title}</Link>}
                   </div>
-                  <h3 className="fcard-t">{it.summary}</h3>
+                  <h3 className="fcard-t">{it.summary_en ?? it.summary}</h3>
+                  {it.summary_en && <p className="small muted" style={{ margin: "-4px 0 6px" }}>Original: {it.summary}</p>}
                   {it.why && <div className={`why ${it.why.level}`}>
                     <span className="k">{it.why.level === "strong" ? "Likely work for The Codest" : it.why.level === "possible" ? "Could become work for The Codest" : "Probably not work for us"}</span>
                     {it.why.service && it.why.service !== "none" && <Badge kind={it.why.level === "strong" ? "ok" : "info"}>{SERVICE[it.why.service] ?? it.why.service}</Badge>}
