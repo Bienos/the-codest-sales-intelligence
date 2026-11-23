@@ -105,7 +105,7 @@ def backfill_procurement_events(conn: Conn, limit: int = 300) -> int:
     return n
 
 
-RELEVANCE_V = "v2"
+RELEVANCE_V = "v3"
 
 
 def recheck_procurement_relevance(conn: Conn, limit: int = 2000) -> dict[str, int]:

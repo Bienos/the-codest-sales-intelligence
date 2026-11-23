@@ -249,9 +249,16 @@ def bzp_codes(raw: str | None) -> list[str]:
 
 
 def is_bzp_software(n: dict) -> bool:
-    """Same test as every other tender source: real software or IT services work, not goods with a software code somewhere in a long list."""
-    from ..events.classify import services_relevant
-    return services_relevant(n.get("orderObject"), None, bzp_codes(n.get("cpvCode")))
+    """INTAKE filter, deliberately broad so nothing IT-shaped is missed: any IT services or software code (not servers), or wording about building
+    or implementing software. Licence renewals are dropped. Whether a kept notice is work for us is decided later by services_relevant, which
+    sets the flag the feed and Today use, so a stricter rule can be re-applied to everything already collected."""
+    from ..events.classify import _LICENCE_ONLY, _WORK
+    codes = bzp_codes(n.get("cpvCode"))
+    text = n.get("orderObject") or ""
+    work = bool(_WORK.search(text))
+    if _LICENCE_ONLY.search(text) and not work:
+        return False
+    return work or any(c.startswith(("72", "48")) and not c.startswith("4882") for c in codes)
 
 
 class PolishBzpConnector:
