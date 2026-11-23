@@ -5,6 +5,7 @@ import { Badge, Err } from "../components/ui";
 
 const COUNTRY: Record<string, string> = { GB: "UK", DE: "Germany", AT: "Austria", CH: "Switzerland", SE: "Sweden", DK: "Denmark", NO: "Norway", FI: "Finland", PL: "Poland" };
 const SIZE: Record<string, string> = { sme: "small or medium company", large: "large company" };
+const endMonth = (d?: string | null) => (d ? new Date(d).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "unknown");
 const when = (m: number) => (m <= 0 ? "ends within a month" : m === 1 ? "about 1 month left" : `about ${m} months left`);
 
 export default function Renewals() {
@@ -21,11 +22,11 @@ export default function Renewals() {
   }, [tab, months, country, q, stated]);
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Work that comes round again</div><h2>Renewals</h2></div>
-      <p className="small muted" style={{ marginTop: 0, maxWidth: "80ch" }}>Public bodies award IT contracts for a fixed term, then usually buy again. These are official award notices from the last few years, with the supplier who won each one. The end date is the award date plus the contract length in the notice. Where a notice gives no length, we assume 36 months and say so.</p>
+      <div className="page-head"><div className="eyebrow">Work that comes round again</div><h1>Renewals</h1></div>
+      <p className="small muted" style={{ marginTop: 0, maxWidth: "80ch" }}>Public bodies award IT contracts for a fixed term, then usually buy again. Each card is an official award notice with the supplier who won. We add the contract length in the notice to the date the notice was sent to estimate when it ends. If the notice gives no length, we assume 3 years and label the date as an estimate.</p>
       <div className="tabs" role="tablist" aria-label="What to show">
         <button role="tab" aria-selected={tab === "ending"} onClick={() => setTab("ending")}>Contracts ending</button>
-        <button role="tab" aria-selected={tab === "winners"} onClick={() => setTab("winners")}>Who wins this work</button>
+        <button role="tab" aria-selected={tab === "winners"} onClick={() => setTab("winners")}>Current suppliers</button>
       </div>
       <div className="feedbar">
         {tab === "ending" && <input aria-label="Search buyer, subject or supplier" placeholder="Search buyer, subject or supplier" value={q} onChange={(e) => setQ(e.target.value)} />}
@@ -33,26 +34,26 @@ export default function Renewals() {
         {tab === "ending" && <select aria-label="Ending within" value={months} onChange={(e) => setMonths(Number(e.target.value))}>{[6, 12, 18, 24, 36].map((m) => <option key={m} value={m}>Ending within {m} months</option>)}</select>}
         {tab === "ending" && <label className="small"><input type="checkbox" checked={stated} onChange={(e) => setStated(e.target.checked)} /> Only contracts with a stated length</label>}
       </div>
-      {err ? <Err e={err} /> : !d ? <p className="muted">Loading…</p> : tab === "ending" ? (
+      {err ? <Err e={err} /> : !d ? <p className="muted">Loading contracts…</p> : tab === "ending" ? (
         <>
-          <p className="small muted">{d.items.length === 0 ? "Nothing matches." : `${d.items.length} contracts, soonest first.`} {d.contracts_known > 0 && `We hold ${d.contracts_known.toLocaleString()} IT contracts awarded since ${fmtDate(d.records_since)}.`}</p>
-          {d.contracts_known === 0 && <div className="empty">The contract history is still loading. It is read in the background and fills in over the next hours.</div>}
+          <p className="small muted">{d.items.length === 0 ? "Nothing matches." : `${d.items.length} ${d.items.length === 1 ? "contract" : "contracts"}, ending soonest first.`} {d.contracts_known > 0 && `We hold ${d.contracts_known.toLocaleString()} IT contract awards since ${fmtDate(d.records_since)}.`}</p>
+          {d.contracts_known === 0 && <div className="empty">We are still loading the contract history. It fills in over the next few hours, so check back later.</div>}
           <div className="stack">{d.items.map((r: any) => (
             <article key={r.notice_id} className="card">
               <div className="row"><Badge kind={r.months_left <= 6 ? "warn" : "info"}>{when(r.months_left)}</Badge><Badge>{COUNTRY[r.buyer_country] ?? r.buyer_country}</Badge>
-                {r.on_lists && <Badge kind="ok">On your lists</Badge>}<Badge>{r.end_basis === "stated" ? "Length stated in notice" : "Length assumed (36 months)"}</Badge></div>
-              <h3 style={{ margin: "8px 0 2px" }}>{r.buyer_org_id ? <Link to={`/accounts/${r.buyer_org_id}`}>{r.buyer_name}</Link> : r.buyer_name ?? "Buyer not named"}</h3>
+                {r.on_lists && <Badge kind="ok">On your lists</Badge>}<Badge kind={r.end_basis === "stated" ? "" : "warn"}>{r.end_basis === "stated" ? `Ends about ${endMonth(r.expected_end)}` : `Ends about ${endMonth(r.expected_end)} (estimate: no length in the notice)`}</Badge></div>
+              <h3 style={{ margin: "8px 0 2px" }}>{r.buyer_org_id ? <Link to={`/accounts/${r.buyer_org_id}`}>{r.buyer_name}</Link> : r.buyer_name ?? "Buyer not named in the notice"}</h3>
               <p style={{ margin: "0 0 6px" }}>{(r.title ?? "").replace(/^[^–]+ – [^–]+ – /, "")}</p>
-              <p className="small muted" style={{ margin: 0 }}><b>Won by:</b> {r.winners.length ? r.winners.join(", ") : "not named in the notice"}{r.winner_size ? ` (${SIZE[r.winner_size] ?? r.winner_size})` : ""}</p>
-              <p className="small muted" style={{ margin: "2px 0 0" }}>Awarded {fmtDate(r.awarded_on)} · probably ends {fmtDate(r.expected_end)} · <a href={r.official_url} target="_blank" rel="noreferrer noopener">official notice ↗</a></p>
+              <p className="small muted" style={{ margin: 0 }}><b>Current supplier:</b> {r.winners.length ? r.winners.join(", ") : "not named in the notice"}{r.winner_size ? ` (${SIZE[r.winner_size] ?? r.winner_size})` : ""}</p>
+              <p className="small muted" style={{ margin: "2px 0 0" }}>Notice sent {fmtDate(r.awarded_on)} · <a href={r.official_url} target="_blank" rel="noreferrer noopener">official notice ↗</a></p>
             </article>))}</div>
         </>
       ) : (
         <>
-          <p className="small muted">Suppliers named as winners of IT contracts from public buyers in our markets over the last three years. A large number of wins means a strong incumbent, and often a partner or a competitor worth knowing.</p>
-          <div className="card table-wrap"><table><thead><tr><th>Supplier</th><th>Awards</th><th>Countries</th><th>Latest</th></tr></thead><tbody>
+          <p className="small muted">Who won the most public IT contracts in our markets over the last three years. A supplier with many wins is a strong incumbent, and often a competitor or a partner worth knowing.</p>
+          <div className="card table-wrap"><table><thead><tr><th>Supplier</th><th>Contracts won</th><th>Countries</th><th>Latest win</th></tr></thead><tbody>
             {d.items.map((r: any) => <tr key={r.supplier}><td>{r.supplier}{r.size && <div className="small muted">{SIZE[r.size] ?? r.size}</div>}</td><td>{r.awards}</td><td className="small">{r.countries.map((c: string) => COUNTRY[c] ?? c).join(", ")}</td><td className="small">{fmtDate(r.latest)}</td></tr>)}
-            {d.items.length === 0 && <tr><td colSpan={4} className="muted">None yet.</td></tr>}</tbody></table></div>
+            {d.items.length === 0 && <tr><td colSpan={4} className="muted">No suppliers yet. The contract history is still loading.</td></tr>}</tbody></table></div>
         </>
       )}
     </>

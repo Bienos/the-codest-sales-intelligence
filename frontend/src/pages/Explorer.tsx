@@ -1,31 +1,76 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, fmtDate } from "../api";
-import { Badge, Coverage, Err, humanize } from "../components/ui";
+import { api, fmtDate, fmtDateTime } from "../api";
+import { Badge, Coverage, Err, Empty, lab, priorityKind } from "../components/ui";
+
+type Row = Record<string, any>;
+type Col = { h: string; cell: (r: Row) => React.ReactNode };
+
+const SORT_NOTE: Record<string, string> = { opportunities: "Sorted by opportunity score, highest first. The score ranks what to look at first; it is not a chance of winning.", companies: "Sorted by name.", procurement: "Open tenders first, then by closing date.", events: "Newest first." };
+const COLUMNS: Record<string, Col[]> = {
+  opportunities: [
+    { h: "Programme", cell: (r) => <Link to={`/opportunities/${r.id}`}>{r.title ?? r.display_name}</Link> },
+    { h: "Account", cell: (r) => r.display_name },
+    { h: "Priority", cell: (r) => <Badge kind={`${priorityKind(r.priority)} nw`}>{lab("priority", r.priority)}</Badge> },
+    { h: "Score", cell: (r) => (r.score_total != null ? `${r.score_total}/100` : "None") },
+    { h: "How we would get in", cell: (r) => `${lab("route", r.route_type)}${r.counterparty_name ? ` (${r.counterparty_name})` : ""}` },
+    { h: "Will they use outside help?", cell: (r) => lab("demand", r.external_demand_status) },
+    { h: "Sources", cell: (r) => (r.evidence_confidence ? <span style={{ whiteSpace: "nowrap" }}>{String(r.evidence_confidence).replace(/^./, (c: string) => c.toUpperCase())}</span> : "None") },
+  ],
+  companies: [
+    { h: "Company", cell: (r) => <Link to={`/accounts/${r.id}`}>{r.display_name}</Link> },
+    { h: "Country", cell: (r) => r.country_code ?? "Not known" },
+    { h: "Segment", cell: (r) => r.segment ?? "Not known" },
+    { h: "Staff", cell: (r) => (r.employees_estimate ? r.employees_estimate.toLocaleString() : "Not known") },
+    { h: "On your lists", cell: (r) => (r.in_master_list ? <Badge kind="ok">Yes</Badge> : "No") },
+  ],
+  procurement: [
+    { h: "Tender", cell: (r) => (r.official_url ? <a href={r.official_url} target="_blank" rel="noreferrer noopener">{r.title} ↗</a> : r.title) },
+    { h: "Buyer", cell: (r) => r.buyer_name ?? "Not named" },
+    { h: "Status", cell: (r) => <Badge kind={r.status === "open" ? "ok" : ""}>{r.status === "open" ? "Open" : String(r.status).replace(/^./, (c: string) => c.toUpperCase())}</Badge> },
+    { h: "Closes", cell: (r) => (r.deadline_at ? fmtDateTime(r.deadline_at) : "No date") },
+    { h: "Last checked", cell: (r) => (r.last_status_check_at ? fmtDateTime(r.last_status_check_at) : "Not yet") },
+  ],
+  events: [
+    { h: "What happened", cell: (r) => r.summary },
+    { h: "Type", cell: (r) => lab("event", r.event_type) },
+    { h: "Date", cell: (r) => fmtDate(r.event_at ?? r.pub_at) },
+    { h: "We saw it", cell: (r) => fmtDate(r.first_observed_at) },
+    { h: "Checked", cell: (r) => (r.verification_status === "verified" ? <Badge kind="ok">Yes</Badge> : <Badge kind="warn">Not yet</Badge>) },
+  ],
+};
+const SHOW: [string, string][] = [["opportunities", "Opportunities"], ["companies", "Companies"], ["procurement", "Public tenders"], ["events", "Findings"]];
 
 export default function Explorer() {
   const [entity, setEntity] = useState("opportunities");
   const [q, setQ] = useState(""); const [country, setCountry] = useState(""); const [existing, setExisting] = useState("");
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   useEffect(() => {
+    setErr(null);
     const p = new URLSearchParams({ entity, q }); if (country) p.set("country", country); if (existing) p.set("existing", existing);
-    const t = setTimeout(() => api(`/api/explorer?${p}`).then(setD).catch(setErr), 200); return () => clearTimeout(t);
+    const t = setTimeout(() => api(`/api/explorer?${p}`).then((r) => setD({ ...r, entity })).catch(setErr), 200); return () => clearTimeout(t);
   }, [entity, q, country, existing]);
-  const cols = d?.items?.[0] ? Object.keys(d.items[0]).filter((k) => k !== "id") : [];
+  const cols = COLUMNS[entity];
+  const ready = d && d.entity === entity;
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Search the market</div><h2>Market Explorer</h2></div><p className="sub" style={{marginTop:-8}}>Search and filter. Results are limited to your scope and never prove the absence of market activity.</p>
+      <div className="page-head"><div className="eyebrow">Look across the market</div><h1>Explorer</h1><p className="sub">Search and filter everything we hold. Results are limited to what you can see, and no result does not mean nothing is happening: we only see the sources we watch.</p></div>
       <div className="row" style={{ marginBottom: 12 }}>
-        <select aria-label="Entity" value={entity} onChange={(e) => setEntity(e.target.value)}><option value="opportunities">Opportunities</option><option value="companies">Companies</option><option value="procurement">Procurement notices</option><option value="events">Events</option></select>
+        <label className="sr" htmlFor="ex-show">Show</label>
+        <select id="ex-show" value={entity} onChange={(e) => setEntity(e.target.value)}>{SHOW.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
         <input aria-label="Search" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <input aria-label="Country code" placeholder="Country (GB, DE…)" value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} style={{ width: 130 }} />
-        <select aria-label="List membership" value={existing} onChange={(e) => setExisting(e.target.value)}><option value="">Existing + new</option><option value="true">Existing master list</option><option value="false">New only</option></select>
+        {(entity === "opportunities" || entity === "companies") && <input aria-label="Country code" placeholder="Country (GB, DE…)" value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} style={{ width: 130 }} />}
+        {entity === "companies" && <select aria-label="List membership" value={existing} onChange={(e) => setExisting(e.target.value)}><option value="">All companies</option><option value="true">On your lists</option><option value="false">Not on your lists</option></select>}
       </div>
-      <Err e={err} />{d && <><Coverage c={d.coverage} /><p className="small"><b>Ranking:</b> {d.ranking_basis}</p>
-        <div className="card table-wrap"><table><thead><tr>{cols.map((c) => <th key={c}>{humanize(c)}</th>)}</tr></thead><tbody>
-          {d.items.map((r: any, i: number) => <tr key={i}>{cols.map((c) => <td key={c}>{c === "display_name" && entity === "companies" ? <Link to={`/accounts/${r.id}`}>{r[c]}</Link> : c === "title" && entity === "opportunities" ? <Link to={`/opportunities/${r.id}`}>{r[c]}</Link>
-            : /_at$|date/.test(c) ? fmtDate(r[c]) : typeof r[c] === "boolean" ? (r[c] ? <Badge kind="ok">yes</Badge> : "no") : String(r[c] ?? "n/a")}</td>)}</tr>)}
-          {d.items.length === 0 && <tr><td className="muted">No results. {d.coverage_note}</td></tr>}</tbody></table></div></>}
+      <Err e={err} />
+      {!ready && !err && <p className="muted">Loading…</p>}
+      {ready && <>
+        {d.coverage && (d.coverage.unhealthy?.length > 0 || d.coverage.no_active_monitoring) && <Coverage c={d.coverage} />}
+        <p className="small muted">{SORT_NOTE[entity]}</p>
+        {d.items.length === 0 ? <Empty title="Nothing matches">Try fewer filters. Remember we only see the sources we watch.</Empty> :
+          <div className="card table-wrap"><table><thead><tr>{cols.map((c) => <th key={c.h}>{c.h}</th>)}</tr></thead><tbody>
+            {d.items.map((r: Row, i: number) => <tr key={r.id ?? r.notice_id ?? i}>{cols.map((c) => <td key={c.h}>{c.cell(r)}</td>)}</tr>)}</tbody></table></div>}
+      </>}
     </>
   );
 }

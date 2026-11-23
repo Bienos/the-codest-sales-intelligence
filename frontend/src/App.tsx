@@ -13,7 +13,7 @@ import Feed from "./pages/Feed";
 import Renewals from "./pages/Renewals";
 import LibraryHub from "./pages/LibraryHub";
 import Knowledge from "./pages/Knowledge";
-import { IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
+import { lab, IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 
@@ -40,7 +40,7 @@ export default function App() {
     });
   }, [n]);
   if (needLogin) return <Landing onDone={() => setN(n + 1)} notice={notice} />;
-  if (!me) return <div className="page muted">Loading</div>;
+  if (!me) return <div className="page muted">Signing you in…</div>;
   const can = (p: string) => me.permissions.includes(p);
   const link = (to: string, label: string, Ico: any) => <NavLink to={to} aria-label={label} className={({ isActive }) => `navlink${isActive ? " active" : ""}`}><Ico /><span>{label}</span></NavLink>;
   return (
@@ -53,7 +53,7 @@ export default function App() {
         <div className="nav-panel" id="nav-panel">
           <form className="navsearch" role="search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search everything" placeholder="Search everything" /></form>
           {can("today.read") && link("/today", "Today", IconToday)}
-          {can("accounts.read") && link("/accounts", "Leads", IconAccounts)}
+          {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
           {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
           {can("accounts.read") && link("/renewals", "Renewals", IconToday)}
           {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
@@ -61,7 +61,7 @@ export default function App() {
           {link("/knowledge", "Knowledge base", IconKnowledge)}
           {link("/guide", "How it works", IconGuide)}
           {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", "Administration", IconAdmin)}
-          <div className="who"><b>{me.email}</b>{me.role.replace(/_/g, " ")}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>Sign out</button></div>
+          <div className="who"><b>{me.email}</b>{lab("role", me.role)}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>Sign out</button></div>
         </div>
       </nav>
       <main className="main">
