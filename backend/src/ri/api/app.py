@@ -444,6 +444,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     intel.register_connections(app)
     from . import deadlines as deadlines_api
     deadlines_api.register_deadlines(app)
+    from . import renewals_api
+    renewals_api.register(app)
     from . import outreach as outreach_api
     outreach_api.register_outreach(app, settings)
     from . import leads as leads_api

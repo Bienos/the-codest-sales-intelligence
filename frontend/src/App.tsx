@@ -10,6 +10,7 @@ import Guide from "./pages/Guide";
 import Landing, { Notice } from "./pages/Landing";
 import Search from "./pages/Search";
 import Feed from "./pages/Feed";
+import Renewals from "./pages/Renewals";
 import LibraryHub from "./pages/LibraryHub";
 import Knowledge from "./pages/Knowledge";
 import { IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
@@ -54,6 +55,7 @@ export default function App() {
           {can("today.read") && link("/today", "Today", IconToday)}
           {can("accounts.read") && link("/accounts", "Leads", IconAccounts)}
           {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
+          {can("accounts.read") && link("/renewals", "Renewals", IconToday)}
           {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
           {link("/library", "Library", IconLibrary)}
           {link("/knowledge", "Knowledge base", IconKnowledge)}
@@ -68,6 +70,7 @@ export default function App() {
           <Route path="/today" element={<Today />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/feed" element={<div className="page"><Feed /></div>} />
+          <Route path="/renewals" element={<div className="page"><Renewals /></div>} />
           <Route path="/search" element={<div className="page"><Search /></div>} />
           <Route path="/library" element={<div className="page"><LibraryHub /></div>} />
           <Route path="/knowledge/:doc?" element={<div className="page"><Knowledge /></div>} />

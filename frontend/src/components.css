@@ -23,3 +23,5 @@
   .leads-table td:nth-child(3) { min-width: 150px; }
   .leads-table td:nth-child(6) { white-space: nowrap; }
 }
+
+.stack { display: grid; gap: 12px; margin-top: 6px; }

@@ -282,6 +282,11 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             ex.reserve_fraction = 0.3
         return run_scan(conn, job["payload"]["organization_id"], client=SafeClient(timeout=30), extractor=ex, resolver=resolver, force_discover=bool(job["payload"].get("rediscover")))
 
+    def ted_awards_window(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..renewals import run_window
+        return run_window(conn, job["payload"]["start"], job["payload"]["end"])      # official award notices only; commits per page
+
+    ted_awards_window.own_transactions = True  # type: ignore[attr-defined]
     def ted_probe(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..sources.ted_probe import run_probe
         return run_probe()          # read-only; the answer is stored on the job
@@ -290,7 +295,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"ted_probe": ted_probe, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit}
+    return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit}
 
 
 __all__ = ["build_handlers", "ConnectorError"]
