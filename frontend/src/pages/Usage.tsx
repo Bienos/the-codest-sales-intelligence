@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, fmtDateTime } from "../api";
-import { Badge, Err, Meter, humanize } from "../components/ui";
+import { Badge, Err, Meter, humanize, Skeleton, reloadPage } from "../components/ui";
 
 const usd = (v: number | null | undefined, d = 2) => (v === null || v === undefined ? "Not known" : `$${Number(v).toFixed(d)}`);
 const num = (v: any) => Number(v ?? 0).toLocaleString();
@@ -66,8 +66,8 @@ function Ledger() {
 export default function Usage() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [tab, setTab] = useState<Tab>("overview");
   useEffect(() => { api("/api/admin/usage").then(setD).catch(setErr); }, []);
-  if (err) return <Err e={err} />;
-  if (!d) return <p className="muted" aria-busy="true">Loading usage…</p>;
+  if (err) return <Err e={err} onRetry={reloadPage} />;
+  if (!d) return <Skeleton />;
   const m = (p: string) => d.months.find((x: any) => x.period === d.period && x.provider === p);
   const cost = (p: string) => m(p)?.cost_usd;
   const outcomes: Record<string, number> = Object.fromEntries(d.verification_outcomes.map((o: any) => [o.status, o.n]));

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, fmtDateTime, patch, post } from "../api";
-import { Badge, Err, humanize } from "../components/ui";
+import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
 
 const VLABEL: Record<string, string> = { verified: "Checked", failed: "Could not check", blocked: "Page not allowed", waiting_budget: "Waiting for AI budget", no_event: "Nothing quotable", queued: "Waiting", fetching: "Reading", extracting: "Finding events" };
 const vk = (s: string) => (s === "verified" ? "ok" : s === "failed" || s === "blocked" ? "bad" : s === "waiting_budget" ? "warn" : s === "no_event" ? "" : "info");
@@ -31,8 +31,8 @@ export function Discovery() {
   const load = () => api("/api/admin/discovery").then(setD).catch(setErr);
   useEffect(() => { load(); }, []);
   const run = async (ids?: string[]) => { setErr(null); try { await post("/api/admin/discovery/run", { plan_ids: ids ?? null }); setMsg("Started. It should begin within a few seconds, and results appear under Pages being checked."); load(); } catch (e) { setErr(e); } };
-  if (err && !d) return <Err e={err} />;
-  if (!d) return <p className="muted" aria-busy="true">Loading…</p>;
+  if (err && !d) return <Err e={err} onRetry={reloadPage} />;
+  if (!d) return <Skeleton />;
   const b = d.budget;
   return (
     <>

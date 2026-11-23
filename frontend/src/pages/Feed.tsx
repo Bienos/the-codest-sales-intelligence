@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, post, trackSourceOpened } from "../api";
-import { Badge, Err, TIER, lab } from "../components/ui";
+import { Badge, Err, Skeleton, TIER, lab, reloadPage } from "../components/ui";
 const SERVICE: Record<string, string> = { staff_augmentation: "Staff Augmentation", team_extension: "Team Extension", ai_services: "AI Services" };
 const LANG: Record<string, string> = { de: "German", pl: "Polish", sv: "Swedish", no: "Norwegian", nb: "Norwegian", da: "Danish", fi: "Finnish", fr: "French", nl: "Dutch", es: "Spanish", it: "Italian", is: "Icelandic" };
 
@@ -36,7 +36,8 @@ export default function Feed() {
         {view === "accounts" && <label className="small row"><input type="checkbox" checked={core} onChange={(e) => setCore(e.target.checked)} /> Main markets only</label>}
         <label className="small row"><input type="checkbox" checked={fitOnly} onChange={(e) => setFitOnly(e.target.checked)} /> <span title="Hides findings that none of our sales plays match to a service">Only likely work for us</span></label>
       </div>
-      <Err e={err} />
+      <Err e={err} onRetry={reloadPage} />
+      {!d && !err && <Skeleton rows={3} label="Loading the feed" />}
       {cov && !cov.all_monitored_healthy && <div className={`cov ${cov.no_active_monitoring ? "bad" : ""}`}><b>Source health.</b> {cov.no_active_monitoring ? "No source is switched on yet, so this feed only shows what you checked yourself or what search found. A quiet feed says nothing about the market." : `${cov.unhealthy.length} ${cov.unhealthy.length === 1 ? "source is" : "sources are"} having problems: ${cov.unhealthy.map((u: any) => u.source).join(", ")}.`} <Link to="/admin/pipeline">See what is running</Link></div>}
       {d && d.count === 0 && <div className="empty"><b>Nothing checked in this window</b>Check a company from Today, switch sources on in Administration, or widen the filters. {d.totals.unverified > 0 && `${d.totals.unverified} ${d.totals.unverified === 1 ? "item is" : "items are"} not checked yet, so ${d.totals.unverified === 1 ? "it is" : "they are"} not shown.`}</div>}
       <div className="feed-grid">

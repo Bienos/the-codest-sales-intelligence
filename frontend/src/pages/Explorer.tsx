@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime } from "../api";
-import { Badge, Coverage, Err, Empty, lab, priorityKind } from "../components/ui";
+import { Badge, Coverage, Err, Empty, lab, priorityKind, Skeleton } from "../components/ui";
 
 type Row = Record<string, any>;
 type Col = { h: string; cell: (r: Row) => React.ReactNode };
@@ -63,7 +63,7 @@ export default function Explorer() {
         {entity === "companies" && <select aria-label="List membership" value={existing} onChange={(e) => setExisting(e.target.value)}><option value="">All companies</option><option value="true">On your lists</option><option value="false">Not on your lists</option></select>}
       </div>
       <Err e={err} />
-      {!ready && !err && <p className="muted">Loading…</p>}
+      {!ready && !err && <Skeleton />}
       {ready && <>
         {d.coverage && (d.coverage.unhealthy?.length > 0 || d.coverage.no_active_monitoring) && <Coverage c={d.coverage} />}
         <p className="small muted">{SORT_NOTE[entity]}</p>

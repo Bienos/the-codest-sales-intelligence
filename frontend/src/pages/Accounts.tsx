@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
 const del = (p: string) => api(p, { method: "DELETE" });
-import { Badge, Err, Evidence, LABELS, groupName, humanize, lab, priorityKind } from "../components/ui";
+import { Badge, Err, Evidence, LABELS, groupName, humanize, lab, priorityKind, Skeleton, reloadPage, whyShort } from "../components/ui";
 
 function AddCompany({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
@@ -232,8 +232,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const loadCamps = () => api(`/api/accounts/${id}/campaigns`).then(setCamps).catch(() => setCamps({ items: [] }));
   useEffect(() => { loadCamps(); }, [id]);
   useEffect(() => { if (!camps.items.some((b: any) => b.status === "queued" || b.status === "running")) return; const t = setInterval(loadCamps, 6000); return () => clearInterval(t); }, [camps]);
-  if (err) return <Err e={err} />;
-  if (!d) return <div aria-busy="true"><div className="eyebrow">Account</div><p className="muted">Loading the account…</p></div>;
+  if (err) return <><p className="small mt-0"><Link to="/accounts">Accounts</Link></p><Err e={err} onRetry={reloadPage} /></>;
+  if (!d) return <><p className="small mt-0"><Link to="/accounts">Accounts</Link></p><Skeleton rows={4} label="Loading the account" /></>;
   const a = d.account;
   const canScan = me.permissions.includes("research.request");
   const makeCampaign = async (role: string) => { try { await post(`/api/accounts/${id}/campaign`, { role: role || null }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
@@ -262,7 +262,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         {d.opportunities.length === 0 && <div className="empty"><b>No opportunities yet</b>One appears when checked signals point to a concrete piece of work. Press “Check for news” to look for some.</div>}
         {d.opportunities.map((o: any) => (
           <div key={o.hypothesis_id} className="card"><div className="row spread"><div><Badge kind={priorityKind(o.priority)}>{lab("priority", o.priority)}</Badge> <b>{o.initiative.title}</b> · {lab("route", o.route.type)} ({o.route.counterparty})</div><Link to={`/opportunities/${o.hypothesis_id}`}>Open</Link></div>
-            <p className="small">{o.plain_reason ?? o.why_it_matters}</p>{o.next_action && <p className="small"><b>Next:</b> {o.next_action.objective}</p>}</div>))}
+            <p className="small">{o.plain_reason ?? whyShort(o.why_it_matters)}</p>{o.next_action && <p className="small"><b>Next:</b> {o.next_action.objective}</p>}</div>))}
       </>)}
       {tab === "Research brief" && <BriefTab briefs={briefs} />}
       {tab === "Outreach" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={String(id)} make={makeCampaign} decide={decideCampaign} />}

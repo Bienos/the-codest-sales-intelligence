@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate } from "../api";
-import { Badge, Err } from "../components/ui";
+import { Badge, Err, Skeleton, reloadPage } from "../components/ui";
 
 const COUNTRY: Record<string, string> = { GB: "UK", DE: "Germany", AT: "Austria", CH: "Switzerland", SE: "Sweden", DK: "Denmark", NO: "Norway", FI: "Finland", PL: "Poland" };
 const SIZE: Record<string, string> = { sme: "small or medium company", large: "large company" };
@@ -34,7 +34,7 @@ export default function Renewals() {
         {tab === "ending" && <select aria-label="Ending within" value={months} onChange={(e) => setMonths(Number(e.target.value))}>{[6, 12, 18, 24, 36].map((m) => <option key={m} value={m}>Ending within {m} months</option>)}</select>}
         {tab === "ending" && <label className="small"><input type="checkbox" checked={stated} onChange={(e) => setStated(e.target.checked)} /> Only contracts with a stated length</label>}
       </div>
-      {err ? <Err e={err} /> : !d ? <p className="muted">Loading contracts…</p> : tab === "ending" ? (
+      {err ? <Err e={err} onRetry={reloadPage} /> : !d ? <Skeleton /> : tab === "ending" ? (
         <>
           <p className="small muted">{d.items.length === 0 ? "Nothing matches." : `${d.items.length} ${d.items.length === 1 ? "contract" : "contracts"}, ending soonest first.`} {d.contracts_known > 0 && `We hold ${d.contracts_known.toLocaleString()} IT contract awards since ${fmtDate(d.records_since)}.`}</p>
           {d.contracts_known === 0 && <div className="empty">We are still loading the contract history. It fills in over the next few hours, so check back later.</div>}

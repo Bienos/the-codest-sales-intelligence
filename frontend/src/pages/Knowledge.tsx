@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, post } from "../api";
-import { Err } from "../components/ui";
+import { Err, Skeleton } from "../components/ui";
 
 export default function Knowledge() {
   const { doc } = useParams();
@@ -28,7 +28,7 @@ export default function Knowledge() {
       <div className="tabs" role="tablist">{docs.map((d) => <button key={d.id} role="tab" aria-selected={d.id === current} onClick={() => nav(`/knowledge/${d.id}`)}>{d.title}</button>)}</div>
       <Err e={err} />
       {meta && <p className="small muted mt-0">{meta.blurb} Internal only: do not share with prospects. This is a copy of the <a href={meta.source} target="_blank" rel="noreferrer noopener">original document</a>. Ask an administrator to refresh it when the original changes.</p>}
-      {missing ? <div className="empty"><b>This document is not loaded yet</b>An administrator can upload it in Administration, Knowledge.</div> : src ? <iframe className="kb-frame" title={meta?.title ?? "Knowledge base"} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" /> : <p className="muted">Loading the document…</p>}
+      {missing ? <div className="empty"><b>This document is not loaded yet</b>An administrator can upload it in Administration, Knowledge.</div> : src ? <iframe className="kb-frame" title={meta?.title ?? "Knowledge base"} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" /> : <Skeleton />}
     </>
   );
 }

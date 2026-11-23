@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, fmtDateTime } from "../api";
-import { Badge, Err, humanize } from "../components/ui";
+import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
 
 const TIERS: Record<string, string> = { S1: "Official records", S2: "Company\u2019s own sites", S3: "Vendors and integrators", S4: "Trade press", S5: "Search finds", internal: "Internal" };
 const hk = (s: string) => (s === "healthy" ? "ok" : !s || s === "unconfigured" || s === "paused" ? "" : "bad");
@@ -13,8 +13,8 @@ export default function Library({ render, query, canSetup = true }: { render: (s
   const q = query ?? qLocal;
   const load = () => api("/api/admin/library").then(setD).catch(setErr);
   useEffect(() => { load(); }, []);
-  if (err) return <Err e={err} />;
-  if (!d) return <p className="muted">Loading sources…</p>;
+  if (err) return <Err e={err} onRetry={reloadPage} />;
+  if (!d) return <Skeleton />;
   const items = d.items.filter((s: any) => !q || `${s.display_name} ${s.source_id} ${s.provider}`.toLowerCase().includes(q.toLowerCase()));
   const groups = Object.keys(TIERS).map((t) => [t, items.filter((s: any) => s.source_tier === t)] as [string, any[]]).filter(([, l]) => l.length);
   const live = d.items.filter((s: any) => s.status === "active" && s.collection_method !== "internal").length;

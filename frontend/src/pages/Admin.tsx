@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { api, fmtDateTime, post, put, upload, patch } from "../api";
-import { Badge, Err, humanize, lab } from "../components/ui";
+import { Badge, Err, humanize, lab, Skeleton } from "../components/ui";
 import Library from "./Library";
 import { KnowledgeAdmin, Pipeline } from "./PipelineStatus";
 import Usage from "./Usage";
@@ -13,7 +13,7 @@ function Load({ path, children }: { path: string; children: (d: any, reload: () 
   const reload = () => api(path).then(setD).catch(setErr);
   useEffect(() => { reload(); }, [path]);
   if (err) return <Err e={err} onRetry={reload} />;
-  return d ? children(d, reload) : <p className="muted" aria-busy="true">Loading…</p>;
+  return d ? children(d, reload) : <Skeleton />;
 }
 
 function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () => void }) {
@@ -278,7 +278,7 @@ function Imports() {
         <p className="small muted mb-0">Uploading the same file again changes nothing. We delete the file after loading it and keep only its fingerprint and the result.</p>
       </div>
       <h3>Recent uploads</h3>
-      {!d ? <p className="muted">Loading</p> : d.uploads.length === 0 ? <div className="empty">No uploads yet.</div> :
+      {!d ? <Skeleton /> : d.uploads.length === 0 ? <div className="empty">No uploads yet.</div> :
         <div className="card table-wrap"><table><thead><tr><th>When</th><th>File</th><th>Workbook</th><th>Status</th><th>Detail</th></tr></thead><tbody>{d.uploads.map((u: any) => {
           const tabs = u.stats?.tabs ? Object.entries(u.stats.tabs) as [string, any][] : [];
           return <tr key={u.id}><td>{fmtDateTime(u.created_at)}</td><td>{u.filename}<div className="small muted">{u.uploaded_by}</div></td><td>{u.workbook_key}</td>

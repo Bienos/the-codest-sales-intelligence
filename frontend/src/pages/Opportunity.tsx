@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, fmtDateTime, post } from "../api";
-import { Badge, Err, Evidence, GateBar, PageHeader, humanize, lab, priorityKind, unknownText, verdict } from "../components/ui";
+import { Badge, Err, Evidence, GateBar, PageHeader, humanize, lab, priorityKind, unknownText, verdict, Skeleton, reloadPage, whyShort } from "../components/ui";
 
 export default function Opportunity({ me }: { me: { permissions: string[] } }) {
   const { id } = useParams();
@@ -14,8 +14,8 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
   const [proposal, setProposal] = useState<any>(null);
   const load = () => { Promise.all([api(`/api/hypotheses/${id}`), api(`/api/hypotheses/${id}/playbook`)]).then(([a, b]) => { setD(a); setPb(b); }).catch(setErr); };
   useEffect(load, [id]);
-  if (err && !d) return <Err e={err} />;
-  if (!d || !pb) return <p className="muted">Loading the opportunity…</p>;
+  if (err && !d) return <Err e={err} onRetry={reloadPage} />;
+  if (!d || !pb) return <Skeleton />;
   const can = (p: string) => me.permissions.includes(p);
   const run = async (f: () => Promise<any>, ok: string) => { setErr(null); setMsg(""); try { await f(); setMsg(ok); load(); } catch (e) { setErr(e); } };
   const a = d.next_action;
@@ -35,7 +35,7 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
       <div className="ws mt-2">
         <div>
           <div className="section-title">What happened and why it matters</div>
-          <div className="card"><p className="mt-0"><b>What happened:</b> {d.what_happened.summary}</p><p><b>Why it matters:</b> {d.why_it_matters}</p><Evidence items={d.evidence} hypothesisId={id} /></div>
+          <div className="card"><p className="mt-0"><b>What happened:</b> {d.what_happened.summary}</p><p><b>Why it matters:</b> {whyShort(d.why_it_matters)}</p><Evidence items={d.evidence} hypothesisId={id} /></div>
 
           <div className="section-title">What we know and what we are guessing</div>
           <div className="card"><Badge kind={pb.meeting_brief.buyer_confirmed ? "ok" : "warn"}>{pb.meeting_brief.buyer_confirmed ? "The buyer has confirmed the need" : "The buyer has not confirmed the need yet"}</Badge>

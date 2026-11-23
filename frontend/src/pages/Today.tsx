@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
-import { Badge, Coverage, Err, Evidence, Fact, accessKind, demandKind, groupName, humanize, lab, priorityKind, unknownText, verdict } from "../components/ui";
+import { Badge, Coverage, Err, Evidence, Fact, accessKind, demandKind, groupName, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
 import Prospects from "./Prospects";
 
 const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_accounts", "News on your accounts"], ["new_discoveries", "New companies worth a look"],
@@ -20,19 +20,20 @@ function Deadlines() {
     </tbody></table></div></section>;
 }
 
-function Card({ c, reload }: { c: any; reload: () => void }) {
+function Card({ c, reload, compact = false }: { c: any; reload: () => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<unknown>(null);
   const decide = async (decision: string, r?: string) => { try { await post(`/api/hypotheses/${c.hypothesis_id}/decision`, { decision, reason: r }); reload(); } catch (e) { setErr(e); } };
   const a = c.next_action;
   return (
-    <article className={`opp ${c.priority}`} aria-label={`${c.account.name}: ${c.initiative.title}`}>
+    <article className={`opp ${c.priority}${compact ? " compact" : ""}`} aria-label={`${c.account.name}: ${c.initiative.title}, ${lab("route", c.route.type)}`}>
       <div className="opp-head">
         <div>
-          <div className="opp-title">{c.account.name}</div>
-          <div className="opp-init">{c.initiative.title}
-            {c.initiative.working_title_label && <Badge kind="warn">{c.initiative.working_title_label}</Badge>}<Badge>{humanize(c.initiative.stage)}</Badge></div>
+          {compact ? <div className="opp-title">{lab("route", c.route.type)} <span className="small muted">({c.route.counterparty})</span></div> : <>
+            <div className="opp-title">{c.account.name}</div>
+            <div className="opp-init">{c.initiative.title}
+              {c.initiative.working_title_label && <Badge kind="warn">{c.initiative.working_title_label}</Badge>}<Badge>{humanize(c.initiative.stage)}</Badge></div></>}
         </div>
         <div className="row start">
           <Badge kind={priorityKind(c.priority)}>{lab("priority", c.priority)}</Badge>
@@ -44,10 +45,10 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
         <div className="opp-body">
           {(() => { const v = verdict(c); return <div className={`verdict ${v.kind}`}><span className="k">What to do</span>{v.text}</div>; })()}
           {c.tender && <div className="tender"><Badge kind="bad">Tender</Badge> Closes <b>{fmtDateTime(c.tender.deadline_at)}</b> ({c.tender.deadline_tz ?? "timezone not given"}). We last checked it was still open on {fmtDateTime(c.tender.last_status_check_at)}.</div>}
-          <p><span className="k">What happened</span>{c.what_happened.summary ?? "No summary"}
-            <span className="prov"> Happened {fmtDate(c.what_happened.event_date)} · we saw it {fmtDate(c.what_happened.first_observed)}</span></p>
+          {!compact && <p><span className="k">What happened</span>{c.what_happened.summary ?? "No summary"}
+            <span className="prov"> Happened {fmtDate(c.what_happened.event_date)} · we saw it {fmtDate(c.what_happened.first_observed)}</span></p>}
           {c.plain_reason && <p><span className="k">In short</span>{c.plain_reason}</p>}
-          <p><span className="k">Why it matters</span>{c.why_it_matters}</p>
+          {!compact && <p><span className="k">Why it matters</span>{whyShort(c.why_it_matters)}</p>}
           <div className="facts">
             <Fact label="Will they use outside help?" value={lab("demand", c.external_demand_status)} kind={demandKind(c.external_demand_status)} />
             <Fact label="How we would get in" value={`${lab("route", c.route.type)} (${c.route.counterparty}): ${lab("access", c.route.access_status).toLowerCase()}`} kind={accessKind(c.route.access_status)} />
@@ -87,14 +88,34 @@ function Card({ c, reload }: { c: any; reload: () => void }) {
   );
 }
 
+/** Several opportunities on the same programme (one per route in) are shown as one group so the same news is not repeated. */
+function groups(cards: any[]): any[][] {
+  const out: any[][] = [];
+  cards.forEach((c) => { const g = out.find((x) => x[0].initiative.id === c.initiative.id && x[0].account.id === c.account.id); g ? g.push(c) : out.push([c]); });
+  return out;
+}
+function Group({ g, reload }: { g: any[]; reload: () => void }) {
+  if (g.length === 1) return <Card c={g[0]} reload={reload} />;
+  const c = g[0];
+  return (
+    <div className="progr">
+      <div className="progr-head"><div className="opp-title">{c.account.name}</div>
+        <div className="opp-init">{c.initiative.title}<Badge>{humanize(c.initiative.stage)}</Badge><Badge kind="info">{g.length} ways in</Badge></div>
+        <p className="mt-2 mb-0"><b>What happened:</b> {c.what_happened.summary ?? "No summary"} <span className="prov">Happened {fmtDate(c.what_happened.event_date)}</span></p>
+        <p className="small muted mt-1 mb-0">{whyShort(c.why_it_matters)}. Each way in below has its own next step.</p></div>
+      {g.map((x) => <Card key={x.hypothesis_id} c={x} reload={reload} compact />)}
+    </div>
+  );
+}
+
 export default function Today() {
   const [d, setD] = useState<any>(null);
   const [ov, setOv] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
-  const load = () => api("/api/today").then(setD).catch(setErr);
+  const load = () => { setErr(null); return api("/api/today").then(setD).catch(setErr); };
   useEffect(() => { load(); api("/api/overview").then(setOv).catch(() => undefined); }, []);
-  if (err) return <div className="page"><Err e={err} /></div>;
-  if (!d) return <div className="page muted">Loading Today…</div>;
+  if (err) return <div className="page"><div className="page-head"><div className="eyebrow">Your day</div><h1>Today</h1></div><Err e={err} onRetry={load} /></div>;
+  if (!d) return <div className="page"><div className="page-head"><div className="eyebrow">Your day</div><h1>Today</h1></div><Skeleton rows={4} label="Loading Today" /></div>;
   const all: any[] = Object.values(d.sections).flat() as any[];
   const count = (f: (c: any) => boolean) => all.filter(f).length;
   return (
@@ -107,8 +128,6 @@ export default function Today() {
           <div className="stat urgent"><div className="n">{count((c) => c.priority === "urgent")}</div><div className="l">Urgent</div></div>
           <div className="stat"><div className="n">{d.count}</div><div className="l">To review</div></div>
           <div className="stat"><div className="n">{ov ? ov.shortlist : "·"}</div><div className="l">On your shortlist</div></div>
-          <div className="stat"><div className="n">{ov ? ov.accounts.toLocaleString() : "·"}</div><div className="l">Accounts</div></div>
-          <div className="stat"><div className="n">{ov ? ov.sources_live : d.coverage.monitored_sources}<span className="of">/{ov ? ov.sources_total : d.coverage.monitored_sources + d.coverage.pending_validation_sources}</span></div><div className="l">Sources switched on</div></div>
         </div>
       </header>
       <div className="page pt-5">
@@ -121,7 +140,7 @@ export default function Today() {
               <td className="small">{a.signal_count} · {a.groups.map(groupName).join(", ")}</td><td className="small">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}
           </tbody></table></div></section>}
         <Deadlines />
-        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{d.sections[k].map((c: any) => <Card key={c.hypothesis_id} c={c} reload={load} />)}</section> : null))}
+        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
         <Prospects />
       </div>
     </>

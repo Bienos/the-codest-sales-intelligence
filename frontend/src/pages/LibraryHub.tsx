@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { Badge, Err, humanize } from "../components/ui";
+import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
 import Library from "./Library";
 
 type Tab = "signals" | "sources" | "urls";
@@ -14,8 +14,8 @@ function Signals({ q }: { q: string }) {
   const [group, setGroup] = useState(""); const [status, setStatus] = useState("");
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   useEffect(() => { api(`/api/library/signals?q=${encodeURIComponent(q)}&group=${encodeURIComponent(group)}&status=${status}`).then(setD).catch(setErr); }, [q, group, status]);
-  if (err) return <Err e={err} />;
-  if (!d) return <p className="muted">Loading…</p>;
+  if (err) return <Err e={err} onRetry={reloadPage} />;
+  if (!d) return <Skeleton />;
   return (
     <>
       <div className="row mb-3">
@@ -50,8 +50,8 @@ function Signals({ q }: { q: string }) {
 function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   useEffect(() => { const t = setTimeout(() => api(`/api/library/urls?q=${encodeURIComponent(q)}&limit=80`).then(setD).catch(setErr), q ? 250 : 0); return () => clearTimeout(t); }, [q]);
-  if (err) return <Err e={err} />;
-  if (!d) return <p className="muted">Loading…</p>;
+  if (err) return <Err e={err} onRetry={reloadPage} />;
+  if (!d) return <Skeleton />;
   return (
     <>
       <div className="section-title mt-0">Pages and feeds we watch</div>

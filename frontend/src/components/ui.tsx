@@ -182,6 +182,13 @@ export function Err({ e, onRetry }: { e: unknown; onRetry?: () => void }) {
     : st === 404 ? "This item no longer exists or has moved." : (st && st >= 500) || net ? "The server did not respond. Try again in a minute." : null;
   return <div className="err" role="alert">{plain ?? msg}{plain && msg && !net && <details><summary>Technical detail</summary>{msg}</details>}{onRetry && <div className="mt-2"><button onClick={onRetry}>Try again</button></div>}</div>;
 }
+/** Placeholder shown while a screen loads: same footprint as the content, so nothing jumps when it arrives. */
+export const Skeleton = ({ rows = 3, label = "Loading" }: { rows?: number; label?: string }) => (
+  <div className="skel" role="status" aria-busy="true" aria-label={label}>{Array.from({ length: rows }, (_, i) => <div key={i} className="skel-row" />)}</div>
+);
+/** The backend appends "; route: …; external demand: …" to this sentence. Both are already shown as facts, so keep only the first clause. */
+export const whyShort = (s?: string | null) => String(s ?? "").split(/;\s*route:/)[0].replace(/\s*\(confirmed scope\)/, "");
+export const reloadPage = () => window.location.reload();
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{title}</b>{children}</div>;
 
 /** Brand mark: the official logo file when it has been supplied, otherwise the plain text mark. Never redrawn here. */

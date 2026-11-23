@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, post, trackSourceOpened } from "../api";
-import { Badge, Empty, Err, humanize } from "../components/ui";
+import { Badge, Empty, Err, humanize, Skeleton } from "../components/ui";
 
 type Lane = "shortlist" | "signals";
 
@@ -48,7 +48,7 @@ export default function Prospects() {
       </div>
       {msg && <div className="okmsg mb-3" role="status">{msg}</div>}
       <Err e={err} />
-      {!d && !err && <p className="muted">Loading your workbook list…</p>}
+      {!d && !err && <Skeleton />}
       {d && d.items.length === 0 && <Empty title="Nothing matches">Try the other list, or clear the search box.</Empty>}
       <ol className="pros">
         {d?.items.map((it: any) => (

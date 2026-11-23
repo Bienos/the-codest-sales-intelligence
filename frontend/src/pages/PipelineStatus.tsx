@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, fmtDateTime, upload } from "../api";
-import { Badge, Err, humanize } from "../components/ui";
+import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
 
 const STATE: Record<string, [string, string]> = { ok: ["ok", "Running"], waiting: ["warn", "Waiting for you"], stale: ["bad", "Stopped reporting"], never: ["bad", "Never reported"], off: ["", "Switched off"] };
 
@@ -29,8 +29,8 @@ export function Pipeline() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   const load = () => api("/api/admin/pipeline").then(setD).catch(setErr);
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
-  if (err) return <Err e={err} />;
-  if (!d) return <p className="muted" aria-busy="true">Loading…</p>;
+  if (err) return <Err e={err} onRetry={reloadPage} />;
+  if (!d) return <Skeleton />;
   return (
     <>
       <p className="small muted mt-0">What runs by itself, what waits for a person, and what is switched off. This page shows what is happening now, not what is planned.</p>
@@ -72,7 +72,7 @@ export function KnowledgeAdmin() {
     if (!f) return; setErr(null); setMsg("");
     try { const r = await upload(`/api/admin/kb/${id}`, f); setMsg(`Uploaded (${(r.bytes / 1024).toFixed(0)} KB). It can be searched now.`); load(); } catch (e) { setErr(e); }
   };
-  if (!d) return <p className="muted">Loading</p>;
+  if (!d) return <Skeleton />;
   return (
     <>
       <p className="small muted mt-0">These internal documents are kept behind sign-in and shown through short-lived links. They are never public. Upload the .html file for each one.</p>
