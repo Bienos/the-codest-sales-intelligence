@@ -7,8 +7,6 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
-from rapidfuzz import fuzz
-
 from ..db import Conn, jb, q1, qa
 from ..events.extract import process_document
 from ..ingest.process import finish_event
@@ -58,17 +56,18 @@ def _set(conn: Conn, rid: str, status: str, **fields: Any) -> None:
 
 
 def org_aware_resolver(conn: Conn, resolver: Callable[[str], str | None] | None, org_id: str | None) -> Callable[[str], str | None]:
-    """Resolve event subjects to canonical orgs; if the claim was made for a known account, accept a close name match to that account."""
-    org = q1(conn, "SELECT display_name FROM organizations WHERE id=%s", (org_id,)) if org_id else None
-    names = [org["display_name"]] + [a["alias"] for a in qa(conn, "SELECT alias FROM organization_aliases WHERE organization_id=%s LIMIT 20", (org_id,))] if org else []
+    """Resolve an event's subject without borrowing the requesting account's identity."""
+    from ..identity.resolver import resolve as resolve_identity
 
     def resolve(name: str) -> str | None:
-        found = resolver(name) if resolver else None
-        if found:
-            return found
-        if org_id and name and any(fuzz.token_set_ratio(name.casefold(), n.casefold()) >= 88 for n in names):
-            return org_id
-        return None
+        if not name:
+            return None
+        # For an account check, the identity resolver must be able to distinguish
+        # legal entities even when the request itself names one of the candidates.
+        if org_id or resolver is None:
+            decision = resolve_identity(conn, name=name, allow_create=False)
+            return decision.org_id if decision.action == "auto_link" else None
+        return resolver(name)
     return resolve
 
 
@@ -130,16 +129,25 @@ def run_verification(conn: Conn, request_id: str, *, fetch: Callable[[str], Page
         return {"status": "failed", "reason": str(exc)}
     event_ids = [str(e["id"]) for e in conn.execute(
         "SELECT DISTINCT e.id FROM events e JOIN event_documents ed ON ed.event_id=e.id WHERE ed.document_id=%s", (doc_id,)).fetchall()]
-    signals = negatives = 0
+    signals = negatives = matched = 0
     for eid in event_ids:
         res = finish_event(conn, eid, now=now)
+        if r["organization_id"] is not None and not q1(
+            conn,
+            "SELECT 1 FROM events WHERE id=%s AND subject_org_id=%s AND verification_status='verified'",
+            (eid, r["organization_id"]),
+        ):
+            continue
+        matched += 1
         signals += len(res["signals"])
         negatives += len(res["negatives"])
-    status = "verified" if event_ids else "no_event"
-    _set(conn, rid, status, events_created=len(event_ids), result={**out, "signals": signals, "negatives": negatives, "page_title": page.title,
+    status = "verified" if matched else "no_event"
+    if event_ids and not matched:
+        out = {**out, "reason": "The source has no verified event linked to this account."}
+    _set(conn, rid, status, events_created=matched, result={**out, "signals": signals, "negatives": negatives, "page_title": page.title,
                                                                    "page_published": page.published_at.isoformat() if page.published_at else None,
                                                                    "fetched_at": (now or datetime.now(timezone.utc)).isoformat()})
-    return {"status": status, "events": len(event_ids), "signals": signals}
+    return {"status": status, "events": matched, "signals": signals}
 
 
 def sync_fetch(client_factory: Callable[[], Any]) -> Callable[[str], Page]:

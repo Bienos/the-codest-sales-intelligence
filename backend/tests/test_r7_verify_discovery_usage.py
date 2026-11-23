@@ -538,3 +538,24 @@ def test_contracts_finder_keeps_only_software_notices_and_links_to_the_notice_pa
     d = c.canonicalize(batch.items[0])
     assert d.canonical_url.endswith("/Notice/aaaa1111")
     assert is_software_notice(rel("x", "Cloud migration services", None)) and not is_software_notice(rel("y", "Road resurfacing", "45233000"))
+
+
+def test_shared_workbook_url_only_verifies_the_account_named_by_the_source(conn, world):
+    from ri.api.intel import queue_verification
+
+    other = str(conn.execute(
+        "INSERT INTO organizations(display_name, country_code) VALUES ('Synthetic Example Bank Europe AG','DE') RETURNING id"
+    ).fetchone()["id"])
+    url = page().url
+    first = queue_verification(conn, org_id=other, url=url, origin="sheet_signal", claimed={}, by="t@x")
+    second = queue_verification(conn, org_id=world["org"], url=url, origin="sheet_signal", claimed={}, by="t@x")
+    duplicate = queue_verification(conn, org_id=other, url=url, origin="sheet_signal", claimed={}, by="t@x")
+    assert first["id"] != second["id"]
+    assert duplicate["duplicate"] and duplicate["id"] == first["id"]
+
+    ex = BudgetedExtractor(FakeInner(), conn)
+    wrong = run_verification(conn, first["id"], fetch=lambda _: page(), extractor=ex)
+    right = run_verification(conn, second["id"], fetch=lambda _: page(), extractor=ex)
+    assert wrong["status"] == "no_event" and wrong["events"] == 0
+    assert right["status"] == "verified" and right["events"] == 1
+    assert {str(r["subject_org_id"]) for r in conn.execute("SELECT subject_org_id FROM events")} == {world["org"]}

@@ -18,6 +18,7 @@ from ..db import Database, jb, q1, qa
 from ..jobs import queue
 from ..opportunity import engine, states
 from ..sheets.client import ConnectorBlocked
+from ..signals.seller import leading_signals
 from ..readmodel import card, coverage_health, evidence_for, fingerprint, today
 from ..research import planner
 from .auth import TokenVerifier, principal_dep, require
@@ -139,9 +140,9 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
 
     # ------------------------------------------------------------------ Today
     @app.get("/api/today")
-    def get_today(request: Request, p: Principal = Depends(require("today.read"))):
+    def get_today(request: Request, focus: str = Query("", pattern="^(|finance|other|public)$"), p: Principal = Depends(require("today.read"))):
         with tx(request) as conn:
-            out = today(conn, p)
+            out = today(conn, p, focus=focus)
             for sec in out["sections"].values():
                 for c in sec:
                     event(conn, p, "recommendation_presented", c["hypothesis_id"], c["account"]["id"], priority=c["priority"])
@@ -226,7 +227,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                 names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals WHERE id = ANY(%s)", ([t["rule_id"] for t in score["top"]],))}
                 score["top"] = [{**t, "name": names.get(t["rule_id"])} for t in score["top"]]      # sellers see what the signal means, not just its code
             now = datetime.now(timezone.utc)
-            return {"account": dict(o, id=str(o["id"])), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
+            return {"account": dict(o, id=str(o["id"])), "buying_signal": leading_signals(conn, [oid]).get(oid), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
                     "opportunities": [card(conn, h, now) for h in hyps], "initiatives": [dict(i, id=str(i["id"])) for i in inits], "signals": signals, "suppliers": suppliers,
                     "routes": routes, "buyers": buyers, "coverage": coverage, "source_coverage_note": "Only source families listed above are monitored; missing families mean visibility unknown, not 'no activity'."}
 

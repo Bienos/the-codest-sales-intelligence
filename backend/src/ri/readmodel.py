@@ -7,6 +7,9 @@ from typing import Any
 
 from .access import Principal, org_scope_sql
 from .db import Conn, canonical_json, jb, q1, qa
+from .market import sector_sql
+from .opportunity.model import initiative_tender
+from .signals.seller import leading_signals
 
 SECTION_ORDER = ["critical", "existing_accounts", "new_discoveries", "relationships", "deal_blockers", "research_review", "public_tenders"]
 PUBLIC_TENDER_LIMIT = 5
@@ -49,7 +52,8 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
     ws = q1(conn, "SELECT kind, scope_statement, scope_confidence FROM workstreams WHERE id=%s", (h["workstream_id"],)) if h["workstream_id"] else None
     act = q1(conn, "SELECT * FROM recommended_actions WHERE hypothesis_id=%s AND status IN ('proposed','accepted')", (h["id"],))
     ev = q1(conn, "SELECT e.summary, e.event_at, e.pub_at, e.first_observed_at, e.last_checked_at, e.verified_at, e.attrs->'fit' AS fit FROM events e JOIN initiative_events ie ON ie.event_id=e.id WHERE ie.initiative_id=%s AND ie.role='evidence' ORDER BY coalesce(e.event_at, e.pub_at) DESC NULLS LAST LIMIT 1", (h["initiative_id"],))
-    tender = q1(conn, "SELECT notice_id, deadline_at, deadline_tz, last_status_check_at, status FROM procurement_notices n WHERE n.buyer_org_id=%s AND n.status IN ('open','amended') ORDER BY deadline_at LIMIT 1", (h["organization_id"],)) if h["route_type"] in {"procurement", "direct"} else None
+    tender = initiative_tender(conn, h["initiative_id"], h["organization_id"]) if h["route_type"] in {"procurement", "direct"} else None
+    oid = str(org["id"])
     snap = snapshot(h, act["action_type"] if act else None)
     changes = {k: [last_snapshot.get(k), v] for k, v in snap.items() if last_snapshot and last_snapshot.get(k) != v} if last_snapshot else None
     why = (f"{ws['scope_statement']} ({ws['scope_confidence'].replace('_', ' ')})" if ws else "Workstream not yet established") + \
@@ -57,7 +61,7 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
     review = h["review_json"] or {}
     return {
         "hypothesis_id": str(h["id"]), "priority": h["priority"], "state": h["state"], "score": h["score_total"],
-        "account": {"id": str(org["id"]), "name": org["display_name"], "in_master_list": org["in_master_list"], "country": org["country_code"],
+        "account": {"id": oid, "name": org["display_name"], "in_master_list": org["in_master_list"], "country": org["country_code"],
                     "crm_owner_id": org["owner_id"], "ownership_verified": org["owner_id"] is not None},
         "initiative": {"id": str(ini["id"]), "title": ini["title"], "official_title": ini["title_is_official"], "stage": ini["stage"], "working_title_label": None if ini["title_is_official"] else "analyst working title"},
         "what_happened": {"summary": ev["summary"] if ev else None, "event_date": ev["event_at"] if ev else None, "published": ev["pub_at"] if ev else None,
@@ -65,24 +69,13 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
         "why_it_matters": why, "plain_reason": (ev["fit"] or {}).get("reason") if ev else None, "workstream": ws, "external_demand_status": h["external_demand_status"],
         "route": {"type": h["route_type"], "counterparty": h["counterparty_name"], "access_status": h["access_status"]},
         "buyer_status": h["buyer_status"], "evidence_confidence": h["evidence_confidence"], "research_completeness": float(h["research_completeness"]),
-        "evidence": evidence_for(conn, h["supporting_claim_ids"]), "counterevidence": review.get("contradicts", [])[:3], "unknowns": [u["unknown"] for u in (h["critical_unknowns"] or [])][:5],
+        "evidence": evidence_for(conn, h["supporting_claim_ids"]), "buying_signal": leading_signals(conn, [oid], initiative_id=h["initiative_id"]).get(oid),
+        "counterevidence": review.get("contradicts", [])[:3], "unknowns": [u["unknown"] for u in (h["critical_unknowns"] or [])][:5],
         "blockers": h["blockers"], "next_action": ({k: (str(v) if k.endswith("_id") and v is not None and k != "owner_id" else v) for k, v in act.items() if k in
                                                     {"id", "action_type", "objective", "reason", "owner_id", "owner_note", "target_role", "due_at", "trigger_condition", "approval_required", "expected_outcome", "stop_condition"}} if act else None),
         "tender": ({"notice_id": tender["notice_id"], "deadline_at": tender["deadline_at"], "deadline_tz": tender["deadline_tz"], "last_status_check_at": tender["last_status_check_at"]} if tender else None),
         "changed": changes, "last_checked": h["last_checked_at"], "fingerprint": fingerprint(conn, h),
     }
-
-
-def section_of(c: dict[str, Any], h: dict[str, Any], conn: Conn) -> str:
-    if h.get("route_type") == "procurement":
-        return "public_tenders"          # a published tender is public procurement by definition: its own lane, never mixed into the private book
-    if c["priority"] == "urgent":
-        return "critical"
-    if h["state"] in {"engaged", "buyer_need_confirmed", "commercially_qualified", "proposal_procurement"} and c["blockers"]:
-        return "deal_blockers"
-    if q1(conn, "SELECT 1 FROM signals s JOIN initiative_events ie ON ie.event_id=s.event_id WHERE ie.initiative_id=%s AND s.rule_id='REL-03' AND s.status='active'", (h["initiative_id"],)):
-        return "relationships"
-    return "existing_accounts" if c["account"]["in_master_list"] else "new_discoveries"
 
 
 def coverage_health(conn: Conn, p: Principal) -> dict[str, Any]:
@@ -97,7 +90,7 @@ def coverage_health(conn: Conn, p: Principal) -> dict[str, Any]:
 
 
 def _pre_section(h: dict[str, Any], rel: set[str]) -> str:
-    """The same rules as section_of, from the hypothesis row alone, so only the cards that will be shown are built."""
+    """Determine the group before building a card, so only visible cards are loaded."""
     if h["route_type"] == "procurement":
         return "public_tenders"
     if h["priority"] == "urgent":
@@ -109,10 +102,14 @@ def _pre_section(h: dict[str, Any], rel: set[str]) -> str:
     return "existing_accounts" if h["in_master_list"] else "new_discoveries"
 
 
-def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10) -> dict[str, Any]:
+def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10, focus: str = "") -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     where, params = org_scope_sql(p, "h.organization_id")
-    rows = qa(conn, f"SELECT h.*, o.in_master_list FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id "  # noqa: S608
+    sector = sector_sql("o.segment")
+    rows = qa(conn, f"SELECT h.*, o.in_master_list, o.entity_type, {sector} AS sector, "
+                    "EXISTS (SELECT 1 FROM initiative_events ie JOIN events e ON e.id=ie.event_id "
+                    "WHERE ie.initiative_id=h.initiative_id AND ie.role='evidence' AND e.attrs ? 'notice_id') AS public_notice "
+                    "FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id "  # noqa: S608
                     f"WHERE h.state NOT IN ('disqualified','superseded','expired') AND h.priority IN ('urgent','high','medium') AND ({where}) "
                     "ORDER BY CASE h.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, h.score_total DESC", params)
     rel = {str(r["initiative_id"]) for r in qa(conn, "SELECT DISTINCT ie.initiative_id FROM signals s JOIN initiative_events ie ON ie.event_id=s.event_id WHERE s.rule_id='REL-03' AND s.status='active'")}
@@ -123,6 +120,15 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
     main = tenders = 0
     for h in rows:
         pre = _pre_section(h, rel)
+        public = pre == "public_tenders" or h["entity_type"] == "public_body" or h["public_notice"]
+        if focus == "finance" and (public or h["sector"] != "finance"):
+            continue
+        if focus == "other" and (public or h["sector"] == "finance"):
+            continue
+        if focus == "public":
+            if not public:
+                continue
+            pre = "public_tenders"
         if (pre == "public_tenders" and tenders >= PUBLIC_TENDER_LIMIT) or (pre != "public_tenders" and main >= limit):
             continue
         fp = fingerprint(conn, h)
@@ -136,7 +142,7 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
         c = card(conn, h, now, last["snapshot"] if last else None)
         if us and us["decision"] == "dismissed" and us["fingerprint"] != fp:
             c["reopened_after_dismissal"] = {"previous_reason": us["reason"], "note": "material new evidence since you dismissed this"}
-        c["section"] = section_of(c, h, conn)
+        c["section"] = pre
         cards.append(c)
         if c["section"] == "public_tenders":
             tenders += 1
@@ -157,6 +163,9 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
     hot = qa(conn, f"SELECT o.id, o.display_name, o.country_code, o.segment, s.score, s.band, s.groups, s.signal_count, s.last_signal_at, "      # noqa: S608
                    f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
                    f"FROM account_scores s JOIN organizations o ON o.id=s.organization_id WHERE s.band IN ('hot','warm') AND NOT s.stopped AND o.entity_type <> 'public_body' AND ({sw}) "
-                   f"ORDER BY s.score DESC LIMIT 8", [p.email, *sp])
+                   f"AND (%s='' OR (%s='finance' AND ({sector})='finance') OR (%s='other' AND ({sector})<>'finance')) "
+                   f"ORDER BY s.score DESC LIMIT 8", [p.email, *sp, focus, focus, focus])
+    signals = leading_signals(conn, [str(r["id"]) for r in hot])
     return {"generated_at": now, "count": len(cards), "sections": sections, "empty_state": empty, "coverage": health,
-            "hot_accounts": [dict(r, id=str(r["id"]), score=float(r["score"]), groups=list(r["groups"] or [])) for r in hot]}
+            "hot_accounts": [dict(r, id=str(r["id"]), score=float(r["score"]), groups=list(r["groups"] or []),
+                                  buying_signal=signals.get(str(r["id"]))) for r in hot]}

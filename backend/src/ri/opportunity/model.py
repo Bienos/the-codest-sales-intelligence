@@ -42,6 +42,24 @@ class Facts:
     ownership_conflict_for: str | None = None
 
 
+def initiative_tender(conn: Conn, initiative_id: str, organization_id: str) -> dict[str, Any] | None:
+    """Resolve a notice cited by this programme, never another notice for the same buyer."""
+    return q1(conn, """
+        SELECT n.* FROM procurement_notices n
+        JOIN events e ON e.attrs->>'notice_id'=n.notice_id AND e.subject_org_id=n.buyer_org_id
+        JOIN initiative_events ie ON ie.event_id=e.id
+        WHERE ie.initiative_id=%s AND ie.role='evidence' AND n.buyer_org_id=%s
+          AND n.status IN ('open','amended') AND e.verification_status='verified'
+          AND (e.independent_origin_group='official:' || n.source_id || ':' || n.notice_id
+               OR (coalesce(e.independent_origin_group, '') NOT LIKE 'official:%%'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM procurement_notices nn
+                       WHERE nn.notice_id=n.notice_id AND nn.buyer_org_id=n.buyer_org_id AND nn.source_id<>n.source_id
+                   )))
+        ORDER BY n.deadline_at NULLS LAST, n.id LIMIT 1
+        """, (initiative_id, organization_id))
+
+
 def collect(conn: Conn, hyp_id: str, now: datetime, *, requester_crm_user: int | None = None) -> Facts:
     h = q1(conn, "SELECT * FROM opportunity_hypotheses WHERE id=%s", (hyp_id,))
     assert h
@@ -57,8 +75,7 @@ def collect(conn: Conn, hyp_id: str, now: datetime, *, requester_crm_user: int |
                         "WHERE e.organization_id=%s AND p.erased_at IS NULL", (h["organization_id"],))
     confirmed = bool(q1(conn, "SELECT 1 FROM events e JOIN initiative_events ie ON ie.event_id=e.id WHERE ie.initiative_id=%s AND e.event_type='crm_buyer_response' "
                               "AND e.attrs->>'need_confirmed'='true' AND e.verification_status='verified'", (h["initiative_id"],)))
-    tender = q1(conn, "SELECT n.* FROM procurement_notices n JOIN events e ON e.attrs->>'notice_id'=n.notice_id JOIN initiative_events ie ON ie.event_id=e.id "
-                      "WHERE ie.initiative_id=%s AND n.status IN ('open','amended') ORDER BY n.deadline_at LIMIT 1", (h["initiative_id"],))
+    tender = initiative_tender(conn, h["initiative_id"], h["organization_id"])
     f = Facts(h, org, ini, qa(conn, "SELECT * FROM workstreams WHERE initiative_id=%s", (h["initiative_id"],)), sig, neg, route,
               qa(conn, "SELECT * FROM supplier_edges WHERE initiative_id=%s", (h["initiative_id"],)), crm, [c for c in contacts if not c["suppressed"]],
               len([c for c in contacts if c["suppressed"]]), confirmed,

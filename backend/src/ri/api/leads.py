@@ -14,7 +14,8 @@ from ..access import Principal, org_scope_sql
 from ..audit import audit
 from ..db import qa
 from ..jobs.queue import enqueue
-from ..market import REGIONS, region_for
+from ..market import REGIONS, region_for, sector_sql
+from ..signals.seller import leading_signals
 from ..sheets.reconcile import icp_band
 from .auth import require
 
@@ -31,8 +32,9 @@ def _origin(r: dict[str, Any]) -> str:
 
 def _rows(conn, p: Principal, q: str) -> list[dict[str, Any]]:
     where, params = org_scope_sql(p, "o.id")
+    sector = sector_sql("o.segment")
     rows = qa(conn,
-        f"SELECT o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.entity_type, "      # noqa: S608
+        f"SELECT {sector} AS sector, o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.entity_type, "      # noqa: S608
         f"o.created_at, s.score, s.band, s.groups, s.signal_count, s.stopped, s.last_signal_at, s.top, c.status AS candidate_status, c.icp_note, "
         f"EXISTS (SELECT 1 FROM legacy_account_research r WHERE r.organization_id=o.id AND r.kind='priority_outreach') AS shortlist, "
         f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
@@ -46,7 +48,7 @@ def _rows(conn, p: Principal, q: str) -> list[dict[str, Any]]:
     return out
 
 
-def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public, watched=False, lane=""):
+def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public, watched=False, lane="", focus=""):
     now = datetime.now(timezone.utc)
     cut = now - timedelta(days=signal_days) if signal_days else None
     out = []
@@ -66,6 +68,8 @@ def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist,
         if shortlist and not r["shortlist"]:
             continue
         if watched and not r["watched"]:
+            continue
+        if focus and r["sector"] != focus:
             continue
         if lane == "public":
             if r["entity_type"] != "public_body" or r["candidate_status"] == "rejected":
@@ -99,32 +103,34 @@ def register_leads(app: FastAPI) -> None:
 
     Params = dict(q=Query("", max_length=120), region=Query("", pattern="^(|uk|dach|nordics|poland|europe|us|other|unknown)$"),
                   icp=Query("", max_length=40), segment=Query("", max_length=60), band=Query("", pattern="^(|hot|warm|watch|none)$"),
-                  origin=Query("", pattern="^(|list|added|discovered)$"), watched=Query(False), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False), lane=Query("", pattern="^(|public)$"),
+                  origin=Query("", pattern="^(|list|added|discovered)$"), watched=Query(False), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False), lane=Query("", pattern="^(|public)$"), focus=Query("", pattern="^(|finance|other|unclassified)$"),
                   sort=Query("score", pattern="^(score|name|size|recent)$"))
 
     @app.get("/api/leads")
     def leads(request: Request, page: int = Query(1, ge=1), size: int = Query(50, ge=10, le=200), q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"],
               segment: str = Params["segment"], band: str = Params["band"], origin: str = Params["origin"], signal_days: int = Params["signal_days"],
-              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], watched: bool = Params["watched"], sort: str = Params["sort"], p: Principal = Depends(require("accounts.read"))):
+              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], focus: str = Params["focus"], watched: bool = Params["watched"], sort: str = Params["sort"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             allrows = _rows(conn, p, q)
-        rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched, lane=lane)
-        rows.sort(key=SORTS[sort])
-        total = len(rows)
-        items = rows[(page - 1) * size: page * size]
+            rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched, lane=lane, focus=focus)
+            rows.sort(key=SORTS[sort])
+            total = len(rows)
+            items = rows[(page - 1) * size: page * size]
+            evidence = leading_signals(conn, [r["id"] for r in items])
         for r in items:
+            r["buying_signal"] = evidence.get(r["id"])
             r["last_signal_at"] = r["last_signal_at"].isoformat() if r["last_signal_at"] else None
             r["created_at"] = r["created_at"].isoformat()
             r.pop("icp_note", None)
-        return {"items": items, "total": total, "page": page, "size": size, "facets": _facets(_filter(allrows, region="", icp="", segment="", band="", origin="", signal_days=0, shortlist=False, public=public, lane=lane)),
+        return {"items": items, "total": total, "page": page, "size": size, "facets": _facets(_filter(allrows, region="", icp="", segment="", band="", origin="", signal_days=0, shortlist=False, public=public, lane=lane, focus=focus)),
                 "regions": [{"key": k, "label": l} for k, l, _ in REGIONS], "origins": ORIGIN_LABEL}
 
     @app.get("/api/leads.csv")
     def leads_csv(request: Request, q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"], segment: str = Params["segment"], band: str = Params["band"],
-                  origin: str = Params["origin"], signal_days: int = Params["signal_days"], shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"],
+                  origin: str = Params["origin"], signal_days: int = Params["signal_days"], shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], focus: str = Params["focus"],
                   sort: str = Params["sort"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            rows = _filter(_rows(conn, p, q), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane)
+            rows = _filter(_rows(conn, p, q), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane, focus=focus)
             rows.sort(key=SORTS[sort])
             rows = rows[:5000]
             audit(conn, actor=p.email, operation="leads_exported", record_type="organization", record_id="export", detail={"rows": len(rows)})

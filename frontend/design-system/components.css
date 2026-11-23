@@ -416,8 +416,9 @@ a.btn.primary:hover { background: var(--pink-solid-hover); border-color: var(--p
 @media (max-width: 640px) {
   .leads-table.cards td { order: 3; }
   .leads-table.cards td:is(.sel, .name) { order: 0; }
-  .leads-table.cards td[data-label="Signal score"] { order: 1; }
-  .leads-table.cards td[data-label="Latest signal"] { order: 2; }
+  .leadbar .sector-focus { grid-column: 1 / -1; }
+  .leads-table.cards td[data-label="Buying signal and source"] { order: 1; }
+  .leads-table.cards td[data-label="Signal score"] { order: 2; }
   .admin-nav-toggle { display: inline-flex; }
   .subnav:not(.expanded) { display: none; }
   .subnav.expanded { margin-top: var(--space-3); }
@@ -428,3 +429,8 @@ a.btn.primary:hover { background: var(--pink-solid-hover); border-color: var(--p
 .badge:not(.ok):not(.warn):not(.bad):not(.info)::before { display: none; }
 .lib-card, .sigrow, .fcard { content-visibility: auto; contain-intrinsic-block-size: auto 250px; }
 .sigrow { contain-intrinsic-block-size: auto 70px; }
+
+.buying-signal { max-width: 44rem; overflow-wrap: anywhere; }
+@media (min-width: 641px) {
+  .leads-table td.name { min-width: 160px; }
+}

@@ -27,6 +27,8 @@ class VerifyIn(BaseModel):
 class BatchIn(BaseModel):
     lane: str = Field(default="shortlist", pattern="^(shortlist|signals)$")
     limit: int = Field(default=10, ge=1, le=25)
+    focus: str = Field(default="", pattern="^(|finance|other)$")
+    q: str = Field(default="", max_length=120)
 
 
 class OpenedIn(BaseModel):
@@ -56,9 +58,12 @@ def org_urls(conn, org_id: str) -> dict[str, dict[str, Any]]:
 def queue_verification(conn, *, org_id: str | None, url: str, origin: str, claimed: dict[str, Any], by: str) -> dict[str, Any]:
     row = conn.execute(
         "INSERT INTO verification_requests(organization_id, url, origin, claimed_text, claimed_date, requested_by) VALUES (%s,%s,%s,%s,%s,%s) "
-        "ON CONFLICT (url, origin) DO NOTHING RETURNING id", (org_id, url, origin, claimed.get("claimed_text"), claimed.get("claimed_date"), by)).fetchone()
+        "ON CONFLICT DO NOTHING RETURNING id", (org_id, url, origin, claimed.get("claimed_text"), claimed.get("claimed_date"), by)).fetchone()
     if not row:
-        ex = q1(conn, "SELECT id, status FROM verification_requests WHERE url=%s AND origin=%s", (url, origin))
+        if origin == "sheet_signal":
+            ex = q1(conn, "SELECT id, status FROM verification_requests WHERE url=%s AND origin=%s AND organization_id IS NOT DISTINCT FROM %s", (url, origin, org_id))
+        else:
+            ex = q1(conn, "SELECT id, status FROM verification_requests WHERE url=%s AND origin=%s", (url, origin))
         return {"id": str(ex["id"]), "status": ex["status"], "duplicate": True}
     jid, _ = enqueue(conn, "verify_url", {"request_id": str(row["id"])}, idempotency_key=f"verify:{row['id']}", max_attempts=3)
     conn.execute("UPDATE verification_requests SET job_id=%s WHERE id=%s", (jid, row["id"]))
@@ -107,7 +112,7 @@ def register(app: FastAPI) -> None:
     def verify_batch(body: BatchIn, request: Request, p: Principal = Depends(require("research.request"))):
         from .lists import prospects_for      # shared ranking
         with tx(request) as conn:
-            items = prospects_for(conn, p, lane=body.lane, q="", limit=100)
+            items = prospects_for(conn, p, lane=body.lane, q=body.q, limit=100, focus=body.focus)
             queued = skipped = 0
             for it in items:
                 if queued >= body.limit:
@@ -325,7 +330,7 @@ def register_pipeline(app: FastAPI) -> None:
 
 
 VIEWS = {
-    "accounts": "(e.verification_status='verified' AND e.subject_org_id IS NOT NULL)",
+    "accounts": "(e.verification_status='verified' AND e.subject_org_id IS NOT NULL AND e.lane IS DISTINCT FROM 'public' AND e.event_type !~ '^procurement_' AND o.entity_type<>'public_body')",
     "market": "(e.proven AND e.subject_org_id IS NULL AND e.lane='private' AND e.market_tier='core')",
     "rest": "(e.proven AND e.subject_org_id IS NULL AND e.lane='private' AND e.market_tier IN ('secondary','unknown'))",
     "public": "(e.proven AND e.lane='public' AND e.market_tier IN ('core','secondary'))",
@@ -334,6 +339,7 @@ VIEWS = {
 
 def register_feed(app: FastAPI) -> None:
     from .. import feed as fd
+    from ..market import sector_sql
     from ..readmodel import evidence_for
     from ..sheets.reconcile import icp_band, market_focus
 
@@ -342,27 +348,30 @@ def register_feed(app: FastAPI) -> None:
 
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
-                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, le=100), fit_only: bool = False, p: Principal = Depends(require("explorer.read"))):
+                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, ge=1, le=100), fit_only: bool = False, focus: str = Query("", pattern="^(|finance|other|unclassified)$"), p: Principal = Depends(require("explorer.read"))):
         from .search import all_like, tokens
         toks = tokens(q)
         rule_ids = fd.rules_for_play(play) if play else ([rule] if rule else [])
+        sector = sector_sql("o.segment", "CASE WHEN e.proven THEN e.attrs->>'role_of_subject' END")
+        active = "s.status='active' AND s.verification_status='verified' AND (s.expires_at IS NULL OR s.expires_at>now()) AND s.organization_id=e.subject_org_id"
         with tx(request) as conn:
             ew, ep = org_scope_sql(p, "e.subject_org_id")
             tw, tp = all_like("(e.summary || ' ' || coalesce(o.display_name,''))", toks) if toks else ("TRUE", [])
             rows = qa(conn,
                 f"SELECT e.id, e.event_type, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verification_status, e.is_historical_replay, o.id AS org_id, o.display_name, o.country_code, o.segment, "   # noqa: S608
-                f"o.employees_estimate, o.employees_uncertain, o.in_master_list, e.proven, e.market_tier, e.lane, e.market_country, "
+                f"o.employees_estimate, o.employees_uncertain, o.in_master_list, e.proven, e.market_tier, e.lane, e.market_country, {sector} AS sector, "
                 f"coalesce((SELECT pn.buyer_name FROM event_documents ed JOIN procurement_notices pn ON pn.document_id=ed.document_id WHERE ed.event_id=e.id LIMIT 1), e.subject_name_raw) AS buyer_name, "
-                f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=e.id) AS sigs, "
+                f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=e.id AND ({active})) AS sigs, "
                 f"(SELECT coalesce(array_agg(ec.claim_id), '{{}}') FROM event_claims ec WHERE ec.event_id=e.id) AS claim_ids, "
                 f"(SELECT jsonb_build_object('id', i.id, 'title', i.title, 'stage', i.stage) FROM initiative_events ie JOIN initiatives i ON i.id=ie.initiative_id WHERE ie.event_id=e.id LIMIT 1) AS programme, "
                 f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened, e.attrs->'fit' AS ai_fit, e.attrs->>'language' AS lang, e.attrs->>'summary_en' AS summary_en "
                 f"FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
                 f"WHERE {VIEWS[view]} AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
-                f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND s.rule_id = ANY(%s))) "
+                f"AND (%s='' OR %s='public' OR ({sector})=%s) "
+                f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND ({active}) AND s.rule_id = ANY(%s))) "
                 f"AND (NOT %s OR e.attrs->'fit'->>'level' IN ('strong','possible')) "
-                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only and view == "accounts", rule_ids or None, rule_ids or None, fit_only, limit * 2])
+                f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only and view == "accounts", focus, view, focus, rule_ids or None, rule_ids or None, fit_only, limit * 2])
             items = []
             for r in rows:
                 mk = market_focus(r["country_code"], r["segment"])
@@ -376,7 +385,7 @@ def register_feed(app: FastAPI) -> None:
                                                "in_master_list": r["in_master_list"], "icp": icp_band(r["employees_estimate"], bool(r["employees_uncertain"]), r["segment"])["band"], "market": mk} if r["org_id"] else None,
                               "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in r["sigs"]], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
                               "evidence": ev, "programme": r["programme"], "why": r["ai_fit"], "language": r["lang"], "summary_en": r["summary_en"],
-                              "scope": {"proven": r["proven"], "linked": bool(r["org_id"]), "tier": r["market_tier"], "lane": r["lane"], "country": r["market_country"], "buyer": r["buyer_name"]}})
+                              "scope": {"sector": r["sector"], "proven": r["proven"], "linked": bool(r["org_id"]), "tier": r["market_tier"], "lane": r["lane"], "country": r["market_country"], "buyer": r["buyer_name"]}})
                 if len(items) >= limit:
                     break
             names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals")}
@@ -387,8 +396,12 @@ def register_feed(app: FastAPI) -> None:
             cov = coverage_health(conn, p)
             totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified, "
                               "count(*) FILTER (WHERE subject_org_id IS NULL AND verification_status='verified' AND coalesce(event_at, pub_at, first_observed_at) > now() - make_interval(days => %s)) AS market_wide FROM events", (days,)) or {}
-            counts = q1(conn, "SELECT " + ", ".join(f"count(*) FILTER (WHERE {w} AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s)) AS {k}" for k, w in VIEWS.items())
-                        + " FROM events e", [days] * len(VIEWS)) or {}
+            counts = q1(conn, "SELECT " + ", ".join(
+                f"count(*) FILTER (WHERE {w}" + (f" AND (%s='' OR ({sector})=%s)" if k != "public" else "") + f") AS {k}"
+                for k, w in VIEWS.items()
+            ) + f" FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE NOT e.is_historical_replay "
+                f"AND coalesce(e.event_at,e.pub_at,e.first_observed_at)>now()-make_interval(days=>%s) "
+                f"AND (e.subject_org_id IS NULL OR ({ew}))", [focus, focus] * (len(VIEWS)-1) + [days, *ep]) or {}
         return {"view": view, "view_counts": counts, "items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
                 "plays": [{"id": i, "name": n} for i, n in fd.play_ids()],
                 "note": "Only events whose claims quote the original page appear here. Searches and sheet signals that have not been checked are listed as leads, never as findings."}

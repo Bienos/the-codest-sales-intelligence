@@ -452,3 +452,15 @@ def test_a_small_bank_fails_the_icp_gate_until_an_exception_is_approved(conn, en
     ini, hyps = make_hyp(conn, env)
     out = engine.evaluate(conn, hyps["prime_subcontract"], now=NOW)
     assert out["gates"]["G1"]["status"] == "fail" and "bank below the 5,000" in out["gates"]["G1"]["reason"] and "approved exception" in out["gates"]["G1"]["reason"]
+
+
+def test_opportunity_card_does_not_borrow_a_tender_from_a_different_programme(conn, env):
+    from ri.readmodel import card
+
+    _, hyps = make_hyp(conn, env)
+    conn.execute("""
+        INSERT INTO procurement_notices(source_id,notice_id,buyer_name,buyer_org_id,title,status,deadline_at)
+        VALUES ('procurement-ted','unrelated','Example Bank',%s,'Unrelated contract','open',%s)
+        """, (env["bank"], NOW + timedelta(days=5)))
+    row = conn.execute("SELECT * FROM opportunity_hypotheses WHERE id=%s", (hyps["direct"],)).fetchone()
+    assert card(conn, row, NOW)["tender"] is None

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
-import { actionReason, Badge, EVIDENCE_CONFIDENCE, Coverage, Err, Evidence, Fact, accessKind, demandKind, groupName, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
+import { actionReason, Badge, EVIDENCE_CONFIDENCE, Coverage, Err, Evidence, Fact, accessKind, demandKind, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
 import Prospects from "./Prospects";
+import { SignalSummary } from "../components/BuyingSignal";
 
 const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_accounts", "Your accounts"], ["new_discoveries", "New companies worth a look"],
   ["relationships", "People to get back in touch with"], ["deal_blockers", "Deals that are stuck"], ["research_review", "Research to review"], ["public_tenders", "Public tenders"]];
@@ -52,6 +53,7 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
           {c.tender && <div className="tender"><Badge kind="bad">Tender</Badge> Closes <b>{fmtDateTime(c.tender.deadline_at)}</b> ({c.tender.deadline_tz ?? "timezone not given"}). We last checked it was still open on {fmtDateTime(c.tender.last_status_check_at)}.</div>}
           {!compact && <p><span className="k">What happened</span>{c.what_happened.summary ?? "No summary"}
             <span className="prov"> Happened {fmtDate(c.what_happened.event_date)} · we saw it {fmtDate(c.what_happened.first_observed)}</span></p>}
+          {c.buying_signal && <SignalSummary signal={c.buying_signal} />}
           {c.plain_reason && <p><span className="k">In short</span>{c.plain_reason}</p>}
           {!compact && <p><span className="k">Why it matters</span>{whyShort(c.why_it_matters)}</p>}
           <div className="facts">
@@ -116,12 +118,28 @@ function Group({ g, reload }: { g: any[]; reload: () => void }) {
 
 export default function Today() {
   const [d, setD] = useState<any>(null);
+  const [focus, setFocus] = useState("finance");
   const [ov, setOv] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
-  const load = () => { setErr(null); return api("/api/today").then(setD).catch(setErr); };
-  useEffect(() => { load(); api("/api/overview").then(setOv).catch(() => undefined); }, []);
-  if (err) return <><header className="hero"><div className="eyebrow">Your day</div><h1>Today</h1></header><div className="page pt-5"><Err e={err} onRetry={load} /></div></>;
-  if (!d) return <><header className="hero loading"><div className="eyebrow">Your day</div><h1>Today</h1></header><div className="page pt-5"><Skeleton rows={4} label="Loading Today" /></div></>;
+  const [revision, setRevision] = useState(0);
+  const load = () => setRevision((n) => n + 1);
+  useEffect(() => {
+    const request = new AbortController();
+    setErr(null);
+    api(`/api/today?focus=${focus}`, { signal: request.signal })
+      .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
+    return () => request.abort();
+  }, [focus, revision]);
+  useEffect(() => { api("/api/overview").then(setOv).catch(() => undefined); }, []);
+  const picker = <label className="row small mb-3">Sector focus
+    <select value={focus} onChange={(e) => { setD(null); setErr(null); setFocus(e.target.value); }}>
+      <option value="finance">Banking &amp; financial services</option>
+      <option value="other">Other sectors and unclassified</option>
+      <option value="public">Public tenders</option>
+    </select>
+  </label>;
+  if (!d || err) return <><header className="hero loading"><div className="eyebrow">Your day</div><h1>Today</h1></header>
+    <div className="page pt-5">{picker}{err ? <Err e={err} onRetry={load} /> : <Skeleton rows={4} label="Loading Today" />}</div></>;
   const all: any[] = Object.values(d.sections).flat() as any[];
   const count = (f: (c: any) => boolean) => all.filter(f).length;
   return (
@@ -129,25 +147,25 @@ export default function Today() {
       <header className="hero">
         <div className="eyebrow">{new Date(d.generated_at).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</div>
         <h1>Today</h1>
-        <p className="sub">{d.count === 0 ? (ov?.accounts ? `${ov.accounts.toLocaleString()} ${ov.accounts === 1 ? "account is" : "accounts are"} loaded from your workbooks. Nothing has been checked against a live source yet, so start with your shortlist below.` : "Nothing new needs your attention.") : `${d.count} ${d.count === 1 ? "thing" : "things"} to review. Each story is shown once. Anything you dismiss stays hidden unless it changes.`}</p>
+        <p className="sub">{d.count === 0 ? "No new opportunities in this view." : `${d.count} ${d.count === 1 ? "thing" : "things"} to review. Each story is shown once. Anything you dismiss stays hidden unless it changes.`}</p>
         <div className="stats">
           <div className="stat urgent"><div className="n">{count((c) => c.priority === "urgent")}</div><div className="l">Urgent</div></div>
           <div className="stat"><div className="n">{d.count}</div><div className="l">To review</div></div>
         </div>
       </header>
       <div className="page pt-5">
+        {picker}
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
         {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
         {d.hot_accounts?.length > 0 && <section><div className="section-title">Hot accounts</div><p className="small muted sec-note">Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.</p>
-          <div className="card flush table-wrap" tabIndex={0} role="region" aria-label="Account · Signals · Latest"><table className="cards"><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest</th></tr></thead><tbody>
+          <div className="card flush table-wrap" tabIndex={0} role="region" aria-label="Account · Signals · Latest"><table className="cards"><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Buying signal and source</th><th>Latest</th></tr></thead><tbody>
             {d.hot_accounts.map((a: any) => <tr key={a.id}><td><Link to={`/accounts/${a.id}`}>{a.display_name}</Link><div className="small muted">{[a.country_code, a.segment].filter(Boolean).join(" · ")}</div></td>
               <td data-label="Signal score"><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
-              <td className="small" data-label="Signals">{a.signal_count} · {a.groups.map(groupName).join(", ")}</td><td className="small" data-label="Latest">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}
+              <td data-label="Buying signal and source"><SignalSummary signal={a.buying_signal} /></td><td className="small" data-label="Latest">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}
           </tbody></table></div></section>}
-        <Deadlines />
-
-        <Prospects />
+        {focus === "public" && <Deadlines />}
+        {focus !== "public" && <Prospects key={focus} focus={focus} />}
       </div>
     </>
   );

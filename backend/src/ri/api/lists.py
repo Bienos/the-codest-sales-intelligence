@@ -63,15 +63,19 @@ def prospect_item(r: dict[str, Any], kind: str, can_contacts: bool, today: date)
     return item
 
 
-def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int) -> list[dict[str, Any]]:
+def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: str = "") -> list[dict[str, Any]]:
     today = datetime.now(timezone.utc).date()
+    from ..market import sector_sql
+
     where, params = org_scope_sql(p, "o.id")
+    sector = sector_sql("o.segment")
     rows = qa(conn,
         f"SELECT DISTINCT ON (r.organization_id, r.kind) r.organization_id, r.kind, r.original, o.display_name, o.country_code, o.segment, o.employees_estimate, "   # noqa: S608
         f"(SELECT count(*) FROM opportunity_hypotheses h WHERE h.organization_id=o.id AND h.state NOT IN ('superseded')) AS opps "
         f"FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
         f"WHERE r.kind IN ('priority_outreach','master_account') AND ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') "
-        f"ORDER BY r.organization_id, r.kind, r.observed_at DESC", [*params, q, q])
+        f"AND (%s='' OR (o.entity_type<>'public_body' AND (({sector})='finance')=(%s='finance'))) "
+        f"ORDER BY r.organization_id, r.kind, r.observed_at DESC", [*params, q, q, focus, focus])
     can_contacts = p.can("contacts.read")
     by_org: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -91,10 +95,26 @@ def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int) -> list[
     total = len(items)
     items = items[:max(limit, 1)]
     urls = [i["source_url"] for i in items if i["source_url"]]
-    ver = {v["url"]: v for v in qa(conn, "SELECT url, status, events_created, result FROM verification_requests WHERE origin='sheet_signal' AND url = ANY(%s)", (urls,))} if urls else {}
+    scope = [i["organization"]["id"] for i in items]
+    ver = {(str(v["organization_id"]), v["url"]): v for v in qa(conn, """
+        SELECT v.organization_id, v.url, v.status, v.result,
+            (SELECT count(DISTINCT e.id)
+             FROM event_documents ed JOIN events e ON e.id=ed.event_id
+             WHERE ed.document_id=v.document_id AND e.subject_org_id=v.organization_id
+               AND e.verification_status='verified' AND e.lifecycle_status='active') AS matched_events
+        FROM verification_requests v
+        WHERE v.origin='sheet_signal' AND v.url=ANY(%s) AND v.organization_id=ANY(%s::uuid[])
+        """, (urls, scope))} if urls else {}
     for i in items:
-        v = ver.get(i["source_url"])
-        i["verification"] = {"status": v["status"], "events": v["events_created"], "reason": (v["result"] or {}).get("reason")} if v else None
+        v = ver.get((i["organization"]["id"], i["source_url"]))
+        if v:
+            status = v["status"]
+            reason = (v["result"] or {}).get("reason")
+            if status == "verified" and not v["matched_events"]:
+                status, reason = "no_event", "The source has no verified event linked to this account."
+            i["verification"] = {"status": status, "events": v["matched_events"], "reason": reason}
+        else:
+            i["verification"] = None
         i["_total"] = total
     return items
 
@@ -105,9 +125,10 @@ def register(app: FastAPI) -> None:
 
     @app.get("/api/prospects")
     def prospects(request: Request, lane: str = Query("all", pattern="^(all|shortlist|signals)$"), q: str = "", limit: int = Query(40, le=200),
+                  focus: str = Query("", pattern="^(|finance|other)$"),
                   p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            items = prospects_for(conn, p, lane=lane, q=q, limit=limit)
+            items = prospects_for(conn, p, lane=lane, q=q, limit=limit, focus=focus)
             total = items[0]["_total"] if items else 0
             for i in items:
                 i.pop("_total", None)

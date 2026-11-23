@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, fmtDateTime, post } from "../api";
+import { SignalSummary } from "../components/BuyingSignal";
 import { actionReason, Badge, EVIDENCE_CONFIDENCE, Err, Evidence, GateBar, PageHeader, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
 
 export default function Opportunity({ me }: { me: { permissions: string[] } }) {
@@ -26,6 +27,8 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
           <Badge kind={d.evidence_confidence === "high" ? "ok" : "warn"}><span title={EVIDENCE_CONFIDENCE}>Evidence: {d.evidence_confidence}</span></Badge><Badge><span title="How many of the seven checks below have an answer">{Math.round(d.research_completeness * 7)} of 7 checks answered</span></Badge>{d.score != null && <Badge><span title="Ranks what to look at first. It is not a chance of winning.">Opportunity score {d.score}/100</span></Badge>}</span>} />
       {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} />
 
+      <h2 className="section-title">Buying signal for this programme</h2>
+      <div className="card"><SignalSummary signal={d.buying_signal} detailed /></div>
       <div className={`verdict ${verdict(d).kind} mt-2`}><span className="k">Our read</span>{verdict(d).text}</div>
           <div className="action">
             <div className="eyebrow mb-2">Next action</div>

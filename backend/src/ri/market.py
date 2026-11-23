@@ -90,6 +90,20 @@ def region_for(country: str | None) -> str:
     return "other"
 
 
+# Classify by the buyer's stored segment, never by the presence of words like
+# "banking" in a story about a vendor. Missing classifications remain visible.
+def sector_sql(segment: str, reported_role: str = "NULL") -> str:
+    """SQL expression over trusted column references, not user input."""
+    finance = r"\m(banks?|banking|fintechs?|financial services|finance|payments?|insurance|insurers?|insurtech|reinsurance|mortgage\w*|lending|lenders?|credit unions?|building societ\w*|asset management|wealth management|capital markets|brokerage|leasing)\M"
+    seller = r"\m(software|vendors?|consulting|consultancy|integrators?|outsourcing|it services|digital agency)\M"
+    return f"""CASE
+        WHEN {segment} ~* '{seller}' THEN 'other'
+        WHEN {segment} ~* '{finance}' THEN 'finance'
+        WHEN nullif(trim({segment}), '') IS NOT NULL AND lower(trim({segment})) NOT IN ('unknown','unclassified','n/a') THEN 'other'
+        WHEN {reported_role} IN ('bank','fintech') THEN 'finance'
+        ELSE 'unclassified' END"""
+
+
 _LEGAL_FORM = re.compile(r"((?<!\w)(ag|gmbh|kg|kgaa|ug|se|sa|s\.a\.|spa|s\.p\.a\.|srl|nv|bv|b\.v\.|ab|asa|as|a/s|aps|oy|oyj|plc|ltd|limited|llc|inc|corp|corporation|s\.r\.o\.|sp\. z o\.o\.)(?!\w)|spółka akcyjna|aktiengesellschaft|spółka z ograniczoną odpowiedzialnością)", re.I)
 _NOT_A_BUYER = re.compile(r"\b(festival|summit|conference|congress|expo|forum|sandbox|taskforce|task force|project|scheme|programme|initiative|week|awards?|ambassadors?|regulator|supervisor|"
                           r"unnamed|veteran card|association|council|consortium|working group|standard|framework)\b|\(unnamed", re.I)

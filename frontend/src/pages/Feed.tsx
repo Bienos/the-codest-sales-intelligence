@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, post, trackSourceOpened } from "../api";
 import { Badge, Err, Skeleton, TIER, lab, Tabs } from "../components/ui";
+import { demandLabel } from "../components/BuyingSignal";
 const SERVICE: Record<string, string> = { staff_augmentation: "Staff Augmentation", team_extension: "Team Extension", ai_services: "AI Services" };
 const LANG: Record<string, string> = { de: "German", pl: "Polish", sv: "Swedish", no: "Norwegian", nb: "Norwegian", da: "Danish", fi: "Finnish", fr: "French", nl: "Dutch", es: "Spanish", it: "Italian", is: "Icelandic" };
 
@@ -13,14 +14,15 @@ const LEAD: Record<string, [string, string]> = { queued: ["info", "Waiting to be
 export default function Feed() {
   const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [view, setView] = useState("accounts"); const [days, setDays] = useState(60); const [fitOnly, setFitOnly] = useState(false);
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
+  const [focus, setFocus] = useState("finance");
   const [retry, setRetry] = useState(0);
   const [visible, setVisible] = useState(30);
   useEffect(() => {
     const request = new AbortController();
     setErr(null); setD(null); setVisible(30);
-    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=true&view=${view}&fit_only=${fitOnly}`, { signal: request.signal }).then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); }), q ? 250 : 0);
+    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=true&view=${view}&fit_only=${fitOnly}&focus=${focus}`, { signal: request.signal }).then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); }), q ? 250 : 0);
     return () => { clearTimeout(t); request.abort(); };
-  }, [q, play, core, days, view, fitOnly, retry]);
+  }, [q, play, core, days, view, fitOnly, focus, retry]);
   const groups: [string, any[]][] = [];
   d?.items.slice(0, visible).forEach((it: any) => { const k = dayKey(it.happened); const g = groups.find((x) => x[0] === k); g ? g[1].push(it) : groups.push([k, [it]]); });
   const cov = d?.coverage;
@@ -28,8 +30,16 @@ export default function Feed() {
     <>
       <div className="page-head"><div className="eyebrow">What we found</div><h1>Market feed</h1></div>
       <p className="small muted mt-0 measure">Everything here was checked against the original page. Each item shows the quote, where it came from and which of our services it could fit. Unread pages are under <a href="#links-to-check">Links to check</a>.</p>
+      {view !== "public" && <label className="row small mb-3">Sector focus
+        <select value={focus} onChange={(e) => setFocus(e.target.value)}>
+          <option value="finance">Banking &amp; financial services</option>
+          <option value="other">Other sectors</option>
+          <option value="unclassified">Sector unclassified</option>
+          <option value="">All sectors</option>
+        </select>
+      </label>}
       <Tabs label="What to show" items={[["accounts", "Your accounts"], ["market", "New companies: main markets"], ["rest", "New companies: elsewhere"], ["public", "Public sector"]].map(([k, l]) => ({ key: k, label: <>{l}{d?.view_counts ? <span className="tabn">{Number(d.view_counts[k] ?? 0).toLocaleString()}</span> : null}</> }))} value={view} onChange={setView}>
-      <p className="small muted sub-tight">{{ accounts: "Checked news about companies on your lists. These can become signals and opportunities.", market: "Checked news about companies not on your lists yet, in the UK, DACH, Nordics and Poland. Each could be added as an account.", rest: "The same for the rest of Europe and the US. A second priority.", public: "Government and public bodies. Kept apart because they buy through tenders." }[view]}</p>
+      <p className="small muted sub-tight">{{ accounts: "Checked findings linked to accounts in the directory.", market: "Findings in the UK, DACH, Nordics and Poland whose buyers have yet to be matched to an account.", rest: "The same for the rest of Europe and the US. A second priority.", public: "Government and public bodies. Kept apart because they buy through tenders." }[view]}</p>
       <details className="feed-filters"><summary>Filter findings</summary>
       <div className="feedbar mt-2">
         <input aria-label="Search the feed" placeholder="Search company or keyword" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -48,7 +58,10 @@ export default function Feed() {
         <div>
           {groups.map(([day, items]) => (
             <section key={day}><div className="feed-day">{day}</div>
-              {items.map((it: any) => (
+              {items.map((it: any) => {
+                const signal = [...it.signals].sort((a, b) => a.demand_tier.localeCompare(b.demand_tier) || b.strength - a.strength)[0];
+                const hasEvidence = it.evidence.some((e: any) => e.anchor_verified && e.url);
+                return (
                 <article key={it.id} className="fcard">
                   <div className="row spread start">
                     <div className="row small">
@@ -61,8 +74,10 @@ export default function Feed() {
                   </div>
                   <h2 className="fcard-t">{it.summary_en ?? it.summary}</h2>
                   {it.summary_en && !it.evidence.some((e: any) => e.claim === it.summary) && <p className="small muted sec-note">Original wording: {it.summary}</p>}
+                  {signal && hasEvidence ? <p className="buying-signal small mt-2 mb-2"><b>{signal.name}</b><br />{demandLabel(signal.demand_tier)}</p>
+                    : <p className="small muted mt-2 mb-2">{it.scope.linked ? "No current source-backed buying signal." : "Unmatched buyer · check the legal entity before using this as a lead."}</p>}
                   {it.why && <div className={`why ${it.why.level}`}>
-                    <span className="k">{it.why.level === "strong" ? "Likely work for The Codest" : it.why.level === "possible" ? "Could become work for The Codest" : "Probably not work for us"}</span>
+                    <span className="k">{it.why.level === "none" ? "Low likely fit" : "Suggested fit · qualify before acting"}</span>
                     {it.why.service && it.why.service !== "none" && <Badge kind={it.why.level === "strong" ? "ok" : "info"}>{SERVICE[it.why.service] ?? it.why.service}</Badge>}
                     <p className="small mt-1 mb-0">{it.why.reason}</p>
                   </div>}
@@ -81,7 +96,7 @@ export default function Feed() {
                       <p className="small muted mt-2 mb-0">{it.fit.label}</p>
                     </div>) : <p className="small muted mt-3 mb-0">No signal matches this finding yet, so we are not suggesting a service.</p>}
                   </details>
-                </article>))}
+                </article>); })}
             </section>))}
           {d && visible < d.items.length && <button onClick={() => setVisible((n) => n + 30)}>Show more findings</button>}
         </div>

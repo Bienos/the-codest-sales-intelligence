@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
+import { SignalSummary } from "../components/BuyingSignal";
 const del = (p: string) => api(p, { method: "DELETE" });
 import { Badge, Err, Evidence, LABELS, groupName, humanize, lab, priorityKind, Skeleton, reloadPage, whyShort, Tabs } from "../components/ui";
 
@@ -41,8 +42,8 @@ const PRESETS: [string, Record<string, string>][] = [
   ["Your shortlist", { shortlist: "true" }],
 ];
 const ORIGIN: Record<string, string> = { list: "On your lists", added: "Added by the team", discovered: "Found by us" };
-type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; lane: string; sort: string; page: number };
-const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", lane: "", sort: "score", page: 1 };
+type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; lane: string; focus: string; sort: string; page: number };
+const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", lane: "", focus: "finance", sort: "score", page: 1 };
 const qs = (f: Q, extra = "") => { const u = new URLSearchParams(); (Object.entries(f) as [string, any][]).forEach(([k, v]) => { if (v !== "" && v !== 1 && !(k === "sort" && v === "score")) u.set(k, String(v)); }); if (f.page > 1) u.set("page", String(f.page)); return u.toString() + extra; };
 
 export function Accounts({ me }: { me?: { permissions: string[] } }) {
@@ -52,7 +53,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
     setAdding(false);
     if (params.has("add")) setParams({}, { replace: true });
   };
-  const [f, setF] = useState<Q>(EMPTY);
+  const [f, setF] = useState<Q>({ ...EMPTY, focus: params.get("add") === "1" ? "" : EMPTY.focus });
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const [sel, setSel] = useState<Set<string>>(new Set()); const [msg, setMsg] = useState("");
@@ -60,6 +61,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
   useEffect(() => {
     const request = new AbortController();
     setErr(null);
+    setD(null);
     const timer = setTimeout(() => {
       api(`/api/leads?${qs(f)}`, { signal: request.signal })
         .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
@@ -67,7 +69,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
     return () => { clearTimeout(timer); request.abort(); };
   }, [f, retry]);
   const set = (k: keyof Q, v: string) => setF({ ...f, [k]: v, page: 1 });
-  const preset = (p: Record<string, string>) => setF({ ...EMPTY, ...p, page: 1 });
+  const preset = (p: Record<string, string>) => setF({ ...EMPTY, focus: f.focus, lane: f.lane, ...p, page: 1 });
   const toggle = (id: string) => { const n = new Set(sel); n.has(id) ? n.delete(id) : n.add(id); setSel(n); };
   const toggleWatch = async (r: any) => {
     setErr(null);
@@ -94,13 +96,24 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
   return (
     <>
       <div className="page-head"><h1>Accounts</h1></div>
-      <p className="sub sub-tight">{f.lane === "public" ? "Public bodies that publish tenders. Kept apart from private companies because they buy through formal procurement. Scores here come from tender notices only." : "Every company we know about, strongest signals first."}</p>
+      <p className="sub sub-tight">{f.lane === "public" ? "Public bodies that publish tenders. Kept apart from private companies because they buy through formal procurement. Scores here come from tender notices only." : "Find the account, the strongest current buying signal, and the source behind it."}</p>
       <div className="row mb-3">{can("research.request") && <button className="primary" onClick={() => adding ? closeAdd() : setAdding(true)}>{adding ? "Cancel" : "Add a company"}</button>}
         <button onClick={exportCsv}>Export CSV</button>{sel.size > 0 && can("research.request") && <button onClick={scanSelected}>Check {sel.size} for news</button>}</div>
       {adding && <AddCompany onClose={closeAdd} />}
       {msg && <div className="okmsg" role="status">{msg}</div>}
       <div className="chips chips-scroll" aria-label="Saved views">{PRESETS.map(([l, p]) => <button key={l} className="chip" aria-pressed={Object.entries(p).every(([k, v]) => (f as any)[k] === v)} onClick={() => preset(p)}>{l}</button>)}<button className="chip" onClick={() => preset({})}>Clear filters</button></div>
       <div className="leadbar">
+        <select className="sector-focus" aria-label="Sector focus" value={f.lane || f.focus} onChange={(e) => {
+          const value = e.target.value;
+          setSel(new Set());
+          setF({ ...f, segment: "", lane: value === "public" ? "public" : "", focus: value === "public" ? "" : value, page: 1 });
+        }}>
+          <option value="finance">Banking &amp; financial services</option>
+          <option value="other">Other sectors</option>
+          <option value="unclassified">Sector unclassified</option>
+          <option value="public">Public sector</option>
+          <option value="">All commercial accounts</option>
+        </select>
         <input id="lead-q" aria-label="Search accounts" placeholder="Search name or website" value={f.q} onChange={(e) => set("q", e.target.value)} />
         <select id="lead-band" aria-label="Signal strength" value={f.band} onChange={(e) => set("band", e.target.value)}><option value="">Any signal</option>{["hot", "warm", "watch", "none"].map((k) => <option key={k} value={k}>{BAND[k][1]} ({fac.band?.[k] ?? 0})</option>)}</select>
         <select id="lead-sort" aria-label="Sort" value={f.sort} onChange={(e) => set("sort", e.target.value)}><option value="score">Highest score</option><option value="recent">Latest signal</option><option value="size">Largest</option><option value="name">Name</option></select>
@@ -111,26 +124,25 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
         <select id="lead-icp" aria-label="Company size" value={f.icp} onChange={(e) => set("icp", e.target.value)}><option value="">Any size</option>{opt(fac.icp, (k) => ICP_NAMES[k] ?? k)}</select>
         <select id="lead-segment" aria-label="Segment" value={f.segment} onChange={(e) => set("segment", e.target.value)}><option value="">Any segment</option>{opt(fac.segment)}</select>
         <select id="lead-origin" aria-label="Where it came from" value={f.origin} onChange={(e) => set("origin", e.target.value)}><option value="">Any source</option>{opt(fac.origin, (k) => ORIGIN[k] ?? k)}</select>
-          <select aria-label="Market" value={f.lane} onChange={(e) => set("lane", e.target.value)}>
-            <option value="">Company accounts</option><option value="public">Public sector</option>
-          </select>
+
         </div>
       </details>
       <p className="small muted">Signal score adds up recent checked signals. Different kinds count for more than repeats. Hot starts at 9 and Warm at 4.</p>
       <Err e={err} onRetry={d ? undefined : () => setRetry((n) => n + 1)} />
       {!d && !err && <Skeleton label="Loading accounts" />}
-      {d && <div className="card table-wrap flush" tabIndex={0} role="region" aria-label="Company · Region · Size"><table className="leads-table cards"><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest signal</th><th>Came from</th></tr></thead><tbody>
+      {d && <div className="card table-wrap flush" tabIndex={0} role="region" aria-label="Company · Region · Size"><table className="leads-table cards"><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Buying signal and source</th><th>Came from</th></tr></thead><tbody>
         {d?.items.map((r: any) => <tr key={r.id}>
           <td className="sel"><label className="hit44"><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} /></label></td>
           <td className="sel"><button className="star hit44" aria-pressed={r.watched} aria-label={r.watched ? `Stop watching ${r.name}` : `Watch ${r.name}`} title={r.watched ? "Watching: scheduled checks for news and jobs" : "Watch: schedule regular checks for news and jobs"} onClick={() => toggleWatch(r)}>{r.watched ? "★" : "☆"}</button></td>
           <td className="name"><Link to={`/accounts/${r.id}`}>{r.name}</Link>{r.shortlist && <> <Badge kind="ok">Shortlist</Badge></>}<div className="small muted">{r.segment ?? "Segment not known"}{r.canonical_domain ? ` · ${r.canonical_domain}` : ""}</div></td>
           <td data-label="Region">{r.country_code ?? "Not known"}<div className="small muted">{d.regions.find((x: any) => x.key === r.region)?.label ?? humanize(r.region)}</div></td>
           <td data-label="Size">{r.employees == null ? "Not known" : <span title={r.employees_uncertain ? "Estimated headcount" : undefined}>{r.employees_uncertain ? "≈" : ""}{r.employees.toLocaleString()}</span>}<div className="small muted">{ICP_NAMES[r.icp] ?? r.icp}</div></td>
-          <td data-label="Signal score">{r.score !== null ? <><b>{r.score}</b> <Badge kind={BAND[r.band][0]}>{BAND[r.band][1]}</Badge></> : <span className="muted">None</span>}{r.stopped && <div className="small muted" title="Something we found says not to pursue this now. The score stays at zero until it expires.">On hold: a stop signal was found</div>}</td>
-          <td data-label="Signals" className="small">{r.signal_count ? <>{r.signal_count} · {r.groups.map(groupName).join(", ")}</> : <span className="muted">None yet</span>}</td>
-          <td data-label="Latest signal" className="small">{r.last_signal_at ? fmtDate(r.last_signal_at) : <span className="muted">None</span>}</td>
+          <td data-label="Signal score">{r.score !== null ? <><b>{r.score}</b> <Badge kind={BAND[r.band][0]}>{BAND[r.band][1]}</Badge></> : <span className="muted">Not scored</span>}{r.stopped && <div className="small muted" title="Something we found says not to pursue this now. The score stays at zero until it expires.">On hold: a stop signal was found</div>}</td>
+          <td data-label="Buying signal and source"><SignalSummary signal={r.buying_signal} />
+            {!r.buying_signal && r.last_signal_at && <div className="small muted">Last recorded signal {fmtDate(r.last_signal_at)}</div>}
+          </td>
           <td data-label="Came from" className="small">{ORIGIN[r.origin] ?? humanize(r.origin)}{r.candidate_status === "pending_qualification" && <div className="row gap-2 mt-1"><span className="muted">Found by us. Add it?</span>{can("research.request") && <><button className="chip" onClick={() => decide(r, "qualify")}>Add to accounts</button><button className="chip" onClick={() => decide(r, "reject")}>Not a fit</button></>}</div>}{r.candidate_status === "qualified" && <div><Badge kind="ok">Added</Badge></div>}</td></tr>)}
-        {d && d.items.length === 0 && <tr><td colSpan={9} className="muted">No accounts match these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " There are no accounts yet: load the workbooks in Administration, Imports, or add a company." : ""} <button onClick={() => preset({})}>Clear filters</button></td></tr>}</tbody></table></div>}
+        {d && d.items.length === 0 && <tr><td colSpan={8} className="muted">No accounts match these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " There are no accounts yet: load the workbooks in Administration, Imports, or add a company." : ""} <button onClick={() => preset({})}>Clear filters</button></td></tr>}</tbody></table></div>}
       {d && <div className="row spread small mt-3"><span>{d.total.toLocaleString()} {d.total === 1 ? "account" : "accounts"}</span>
         <span className="row"><button disabled={f.page <= 1} onClick={() => setF({ ...f, page: f.page - 1 })}>Previous</button><span>Page {f.page} of {pages}</span><button disabled={f.page >= pages} onClick={() => setF({ ...f, page: f.page + 1 })}>Next</button></span></div>}
     </>
@@ -293,6 +305,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           {d.score.top?.length > 0 && <div className="chips mt-2">{d.score.top.map((t: any) => <Badge key={t.rule_id}>{sigNames[t.rule_id] ?? t.name ?? t.rule_id}</Badge>)}</div>}</div></div></div>}
       <Tabs items={TABS.map((t) => ({ key: t, label: t }))} value={tab} onChange={setTab} label="Account sections">
       {tab === "Overview" && (<>
+        <H>Strongest current buying signal</H>
+        <div className="card"><SignalSummary signal={d.buying_signal} detailed /></div>
         <H>Opportunities</H>
         {d.opportunities.length === 0 && <div className="empty"><b>No opportunities yet</b>One appears when checked signals point to a concrete piece of work. Press “Check for news” to look for some.</div>}
         {d.opportunities.map((o: any) => (

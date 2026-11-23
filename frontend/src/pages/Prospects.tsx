@@ -17,7 +17,7 @@ function age(d: number | null): string {
   return `${Math.round(d / 30)} months ago`;
 }
 
-export default function Prospects() {
+export default function Prospects({ focus = "" }: { focus?: string }) {
   const [lane, setLane] = useState<Lane>("shortlist");
   const [q, setQ] = useState("");
   const [d, setD] = useState<any>(null);
@@ -25,13 +25,13 @@ export default function Prospects() {
   const [msg, setMsg] = useState("");
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const t = setTimeout(() => api(`/api/prospects?lane=${lane}&q=${encodeURIComponent(q)}&limit=30`).then(setD).catch(setErr), q ? 250 : 0);
+    const t = setTimeout(() => api(`/api/prospects?lane=${lane}&q=${encodeURIComponent(q)}&limit=30&focus=${focus}`).then(setD).catch(setErr), q ? 250 : 0);
     return () => clearTimeout(t);
-  }, [lane, q, tick]);
+  }, [lane, q, tick, focus]);
   const busy = d?.items.some((i: any) => ["queued", "fetching", "extracting"].includes(i.verification?.status));
   useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) setTick((n) => n + 1); }, 6000); return () => clearInterval(t); }, [busy]);
-  const verify = async (id: string) => { setErr(null); try { await post("/api/prospects/verify", { organization_id: id }); setTick((n) => n + 1); } catch (e) { setErr(e); } };
-  const batch = async () => { setErr(null); try { const r = await post("/api/prospects/verify-batch", { lane, limit: 10 }); setMsg(`${r.queued} ${r.queued === 1 ? "page" : "pages"} queued. Each check reads one page and uses some of the monthly AI budget.`); setTick((n) => n + 1); } catch (e) { setErr(e); } };
+  const verify = async (id: string, url: string) => { setErr(null); try { await post("/api/prospects/verify", { organization_id: id, url }); setTick((n) => n + 1); } catch (e) { setErr(e); } };
+  const batch = async () => { setErr(null); try { const r = await post("/api/prospects/verify-batch", { lane, limit: 10, focus, q }); setMsg(`${r.queued} ${r.queued === 1 ? "page" : "pages"} queued. Each check reads one page and uses some of the monthly AI budget.`); setTick((n) => n + 1); } catch (e) { setErr(e); } };
   return (
     <section aria-label="From your workbooks">
       <div className="section-title">From your workbooks</div>
@@ -73,7 +73,7 @@ export default function Prospects() {
               </div>
               <div className="row mt-3">
                 {it.source_url ? <a className="pill" href={it.source_url} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: it.organization.id, where: "prospect" })}>Open source ↗</a> : <Badge kind="warn">No source link: find one first</Badge>}
-                {it.source_url && !it.verification && <button className="primary" onClick={() => verify(it.organization.id)}>Check this source</button>}
+                {it.source_url && !it.verification && <button className="primary" onClick={() => verify(it.organization.id, it.source_url)}>Check this source</button>}
                 {it.verification && <><Badge kind={VSTATE[it.verification.status]?.[0]}>{VSTATE[it.verification.status]?.[1] ?? it.verification.status}</Badge>{it.verification.status === "verified" && <span className="small">{it.verification.events} {it.verification.events === 1 ? "finding" : "findings"} added</span>}{it.verification.reason && <span className="small muted">{it.verification.reason}</span>}</>}
                 <Link to={`/accounts/${it.organization.id}`} className="small">Open account</Link>
               </div>
