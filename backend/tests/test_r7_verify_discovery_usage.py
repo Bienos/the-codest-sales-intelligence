@@ -530,13 +530,13 @@ def test_contracts_finder_keeps_only_software_notices_and_links_to_the_notice_pa
     from datetime import datetime, timezone
     from ri.sources.procurement import ContractsFinderConnector, is_software_notice
     rel = lambda ocid, title, cpv: {"ocid": ocid, "date": "2026-11-20T10:00:00Z", "tag": ["tender"], "buyer": {"name": "Home Office"},
-                                    "tender": {"title": title, "status": "active", "items": [{"classification": {"id": cpv}}] if cpv else []}}
+                                    "tender": {"title": title, "status": "active", "documents": [{"url": "https://www.contractsfinder.service.gov.uk/Notice/full-official-id"}], "items": [{"classification": {"id": cpv}}] if cpv else []}}
     pkg = {"releases": [rel("ocds-b5fd17-aaaa1111", "Core payments platform modernisation", "72000000"), rel("ocds-b5fd17-bbbb2222", "Grounds maintenance", "77300000")], "links": {}}
     c = ContractsFinderConnector(httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=pkg))), now_fn=lambda: datetime(2026, 11, 21, tzinfo=timezone.utc))
     batch = asyncio.run(c.fetch(None, 50))
     assert [i.external_id for i in batch.items] == ["ocds-b5fd17-aaaa1111"]
     d = c.canonicalize(batch.items[0])
-    assert d.canonical_url.endswith("/Notice/aaaa1111")
+    assert d.canonical_url.endswith("/Notice/full-official-id")
     assert is_software_notice(rel("x", "Cloud migration services", None)) and not is_software_notice(rel("y", "Road resurfacing", "45233000"))
 
 

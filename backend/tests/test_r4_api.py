@@ -136,7 +136,7 @@ def test_empty_today_distinguishes_healthy_quiet_from_failed_monitoring(world):
     assert t["count"] == 0 and "incomplete" in t["empty_state"]                                              # no active sources => not 'all clear'
     with world["app"].state.db.tx() as conn:
         conn.execute("update sources set status='active' where source_id='procurement-ted'")
-        conn.execute("update source_health set state='healthy' where source_id='procurement-ted'")
+        conn.execute("update source_health set state='healthy', last_success_at=now() where source_id='procurement-ted'")
     t2 = c.get("/api/today", headers=h("bdm2")).json()
     assert t2["empty_state"].startswith("No new high-priority changes among successfully monitored sources")
     with world["app"].state.db.tx() as conn:

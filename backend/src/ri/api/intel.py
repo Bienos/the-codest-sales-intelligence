@@ -404,7 +404,7 @@ def register_feed(app: FastAPI) -> None:
                 f"AND (e.subject_org_id IS NULL OR ({ew}))", [focus, focus] * (len(VIEWS)-1) + [days, *ep]) or {}
         return {"view": view, "view_counts": counts, "items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
                 "plays": [{"id": i, "name": n} for i, n in fd.play_ids()],
-                "note": "Only events whose claims quote the original page appear here. Searches and sheet signals that have not been checked are listed as leads, never as findings."}
+                "note": "Findings include claims checked against collected source text. Searches and sheet signals that have not been checked are listed as leads, never as findings."}
 
 
 class CampaignIn(BaseModel):

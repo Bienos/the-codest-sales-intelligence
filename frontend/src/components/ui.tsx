@@ -24,7 +24,7 @@ export const humanize = (s?: string | null) => { const t = (s ?? "unknown").repl
 
 /** Plain-English labels for every value the API sends as a code. Anything not listed falls back to sentence case. */
 export const LABELS = {
-  state: { observed: "Just spotted", verified: "Checked", relevant: "Relevant", investigating: "Being researched", actionable_hypothesis: "Ready to act on", engaged: "In conversation",
+  state: { observed: "Just spotted", verified: "Checked", relevant: "Relevant", investigating: "Being researched", actionable_hypothesis: "Research next", engaged: "In conversation",
     buyer_need_confirmed: "Buyer confirmed the need", commercially_qualified: "Qualified", proposal_procurement: "Proposal or tender", contracted_delivery: "Won", monitor: "Watching",
     blocked: "Blocked", disqualified: "Ruled out", expired: "Expired", superseded: "Replaced by a newer card" },
   route: { direct: "Direct", buyer_direct: "Direct", vendor: "Through the platform vendor", vendor_implementation: "Through the platform vendor", prime_subcontract: "Through an integrator", procurement: "Public tender", relationship: "Existing relationship", framework_panel: "Through a supplier framework", msp_vms: "Through a managed supplier programme", supplier_registration: "Through supplier registration" },

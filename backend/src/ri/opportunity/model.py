@@ -66,7 +66,7 @@ def collect(conn: Conn, hyp_id: str, now: datetime, *, requester_crm_user: int |
     org = q1(conn, "SELECT * FROM organizations WHERE id=%s", (h["organization_id"],))
     ini = q1(conn, "SELECT * FROM initiatives WHERE id=%s", (h["initiative_id"],))
     sig = qa(conn, "SELECT s.*, e.attrs AS event_attrs, e.event_type FROM signals s JOIN initiative_events ie ON ie.event_id=s.event_id "
-                   "JOIN events e ON e.id=s.event_id WHERE ie.initiative_id=%s AND ie.role='evidence' AND s.status='active'", (h["initiative_id"],))
+                   "JOIN events e ON e.id=s.event_id WHERE ie.initiative_id=%s AND ie.role='evidence' AND s.status='active' AND s.organization_id=%s AND e.subject_org_id=s.organization_id AND s.verification_status='verified' AND e.verification_status='verified' AND e.lifecycle_status='active' AND (s.expires_at IS NULL OR s.expires_at>%s)", (h["initiative_id"], h["organization_id"], now))
     neg = qa(conn, "SELECT * FROM negative_findings WHERE status='active' AND ((scope_type='account' AND scope_id=%s) OR (scope_type='route' AND scope_id=%s))",
              (str(h["organization_id"]), f"{h['organization_id']}:direct"))
     route = q1(conn, "SELECT * FROM procurement_routes WHERE id=%s", (h["route_id"],)) if h["route_id"] else None

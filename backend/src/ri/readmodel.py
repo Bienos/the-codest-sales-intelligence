@@ -82,16 +82,16 @@ def coverage_health(conn: Conn, p: Principal) -> dict[str, Any]:
     rows = qa(conn, "SELECT s.source_id, s.display_name, s.source_family, s.status, h.state, h.last_success_at, h.error_class FROM sources s LEFT JOIN source_health h USING (source_id) "
                     "WHERE s.source_tier <> 'internal' AND s.collection_method <> 'internal'")
     active = [r for r in rows if r["status"] in {"active", "degraded", "failed", "blocked"}]
-    bad = [r for r in active if r["state"] in {"degraded", "failed", "blocked"}]
+    bad = [r for r in active if r["state"] in {"degraded", "failed", "blocked"} or r["status"] in {"failed", "blocked"} or r["last_success_at"] is None]
     pending = [r for r in rows if r["status"] == "pending_connector_validation"]
-    return {"monitored_sources": len(active), "unhealthy": [{"source": r["display_name"], "family": r["source_family"], "state": r["state"], "error": r["error_class"]} for r in bad],
+    return {"monitored_sources": len(active), "unhealthy": [{"source": r["display_name"], "family": r["source_family"], "state": r["state"] if r["last_success_at"] else "never_succeeded", "error": r["error_class"]} for r in bad],
             "pending_validation_sources": len(pending), "all_monitored_healthy": not bad and len(active) > 0,
             "no_active_monitoring": len(active) == 0}
 
 
 def _pre_section(h: dict[str, Any], rel: set[str]) -> str:
     """Determine the group before building a card, so only visible cards are loaded."""
-    if h["route_type"] == "procurement":
+    if h.get("entity_type") == "public_body" or ("entity_type" not in h and h.get("route_type") == "procurement"):
         return "public_tenders"
     if h["priority"] == "urgent":
         return "critical"
@@ -120,7 +120,7 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
     main = tenders = 0
     for h in rows:
         pre = _pre_section(h, rel)
-        public = pre == "public_tenders" or h["entity_type"] == "public_body" or h["public_notice"]
+        public = pre == "public_tenders" or h["entity_type"] == "public_body"
         if focus == "finance" and (public or h["sector"] != "finance"):
             continue
         if focus == "other" and (public or h["sector"] == "finance"):

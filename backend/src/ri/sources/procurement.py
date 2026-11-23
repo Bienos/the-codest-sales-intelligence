@@ -108,6 +108,17 @@ class TedConnector:
                                    structured=rec, kind="procurement_notice")
 
 
+def official_notice_url(release: dict, host: str) -> str | None:
+    """Use the notice URL supplied by the authority in the OCDS release."""
+    sections = [release.get("tender") or {}, *(release.get("awards") or []), *(release.get("contracts") or [])]
+    for section in sections:
+        for document in section.get("documents") or []:
+            url = document.get("url") or ""
+            if url.startswith(f"https://{host}/Notice/"):
+                return url
+    return None
+
+
 class FindTenderConnector:
     """UK Find a Tender via OCDS release packages. Uses standard OCDS semantics (tag, tender.status, tenderPeriod)."""
 
@@ -169,7 +180,7 @@ class FindTenderConnector:
         status = derive_status(self.now(), kind=kind, deadline=deadline, amended="tenderUpdate" in tags,
                                cancelled=tstatus in {"cancelled", "withdrawn", "unsuccessful"})
         cpv = [it["classification"]["id"] for it in tender.get("items", []) if it.get("classification", {}).get("id")]
-        url = f"https://www.find-tender.service.gov.uk/Notice/{r['ocid'].split('-')[-1]}" if r.get("ocid") else None
+        url = official_notice_url(r, "www.find-tender.service.gov.uk") or f"{FTS_URL}/{r['ocid']}"
         rec = {"notice_id": r["ocid"], "buyer_name": (r.get("buyer") or {}).get("name"), "title": tender.get("title"),
                "scope": tender.get("description"), "procedure": tender.get("procurementMethod"), "service_codes": cpv,
                "country": "GB", "published_at": parse_dt(r.get("date")), "amended_at": parse_dt(r.get("date")) if "tenderUpdate" in tags else None,
@@ -228,8 +239,7 @@ class ContractsFinderConnector(FindTenderConnector):
 
     def canonicalize(self, item: RawItem) -> SourceDocumentDraft:
         d = super().canonicalize(item)
-        nid = str(item.payload.get("ocid", "")).split("-")[-1]
-        url = f"https://www.contractsfinder.service.gov.uk/Notice/{nid}" if nid else None
+        url = official_notice_url(item.payload, "www.contractsfinder.service.gov.uk")
         if d.structured:
             d.structured["official_url"] = url
         d.canonical_url = url

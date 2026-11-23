@@ -29,7 +29,7 @@ export default function Feed() {
   return (
     <>
       <div className="page-head"><div className="eyebrow">What we found</div><h1>Market feed</h1></div>
-      <p className="small muted mt-0 measure">Everything here was checked against the original page. Each item shows the quote, where it came from and which of our services it could fit. Unread pages are under <a href="#links-to-check">Links to check</a>.</p>
+      <p className="small muted mt-0 measure">Findings show the collected text and its source. Open the source to check the original and qualify the opportunity. Unread pages are under <a href="#links-to-check">Links to check</a>.</p>
       {view !== "public" && <label className="row small mb-3">Sector focus
         <select value={focus} onChange={(e) => setFocus(e.target.value)}>
           <option value="finance">Banking &amp; financial services</option>
@@ -70,7 +70,7 @@ export default function Feed() {
                       {it.organization && <><b>{it.organization.name}</b><span className="muted">{[it.organization.country, ICP_LABEL[it.organization.icp]].filter(Boolean).join(" · ")}</span>
                         {it.organization.market.fit !== "core" && <Badge kind="warn">{it.organization.market.label}</Badge>}{it.organization.in_master_list && <Badge kind="ok">On your lists</Badge>}</>}
                     </div>
-                    {it.programme && (it.organization ? <Link className="small" to={`/accounts/${it.organization.id}`}>Programme: {it.programme.title}</Link> : <span className="small">Programme: {it.programme.title}</span>)}
+                    {it.programme && (it.organization ? <Link className="small" to={`/accounts/${it.organization.id}?event=${it.id}`}>Programme: {it.programme.title}</Link> : <span className="small">Programme: {it.programme.title}</span>)}
                   </div>
                   <h2 className="fcard-t">{it.summary_en ?? it.summary}</h2>
                   {it.summary_en && !it.evidence.some((e: any) => e.claim === it.summary) && <p className="small muted sec-note">Original wording: {it.summary}</p>}
@@ -84,7 +84,7 @@ export default function Feed() {
                   {it.evidence.map((e: any) => (
                     <blockquote key={e.claim_id} className="fquote">{e.claim !== (it.summary_en ?? it.summary) && <>“{e.claim}”</>}{e.translation && <span className="trans">In English{it.language && it.language !== "en" ? ` (from ${LANG[it.language] ?? it.language})` : ""}: “{e.translation}”</span>}
                       <cite>{e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" onClick={() => it.organization && trackSourceOpened({ organization_id: it.organization.id, where: "evidence" })}>{e.source ?? "Original source"} ↗</a> : "Structured record"}
-                        {[e.authority ? TIER[e.authority] ?? e.authority : null, e.anchor_verified ? "quote found on the page" : "quote not matched"].filter(Boolean).join(" · ")}</cite></blockquote>))}
+                        {[e.authority ? TIER[e.authority] ?? e.authority : null, e.anchor_verified ? "quote found in collected text" : "quote not matched"].filter(Boolean).join(" · ")}</cite></blockquote>))}
                   <details className="finding-details"><summary>Dates, signals and sales play</summary>
                   <div className="small muted mt-1">{[it.event_at && `Happened ${fmtDate(it.event_at)}`, it.published && `Published ${fmtDate(it.published)}`, it.first_seen && `We saw it ${fmtDate(it.first_seen)}`].filter(Boolean).join(" · ")}</div>
                   {it.signals.length > 0 && <div className="chips mt-3">{it.signals.map((s: any) => <span key={s.rule_id} className="pill" title={`Signal ${s.rule_id}`}>{s.name}</span>)}</div>}

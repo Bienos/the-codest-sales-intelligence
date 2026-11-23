@@ -212,7 +212,9 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
             hyps = qa(conn, "SELECT h.* FROM opportunity_hypotheses h WHERE h.organization_id=%s AND h.state NOT IN ('superseded') ORDER BY h.score_total DESC", (oid,))
             inits = qa(conn, "SELECT id, title, title_is_official, stage, programme_domain, technology_tags, research_gaps, budget_verified, last_material_event_at, next_milestone_at FROM initiatives WHERE owner_org_id=%s AND status='active'", (oid,))
             sources = qa(conn, "SELECT sheet_title, source_file_id, row_number FROM account_source_links WHERE organization_id=%s", (oid,))
-            signals = qa(conn, "SELECT s.rule_id, s.demand_tier, s.strength, s.status, s.effective_from, s.expires_at, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verified_at FROM signals s JOIN events e ON e.id=s.event_id WHERE s.organization_id=%s ORDER BY s.effective_from DESC LIMIT 50", (oid,))
+            signals = qa(conn, "SELECT s.rule_id, s.demand_tier, s.strength, CASE WHEN s.status='active' AND (s.expires_at IS NULL OR s.expires_at>now()) AND e.lifecycle_status='active' THEN 'active' ELSE 'historical' END AS status, s.effective_from, s.expires_at, e.id::text AS event_id, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verified_at, s.evidence_claim_ids FROM signals s JOIN events e ON e.id=s.event_id AND e.subject_org_id=s.organization_id WHERE s.organization_id=%s ORDER BY s.effective_from DESC", (oid,))
+            for signal in signals:
+                signal["evidence"] = evidence_for(conn, list(signal.pop("evidence_claim_ids") or []))
             suppliers = qa(conn, "SELECT supplier_name, supplier_role, scope_text, relation, exclusivity, status FROM supplier_edges WHERE buyer_org_id=%s", (oid,))
             routes = qa(conn, "SELECT r.route_type, r.counterparty_name, r.access_status, r.restriction FROM procurement_routes r JOIN initiatives i ON i.id=r.initiative_id WHERE i.owner_org_id=%s", (oid,))
             coverage = qa(conn, "SELECT source_family, coverage_state, source_ids, last_success_at, note FROM account_source_coverage WHERE organization_id=%s", (oid,))

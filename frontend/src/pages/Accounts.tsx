@@ -259,7 +259,10 @@ const H = ({ children }: { children: React.ReactNode }) => <h2 className="h-sub"
 export function Account({ me }: { me: { permissions: string[] } }) {
   const { id } = useParams();
   const [d, setD] = useState<any>(null);
-  const [tab, setTab] = useState(TABS[0]);
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(params.get("event") ? "Background" : TABS[0]);
+  const [signalStatus, setSignalStatus] = useState("all");
+  const [signalTier, setSignalTier] = useState("all");
   const [sigNames, setSigNames] = useState<Record<string, string>>({});
   useEffect(() => { api("/api/library/signals").then((r) => setSigNames(Object.fromEntries(r.items.map((x: any) => [x.rule_id, x.signal])))).catch(() => undefined); }, []);
   const [err, setErr] = useState<unknown>(null);
@@ -275,6 +278,10 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const loadCamps = () => api(`/api/accounts/${id}/campaigns`).then(setCamps).catch(() => setCamps({ items: [] }));
   useEffect(() => { loadCamps(); }, [id]);
   useEffect(() => { if (!camps.items.some((b: any) => b.status === "queued" || b.status === "running")) return; const t = setInterval(() => { if (!document.hidden) loadCamps(); }, 6000); return () => clearInterval(t); }, [camps]);
+  useEffect(() => {
+    const event = params.get("event");
+    if (d && tab === "Background" && event) document.getElementById(`event-${event}`)?.scrollIntoView({ block: "center" });
+  }, [d, tab, params]);
   if (!d) return <>
     <p className="small mt-0"><Link to="/accounts">Accounts</Link></p><h1 className="title-sm">Account details</h1>
     {err ? <Err e={err} onRetry={reloadPage} /> : <Skeleton rows={4} label="Loading the account" />}
@@ -328,9 +335,16 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           <p className="small">Technology: {i.technology_tags.join(", ") || "Not known"} · last big news {fmtDate(i.last_material_event_at)} · next milestone {fmtDate(i.next_milestone_at)}</p>
           {i.research_gaps.length > 0 && <><span className="eyebrow">Still to find out</span><ul className="tight small">{i.research_gaps.map((g: string, k: number) => <li key={k}>{g}</li>)}</ul></>}</div>)}
         <H>Signals</H>
-        <div className="card table-wrap" tabIndex={0} role="region" aria-label="Signals table"><table><thead><tr><th>Signal</th><th>What it says about demand</th><th>Status</th><th>What happened</th><th>Date</th><th>Expires</th></tr></thead><tbody>
-          {d.signals.map((x: any, i: number) => <tr key={i}><td>{sigNames[x.rule_id] ?? x.rule_id}</td><td className="small">{DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier)}</td><td><Badge kind={x.status === "active" ? "ok" : ""}>{x.status === "active" ? "Current" : humanize(x.status)}</Badge></td><td>{x.summary}</td><td>{fmtDate(x.event_at ?? x.pub_at)}</td><td>{fmtDate(x.expires_at)}</td></tr>)}
-          {d.signals.length === 0 && <tr><td colSpan={6} className="muted">No signals yet.</td></tr>}</tbody></table></div>
+        <div className="row gap-2 mb-2">
+          <label>Status <select value={signalStatus} onChange={e => setSignalStatus(e.target.value)}><option value="all">All signals</option><option value="active">Current</option><option value="historical">Historical</option></select></label>
+          <label>Evidence of demand <select value={signalTier} onChange={e => setSignalTier(e.target.value)}><option value="all">All levels</option><option value="D1">Explicit</option><option value="D2">Inferred</option><option value="D3">Programme</option><option value="D4">Context</option></select></label>
+        </div>
+        {Object.values(d.signals.filter((x: any) => (signalStatus === "all" || x.status === signalStatus) && (signalTier === "all" || x.demand_tier === signalTier)).reduce((groups: Record<string, any[]>, x: any) => { (groups[x.event_id] ??= []).push(x); return groups; }, {}) as Record<string, any[]>).map((group: any[]) => <div className="card" id={`event-${group[0].event_id}`} key={group[0].event_id}>
+          <b>{group[0].summary}</b><p className="small muted">{fmtDate(group[0].event_at ?? group[0].pub_at)}{!group[0].event_at && !group[0].pub_at ? " · date unknown" : ""}</p>
+          {group.map((x: any) => <p className="small" key={x.rule_id}><Badge kind={x.status === "active" ? "ok" : ""}>{x.status === "active" ? "Current" : "Historical"}</Badge> {sigNames[x.rule_id] ?? x.rule_id} · {DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier)}</p>)}
+          <Evidence items={group.flatMap((x: any) => x.evidence).filter((e: any, i: number, all: any[]) => all.findIndex((a: any) => a.claim_id === e.claim_id) === i)} />
+        </div>)}
+        {d.signals.length === 0 && <p className="muted">No signals yet.</p>}
         <H>Suppliers</H>
         <div className="card table-wrap" tabIndex={0} role="region" aria-label="Suppliers table"><table><thead><tr><th>Supplier</th><th>Role</th><th>What they do here</th><th>Relationship</th><th>Exclusive?</th></tr></thead><tbody>{d.suppliers.map((x: any, i: number) => <tr key={i}><td>{x.supplier_name}</td><td>{humanize(x.supplier_role)}</td><td>{blank(x.scope_text)}</td><td>{humanize(x.relation)}</td><td>{blank(x.exclusivity)}</td></tr>)}
           {d.suppliers.length === 0 && <tr><td colSpan={5} className="muted">No suppliers recorded yet.</td></tr>}</tbody></table>
