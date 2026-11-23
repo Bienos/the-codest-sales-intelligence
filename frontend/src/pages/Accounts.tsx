@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
 const del = (p: string) => api(p, { method: "DELETE" });
-import { Badge, Err, Evidence, LABELS, groupName, humanize, lab, priorityKind, Skeleton, reloadPage, whyShort } from "../components/ui";
+import { Badge, Err, Evidence, LABELS, groupName, humanize, lab, priorityKind, Skeleton, reloadPage, whyShort, Tabs } from "../components/ui";
 
 function AddCompany({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
@@ -256,7 +256,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       {d.score && <div className="card"><div className="row spread"><div><span className="eyebrow" title="Adds up this account's recent checked signals. Different kinds count for more than repeats, and each signal fades as it ages. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</span><div className="kpi-n mt-1 mb-1">{d.score.stopped ? "On hold" : d.score.score}<span className="kpi-u"> {BAND[d.score.band][1]}</span></div></div>
         <div className="small measure-sm">{d.score.stopped ? "Something we found says not to pursue this account now, so the score is held at zero until it expires." : `${d.score.signal_count} ${d.score.signal_count === 1 ? "signal" : "signals"} (${d.score.groups.map(groupName).join(", ")}). Different kinds of signal agreeing count for more than the same kind repeated, and each signal fades as it ages. This is a ranking, not a probability.`}
           {d.score.top?.length > 0 && <div className="chips mt-2">{d.score.top.map((t: any) => <Badge key={t.rule_id}>{sigNames[t.rule_id] ?? t.name ?? t.rule_id}</Badge>)}</div>}</div></div></div>}
-      <div className="tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}</div>
+      <Tabs items={TABS.map((t) => ({ key: t, label: t }))} value={tab} onChange={setTab} label="Account sections" />
       {tab === "Overview" && (<>
         <H>Opportunities</H>
         {d.opportunities.length === 0 && <div className="empty"><b>No opportunities yet</b>One appears when checked signals point to a concrete piece of work. Press “Check for news” to look for some.</div>}

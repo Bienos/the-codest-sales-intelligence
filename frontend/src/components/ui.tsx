@@ -188,6 +188,21 @@ export const Skeleton = ({ rows = 3, label = "Loading" }: { rows?: number; label
 );
 /** The backend appends "; route: …; external demand: …" to this sentence. Both are already shown as facts, so keep only the first clause. */
 export const whyShort = (s?: string | null) => String(s ?? "").split(/;\s*route:/)[0].replace(/\s*\(confirmed scope\)/, "");
+/** Accessible tab strip: arrow keys, Home and End move between tabs; only the selected tab is in the tab order. */
+export function Tabs({ items, value, onChange, label, flush = false }: { items: { key: string; label: ReactNode }[]; value: string; onChange: (k: string) => void; label?: string; flush?: boolean }) {
+  const go = (e: React.KeyboardEvent, i: number) => {
+    const n = e.key === "ArrowRight" ? (i + 1) % items.length : e.key === "ArrowLeft" ? (i - 1 + items.length) % items.length : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : -1;
+    if (n < 0) return;
+    e.preventDefault(); onChange(items[n].key);
+    const strip = e.currentTarget.parentElement;
+    requestAnimationFrame(() => (strip?.children[n] as HTMLElement | undefined)?.focus());
+  };
+  return (
+    <div className={`tabs${flush ? " flush" : ""}`} role="tablist" aria-label={label}>
+      {items.map((t, i) => <button key={t.key} role="tab" aria-selected={value === t.key} tabIndex={value === t.key ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => go(e, i)}>{t.label}</button>)}
+    </div>
+  );
+}
 export const reloadPage = () => window.location.reload();
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{title}</b>{children}</div>;
 

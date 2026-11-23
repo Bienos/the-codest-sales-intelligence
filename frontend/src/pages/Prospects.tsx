@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, post, trackSourceOpened } from "../api";
-import { Badge, Empty, Err, humanize, Skeleton } from "../components/ui";
+import { Badge, Empty, Err, humanize, Skeleton, Tabs } from "../components/ui";
 
 type Lane = "shortlist" | "signals";
 
@@ -39,10 +39,7 @@ export default function Prospects() {
         <b>From your workbooks. Not checked yet.</b> Open the source and confirm it before you act, or press “Check this source” and we will read the page for you.
       </div>
       <div className="row spread mt-4 mb-4">
-        <div className="tabs flush" role="tablist">
-          <button role="tab" aria-selected={lane === "shortlist"} onClick={() => setLane("shortlist")}>Your shortlist</button>
-          <button role="tab" aria-selected={lane === "signals"} onClick={() => setLane("signals")}>Recent signals</button>
-        </div>
+        <Tabs flush label="Which list" items={[{ key: "shortlist", label: "Your shortlist" }, { key: "signals", label: "Recent signals" }]} value={lane} onChange={(k) => setLane(k as Lane)} />
         <div className="row"><input aria-label="Search accounts" placeholder="Search accounts" value={q} onChange={(e) => setQ(e.target.value)} className="field-md" />
           <button onClick={batch} title="Reads the first 10 unchecked items in this list and keeps only what it can quote from the page">Check the top 10</button></div>
       </div>

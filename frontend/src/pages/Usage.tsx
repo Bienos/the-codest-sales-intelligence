@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, fmtDateTime } from "../api";
-import { Badge, Err, Meter, humanize, Skeleton, reloadPage } from "../components/ui";
+import { Badge, Err, Meter, humanize, Skeleton, reloadPage, Tabs } from "../components/ui";
 
 const usd = (v: number | null | undefined, d = 2) => (v === null || v === undefined ? "Not known" : `$${Number(v).toFixed(d)}`);
 const num = (v: any) => Number(v ?? 0).toLocaleString();
@@ -85,7 +85,7 @@ export default function Usage() {
           <p className="small mt-3 mb-0">{d.cost_per_verified_event_usd === null ? "The cost of each checked finding appears once there is spend and a result." : <>Cost of each checked finding: <b>{usd(d.cost_per_verified_event_usd)}</b></>}</p>
         </div>
       </div>
-      <div className="tabs" role="tablist">{([["overview", "By month"], ["source", "By source"], ["plan", "By saved search"], ["ledger", "Every call"]] as [Tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <Tabs items={[["overview", "By month"], ["source", "By source"], ["plan", "By saved search"], ["ledger", "Every call"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => setTab(k as Tab)} label="Usage views" />
       {tab === "overview" && <div className="card table-wrap"><table><thead><tr><th>Month</th><th>Service</th><th>Calls</th><th>Used</th><th>Cost</th><th>Failed</th></tr></thead><tbody>
         {d.months.map((x: any, i: number) => <tr key={i}><td>{x.period}</td><td>{humanize(x.provider)}</td><td>{num(x.calls)}</td><td>{num(x.units)}{x.provider === "anthropic" ? ` tokens (${num(x.tokens_in)} read, ${num(x.tokens_out)} written)` : " searches"}</td><td>{x.cost_usd === null ? <span className="muted">unknown</span> : usd(x.cost_usd)}</td><td>{x.errors}</td></tr>)}
         {d.months.length === 0 && <tr><td colSpan={6} className="muted">No paid calls yet.</td></tr>}</tbody></table></div>}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
+import { Badge, Err, humanize, Skeleton, reloadPage, Tabs } from "../components/ui";
 import Library from "./Library";
 
 type Tab = "signals" | "sources" | "urls";
@@ -80,9 +80,7 @@ export default function LibraryHub() {
     <>
       <div className="page-head"><div className="eyebrow">Reference</div><h1>Library</h1></div>
       <div className="row spread">
-        <div className="tabs flush" role="tablist">
-          {([["signals", "Signals"], ["sources", "Sources"], ["urls", "Pages and feeds"]] as [Tab, string][]).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} onClick={() => set({ tab: k })}>{l}</button>)}
-        </div>
+        <Tabs flush label="Library sections" items={[["signals", "Signals"], ["sources", "Sources"], ["urls", "Pages and feeds"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => set({ tab: k })} />
         <input aria-label="Filter by keyword" placeholder="Filter by keyword" value={q} onChange={(e) => setSp({ tab, ...(e.target.value ? { q: e.target.value } : {}) })} className="field-md" />
       </div>
       <div className="mt-4">

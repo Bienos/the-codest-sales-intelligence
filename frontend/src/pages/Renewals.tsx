@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate } from "../api";
-import { Badge, Err, Skeleton, reloadPage } from "../components/ui";
+import { Badge, Err, Skeleton, reloadPage, Tabs } from "../components/ui";
 
 const COUNTRY: Record<string, string> = { GB: "UK", DE: "Germany", AT: "Austria", CH: "Switzerland", SE: "Sweden", DK: "Denmark", NO: "Norway", FI: "Finland", PL: "Poland" };
 const SIZE: Record<string, string> = { sme: "small or medium company", large: "large company" };
@@ -24,10 +24,7 @@ export default function Renewals() {
     <>
       <div className="page-head"><div className="eyebrow">Work that comes round again</div><h1>Renewals</h1></div>
       <p className="small muted mt-0 measure">Public bodies award IT contracts for a fixed term, then usually buy again. Each card is an official award notice with the supplier who won. We add the contract length in the notice to the date the notice was sent to estimate when it ends. If the notice gives no length, we assume 3 years and label the date as an estimate.</p>
-      <div className="tabs" role="tablist" aria-label="What to show">
-        <button role="tab" aria-selected={tab === "ending"} onClick={() => setTab("ending")}>Contracts ending</button>
-        <button role="tab" aria-selected={tab === "winners"} onClick={() => setTab("winners")}>Current suppliers</button>
-      </div>
+      <Tabs label="What to show" items={[{ key: "ending", label: "Contracts ending" }, { key: "winners", label: "Current suppliers" }]} value={tab} onChange={(k) => setTab(k as "ending" | "winners")} />
       <div className="feedbar">
         {tab === "ending" && <input aria-label="Search buyer, subject or supplier" placeholder="Search buyer, subject or supplier" value={q} onChange={(e) => setQ(e.target.value)} />}
         <select aria-label="Country" value={country} onChange={(e) => setCountry(e.target.value)}><option value="">All our markets</option>{Object.entries(COUNTRY).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>

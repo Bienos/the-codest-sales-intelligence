@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, post, trackSourceOpened } from "../api";
-import { Badge, Err, Skeleton, TIER, lab, reloadPage } from "../components/ui";
+import { Badge, Err, Skeleton, TIER, lab, reloadPage, Tabs } from "../components/ui";
 const SERVICE: Record<string, string> = { staff_augmentation: "Staff Augmentation", team_extension: "Team Extension", ai_services: "AI Services" };
 const LANG: Record<string, string> = { de: "German", pl: "Polish", sv: "Swedish", no: "Norwegian", nb: "Norwegian", da: "Danish", fi: "Finnish", fr: "French", nl: "Dutch", es: "Spanish", it: "Italian", is: "Icelandic" };
 
@@ -24,10 +24,7 @@ export default function Feed() {
     <>
       <div className="page-head"><div className="eyebrow">What we found</div><h1>Market feed</h1></div>
       <p className="small muted mt-0 measure">Everything here was checked against the original page. Each item shows the quote, where it came from and which of our services it could fit. Links we have not read yet wait on the right.</p>
-      <div className="tabs" role="tablist" aria-label="What to show">
-        {[["accounts", "Your accounts"], ["market", "New companies: main markets"], ["rest", "New companies: elsewhere"], ["public", "Public sector"]].map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}>{l}{d?.view_counts ? <span className="tabn">{Number(d.view_counts[k] ?? 0).toLocaleString()}</span> : null}</button>))}
-      </div>
+      <Tabs label="What to show" items={[["accounts", "Your accounts"], ["market", "New companies: main markets"], ["rest", "New companies: elsewhere"], ["public", "Public sector"]].map(([k, l]) => ({ key: k, label: <>{l}{d?.view_counts ? <span className="tabn">{Number(d.view_counts[k] ?? 0).toLocaleString()}</span> : null}</> }))} value={view} onChange={setView} />
       <p className="small muted sub-tight">{{ accounts: "Checked news about companies on your lists. These can become signals and opportunities.", market: "Checked news about companies not on your lists yet, in the UK, DACH, Nordics and Poland. Each could be added as an account.", rest: "The same for the rest of Europe and the US. A second priority.", public: "Government and public bodies. Kept apart because they buy through tenders." }[view]}</p>
       <div className="feedbar">
         <input aria-label="Search the feed" placeholder="Search company or keyword" value={q} onChange={(e) => setQ(e.target.value)} />
