@@ -162,12 +162,12 @@ function Connections() {
 
 function ScanTop() {
   const [n, setN] = useState(10); const [search, setSearch] = useState(false); const [financeOnly, setFinanceOnly] = useState(true);
-  const [showPilot, setShowPilot] = useState(false); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const [showPilot, setShowPilot] = useState(true); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
   const go = async () => { setBusy(true); setErr(null); setMsg(""); try { const r = await post("/api/admin/scan-accounts", { limit: n, with_search: search, finance_only: financeOnly }); setMsg(`Checking ${r.queued} ${r.queued === 1 ? "account" : "accounts"}. ${r.note} Results appear in the Market feed as we check them.`); } catch (e) { setErr(e); } finally { setBusy(false); } };
   return (
     <div className="card">
       <b>Check your priority accounts for news</b>
-      <div className="small muted mt-1 mb-3">Reads each account's own news, press, careers and job-board pages{search ? " and runs one web search per account" : ""}. This only runs when you press the button. Cost stays within the monthly limits under Usage and cost.</div>
+      <div className="small muted mt-1 mb-3">Reads each account's own news, press, careers and job-board pages{search ? " and runs one web search per account" : ""}. The top 10 finance accounts are checked weekly. Use the button to run an extra check. Cost stays within the monthly limits under Usage and cost.</div>
       <div className="row">
         <label className="small">How many accounts <input type="number" min={1} max={300} value={n} onChange={(e) => setN(Number(e.target.value))} className="field-xs" /></label>
         <label className="small row"><input type="checkbox" checked={search} onChange={(e) => setSearch(e.target.checked)} /> Include one web search per account (uses the Exa budget)</label>
@@ -183,6 +183,7 @@ function ScanTop() {
           {d.items.map((account: any) => <details key={account.id} className="card">
             <summary>{account.name} · {account.endpoints.length} company sources · {account.recent.length === 5 ? "5+" : account.recent.length} recent findings</summary>
             <p className="small"><Link to={`/accounts/${account.id}`}>Open company</Link></p>
+            <p className="small muted">{account.scan ? <>Scheduled check · {account.scan.outcome === "no_website" ? "Company website missing" : humanize(account.scan.status)} · {fmtDateTime(account.scan.updated_at)}</> : "Waiting for the first scheduled check."}</p>
             {account.endpoints.length === 0 ? <p className="small muted">No company sources configured.</p> :
               <ul className="tight small">{account.endpoints.map((source: any) => <li key={source.url}>
                 <a href={source.url} target="_blank" rel="noreferrer noopener">{humanize(source.kind)}</a>

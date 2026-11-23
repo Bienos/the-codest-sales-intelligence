@@ -250,7 +250,8 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
     conn.commit()
     out: dict[str, Any] = {"status": "ok", "endpoints": len(existing), "scanned": scanned, "documents": len(res.new_doc_ids) + len(res.changed_doc_ids), "job_changes": len(res.structured_changes), "notes": notes}
     if res.new_doc_ids or res.changed_doc_ids or res.structured_changes:
-        res_resolver = (lambda name: (resolver(name) if resolver else None) or org_id)
+        from ..verify.run import org_aware_resolver
+        res_resolver = org_aware_resolver(conn, resolver, org_id)
         out["processed"] = process_run(conn, res, extractor=extractor, resolve_org=res_resolver)
     conn.commit()
     return out

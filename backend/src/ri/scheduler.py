@@ -72,6 +72,22 @@ def schedule_watchlist(conn: Conn, now: datetime | None = None, limit: int = 25,
     return n
 
 
+
+def schedule_finance_pilot(conn: Conn, now: datetime) -> int:
+    """Check the top finance accounts once per week through the first-party scanner."""
+    from .discovery.plans import priority_accounts
+
+    week = now.strftime("%G-W%V")
+    queued = 0
+    for account in priority_accounts(conn, 10, finance_only=True):
+        oid = str(account["organization_id"])
+        _, created = enqueue(
+            conn, "account_scan", {"organization_id": oid},
+            idempotency_key=f"finance-pilot:{oid}:{week}", correlation_id="finance-pilot", max_attempts=2,
+        )
+        queued += int(created)
+    return queued
+
 def requeue_stuck_verifications(conn: Conn, now: datetime | None = None, minutes: int = 20) -> int:
     """A request left 'fetching' or 'extracting' after its job died is retried, at most twice; after that it is marked failed with a reason."""
     from datetime import timedelta
@@ -126,6 +142,7 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
         else:
             out[name] = r
 
+    step("finance_pilot_scans", lambda: schedule_finance_pilot(conn, now))
     step("watchlist_scans", lambda: schedule_watchlist(conn, now))
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     from .market import tag_public_bodies

@@ -607,6 +607,14 @@ def test_finance_source_pilot_reports_only_eligible_priority_accounts(api, conn)
     pilot = c.get("/api/admin/source-pilot", headers=h("admin")).json()["items"]
     assert len(pilot) == 1 and pilot[0]["id"] == str(w["org"])
     assert pilot[0]["endpoints"][0]["docs_seen"] == 3
+    from ri.scheduler import schedule_finance_pilot
+
+    now = datetime.now(timezone.utc)
+    assert schedule_finance_pilot(conn, now) == 1
+    assert schedule_finance_pilot(conn, now) == 0
+    conn.commit()
+    scheduled_pilot = c.get("/api/admin/source-pilot", headers=h("admin")).json()["items"]
+    assert scheduled_pilot[0]["scan"]["status"] == "scheduled"
     result = c.post("/api/admin/scan-accounts", headers=h("admin"),
                     json={"limit": 10, "finance_only": True, "with_search": False})
     assert result.status_code == 200 and result.json()["queued"] == 1

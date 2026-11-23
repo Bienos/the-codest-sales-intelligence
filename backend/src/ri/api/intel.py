@@ -611,8 +611,12 @@ def register_scan(app: FastAPI) -> None:
                     ORDER BY demand_tier NULLS LAST, date DESC, e.id LIMIT 5""", (oid,))
                 for finding in recent:
                     finding["sources"] = story_sources(conn, [finding["event_id"]])
+                scan = q1(conn, """SELECT status, updated_at, result->>'status' AS outcome
+                    FROM jobs WHERE kind='account_scan' AND correlation_id='finance-pilot'
+                      AND payload->>'organization_id'=%s
+                    ORDER BY created_at DESC LIMIT 1""", (str(oid),))
                 items.append({"id": str(oid), "name": account["display_name"], "segment": account["segment"],
-                              "endpoints": endpoints, "recent": recent})
+                              "endpoints": endpoints, "recent": recent, "scan": scan})
         return {"items": items}
 
     @app.post("/api/admin/scan-accounts")
