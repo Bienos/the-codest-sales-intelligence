@@ -137,7 +137,7 @@ function Setup({ ov, reason }: { ov: any; reason?: string | null }) {
     <div className="card setup">
       <div className="eyebrow">Why Today is quiet</div>
       <p style={{ margin: "0 0 14px" }}>{reason ?? "Nothing has passed verification yet."} Until sources are live, a quiet screen says nothing about your market.</p>
-      <ol className="steps">{steps.map((s) => <li key={s.t} className={s.done ? "done" : ""}><span className="tick" aria-hidden="true">{s.done ? "✓" : "·"}</span><div><b>{s.t}</b><div className="small muted">{s.d}</div></div></li>)}</ol>
+      <ol className="steps">{steps.map((s) => <li key={s.t} className={s.done ? "done" : ""}><span className="setup-tick" aria-hidden="true">{s.done ? "✓" : "·"}</span><div><b>{s.t}</b><div className="small muted">{s.d}</div></div></li>)}</ol>
     </div>
   );
 }

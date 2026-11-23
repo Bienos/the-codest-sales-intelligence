@@ -25,11 +25,11 @@ function Signals({ q }: { q: string }) {
       </div>
       <p className="small muted">These are the 64 original signals, with the original wording kept. <b>Active</b> means the platform can detect it from verified events. <b>Defined</b> means it is written down and waiting for a source or a gold-set test. Nothing is switched on without evidence it works.</p>
       <div className="sigs">{d.items.map((s: any) => (
-        <details key={s.rule_id} className="sig">
+        <details key={s.rule_id} className="sigrow">
           <summary>
-            <span className="sig-id">{s.rule_id}</span>
-            <span className="sig-t">{s.signal}</span>
-            <span className="sig-m"><Strength n={s.strength} /><Badge kind={s.status === "active" ? "ok" : ""}>{s.status === "active" ? "Active" : "Defined"}</Badge></span>
+            <span className="sigrow-id">{s.rule_id}</span>
+            <span className="sigrow-t">{s.signal}</span>
+            <span className="sigrow-m"><Strength n={s.strength} /><Badge kind={s.status === "active" ? "ok" : ""}>{s.status === "active" ? "Active" : "Defined"}</Badge></span>
           </summary>
           <dl className="lib-facts" style={{ gridTemplateColumns: "150px 1fr" }}>
             <dt>Group</dt><dd>{s.grp}</dd>

@@ -225,8 +225,20 @@ const Rules = () => <Load path="/api/admin/rules">{(d) => <><div className="row"
 
 const Audit = () => <Load path="/api/admin/audit">{(d) => <div className="card table-wrap"><table><thead><tr><th>When</th><th>Actor</th><th>Operation</th><th>Record</th><th>Approval</th></tr></thead><tbody>{d.items.map((a: any) => <tr key={a.id}><td>{fmtDateTime(a.at)}</td><td>{a.actor}</td><td>{a.operation}</td><td>{a.record_type} {a.record_id?.slice(0, 8)}</td><td>{a.approval_id?.slice(0, 8)}</td></tr>)}</tbody></table></div>}</Load>;
 
-const Quality = () => <Load path="/api/admin/metrics">{(d) => <><div className="gates">{Object.entries(d).filter(([, v]) => typeof v === "number").map(([k, v]: any) => <div key={k} className="gate"><b>{humanize(k)}</b><div style={{ fontSize: 22 }}>{v}</div></div>)}</div>
-  <Load path="/api/admin/funnel">{(f) => <><h3>Outcome funnel</h3>{Object.keys(f.cohorts).length === 0 && <div className="empty">No outcomes recorded yet. Nothing here is inferred.</div>}{Object.entries(f.cohorts).map(([k, c]: any) => <div key={k} className="card"><b>{humanize(k)}</b> · presented {c.presented} {c.insufficient_sample && <Badge kind="warn">insufficient sample: no conclusions</Badge>}</div>)}<ul className="tight small muted">{f.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>}</Load></>}</Load>;
+const QUALITY_LABELS: Record<string, [string, string]> = {
+  stale_sources: ["Sources gone quiet", "Active sources that haven't produced anything recently."],
+  dead_letters_unreplayed: ["Failed jobs not retried", "Jobs that failed for good and haven't been replayed. See Jobs."],
+  alerts_sent: ["Alerts sent", "Alerts sent to the team."],
+  duplicate_alert_groups: ["Duplicate alerts", "Stories alerted more than once. Should be zero."],
+  high_priority_without_citation: ["High priority without a source", "High-priority cards with no cited source. Should be zero."],
+  open_identity_reviews: ["Company matches to review", "Companies we couldn't match with confidence. See Identity review."],
+  unverified_events: ["Findings not checked yet", "Findings waiting to be checked against the original page."],
+  unauthorised_writes_detected: ["Unapproved changes detected", "Writes to Pipedrive or outreach without an approval. Should be zero."],
+  pending_approvals: ["Approvals waiting", "Requests waiting for a second person. See Approvals."],
+};
+const Quality = () => <Load path="/api/admin/metrics">{(d) => <><p className="sub" style={{ marginBottom: 14 }}>Health checks on the platform itself. Anything marked "should be zero" and isn't is worth a look.</p>
+  <div className="kpis">{Object.entries(d).filter(([, v]) => typeof v === "number").map(([k, v]: any) => { const [t, hint] = QUALITY_LABELS[k] ?? [humanize(k), ""]; return <div key={k} className="card kpi"><div className="eyebrow">{t}</div><div className="kpi-n">{v}</div>{hint && <div className="small muted">{hint}</div>}</div>; })}</div>
+  <Load path="/api/admin/funnel">{(f) => <><h3>Outcome funnel</h3>{Object.keys(f.cohorts).length === 0 && <div className="empty"><b>No outcomes recorded yet</b>Nothing here is inferred.</div>}{Object.entries(f.cohorts).map(([k, c]: any) => <div key={k} className="card"><b>{humanize(k)}</b> · presented {c.presented} {c.insufficient_sample && <Badge kind="warn">too few to judge</Badge>}</div>)}<ul className="tight small muted">{f.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>}</Load></>}</Load>;
 
 function Imports() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
