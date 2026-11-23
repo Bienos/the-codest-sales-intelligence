@@ -75,7 +75,10 @@ export default function Feed() {
                   <h2 className="fcard-t">{it.summary_en ?? it.summary}</h2>
                   {it.summary_en && !it.evidence.some((e: any) => e.claim === it.summary) && <p className="small muted sec-note">Original wording: {it.summary}</p>}
                   {signal && hasEvidence ? <p className="buying-signal small mt-2 mb-2"><b>{signal.name}</b><br />{demandLabel(signal.demand_tier)}</p>
-                    : <p className="small muted mt-2 mb-2">{it.scope.linked ? "No current source-backed buying signal." : "Unmatched buyer · check the legal entity before using this as a lead."}</p>}
+                    : <p className="small muted mt-2 mb-2">{it.scope.linked ? "No current source-backed buying signal." : "Buyer to confirm"}</p>}
+                  {it.contact_hint && <p className="small">
+                    <b>Who to look for</b> {it.contact_hint.role}. {it.contact_hint.question}
+                  </p>}
                   {it.why && <div className={`why ${it.why.level}`}>
                     <span className="k">{it.why.level === "none" ? "Low likely fit" : "Suggested fit · qualify before acting"}</span>
                     {it.why.service && it.why.service !== "none" && <Badge kind={it.why.level === "strong" ? "ok" : "info"}>{SERVICE[it.why.service] ?? it.why.service}</Badge>}

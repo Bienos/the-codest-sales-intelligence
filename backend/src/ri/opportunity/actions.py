@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from ..db import Conn, q1
+from ..feed import contact_hint
 from .model import Facts
 
 
@@ -47,14 +48,15 @@ def decide(f: Facts, gates: dict[str, Any], blockers: list[dict[str, str]]) -> d
                 "objective": f"Establish whether {f.hyp['counterparty_name']} needs external implementation capacity for this rollout",
                 "reason": "Platform vendor may own the rollout; implementation-partner eligibility is unverified", "trigger_condition": "Within 10 working days",
                 "expected_outcome": "Vendor route verified or blocked", "stop_condition": "Vendor states no external capacity or lists an approved-partner process"}
+    hint = contact_hint("", [s["rule_id"] for s in f.signals])
     if g("G4") != "pass":
-        return {**base, "action_type": "qualify_external_demand", "target_role": "programme/technical owner",
+        return {**base, "action_type": "qualify_external_demand", "target_role": hint["role"],
                 "objective": "Ask whether the separable engineering workstream is sourced externally and through which supplier model (buyer conversation, not more web research)",
                 "reason": "Verified programme exists but external demand is NOT established; public research cannot resolve it (unknown_until_buyer)",
                 "trigger_condition": "After owner/suppression check and approved first-touch draft", "expected_outcome": "Buyer-confirmed answer on external capacity and supplier route",
                 "stop_condition": "Buyer confirms or denies external need"}
     if g("G6") != "pass":
-        return {**base, "action_type": "identify_delivery_owner", "target_role": "research_analyst", "objective": "Identify and verify the programme delivery owner for this workstream (role-first)",
+        return {**base, "action_type": "identify_delivery_owner", "target_role": hint["role"], "objective": "Find the person responsible for delivery and confirm which team and company own the workstream",
                 "reason": "Demand evidenced but no verified buyer responsible for the workstream", "trigger_condition": "Within 5 working days",
                 "expected_outcome": "Verified role/person with initiative responsibility evidence", "stop_condition": "Owner verified or not publicly identifiable", "approval_required": False}
     if g("G7") != "pass":

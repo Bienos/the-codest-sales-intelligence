@@ -75,7 +75,7 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
           <div className="eyebrow m-0">Next action</div>
           {a ? <>
             <div className="atype">{lab("action", a.action_type)}</div>
-            <dl><dt>Goal</dt><dd>{a.objective}</dd><dt>Owner</dt><dd>{a.owner_name ?? (a.owner_id ? "Assigned in Pipedrive" : "Unassigned")}</dd><dt>Due</dt><dd>{a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</dd></dl>
+            <dl><dt>Goal</dt><dd>{a.objective}</dd>{a.target_role && <><dt>Who to look for</dt><dd>{a.target_role}</dd></>}<dt>Owner</dt><dd>{a.owner_name ?? (a.owner_id ? "Assigned in Pipedrive" : "Unassigned")}</dd><dt>Due</dt><dd>{a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</dd></dl>
             <div className="why"><b>Why:</b> {actionReason(a)}</div>
             {a.approval_required && <div className="small muted">A colleague must approve before anything is sent or changed.</div>}
           </> : <span className="muted small">Nothing to do right now.</span>}

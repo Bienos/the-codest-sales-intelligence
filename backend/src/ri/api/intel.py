@@ -384,7 +384,8 @@ def register_feed(app: FastAPI) -> None:
                               "organization": {"id": str(r["org_id"]), "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"],
                                                "in_master_list": r["in_master_list"], "icp": icp_band(r["employees_estimate"], bool(r["employees_uncertain"]), r["segment"])["band"], "market": mk} if r["org_id"] else None,
                               "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in r["sigs"]], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
-                              "evidence": ev, "programme": r["programme"], "why": r["ai_fit"], "language": r["lang"], "summary_en": r["summary_en"],
+                              "evidence": ev, "programme": r["programme"],
+                              "contact_hint": fd.contact_hint(r["event_type"], sig_ids, buyer_unclear=r["org_id"] is None), "why": r["ai_fit"], "language": r["lang"], "summary_en": r["summary_en"],
                               "scope": {"sector": r["sector"], "proven": r["proven"], "linked": bool(r["org_id"]), "tier": r["market_tier"], "lane": r["lane"], "country": r["market_country"], "buyer": r["buyer_name"]}})
                 if len(items) >= limit:
                     break

@@ -17,7 +17,7 @@ def leading_signals(conn: Conn, organization_ids: list[str], *, initiative_id: s
     rows = qa(conn, """
         SELECT DISTINCT ON (s.organization_id) s.organization_id::text AS organization_id,
                s.rule_id, l.signal AS label, s.demand_tier, s.commercial_questions,
-               e.summary, e.event_at AS happened_at,
+               e.id::text AS event_id, e.summary, e.event_at AS happened_at,
                coalesce(sd.published_at, e.pub_at) AS published_at,
                c.evidence_anchor AS excerpt, evidence.url AS source_url,
                src.display_name AS source_name

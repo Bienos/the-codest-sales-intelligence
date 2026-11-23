@@ -51,3 +51,18 @@ def play_ids() -> list[tuple[str, str]]:
 
 def rules_for_play(play_id: str) -> list[str]:
     return [rid for rid, r in _load()["rules"].items() if r.get("related_play") == play_id]
+
+
+def contact_hint(event_type: str, rule_ids: list[str], *, buyer_unclear: bool = False) -> dict[str, str]:
+    """Give a seller a role to research without asserting who owns the buying decision."""
+    rules = _load()["rules"]
+    plays = fit_for(rule_ids)["plays"]
+    if event_type.startswith("procurement_"):
+        role = "Procurement lead and technical sponsor"
+    else:
+        role = next((p["primary_buyer"] for p in plays if p["primary_buyer"]), "Programme owner or engineering delivery lead")
+    question = next((q for rid in rule_ids for q in rules.get(rid, {}).get("commercial_questions") or []),
+                    "Who owns this workstream, and is any part of the delivery open to outside engineering support?")
+    if buyer_unclear:
+        question = "Which company and team own the workstream? If a vendor or integrator leads delivery, who manages specialist partners?"
+    return {"role": role, "question": question}

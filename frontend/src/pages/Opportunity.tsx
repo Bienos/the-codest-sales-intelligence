@@ -28,11 +28,14 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
       {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} />
 
       <h2 className="section-title">Buying signal for this programme</h2>
-      <div className="card"><SignalSummary signal={d.buying_signal} detailed /></div>
+      <div className="card">
+        <SignalSummary signal={d.buying_signal} detailed />
+        {d.buying_signal?.event_id && <Link to={`/accounts/${d.account.id}?event=${d.buying_signal.event_id}`}>Open this finding on the company record</Link>}
+      </div>
       <div className={`verdict ${verdict(d).kind} mt-2`}><span className="k">Our read</span>{verdict(d).text}</div>
           <div className="action">
             <div className="eyebrow mb-2">Next action</div>
-            {a ? <><div className="atype">{lab("action", a.action_type)}</div><div><b className="k">Goal</b> {a.objective}</div><div><b className="k">When</b> {a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</div>
+            {a ? <><div className="atype">{lab("action", a.action_type)}</div><div><b className="k">Goal</b> {a.objective}</div>{a.target_role && <div><b className="k">Who to look for</b> {a.target_role}</div>}<div><b className="k">When</b> {a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</div>
               <div><b className="k">Good result</b> {a.expected_outcome}</div><div><b className="k">Stop when</b> {a.stop_condition}</div><div className="small muted mt-2">{actionReason(a)}</div></> : <span className="muted">Nothing to do right now.</span>}
           </div>
       <h2 className="section-title mt-2">Seven qualification checks</h2>
