@@ -14,9 +14,9 @@ function Deadlines() {
   useEffect(() => { api("/api/deadlines").then((r) => setItems(r.items.filter((x: any) => x.days_left <= 240).slice(0, 6))).catch(() => setItems([])); }, []);
   if (!items.length) return null;
   return <section><div className="section-title">Regulation deadlines</div><p className="small muted sec-note">Each date was checked against an official page and approved by a second person. Buyers facing a hard deadline tend to need extra delivery capacity.</p>
-    <div className="card flush table-wrap"><table><thead><tr><th>Deadline</th><th>Regulation</th><th>Who it applies to</th><th>Date</th></tr></thead><tbody>
-      {items.map((x) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a></td><td className="small">{x.regime}</td><td className="small">{x.applies_to ?? "Not specified"}</td>
-        <td><b>{fmtDate(x.deadline_date)}</b> <span className="small muted">in {x.days_left} days</span></td></tr>)}
+    <div className="card flush table-wrap"><table className="cards"><thead><tr><th>Deadline</th><th>Regulation</th><th>Who it applies to</th><th>Date</th></tr></thead><tbody>
+      {items.map((x) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a></td><td data-label="Regulation" className="small">{x.regime}</td><td data-label="Who it applies to" className="small">{x.applies_to ?? "Not specified"}</td>
+        <td data-label="Date"><b>{fmtDate(x.deadline_date)}</b> <span className="small muted">in {x.days_left} days</span></td></tr>)}
     </tbody></table></div></section>;
 }
 
@@ -114,8 +114,8 @@ export default function Today() {
   const [err, setErr] = useState<unknown>(null);
   const load = () => { setErr(null); return api("/api/today").then(setD).catch(setErr); };
   useEffect(() => { load(); api("/api/overview").then(setOv).catch(() => undefined); }, []);
-  if (err) return <div className="page"><div className="page-head"><div className="eyebrow">Your day</div><h1>Today</h1></div><Err e={err} onRetry={load} /></div>;
-  if (!d) return <div className="page"><div className="page-head"><div className="eyebrow">Your day</div><h1>Today</h1></div><Skeleton rows={4} label="Loading Today" /></div>;
+  if (err) return <><header className="hero"><div className="eyebrow">Your day</div><h1>Today</h1></header><div className="page pt-5"><Err e={err} onRetry={load} /></div></>;
+  if (!d) return <><header className="hero loading"><div className="eyebrow">Your day</div><h1>Today</h1></header><div className="page pt-5"><Skeleton rows={4} label="Loading Today" /></div></>;
   const all: any[] = Object.values(d.sections).flat() as any[];
   const count = (f: (c: any) => boolean) => all.filter(f).length;
   return (
@@ -134,7 +134,7 @@ export default function Today() {
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
         {d.hot_accounts?.length > 0 && <section><div className="section-title">Hot accounts</div><p className="small muted sec-note">Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.</p>
-          <div className="card flush table-wrap"><table><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest</th></tr></thead><tbody>
+          <div className="card flush table-wrap"><table className="cards"><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest</th></tr></thead><tbody>
             {d.hot_accounts.map((a: any) => <tr key={a.id}><td><Link to={`/accounts/${a.id}`}>{a.display_name}</Link><div className="small muted">{[a.country_code, a.segment].filter(Boolean).join(" · ")}</div></td>
               <td><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
               <td className="small">{a.signal_count} · {a.groups.map(groupName).join(", ")}</td><td className="small">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}

@@ -10,18 +10,10 @@
 .why .k { display: inline-block; margin-right: 8px; font-weight: 600; font-size: var(--fs-sm); }
 .fquote .trans { display: block; margin-top: 6px; font-style: normal; font-size: var(--fs-sm); color: var(--muted); }
 
-/* phone: saved views scroll sideways instead of filling the first screen; the leads table keeps the columns that matter and never breaks names mid-word */
+/* phone: saved views scroll sideways instead of filling the first screen */
 @media (max-width: 640px) {
-  .chips-scroll { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .chips-scroll { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: var(--space-1); }
   .chips-scroll > * { flex: 0 0 auto; }
-  .leads-table th:nth-child(4), .leads-table td:nth-child(4),
-  .leads-table th:nth-child(5), .leads-table td:nth-child(5),
-  .leads-table th:nth-child(7), .leads-table td:nth-child(7),
-  .leads-table th:nth-child(8), .leads-table td:nth-child(8),
-  .leads-table th:nth-child(9), .leads-table td:nth-child(9) { display: none; }
-  .leads-table td { word-break: normal; overflow-wrap: normal; }
-  .leads-table td:nth-child(3) { min-width: 150px; }
-  .leads-table td:nth-child(6) { white-space: nowrap; }
 }
 
 .stack { display: grid; gap: 12px; margin-top: 6px; }

@@ -63,7 +63,7 @@ export default function Feed() {
                     <p className="small mt-1 mb-0">{it.why.reason}</p>
                   </div>}
                   {it.evidence.map((e: any) => (
-                    <blockquote key={e.claim_id} className="fquote">“{e.claim}”{e.translation && <span className="trans">In English{it.language && it.language !== "en" ? ` (from ${LANG[it.language] ?? it.language})` : ""}: “{e.translation}”</span>}
+                    <blockquote key={e.claim_id} className="fquote">{e.claim !== (it.summary_en ?? it.summary) && <>“{e.claim}”</>}{e.translation && <span className="trans">In English{it.language && it.language !== "en" ? ` (from ${LANG[it.language] ?? it.language})` : ""}: “{e.translation}”</span>}
                       <cite>{e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" onClick={() => it.organization && trackSourceOpened({ organization_id: it.organization.id, where: "evidence" })}>{e.source ?? "Original source"} ↗</a> : "Structured record"}
                         {[e.authority ? TIER[e.authority] ?? e.authority : null, e.anchor_verified ? "quote found on the page" : "quote not matched"].filter(Boolean).join(" · ")}</cite></blockquote>))}
                   <div className="small muted">Happened {fmtDate(it.event_at)} · we saw it {fmtDate(it.first_seen)}</div>

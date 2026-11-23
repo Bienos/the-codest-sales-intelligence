@@ -29,7 +29,7 @@ export default function Prospects() {
     return () => clearTimeout(t);
   }, [lane, q, tick]);
   const busy = d?.items.some((i: any) => ["queued", "fetching", "extracting"].includes(i.verification?.status));
-  useEffect(() => { if (!busy) return; const t = setInterval(() => setTick((n) => n + 1), 6000); return () => clearInterval(t); }, [busy]);
+  useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) setTick((n) => n + 1); }, 6000); return () => clearInterval(t); }, [busy]);
   const verify = async (id: string) => { setErr(null); try { await post("/api/prospects/verify", { organization_id: id }); setTick((n) => n + 1); } catch (e) { setErr(e); } };
   const batch = async () => { setErr(null); try { const r = await post("/api/prospects/verify-batch", { lane, limit: 10 }); setMsg(`${r.queued} ${r.queued === 1 ? "page" : "pages"} queued. Each check reads one page and uses some of the monthly AI budget.`); setTick((n) => n + 1); } catch (e) { setErr(e); } };
   return (

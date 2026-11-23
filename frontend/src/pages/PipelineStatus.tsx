@@ -28,7 +28,7 @@ function Funnel({ f, accounts, candidates }: { f: any[]; accounts: number; candi
 export function Pipeline() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   const load = () => api("/api/admin/pipeline").then(setD).catch(setErr);
-  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, []);
+  useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) load(); }, 15000); return () => clearInterval(t); }, []);
   if (err) return <Err e={err} onRetry={reloadPage} />;
   if (!d) return <Skeleton />;
   return (

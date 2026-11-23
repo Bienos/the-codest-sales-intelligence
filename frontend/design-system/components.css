@@ -370,3 +370,26 @@ button.star { border: 0; background: none; padding: 4px 6px; min-height: 0; font
 .progr .opp { margin: 0; border: 0; border-top: 1px solid var(--line); border-left: 5px solid var(--line); }
 .progr .opp.urgent { border-left-color: var(--pink); } .progr .opp.high { border-left-color: var(--navy); } .progr .opp.medium { border-left-color: var(--purple); }
 .opp.compact .opp-title { font-size: var(--fs-lg); }
+
+/* ---------- phone: tables become cards, small targets get a 44px hit area ---------- */
+.hit44 { display: inline-grid; place-items: center; min-width: 24px; min-height: 24px; }
+@media (max-width: 640px) {
+  .hit44, button.star.hit44 { width: 44px; height: 44px; min-height: 44px; padding: 0; }
+  table.cards { display: block; overflow: visible; background: transparent; }
+  table.cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  table.cards tbody { display: block; }
+  table.cards tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--line); background: var(--white); }
+  table.cards td { display: block; grid-column: 1 / -1; padding: var(--space-1) 0; border: 0; white-space: normal !important; word-break: normal; overflow-wrap: anywhere; }
+  table.cards td[data-label]::before { content: attr(data-label); display: block; font: 800 var(--fs-label) var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  table.cards td.sel { grid-column: auto; }
+  table.cards td.name { grid-column: 3; }
+  table.cards tbody tr:hover td { background: transparent; }
+  .chip { min-height: 44px; }
+  a.pill { min-height: 44px; }
+  label.row { min-height: 44px; }
+  .tabs button, .tabs a { min-height: 44px; }
+  .subnav a { min-height: 44px; }
+}
+
+.hero.loading { min-height: 300px; }
+@media (max-width: 860px) { .hero.loading { min-height: 250px; } }

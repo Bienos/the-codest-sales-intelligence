@@ -51,8 +51,8 @@ export default function Renewals() {
       ) : (
         <>
           <p className="small muted">Who won the most public IT contracts in our markets over the last three years. A supplier with many wins is a strong incumbent, and often a competitor or a partner worth knowing.</p>
-          <div className="card table-wrap"><table><thead><tr><th>Supplier</th><th>Contracts won</th><th>Countries</th><th>Latest win</th></tr></thead><tbody>
-            {d.items.map((r: any) => <tr key={r.supplier}><td>{r.supplier}{r.size && <div className="small muted">{SIZE[r.size] ?? r.size}</div>}</td><td>{r.awards}</td><td className="small">{r.countries.map((c: string) => COUNTRY[c] ?? c).join(", ")}</td><td className="small">{fmtDate(r.latest)}</td></tr>)}
+          <div className="card table-wrap"><table className="cards"><thead><tr><th>Supplier</th><th>Contracts won</th><th>Countries</th><th>Latest win</th></tr></thead><tbody>
+            {d.items.map((r: any) => <tr key={r.supplier}><td>{r.supplier}{r.size && <div className="small muted">{SIZE[r.size] ?? r.size}</div>}</td><td data-label="Contracts won">{r.awards}</td><td className="small" data-label="Countries">{r.countries.map((c: string) => COUNTRY[c] ?? c).join(", ")}</td><td className="small" data-label="Latest win">{fmtDate(r.latest)}</td></tr>)}
             {d.items.length === 0 && <tr><td colSpan={4} className="muted">No suppliers yet. The contract history is still loading.</td></tr>}</tbody></table></div>
         </>
       )}

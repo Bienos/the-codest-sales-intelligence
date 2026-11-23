@@ -8,7 +8,7 @@ const vk = (s: string) => (s === "verified" ? "ok" : s === "failed" || s === "bl
 export function Verification() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [status, setStatus] = useState(""); const [origin, setOrigin] = useState("");
   const load = () => api(`/api/verifications?status=${status}&origin=${origin}&limit=100`).then(setD).catch(setErr);
-  useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [status, origin]);
+  useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) load(); }, 10000); return () => clearInterval(t); }, [status, origin]);
   return (
     <>
       <p className="small muted mt-0">Each row is a page we were asked to check, from your workbooks or from a search. We read the original page, pull out events with word-for-word quotes, and keep only those whose quote is really on the page.</p>

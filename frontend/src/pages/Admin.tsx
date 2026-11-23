@@ -243,7 +243,7 @@ const Quality = () => <Load path="/api/admin/metrics">{(d) => <><p className="su
 function Imports() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
   const load = () => api("/api/admin/imports").then(setD).catch(setErr);
-  useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, []);
+  useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) load(); }, 8000); return () => clearInterval(t); }, []);
   const send = async (f: File | undefined) => {
     if (!f) return; setBusy(true); setErr(null); setMsg("");
     try { const r = await upload("/api/admin/import/upload", f); setMsg(`Workbook ${r.workbook} received. It is being loaded now, which can take several minutes.`); load(); } catch (e) { setErr(e); } finally { setBusy(false); }
