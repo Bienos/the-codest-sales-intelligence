@@ -74,3 +74,49 @@ def test_searches_cover_each_service_and_run_in_local_languages():
     assert {"en", "de", "pl", "sv"} <= langs
     assert any("Kernbankensystem" in p.query for p in plans if p.language == "de")
     assert len({p.plan_id for p in plans}) == len(plans)
+
+
+def test_the_fit_job_runs_through_the_real_queue_without_transaction_errors(conn, monkeypatch):
+    from ri.jobs.handlers import build_handlers
+    from ri.jobs.queue import enqueue, run_one
+    import ri.events.fit as fitmod
+    conn.execute("insert into events(event_key, event_type, summary, extraction_model_version, verification_status, proven, lane, market_tier, pub_at) "
+                 "values ('q1','funding_announced','A fintech raised money.','t','verified',true,'private','core', now())")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+
+    def fake_make_call(conn_, st, **kw):
+        async def call(system, user):
+            items = json.loads(user)["items"]
+            conn_.commit()                       # the real budget-gated call commits, which used to crash inside the job transaction
+            return json.dumps({"items": [{"id": i["id"], "level": "possible", "service": "staff_augmentation", "reason": "r"} for i in items]}), 10, 10, "fake"
+        return call
+    import ri.jobs.modelcall as mc
+    monkeypatch.setattr(mc, "make_call", fake_make_call)
+    enqueue(conn, "assess_fit", {"batches": 2}, idempotency_key="fit-q")
+    conn.commit()
+    assert run_one(conn, "w", build_handlers(connector_factory=lambda sid: None)) == "completed"
+    assert conn.execute("select attrs->'fit'->>'level' l from events").fetchone()["l"] == "possible"
+
+
+def test_a_billing_failure_during_verification_waits_and_retries_instead_of_failing(conn):
+    from ri.jobs.handlers import build_handlers
+    from ri.jobs.queue import enqueue, run_one
+    from ri.sources.base import BillingError
+    from ri.verify.fetch import Page as FetchedPage
+    from ri.sources.registry import seed_registry
+    seed_registry(conn)
+    rid = str(conn.execute("insert into verification_requests(url, origin, requested_by) values ('https://example.invalid/a','exa_discovery','x') returning id").fetchone()["id"])
+    conn.commit()
+
+    class Out:
+        version = "x"
+        async def extract(self, **k):
+            raise BillingError("provider billing: credit balance is too low")
+    page = FetchedPage(url="https://example.invalid/a", title="Bank selects platform", text="Synthetic Bank AG selects a new core banking platform and will migrate its accounts over the next two years. " * 6, published_at=None, content_hash="h" * 40)
+    h = build_handlers(connector_factory=lambda sid: None, extractor_factory=lambda c: Out(), fetch_factory=lambda: (lambda url: page))
+    enqueue(conn, "verify_url", {"request_id": rid}, idempotency_key="v-bill", max_attempts=1)
+    conn.commit()
+    assert run_one(conn, "w", h) == "retryable_failed"
+    assert conn.execute("select last_error_class from jobs").fetchone()["last_error_class"] == "provider_billing"
+    assert conn.execute("select status from verification_requests where id=%s", (rid,)).fetchone()["status"] == "queued"
+    assert conn.execute("select count(*) n from dead_letters").fetchone()["n"] == 0

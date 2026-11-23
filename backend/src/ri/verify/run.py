@@ -118,6 +118,12 @@ def run_verification(conn: Conn, request_id: str, *, fetch: Callable[[str], Page
         conn.rollback()
         _set(conn, rid, "waiting_budget", result={"reason": "monthly model budget reached; will retry when budget is available"})
         return {"status": "waiting_budget"}
+    except ConnectorError as exc:
+        # the model provider failed (out of credit, rate limit, outage): the page is fine, so the request waits and the queue retries it
+        conn.rollback()
+        _set(conn, rid, "queued", result={"reason": f"waiting for the AI provider: {exc}"[:300], "error_class": exc.error_class})
+        conn.commit()
+        raise JobError(str(exc)[:300], exc.error_class) from exc
     except JobError as exc:
         conn.rollback()
         _set(conn, rid, "failed", result={"reason": str(exc), "error_class": exc.error_class})

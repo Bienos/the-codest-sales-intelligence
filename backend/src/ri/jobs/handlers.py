@@ -218,6 +218,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         return {"status": r["status"], "rounds": r["rounds"]}
 
     campaign_draft.own_transactions = True  # type: ignore[attr-defined]
+    assess_fit.own_transactions = True  # type: ignore[attr-defined]       # commits after each batch (and the budget calls commit): no wrapping transaction
 
     def verify_url(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..verify.run import run_verification
@@ -234,7 +235,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             return run_verification(conn, rid, fetch=fetch_factory(), extractor=ex, resolver=resolver)
         except JobError as exc:
             conn.rollback()
-            retry = exc.error_class in {"rate_limited", "transient_network", "server_error", "timeout"} and int(job.get("attempts") or 1) < int(job.get("max_attempts") or 3)
+            retry = exc.error_class == "provider_billing" or (exc.error_class in {"rate_limited", "transient_network", "server_error", "timeout"} and int(job.get("attempts") or 1) < int(job.get("max_attempts") or 3))
             conn.execute("UPDATE verification_requests SET status=%s, updated_at=now(), result=%s WHERE id=%s", ("queued" if retry else "failed", jb({"reason": str(exc)[:300], "error_class": exc.error_class}), rid))
             conn.commit()
             raise
