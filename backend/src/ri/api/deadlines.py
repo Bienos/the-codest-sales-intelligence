@@ -28,6 +28,11 @@ class DecideIn(BaseModel):
     decision: str = Field(pattern="^(approve|reject|retire)$")
 
 
+class MissIn(BaseModel):
+    url: str = Field(min_length=8, max_length=2000)
+    note: str = Field(default="", max_length=400)
+
+
 def register_deadlines(app: FastAPI) -> None:
     def tx(request: Request):
         return request.app.state.db.tx()
@@ -64,6 +69,23 @@ def register_deadlines(app: FastAPI) -> None:
             conn.execute("UPDATE regulatory_deadlines SET status=%s, decided_by=%s, decided_at=now() WHERE id=%s", (status, p.email, did))
             audit(conn, actor=p.email, operation=f"deadline_{status}", record_type="regulatory_deadline", record_id=did, detail={})
             return {"status": status}
+
+    @app.get("/api/admin/recall")
+    def recall_overview(request: Request, days: int = 14, p: Principal = Depends(require("admin.rules"))):
+        from ..recall import coverage_grid, misses, source_yield_drops
+        with request.app.state.db.tx() as conn:
+            return {"grid": coverage_grid(conn, max(7, min(days, 90))), "yield_drops": source_yield_drops(conn), "misses": misses(conn)}
+
+    @app.post("/api/misses")
+    def report_a_miss(body: MissIn, request: Request, p: Principal = Depends(require("research.request"))):
+        from ..recall import report_miss
+        with request.app.state.db.tx() as conn:
+            try:
+                out = report_miss(conn, url=body.url, note=body.note, by=p.email)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            audit(conn, actor=p.email, operation="miss_reported", record_type="verification_request", record_id=out["id"], detail={"url": body.url[:300]})
+            return out
 
     @app.get("/api/admin/precision")
     def precision(request: Request, days: int = 90, p: Principal = Depends(require("admin.rules"))):

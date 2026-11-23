@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, fmtDate, trackSourceOpened } from "../api";
+import { api, fmtDate, post, trackSourceOpened } from "../api";
 import { Badge, Err, humanize } from "../components/ui";
 const SERVICE: Record<string, string> = { staff_augmentation: "Staff Augmentation", team_extension: "Team Extension", ai_services: "AI Services" };
 const LANG: Record<string, string> = { de: "German", pl: "Polish", sv: "Swedish", no: "Norwegian", nb: "Norwegian", da: "Danish", fi: "Finnish", fr: "French", nl: "Dutch", es: "Spanish", it: "Italian", is: "Icelandic" };
@@ -78,6 +78,7 @@ export default function Feed() {
             </section>))}
         </div>
         <aside>
+          <ReportMiss />
           <div className="card"><div className="eyebrow">Leads waiting</div>
             <p className="small muted" style={{ marginTop: 0 }}>Found by search. Not findings until the original page is read and quoted.</p>
             {d?.leads.length === 0 && <p className="small muted">None right now.</p>}
@@ -86,5 +87,27 @@ export default function Feed() {
         </aside>
       </div>
     </>
+  );
+}
+
+
+function ReportMiss() {
+  const [url, setUrl] = useState(""); const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false); const [res, setRes] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
+  const send = async () => {
+    setBusy(true); setErr(null); setRes(null);
+    try { setRes(await post("/api/misses", { url: url.trim(), note: note.trim() })); setUrl(""); setNote(""); } catch (e) { setErr(e); }
+    setBusy(false);
+  };
+  return (
+    <div className="card" style={{ marginBottom: 14 }}><div className="eyebrow">Saw something we missed?</div>
+      <p className="small muted" style={{ marginTop: 0 }}>Paste the link. We tell you if we already had it, and read it if not. It also shows us which source to improve.</p>
+      <label className="small" htmlFor="miss-url">Link to the page</label>
+      <input id="miss-url" type="url" inputMode="url" placeholder="https://…" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <label className="small" htmlFor="miss-note">What is it? (optional)</label>
+      <input id="miss-note" maxLength={400} placeholder="e.g. Bank X chose a new payments vendor" value={note} onChange={(e) => setNote(e.target.value)} />
+      <button className="btn" style={{ marginTop: 8 }} disabled={busy || !/^https?:\/\//i.test(url.trim())} onClick={send}>{busy ? "Sending…" : "Report it"}</button>
+      {res && <p className="small" role="status" style={{ marginBottom: 0 }}>{res.already_known ? `We already had this page (from ${res.source_id}). If it is not in the feed, it did not pass the checks.` : res.duplicate ? "Already reported. It is being checked." : "Thank you. It is queued and will be read shortly."}</p>}
+      {err ? <Err e={err} /> : null}</div>
   );
 }

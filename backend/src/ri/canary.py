@@ -39,6 +39,12 @@ def run_checks(conn: Conn) -> list[dict[str, str]]:
     billing = q1(conn, "SELECT count(*) AS n FROM jobs WHERE last_error_class='provider_billing' AND status IN ('retryable_failed','permanent_failed') AND updated_at > now() - interval '12 hours'")["n"]  # type: ignore[index]
     legacy = q1(conn, "SELECT count(*) AS n FROM dead_letters WHERE replayed_at IS NULL AND error ILIKE '%%credit balance%%' AND created_at > now() - interval '7 days'")["n"]  # type: ignore[index]
     check("provider_billing", not (billing or legacy), "A provider account is out of credit (Anthropic: 'credit balance is too low'). Reading and extraction are stalled until it is topped up; failed work retries by itself or can be replayed.")
+    from .recall import coverage_grid, source_yield_drops
+    ran = q1(conn, "SELECT count(*) AS n FROM monitoring_runs m JOIN sources s ON s.source_id = m.source_id WHERE s.source_family = 'procurement' AND m.status = 'success'")["n"]  # type: ignore[index]
+    gaps = [g for g in coverage_grid(conn, 14)["empty"] if g.endswith("Tenders")] if ran >= 6 else []        # judged only once the tender feeds have really been running
+    check("coverage_gap", not gaps, f"No tenders at all from the last 14 days in: {', '.join(g.split(':')[0] for g in gaps)}. The feed for that market may be broken or filtered too hard.")
+    drops = source_yield_drops(conn)
+    check("source_yield_drop", not drops, "Sources returning far less than usual this week: " + ", ".join(f"{d['source_id']} ({d['last_7_days']} vs about {d['usual_per_week']})" for d in drops))
     for b in qa(conn, "SELECT provider, kind, period, cap, reserved, spent FROM provider_budgets WHERE kind='monthly' AND cap > 0 AND period = to_char(now(), 'YYYY-MM')"):
         check(f"budget_{b['provider']}", float(b["spent"]) + float(b["reserved"]) < 0.9 * float(b["cap"]), f"{b['provider']} has used over 90% of this month's cap.")
     return bad

@@ -103,6 +103,20 @@ function DeadlinesAdmin() {
   }}</Load>;
 }
 
+const Coverage = () => <Load path="/api/admin/recall">{(d) => (<>
+  <p className="sub">Are we finding what is out there? Each cell counts what was found in the last {d.grid.days} days. A red cell is a place to look: the feed may be broken, or the market may just be quiet.</p>
+  {d.grid.empty.length > 0 && <div className="err" role="alert">Nothing found in: <b>{d.grid.empty.join("; ")}</b></div>}
+  <div className="card table-wrap"><table><thead><tr><th>Market</th>{d.grid.kinds.map((k: string) => <th key={k}>{k}</th>)}</tr></thead><tbody>
+    {d.grid.markets.map((m: string) => <tr key={m}><td><b>{m}</b></td>{d.grid.kinds.map((k: string) => { const c = d.grid.cells.find((x: any) => x.market === m && x.kind === k); return <td key={k}>{c.empty ? <Badge kind="bad">0</Badge> : c.count}</td>; })}</tr>)}</tbody></table></div>
+  <div className="card"><b>Sources returning less than usual</b>
+    {d.yield_drops.length === 0 ? <p className="small muted">None. A source is only judged after two weeks of history and when it normally returns at least 5 items a week.</p>
+      : <ul className="tight small">{d.yield_drops.map((x: any) => <li key={x.source_id}><b>{x.source_id}</b>: {x.last_7_days} this week, usually about {x.usual_per_week}</li>)}</ul>}</div>
+  <div className="card"><b>Pages sellers reported as missed</b>
+    <p className="small muted">{d.misses.total === 0 ? "None yet. Sellers can paste a link on the Market feed." : `${d.misses.total} reported: ${d.misses.caught} we already had, ${d.misses.missed} we missed. Each missed page shows which source should have found it.`}</p>
+    <div className="table-wrap"><table><thead><tr><th>Page</th><th>Had it?</th><th>Result</th><th>Reported</th></tr></thead><tbody>
+      {d.misses.items.map((m: any) => <tr key={m.id}><td><a href={m.url} target="_blank" rel="noreferrer noopener">{m.url.replace(/^https?:\/\//, "").slice(0, 60)} ↗</a>{m.note && <div className="small muted">{m.note}</div>}</td>
+        <td>{m.we_already_had_it ? <Badge kind="ok">Yes ({m.from_source})</Badge> : <Badge kind="bad">No</Badge>}</td><td className="small">{humanize(m.status)}{m.events_created > 0 ? ` · ${m.events_created} finding(s)` : ""}</td><td className="small">{fmtDateTime(m.reported_at)}</td></tr>)}</tbody></table></div></div></>)}</Load>;
+
 const Precision = () => <Load path="/api/admin/precision">{(d) => (<>
   <p className="sub">What sellers did with each signal rule in the last {d.window_days} days. This reports; a person decides whether a rule changes. A dismissal is an opinion, so read the top reason first.</p>
   {d.flagged.length > 0 && <div className="err" role="alert">Dismissed more than 60% of the time with enough decisions to judge: <b>{d.flagged.join(", ")}</b></div>}
@@ -298,9 +312,9 @@ export default function Admin({ me }: { me: { permissions: string[] } }) {
     <>
       <div className="page-head"><div className="eyebrow">Control plane</div><h2>Administration</h2></div>
       <div className="tabs">{p("admin.jobs") && <NavLink to="/admin/pipeline">Pipeline</NavLink>}{p("sources.read") && <NavLink to="/admin" end> Sources</NavLink>}{p("sources.read") && <NavLink to="/admin/connections"> Connections</NavLink>}{p("admin.costs") && <NavLink to="/admin/integrations"> Integrations</NavLink>}{p("admin.sources") && <NavLink to="/admin/imports"> Imports</NavLink>}{p("admin.users") && <NavLink to="/admin/users"> People</NavLink>}{p("admin.sources") && <NavLink to="/admin/knowledge"> Knowledge</NavLink>}{p("identity.manage") && <NavLink to="/admin/identity"> Identity review</NavLink>}<NavLink to="/admin/approvals"> Approvals</NavLink>{p("admin.jobs") && <NavLink to="/admin/jobs"> Jobs</NavLink>}
-        {p("sources.read") && <NavLink to="/admin/verification"> Verification</NavLink>}{p("admin.costs") && <><NavLink to="/admin/discovery"> Discovery</NavLink><NavLink to="/admin/usage"> Usage</NavLink></>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/precision"> Precision</NavLink><NavLink to="/admin/deadlines"> Deadlines</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
+        {p("sources.read") && <NavLink to="/admin/verification"> Verification</NavLink>}{p("admin.costs") && <><NavLink to="/admin/discovery"> Discovery</NavLink><NavLink to="/admin/usage"> Usage</NavLink></>}{p("admin.rules") && <><NavLink to="/admin/rules"> Rules</NavLink><NavLink to="/admin/precision"> Precision</NavLink><NavLink to="/admin/coverage"> Coverage</NavLink><NavLink to="/admin/deadlines"> Deadlines</NavLink><NavLink to="/admin/quality"> Quality</NavLink></>}{p("audit.read") && <NavLink to="/admin/audit"> Audit</NavLink>}</div>
       <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="integrations" element={<Integrations />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
-        <Route path="rules" element={<Rules />} /><Route path="precision" element={<Precision />} /><Route path="deadlines" element={<DeadlinesAdmin />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
+        <Route path="rules" element={<Rules />} /><Route path="precision" element={<Precision />} /><Route path="coverage" element={<Coverage />} /><Route path="deadlines" element={<DeadlinesAdmin />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
     </>
   );
 }
