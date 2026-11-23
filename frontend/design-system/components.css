@@ -391,8 +391,6 @@ button.star { border: 0; background: none; padding: 4px 6px; min-height: 0; font
   .subnav a { min-height: 44px; }
 }
 
-.hero.loading { min-height: 300px; }
-@media (max-width: 860px) { .hero.loading { min-height: 250px; } }
 
 a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
 a.btn.primary { background: var(--pink-solid); border-color: var(--pink-solid); color: var(--white); }

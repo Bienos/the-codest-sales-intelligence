@@ -138,23 +138,22 @@ export default function Today() {
       <option value="public">Public tenders</option>
     </select>
   </label>;
-  if (!d || err) return <><header className="hero loading"><div className="eyebrow">Your day</div><h1>Today</h1></header>
-    <div className="page pt-5">{picker}{err ? <Err e={err} onRetry={load} /> : <Skeleton rows={4} label="Loading Today" />}</div></>;
-  const all: any[] = Object.values(d.sections).flat() as any[];
-  const count = (f: (c: any) => boolean) => all.filter(f).length;
+  const all: any[] = d ? Object.values(d.sections).flat() : [];
+  const urgent = all.filter(c => c.priority === "urgent").length;
   return (
     <>
-      <header className="hero">
-        <div className="eyebrow">{new Date(d.generated_at).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</div>
+      <header className="hero today-hero">
+        <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</div>
         <h1>Today</h1>
-        <p className="sub">{d.count === 0 ? "No new opportunities in this view." : `${d.count} ${d.count === 1 ? "thing" : "things"} to review. Each story is shown once. Anything you dismiss stays hidden unless it changes.`}</p>
+        <p className="sub">{err ? "Today could not load." : !d ? "Loading your opportunities." : d.count === 0 ? "No new opportunities in this view." : `${d.count} ${d.count === 1 ? "thing" : "things"} to review. Anything you dismiss stays hidden unless it changes.`}</p>
         <div className="stats">
-          <div className="stat urgent"><div className="n">{count((c) => c.priority === "urgent")}</div><div className="l">Urgent</div></div>
-          <div className="stat"><div className="n">{d.count}</div><div className="l">To review</div></div>
+          <div className="stat urgent"><div className="n">{!err && d ? urgent : "—"}</div><div className="l">Urgent</div></div>
+          <div className="stat"><div className="n">{!err && d ? d.count : "—"}</div><div className="l">To review</div></div>
         </div>
       </header>
       <div className="page pt-5">
         {picker}
+        {err ? <div className="first-results"><Err e={err} onRetry={load} /></div> : !d ? <div className="first-results"><Skeleton rows={4} label="Loading Today" /></div> : <>
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
         {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
@@ -166,6 +165,7 @@ export default function Today() {
           </tbody></table></div></section>}
         {focus === "public" && <Deadlines />}
         {focus !== "public" && <Prospects key={focus} focus={focus} />}
+        </>}
       </div>
     </>
   );

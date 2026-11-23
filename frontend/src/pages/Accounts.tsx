@@ -42,8 +42,8 @@ const PRESETS: [string, Record<string, string>][] = [
   ["Your shortlist", { shortlist: "true" }],
 ];
 const ORIGIN: Record<string, string> = { list: "On your lists", added: "Added by the team", discovered: "Found by us" };
-type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; lane: string; focus: string; sort: string; page: number };
-const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", lane: "", focus: "finance", sort: "score", page: 1 };
+type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; lane: string; focus: string; qualification: string; sort: string; page: number };
+const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", lane: "", focus: "finance", qualification: "", sort: "score", page: 1 };
 const qs = (f: Q, extra = "") => { const u = new URLSearchParams(); (Object.entries(f) as [string, any][]).forEach(([k, v]) => { if (v !== "" && v !== 1 && !(k === "sort" && v === "score")) u.set(k, String(v)); }); if (f.page > 1) u.set("page", String(f.page)); return u.toString() + extra; };
 
 export function Accounts({ me }: { me?: { permissions: string[] } }) {
@@ -123,13 +123,15 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
         <select id="lead-region" aria-label="Region" value={f.region} onChange={(e) => set("region", e.target.value)}><option value="">All regions</option>{d?.regions.map((r: any) => <option key={r.key} value={r.key}>{r.label} ({fac.region?.[r.key] ?? 0})</option>)}</select>
         <select id="lead-icp" aria-label="Company size" value={f.icp} onChange={(e) => set("icp", e.target.value)}><option value="">Any size</option>{opt(fac.icp, (k) => ICP_NAMES[k] ?? k)}</select>
         <select id="lead-segment" aria-label="Segment" value={f.segment} onChange={(e) => set("segment", e.target.value)}><option value="">Any segment</option>{opt(fac.segment)}</select>
+        <select aria-label="Qualification" value={f.qualification} onChange={(e) => set("qualification", e.target.value)}><option value="">Any qualification status</option><option value="pending_qualification">Awaiting qualification</option></select>
         <select id="lead-origin" aria-label="Where it came from" value={f.origin} onChange={(e) => set("origin", e.target.value)}><option value="">Any source</option>{opt(fac.origin, (k) => ORIGIN[k] ?? k)}</select>
 
         </div>
       </details>
       <p className="small muted">Signal score adds up recent checked signals. Different kinds count for more than repeats. Hot starts at 9 and Warm at 4.</p>
+      <div className="first-results">
       <Err e={err} onRetry={d ? undefined : () => setRetry((n) => n + 1)} />
-      {!d && !err && <Skeleton label="Loading accounts" />}
+      {!d && !err && <Skeleton rows={4} label="Loading accounts" />}
       {d && <div className="card table-wrap flush" tabIndex={0} role="region" aria-label="Company · Region · Size"><table className="leads-table cards"><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Buying signal and source</th><th>Came from</th></tr></thead><tbody>
         {d?.items.map((r: any) => <tr key={r.id}>
           <td className="sel"><label className="hit44"><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} /></label></td>
@@ -145,6 +147,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
         {d && d.items.length === 0 && <tr><td colSpan={8} className="muted">No accounts match these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " There are no accounts yet: load the workbooks in Administration, Imports, or add a company." : ""} <button onClick={() => preset({})}>Clear filters</button></td></tr>}</tbody></table></div>}
       {d && <div className="row spread small mt-3"><span>{d.total.toLocaleString()} {d.total === 1 ? "account" : "accounts"}</span>
         <span className="row"><button disabled={f.page <= 1} onClick={() => setF({ ...f, page: f.page - 1 })}>Previous</button><span>Page {f.page} of {pages}</span><button disabled={f.page >= pages} onClick={() => setF({ ...f, page: f.page + 1 })}>Next</button></span></div>}
+      </div>
     </>
   );
 }
@@ -180,7 +183,7 @@ function FindContacts({ orgId, can }: { orgId: string; can: boolean }) {
   return (
     <div className="card">
       <div className="row spread"><b>Find the people who decide</b>{can && <button className="primary" disabled={busy || !d.apollo_configured} onClick={() => run(() => post(`/api/accounts/${orgId}/find-contacts`), (r) => `Found ${r.found} ${r.found === 1 ? "person" : "people"}, ${r.added} new. Names and job titles only, no email yet.`)}>Search with Apollo</button>}</div>
-      <p className="small muted mt-1 mb-2">Searching is free and gives names and job titles. {d.reveal_price == null ? "The cost per email is not set yet. Ask an administrator." : `Revealing an email costs ${d.reveal_price} ${d.reveal_price === 1 ? "credit" : "credits"} per person and needs approval.`} {d.apollo_configured ? "" : "Apollo is not connected yet. "}{d.paid_enrichment_enabled ? "" : "Revealing emails is switched off for now."}</p>
+      <p className="small muted mt-1 mb-2">Searching is free and gives names and job titles. {d.reveal_price == null ? "The cost per email is not set yet. Ask an administrator." : `Revealing an email costs ${d.reveal_price} ${d.reveal_price === 1 ? "credit" : "credits"} per person and needs approval from another person.`} {d.apollo_configured ? "" : "Apollo is not connected yet. "}{d.paid_enrichment_enabled ? "" : "Revealing emails is switched off for now."}</p>
       {d.items.length > 0 && <div className="table-wrap" tabIndex={0} role="region" aria-label="Name · Job title · Email"><table><thead><tr><th>Name</th><th>Job title</th><th>Email</th><th><span className="sr">Actions</span></th></tr></thead><tbody>
         {d.items.map((c: any) => <tr key={c.id}><td>{c.linkedin_url ? <a href={c.linkedin_url} target="_blank" rel="noreferrer noopener">{c.name}</a> : c.name}</td><td>{c.title}</td>
           <td><Badge kind={c.status === "revealed" ? "ok" : c.status === "found" ? "info" : ""}>{c.status === "found" ? "Not revealed" : c.status === "revealed" ? "Revealed" : humanize(c.status)}</Badge></td>

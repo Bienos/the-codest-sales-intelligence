@@ -48,7 +48,7 @@ def _rows(conn, p: Principal, q: str) -> list[dict[str, Any]]:
     return out
 
 
-def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public, watched=False, lane="", focus=""):
+def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public, watched=False, lane="", focus="", qualification=""):
     now = datetime.now(timezone.utc)
     cut = now - timedelta(days=signal_days) if signal_days else None
     out = []
@@ -68,6 +68,8 @@ def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist,
         if shortlist and not r["shortlist"]:
             continue
         if watched and not r["watched"]:
+            continue
+        if qualification and r["candidate_status"] != qualification:
             continue
         if focus and r["sector"] != focus:
             continue
@@ -104,15 +106,15 @@ def register_leads(app: FastAPI) -> None:
     Params = dict(q=Query("", max_length=120), region=Query("", pattern="^(|uk|dach|nordics|poland|europe|us|other|unknown)$"),
                   icp=Query("", max_length=40), segment=Query("", max_length=60), band=Query("", pattern="^(|hot|warm|watch|none)$"),
                   origin=Query("", pattern="^(|list|added|discovered)$"), watched=Query(False), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False), lane=Query("", pattern="^(|public)$"), focus=Query("", pattern="^(|finance|other|unclassified)$"),
-                  sort=Query("score", pattern="^(score|name|size|recent)$"))
+                  qualification=Query("", pattern="^(|pending_qualification)$"), sort=Query("score", pattern="^(score|name|size|recent)$"))
 
     @app.get("/api/leads")
     def leads(request: Request, page: int = Query(1, ge=1), size: int = Query(50, ge=10, le=200), q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"],
               segment: str = Params["segment"], band: str = Params["band"], origin: str = Params["origin"], signal_days: int = Params["signal_days"],
-              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], focus: str = Params["focus"], watched: bool = Params["watched"], sort: str = Params["sort"], p: Principal = Depends(require("accounts.read"))):
+              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], focus: str = Params["focus"], watched: bool = Params["watched"], sort: str = Params["sort"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             allrows = _rows(conn, p, q)
-            rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched, lane=lane, focus=focus)
+            rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched, lane=lane, focus=focus, qualification=qualification)
             rows.sort(key=SORTS[sort])
             total = len(rows)
             items = rows[(page - 1) * size: page * size]
@@ -128,9 +130,9 @@ def register_leads(app: FastAPI) -> None:
     @app.get("/api/leads.csv")
     def leads_csv(request: Request, q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"], segment: str = Params["segment"], band: str = Params["band"],
                   origin: str = Params["origin"], signal_days: int = Params["signal_days"], shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], focus: str = Params["focus"],
-                  sort: str = Params["sort"], p: Principal = Depends(require("accounts.read"))):
+                  sort: str = Params["sort"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            rows = _filter(_rows(conn, p, q), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane, focus=focus)
+            rows = _filter(_rows(conn, p, q), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane, focus=focus, qualification=qualification)
             rows.sort(key=SORTS[sort])
             rows = rows[:5000]
             audit(conn, actor=p.email, operation="leads_exported", record_type="organization", record_id="export", detail={"rows": len(rows)})

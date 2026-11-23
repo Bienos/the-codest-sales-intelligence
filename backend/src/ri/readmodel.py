@@ -77,6 +77,8 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
     changes = {k: [last_snapshot.get(k), v] for k, v in snap.items() if last_snapshot and last_snapshot.get(k) != v} if last_snapshot else None
     why = (f"{ws['scope_statement']} ({ws['scope_confidence'].replace('_', ' ')})" if ws else "Workstream not yet established") + \
           f"; route: {h['route_type'].replace('_', ' ')} via {h['counterparty_name']} ({h['access_status']}); external demand: {h['external_demand_status']}."
+    owner_id = act.get("owner_id") if act else None
+    owner = q1(conn, "SELECT min(display_name) AS name FROM users WHERE active AND pipedrive_user_id=%s HAVING count(*)=1", (owner_id,)) if owner_id else None
     review = h["review_json"] or {}
     return {
         "hypothesis_id": str(h["id"]), "priority": h["priority"], "state": h["state"], "score": h["score_total"],
@@ -91,7 +93,7 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
         "evidence": evidence_for(conn, h["supporting_claim_ids"]), "buying_signal": leading_signals(conn, [oid], initiative_id=h["initiative_id"]).get(oid),
         "counterevidence": review.get("contradicts", [])[:3], "unknowns": [u["unknown"] for u in (h["critical_unknowns"] or [])][:5],
         "blockers": h["blockers"], "next_action": ({k: (str(v) if k.endswith("_id") and v is not None and k != "owner_id" else v) for k, v in act.items() if k in
-                                                    {"id", "action_type", "objective", "reason", "owner_id", "owner_note", "target_role", "due_at", "trigger_condition", "approval_required", "expected_outcome", "stop_condition"}} if act else None),
+                                                    {"id", "action_type", "objective", "reason", "owner_id", "owner_note", "target_role", "due_at", "trigger_condition", "approval_required", "expected_outcome", "stop_condition"}} | {"owner_name": owner["name"] if owner else None} if act else None),
         "tender": ({"notice_id": tender["notice_id"], "deadline_at": tender["deadline_at"], "deadline_tz": tender["deadline_tz"], "last_status_check_at": tender["last_status_check_at"]} if tender else None),
         "changed": changes, "last_checked": h["last_checked_at"], "fingerprint": fingerprint(conn, h),
     }

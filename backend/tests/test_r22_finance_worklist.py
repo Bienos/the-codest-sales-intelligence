@@ -23,6 +23,7 @@ def test_finance_worklist_shows_exact_account_signal_with_source(conn, db_url):
         orgs[segment] = row["id"]
     finance = orgs["Banking"]
     other = orgs["Banking software vendor"]
+    conn.execute("INSERT INTO new_company_candidates(organization_id) VALUES (%s)", (finance,))
     for subject, signal_account in ((finance, finance), (finance, other)):
         event = conn.execute("""
             INSERT INTO events(event_key,event_type,subject_org_id,summary,extraction_model_version,verification_status)
@@ -52,6 +53,10 @@ def test_finance_worklist_shows_exact_account_signal_with_source(conn, db_url):
             assert result.status_code == 200
             (lead,) = result.json()["items"]
             assert lead["id"] == str(finance)
+            pending = client.get("/api/leads?qualification=pending_qualification", headers=auth).json()["items"]
+            assert [row["id"] for row in pending] == [str(finance)]
+            export = client.get("/api/leads.csv?qualification=pending_qualification", headers=auth).text
+            assert "Synthetic Banking," in export and "software vendor" not in export
             assert lead["buying_signal"]["source_url"] == "https://example.invalid/buying-proof"
             assert lead["buying_signal"]["demand_tier"] == "D3"
             vendor = client.get("/api/leads?focus=other", headers=auth).json()["items"]

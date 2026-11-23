@@ -33,9 +33,11 @@ export default function Renewals({ canAdd }: { canAdd: boolean }) {
         {tab === "ending" && <select aria-label="Ending within" value={months} onChange={(e) => setMonths(Number(e.target.value))}>{[6, 12, 18, 24, 36].map((m) => <option key={m} value={m}>Ending within {m} months</option>)}</select>}
         {tab === "ending" && <label className="small"><input type="checkbox" checked={stated} onChange={(e) => setStated(e.target.checked)} /> Only contracts with a stated length</label>}
       </div>
+      <div className="first-results">
       {err ? <Err e={err} onRetry={() => setRetry((n) => n + 1)} /> : !d ? <Skeleton /> : tab === "ending" ? (
         <>
           <p className="small muted">{d.items.length === 0 ? (d.contracts_known > 0 ? "No contracts match these filters." : "") : `${d.items.length} ${d.items.length === 1 ? "contract" : "contracts"}, ending soonest first.`} {d.contracts_known > 0 && `We hold ${d.contracts_known.toLocaleString()} IT contract awards since ${fmtDate(d.records_since)}.`}</p>
+          {d.contracts_known > 0 && d.items.length === 0 && <div className="empty">Try a longer time window or clear the country filter.</div>}
           {d.contracts_known === 0 && <div className="empty">We are still loading the contract history. It fills in over the next few hours, so check back later.</div>}
           <div className="stack">{d.items.map((r: any) => (
             <article key={r.notice_id} className="card">
@@ -56,6 +58,7 @@ export default function Renewals({ canAdd }: { canAdd: boolean }) {
             {d.items.length === 0 && <tr><td colSpan={4} className="muted">No suppliers yet. The contract history is still loading.</td></tr>}</tbody></table></div>
         </>
       )}
+      </div>
       </Tabs>
     </>
   );

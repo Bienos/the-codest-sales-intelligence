@@ -126,6 +126,8 @@ def test_today_card_has_every_required_element_and_summary_first(world):
     for field in ("account", "initiative", "what_happened", "why_it_matters", "evidence", "route", "external_demand_status", "unknowns", "next_action", "evidence_confidence", "last_checked"):
         assert field in k, field
     assert k["account"]["in_master_list"] is not None and "ownership_verified" in k["account"]
+    assert k["next_action"]["owner_id"] == 555
+    assert k["next_action"]["owner_name"] == "bdm"
     assert k["next_action"]["objective"] and (k["next_action"]["due_at"] or k["next_action"]["trigger_condition"])
     assert t["coverage"]["no_active_monitoring"] is True and "not confirmation" in (t["empty_state"] or "NOT confirmation") or cards
 

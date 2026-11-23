@@ -1,3 +1,36 @@
 @import "../design-system/components.css";
 @import "../design-system/landing.css";
 @import "./components.css";
+
+@media (max-width: 640px) {
+  .today-hero .sub { min-block-size: 4.65em; }
+  .first-results { display: flow-root; min-block-size: 22rem; }
+}
+
+@media (max-width: 860px) {
+  .nav-toggle { block-size: 44px; line-height: 1; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --navy: #eceeff;
+    --white: #1c2037;
+    --body: #d5daef;
+    --muted: #aeb8d6;
+    --tint-1: #121629;
+    --tint-2: #25203b;
+    --tint-3: #382433;
+    --ok-tint: #183a36;
+    --line: #424966;
+    --off: #727c9c;
+    --pink: #ff6eaa;
+  }
+
+  .nav, .hero, .land {
+    --navy: #0d124c;
+    --white: #fff;
+  }
+
+  button.primary, a.btn.primary { color: #fff; }
+}

@@ -65,6 +65,8 @@ def test_reveal_needs_price_switch_cap_and_approval_and_is_single_use(conn):
     r = contacts.request_reveal(conn, cid, by="bdm@x", settings=st)
     assert contacts.request_reveal(conn, cid, by="bdm@x", settings=st)["approval_id"] == r["approval_id"]      # same request, not a second one
     mk_user(conn, "boss@x", "admin")
+    with pytest.raises(appr.ApprovalError, match="cannot approve their own request"):
+        appr.decide(conn, r["approval_id"], approver="bdm@x", approver_role="admin", approve=True)
     appr.decide(conn, r["approval_id"], approver="boss@x", approver_role="admin", approve=True)
     with pytest.raises(appr.ApprovalError, match="switched off"):
         contacts.execute_reveal(conn, r["approval_id"], fake, st)

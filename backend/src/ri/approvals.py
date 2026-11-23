@@ -11,7 +11,7 @@ from typing import Any
 from .audit import audit
 from .db import Conn, canonical_json, jb, q1
 
-TWO_PERSON = {"crm_write", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"}
+TWO_PERSON = {"contact_enrichment", "crm_write", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"}
 APPROVER_ROLES = {"sales_manager", "admin", "bdm"}
 
 
@@ -55,7 +55,7 @@ def decide(conn: Conn, approval_id: str, *, approver: str, approver_role: str, a
     if approver_role not in APPROVER_ROLES:
         raise ApprovalError(f"role {approver_role} cannot approve")
     if a["kind"] in TWO_PERSON and approver == a["requested_by"]:
-        raise ApprovalError("requester cannot approve their own external/CRM action")
+        raise ApprovalError("requester cannot approve their own request")
     status = "approved" if approve else "rejected"
     conn.execute("UPDATE approvals SET status=%s, approver=%s, approved_at=%s WHERE id=%s", (status, approver, now, approval_id))
     audit(conn, actor=approver, operation=f"approval_{status}", record_type="approval", record_id=approval_id, approval_id=approval_id)

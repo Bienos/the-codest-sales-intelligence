@@ -228,7 +228,7 @@ function IdentityList({ d, reload }: { d: any; reload: () => void }) {
         <button disabled={note.length < 3} onClick={() => act(r.id, "new")}>It is a new company</button><button disabled={note.length < 3} onClick={() => act(r.id, "reject")}>Ignore this row</button></div></div>)}</>;
 }
 
-const TWO_PERSON = new Set(["crm_write", "crm_activity", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"]);
+const TWO_PERSON = new Set(["contact_enrichment", "crm_write", "crm_activity", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"]);
 const APPROVAL_FIELDS: Record<string, string> = { subject: "Subject", type: "Activity type", note: "Note", due_date: "Due date", org_id: "Pipedrive organisation", person_id: "Contact ID", delay_days: "Days after the previous email" };
 
 function PayloadDetails({ payload }: { payload: Record<string, unknown> }) {
