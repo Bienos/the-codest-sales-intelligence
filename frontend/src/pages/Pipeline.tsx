@@ -16,7 +16,7 @@ export function Verification() {
         <select aria-label="Origin" value={origin} onChange={(e) => setOrigin(e.target.value)}><option value="">All origins</option><option value="sheet_signal">From your workbooks</option><option value="exa_discovery">From web search</option><option value="seller_miss">Reported by sellers</option></select></div>}
       <Err e={err} />
       {d && d.items.length === 0 && <div className="empty"><b>Nothing here yet</b>Check a company from Today, or run a web search under Admin, Web search.</div>}
-      {d && d.items.length > 0 && <div className="card table-wrap"><table><thead><tr><th>When</th><th>Account and page</th><th>Came from</th><th>Status</th><th>Result</th><th><span className="sr">Action</span></th></tr></thead><tbody>
+      {d && d.items.length > 0 && <div className="card table-wrap" tabIndex={0} role="region" aria-label="When · Account and page · Came from"><table><thead><tr><th>When</th><th>Account and page</th><th>Came from</th><th>Status</th><th>Result</th><th><span className="sr">Action</span></th></tr></thead><tbody>
         {d.items.map((v: any) => <tr key={v.id}><td>{fmtDateTime(v.created_at)}</td>
           <td><b>{v.organization ?? "No company matched"}</b><div className="small">{v.claimed_text}</div><a className="small" href={v.url} target="_blank" rel="noreferrer noopener">{v.url.replace(/^https?:\/\//, "").slice(0, 60)} ↗</a></td>
           <td>{v.origin === "sheet_signal" ? "Your workbooks" : v.origin === "seller_miss" ? "Seller report" : "Web search"}</td><td><Badge kind={vk(v.status)}>{VLABEL[v.status] ?? humanize(v.status)}</Badge></td>
@@ -50,7 +50,7 @@ export function Discovery() {
         <p className="small muted mb-0">{d.note} Each search's cost comes from Exa's own response and is recorded under Usage and cost.</p>
         {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
       </div>
-      <div className="card table-wrap"><table><thead><tr><th>Search</th><th>Signal</th><th>Last run</th><th>Runs</th><th>Results</th><th>Sent to check</th><th>Spent</th><th>On</th><th><span className="sr">Action</span></th></tr></thead><tbody>
+      <div className="card table-wrap" tabIndex={0} role="region" aria-label="Search · Signal · Last run"><table><thead><tr><th>Search</th><th>Signal</th><th>Last run</th><th>Runs</th><th>Results</th><th>Sent to check</th><th>Spent</th><th>On</th><th><span className="sr">Action</span></th></tr></thead><tbody>
         {d.plans.map((p: any) => <tr key={p.plan_id}><td><b>{humanize(p.theme)}</b> · {p.geography}<div className="small muted">{p.query}</div>{p.last_error && <div className="small"><Badge kind="bad">{p.last_error === "rate_limited" ? "The search provider asked us to slow down" : humanize(p.last_error)}</Badge></div>}</td>
           <td>{p.signal_rule_id}</td><td>{p.last_run_at ? fmtDateTime(p.last_run_at) : "never"}</td><td>{p.runs}</td><td>{p.results_total}</td><td>{p.requests_created}</td><td>${Number(p.cost_total_usd).toFixed(2)}</td>
           <td><input type="checkbox" aria-label={`Enable ${p.theme} ${p.geography}`} checked={p.enabled} onChange={(e) => patch(`/api/admin/discovery/plans/${p.plan_id}?enabled=${e.target.checked}`).then(load).catch(setErr)} /></td>

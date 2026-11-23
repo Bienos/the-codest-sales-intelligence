@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
-import { Badge, Coverage, Err, Evidence, Fact, accessKind, demandKind, groupName, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
+import { actionReason, Badge, EVIDENCE_CONFIDENCE, Coverage, Err, Evidence, Fact, accessKind, demandKind, groupName, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
 import Prospects from "./Prospects";
 
-const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_accounts", "News on your accounts"], ["new_discoveries", "New companies worth a look"],
+const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_accounts", "Your accounts"], ["new_discoveries", "New companies worth a look"],
   ["relationships", "People to get back in touch with"], ["deal_blockers", "Deals that are stuck"], ["research_review", "Research to review"], ["public_tenders", "Public tenders"]];
 const REASONS = ["not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"];
 const TENDER_NOTE = "Public bodies buy through formal tenders, so these follow their own rules and deadlines.";
@@ -14,7 +14,7 @@ function Deadlines() {
   useEffect(() => { api("/api/deadlines").then((r) => setItems(r.items.filter((x: any) => x.days_left <= 240).slice(0, 6))).catch(() => setItems([])); }, []);
   if (!items.length) return null;
   return <section><div className="section-title">Regulation deadlines</div><p className="small muted sec-note">Each date was checked against an official page and approved by a second person. Buyers facing a hard deadline tend to need extra delivery capacity.</p>
-    <div className="card flush table-wrap"><table className="cards"><thead><tr><th>Deadline</th><th>Regulation</th><th>Who it applies to</th><th>Date</th></tr></thead><tbody>
+    <div className="card flush table-wrap" tabIndex={0} role="region" aria-label="Deadline · Regulation · Who it applies to"><table className="cards"><thead><tr><th>Deadline</th><th>Regulation</th><th>Who it applies to</th><th>Date</th></tr></thead><tbody>
       {items.map((x) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a></td><td data-label="Regulation" className="small">{x.regime}</td><td data-label="Who it applies to" className="small">{x.applies_to ?? "Not specified"}</td>
         <td data-label="Date"><b>{fmtDate(x.deadline_date)}</b> <span className="small muted">in {x.days_left} days</span></td></tr>)}
     </tbody></table></div></section>;
@@ -22,9 +22,14 @@ function Deadlines() {
 
 function Card({ c, reload, compact = false }: { c: any; reload: () => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
-  const decide = async (decision: string, r?: string) => { try { await post(`/api/hypotheses/${c.hypothesis_id}/decision`, { decision, reason: r }); reload(); } catch (e) { setErr(e); } };
+  const decide = async (decision: string, r?: string) => {
+    setBusy(true); setErr(null);
+    try { await post(`/api/hypotheses/${c.hypothesis_id}/decision`, { decision, reason: r }); reload(); }
+    catch (e) { setErr(e); }
+    finally { setBusy(false); }
+  };
   const a = c.next_action;
   return (
     <article className={`opp ${c.priority}${compact ? " compact" : ""}`} aria-label={`${c.account.name}: ${c.initiative.title}, ${lab("route", c.route.type)}`}>
@@ -43,7 +48,7 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
       </div>
       <div className="opp-grid">
         <div className="opp-body">
-          {(() => { const v = verdict(c); return <div className={`verdict ${v.kind}`}><span className="k">What to do</span>{v.text}</div>; })()}
+          {(() => { const v = verdict(c); return <div className={`verdict ${v.kind}`}><span className="k">Our read</span>{v.text}</div>; })()}
           {c.tender && <div className="tender"><Badge kind="bad">Tender</Badge> Closes <b>{fmtDateTime(c.tender.deadline_at)}</b> ({c.tender.deadline_tz ?? "timezone not given"}). We last checked it was still open on {fmtDateTime(c.tender.last_status_check_at)}.</div>}
           {!compact && <p><span className="k">What happened</span>{c.what_happened.summary ?? "No summary"}
             <span className="prov"> Happened {fmtDate(c.what_happened.event_date)} · we saw it {fmtDate(c.what_happened.first_observed)}</span></p>}
@@ -53,7 +58,7 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
             <Fact label="Will they use outside help?" value={lab("demand", c.external_demand_status)} kind={demandKind(c.external_demand_status)} />
             <Fact label="How we would get in" value={`${lab("route", c.route.type)} (${c.route.counterparty}): ${lab("access", c.route.access_status).toLowerCase()}`} kind={accessKind(c.route.access_status)} />
             <Fact label="Who buys" value={lab("buyer", c.buyer_status)} kind={c.buyer_status === "none" ? "warn" : "info"} />
-            <Fact label="How well sourced" value={humanize(c.evidence_confidence)} kind={c.evidence_confidence === "high" ? "ok" : c.evidence_confidence === "low" ? "warn" : "info"} />
+            <Fact label="How well sourced" value={<span title={EVIDENCE_CONFIDENCE}>{humanize(c.evidence_confidence)}</span>} kind={c.evidence_confidence === "high" ? "ok" : c.evidence_confidence === "low" ? "warn" : "info"} />
           </div>
           {c.reopened_after_dismissal && <p className="small"><Badge kind="info">Back again</Badge> You dismissed this as “{lab("dismiss", c.reopened_after_dismissal.previous_reason)}”. {c.reopened_after_dismissal.note}.</p>}
           {c.changed && Object.keys(c.changed).length > 0 && <p className="small muted">Changed since you last looked: {Object.entries(c.changed).map(([k, v]: any) => `${k} ${v[0] ?? "none"} to ${v[1]}`).join(" · ")}</p>}
@@ -68,19 +73,20 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
           <div className="eyebrow m-0">Next action</div>
           {a ? <>
             <div className="atype">{lab("action", a.action_type)}</div>
-            <dl><dt>Goal</dt><dd>{a.objective}</dd><dt>Owner</dt><dd>{a.owner_id ? `Pipedrive user ${a.owner_id}` : a.owner_note ?? "Not assigned"}</dd><dt>Due</dt><dd>{a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</dd></dl>
-            <div className="why"><b>Why:</b> {a.reason}</div>
+            <dl><dt>Goal</dt><dd>{a.objective}</dd><dt>Owner</dt><dd>{a.owner_name ?? (a.owner_id ? "Assigned in Pipedrive" : "Unassigned")}</dd><dt>Due</dt><dd>{a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</dd></dl>
+            <div className="why"><b>Why:</b> {actionReason(a)}</div>
             {a.approval_required && <div className="small muted">A colleague must approve before anything is sent or changed.</div>}
           </> : <span className="muted small">Nothing to do right now.</span>}
-          <div className="cta"><Link to={`/opportunities/${c.hypothesis_id}`}><button className="primary">Open opportunity</button></Link></div>
+          <div className="cta"><Link className="btn primary" to={`/opportunities/${c.hypothesis_id}`}>Open opportunity</Link></div>
         </aside>
       </div>
       <div className="opp-foot">
         <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? "Hide sources" : "Show sources"}</button>
-        <button onClick={() => decide("accepted")}>Pursue this</button>
-        <button onClick={() => decide("monitor")}>Keep watching</button>
-        <select aria-label="Reason for dismissing" value={reason} onChange={(e) => setReason(e.target.value)}><option value="">Why dismiss?</option>{REASONS.map((r) => <option key={r} value={r}>{lab("dismiss", r)}</option>)}</select>
-        <button disabled={!reason} onClick={() => decide("dismissed", reason)}>Dismiss</button>
+        <button disabled={busy} onClick={() => decide("accepted")}>Pursue this</button>
+        <button disabled={busy} onClick={() => decide("monitor")}>Keep watching</button>
+        <details className="dismiss-menu"><summary>Dismiss…</summary>
+          <div>{REASONS.map((r) => <button key={r} disabled={busy} onClick={() => decide("dismissed", r)}>{lab("dismiss", r)}</button>)}</div>
+        </details>
         <span className="ml-auto"><Link to={`/accounts/${c.account.id}`} className="small">Open account</Link></span>
       </div>
       <div className="opp-pad"><Err e={err} /></div>
@@ -127,20 +133,20 @@ export default function Today() {
         <div className="stats">
           <div className="stat urgent"><div className="n">{count((c) => c.priority === "urgent")}</div><div className="l">Urgent</div></div>
           <div className="stat"><div className="n">{d.count}</div><div className="l">To review</div></div>
-          <div className="stat"><div className="n">{ov ? ov.shortlist : "·"}</div><div className="l">On your shortlist</div></div>
         </div>
       </header>
       <div className="page pt-5">
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
+        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
         {d.hot_accounts?.length > 0 && <section><div className="section-title">Hot accounts</div><p className="small muted sec-note">Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.</p>
-          <div className="card flush table-wrap"><table className="cards"><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest</th></tr></thead><tbody>
+          <div className="card flush table-wrap" tabIndex={0} role="region" aria-label="Account · Signals · Latest"><table className="cards"><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest</th></tr></thead><tbody>
             {d.hot_accounts.map((a: any) => <tr key={a.id}><td><Link to={`/accounts/${a.id}`}>{a.display_name}</Link><div className="small muted">{[a.country_code, a.segment].filter(Boolean).join(" · ")}</div></td>
-              <td><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
-              <td className="small">{a.signal_count} · {a.groups.map(groupName).join(", ")}</td><td className="small">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}
+              <td data-label="Signal score"><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
+              <td className="small" data-label="Signals">{a.signal_count} · {a.groups.map(groupName).join(", ")}</td><td className="small" data-label="Latest">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}
           </tbody></table></div></section>}
         <Deadlines />
-        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
+
         <Prospects />
       </div>
     </>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { Link, Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { api, fmtDateTime, post, put, upload, patch } from "../api";
 import { Badge, Err, humanize, lab, Skeleton } from "../components/ui";
 import Library from "./Library";
@@ -10,7 +10,7 @@ import { Discovery, Verification } from "./Pipeline";
 
 function Load({ path, children }: { path: string; children: (d: any, reload: () => void) => any }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
-  const reload = () => api(path).then(setD).catch(setErr);
+  const reload = () => { setErr(null); return api(path).then(setD).catch(setErr); };
   useEffect(() => { reload(); }, [path]);
   if (err) return <Err e={err} onRetry={reload} />;
   return d ? children(d, reload) : <Skeleton />;
@@ -95,7 +95,7 @@ function DeadlinesAdmin() {
         <label className="small">The sentence on that page that states the date<textarea rows={2} value={f.source_quote} onChange={set("source_quote")} className="w-full" /></label>
         <button className="primary" disabled={!f.title || !f.regime || !f.deadline_date || !f.source_url || f.source_quote.length < 15} onClick={add}>Propose</button>
         {msg && <div className="okmsg mt-2" role="status">{msg}</div>}<Err e={err} /></div>
-      <div className="card table-wrap"><table><thead><tr><th>Deadline</th><th>Date</th><th>Quote from the official page</th><th>Status</th><th /></tr></thead><tbody>
+      <div className="card table-wrap" tabIndex={0} role="region" aria-label="Deadline · Date · Quote from the official page"><table><thead><tr><th>Deadline</th><th>Date</th><th>Quote from the official page</th><th>Status</th><th /></tr></thead><tbody>
         {d.items.map((x: any) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a><div className="small muted">{x.regime} · proposed by {x.proposed_by}</div></td><td>{x.deadline_date}</td><td className="small">“{x.source_quote}”</td>
           <td><Badge kind={x.status === "approved" ? "ok" : x.status === "proposed" ? "warn" : ""}>{x.status === "proposed" ? "Waiting for a second approver" : humanize(x.status)}</Badge></td>
           <td>{x.status === "proposed" && <div className="row"><button className="primary" onClick={() => act(x.id, "approve")}>Approve</button><button onClick={() => act(x.id, "reject")}>Reject</button></div>}{x.status === "approved" && <button onClick={() => act(x.id, "retire")}>Retire</button>}</td></tr>)}
@@ -106,21 +106,21 @@ function DeadlinesAdmin() {
 const Coverage = () => <Load path="/api/admin/recall">{(d) => (<>
   <p className="sub">Are we finding what is out there? Each cell counts what we found in the last {d.grid.days} days. A red 0 is worth a look: a source may be broken, or the market may just be quiet.</p>
   {d.grid.empty.length > 0 && <div className="err" role="alert">{d.grid.empty.length} of {d.grid.cells.length} market and topic combinations found nothing in {d.grid.days} days.</div>}
-  <div className="card table-wrap"><table><thead><tr><th>Market</th>{d.grid.kinds.map((k: string) => <th key={k}>{k}</th>)}</tr></thead><tbody>
+  <div className="card table-wrap" tabIndex={0} role="region" aria-label="Market"><table><thead><tr><th>Market</th>{d.grid.kinds.map((k: string) => <th key={k}>{k}</th>)}</tr></thead><tbody>
     {d.grid.markets.map((m: string) => <tr key={m}><td><b>{m}</b></td>{d.grid.kinds.map((k: string) => { const c = d.grid.cells.find((x: any) => x.market === m && x.kind === k); return <td key={k}>{c.empty ? <Badge kind="bad">0</Badge> : c.count}</td>; })}</tr>)}</tbody></table></div>
   <div className="card"><b>Sources finding less than usual</b>
     {d.yield_drops.length === 0 ? <p className="small muted">None. We only judge a source after two weeks of history, and only if it normally finds at least 5 items a week.</p>
       : <ul className="tight small">{d.yield_drops.map((x: any) => <li key={x.source_id}><b>{x.source_id}</b>: {x.last_7_days} this week, usually about {x.usual_per_week}</li>)}</ul>}</div>
   <div className="card"><b>Pages sellers say we missed</b>
     <p className="small muted">{d.misses.total === 0 ? "None yet. Sellers can paste a link on the Market feed." : `${d.misses.total} reported: we already had ${d.misses.caught}, and missed ${d.misses.missed}. Each missed page shows which source should have found it.`}</p>
-    {d.misses.items.length > 0 && <div className="table-wrap"><table><thead><tr><th>Page</th><th>Did we have it?</th><th>Result</th><th>Reported</th></tr></thead><tbody>
+    {d.misses.items.length > 0 && <div className="table-wrap" tabIndex={0} role="region" aria-label="Page · Result · Reported"><table><thead><tr><th>Page</th><th>Did we have it?</th><th>Result</th><th>Reported</th></tr></thead><tbody>
       {d.misses.items.map((m: any) => <tr key={m.id}><td><a href={m.url} target="_blank" rel="noreferrer noopener">{m.url.replace(/^https?:\/\//, "").slice(0, 60)} ↗</a>{m.note && <div className="small muted">{m.note}</div>}</td>
         <td>{m.we_already_had_it ? <Badge kind="ok">Yes ({m.from_source})</Badge> : <Badge kind="bad">No</Badge>}</td><td className="small">{humanize(m.status)}{m.events_created > 0 ? ` · ${m.events_created} finding(s)` : ""}</td><td className="small">{fmtDateTime(m.reported_at)}</td></tr>)}</tbody></table></div>}</div></>)}</Load>;
 
 const Precision = () => <Load path="/api/admin/precision">{(d) => (<>
   <p className="sub">What sellers did with each signal in the last {d.window_days} days. This only reports: a person decides whether a signal changes. A dismissal is an opinion, so read the top reason first.</p>
   {d.flagged.length > 0 && <div className="err" role="alert">Dismissed more than 60% of the time, with enough decisions to judge: <b>{d.flagged.join(", ")}</b></div>}
-  <div className="card table-wrap"><table><thead><tr><th>Signal</th><th>Fired</th><th>Pursued</th><th>Dismissed</th><th>Dismissed share</th><th>Main reason</th><th><span className="sr">Flag</span></th></tr></thead><tbody>
+  <div className="card table-wrap" tabIndex={0} role="region" aria-label="Signal · Fired · Pursued"><table><thead><tr><th>Signal</th><th>Fired</th><th>Pursued</th><th>Dismissed</th><th>Dismissed share</th><th>Main reason</th><th><span className="sr">Flag</span></th></tr></thead><tbody>
     {d.rules.map((r: any) => <tr key={r.rule_id}><td>{r.rule_id}</td><td>{r.fired}</td><td>{r.accepted}</td><td>{r.dismissed}</td><td>{r.dismissal_rate === null ? "n/a" : `${Math.round(r.dismissal_rate * 100)}%`}<div className="small muted">{r.enough_data ? `likely range ${Math.round(r.interval_95[0] * 100)} to ${Math.round(r.interval_95[1] * 100)}%` : "Too few decisions to judge"}</div></td>
       <td className="small">{r.top_dismiss_reason ? lab("dismiss", r.top_dismiss_reason) : "None"}</td><td>{r.flag && <Badge kind="bad">Look at this</Badge>}</td></tr>)}
     {d.rules.length === 0 && <tr><td colSpan={7} className="muted">No signals fired in this period.</td></tr>}</tbody></table></div>
@@ -203,27 +203,89 @@ function IdentityList({ d, reload }: { d: any; reload: () => void }) {
         <button disabled={note.length < 3} onClick={() => act(r.id, "new")}>It is a new company</button><button disabled={note.length < 3} onClick={() => act(r.id, "reject")}>Ignore this row</button></div></div>)}</>;
 }
 
-const Approvals = () => <Load path="/api/approvals">{(d, reload) => <ApprovalList d={d} reload={reload} />}</Load>;
-function ApprovalList({ d, reload }: { d: any; reload: () => void }) {
+const TWO_PERSON = new Set(["crm_write", "crm_activity", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"]);
+const APPROVAL_FIELDS: Record<string, string> = { subject: "Subject", type: "Activity type", note: "Note", due_date: "Due date", org_id: "Pipedrive organisation", person_id: "Contact ID", delay_days: "Days after the previous email" };
+
+function PayloadDetails({ payload }: { payload: Record<string, unknown> }) {
+  const readable = (v: unknown): React.ReactNode => {
+    if (Array.isArray(v)) return <ol className="tight">{v.map((item, i) => <li key={i}>{readable(item)}</li>)}</ol>;
+    if (v && typeof v === "object") return <PayloadDetails payload={v as Record<string, unknown>} />;
+    if (typeof v === "boolean") return v ? "Yes" : "No";
+    return String(v);
+  };
+  const values = Object.entries(payload).filter(([, v]) => v != null && v !== "");
+  return <dl className="approval-payload">{values.map(([k, v]) => <div key={k}>
+    <dt>{APPROVAL_FIELDS[k] ?? humanize(k)}</dt><dd>{readable(v)}</dd>
+  </div>)}</dl>;
+}
+
+function Approvals({ me, refresh }: { me: AdminUser; refresh: () => void }) {
+  return <Load path="/api/approvals">{(d, reload) => <ApprovalList d={d} me={me} reload={() => { void reload(); refresh(); }} />}</Load>;
+}
+function ApprovalList({ d, reload, me }: { d: any; reload: () => void; me: AdminUser }) {
   const [err, setErr] = useState<unknown>(null); const [msg, setMsg] = useState("");
-  const go = async (path: string, body?: unknown, done = "Done.") => { setErr(null); setMsg(""); try { await post(path, body); setMsg(done); reload(); } catch (e) { setErr(e); } };
-  return <><Err e={err} />{msg && <div className="okmsg" role="status">{msg}</div>}{d.items.length === 0 && <div className="empty"><b>Nothing waiting</b>Requests for Pipedrive changes, outreach and email reveals show up here for a second person to approve.</div>}
-    {d.items.map((a: any) => <div key={a.id} className="card"><div className="row spread"><b>{lab("approval", a.kind)}{a.payload?.subject ? `: ${a.payload.subject}` : ""}</b><Badge kind={a.status === "approved" ? "ok" : a.status === "pending" ? "warn" : a.status === "executed" ? "info" : ""}>{({ pending: "Waiting for approval", approved: "Approved, not run yet", executed: "Done", rejected: "Rejected", expired: "Expired" } as Record<string, string>)[a.status] ?? humanize(a.status)}</Badge></div>
-      <div className="small">For {humanize(a.target_system)} · asked by {a.requested_by} · expires {fmtDateTime(a.expires_at)}</div><div className="small mt-2 mb-2">{Object.entries(a.payload ?? {}).map(([k, v]: any) => <div key={k}><b>{humanize(k)}:</b> {typeof v === "object" ? JSON.stringify(v) : String(v)}</div>)}</div><div className="small muted">Why: {a.justification}</div>
-      <div className="row mt-2">{a.status === "pending" && <><button className="primary" onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: true }, "Approved. Press Run now to carry it out.")}>Approve this</button><button onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: false }, "Rejected.")}>Reject</button></>}
-        {a.status === "approved" && <button onClick={() => go(`/api/approvals/${a.id}/execute`, undefined, "Done.")}>Run now</button>}</div></div>)}</>;
+  const [busy, setBusy] = useState(false);
+  const go = async (path: string, body?: unknown) => {
+    setBusy(true); setErr(null); setMsg("");
+    try {
+      const result = await post(path, body);
+      setMsg(result.status === "approved" ? "Approved. Press Run now to carry it out."
+        : result.status === "executed" ? result.note ?? "Action completed."
+        : result.status === "rejected" ? "Rejected." : `Request status: ${humanize(result.status)}.`);
+      reload();
+    } catch (e) { setErr(e); }
+    finally { setBusy(false); }
+  };
+  const canDecide = me.permissions.includes("approvals.decide");
+  return <><Err e={err} />{msg && <div className="okmsg" role="status">{msg}</div>}{d.items.length === 0 && <div className="empty"><b>Nothing waiting</b>Requests for Pipedrive changes, outreach and email reveals will appear here.</div>}
+    {d.items.map((a: any) => <div id={`approval-${a.id}`} key={a.id} className="card"><div className="row spread"><b>{lab("approval", a.operation === "create_activity" ? "crm_activity" : a.kind)}{a.payload?.subject ? `: ${a.payload.subject}` : ""}</b><Badge kind={a.status === "approved" ? "ok" : a.status === "pending" ? "warn" : a.status === "executed" ? "info" : ""}>{({ pending: "Waiting for approval", approved: "Approved, not run yet", executed: "Done", rejected: "Rejected", expired: "Expired" } as Record<string, string>)[a.status] ?? humanize(a.status)}</Badge></div>
+      <div className="small">For {a.target_system === "pipedrive" ? "Pipedrive" : humanize(a.target_system)} · requested by {a.requested_by} · expires {fmtDateTime(a.expires_at)}</div>
+      <PayloadDetails payload={a.payload ?? {}} />
+      {a.justification && <div className="small muted">Why: {a.justification}</div>}
+      {a.status === "pending" && TWO_PERSON.has(a.kind) && <p className="small muted">Someone other than the requester must approve this.</p>}
+      {canDecide && <div className="row mt-2">
+        {a.status === "pending" && <>
+          <button className="primary" disabled={busy || (TWO_PERSON.has(a.kind) && a.requested_by === me.email)} onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: true })}>Approve this</button>
+          <button disabled={busy || (TWO_PERSON.has(a.kind) && a.requested_by === me.email)} onClick={() => go(`/api/approvals/${a.id}/decision`, { approve: false })}>Reject</button>
+        </>}
+        {a.status === "approved" && <button disabled={busy} onClick={() => go(`/api/approvals/${a.id}/execute`)}>Run now</button>}
+      </div>}
+    </div>)}</>;
 }
 
 const Jobs = () => <Load path="/api/admin/jobs">{(d, reload) => <><div className="row">{d.by_status.map((s: any) => <Badge key={s.status} kind={s.status.includes("failed") ? "bad" : ""}>{({ done: "Done", queued: "Waiting", running: "Running", retrying: "Retrying", permanent_failed: "Failed for good" } as Record<string, string>)[s.status] ?? humanize(s.status)}: {s.n}</Badge>)}</div>
-  <h3>Jobs that failed for good</h3>{d.dead_letters.length === 0 && <div className="empty"><b>None</b>Nothing has failed for good.</div>}{d.dead_letters.length > 0 && <div className="card table-wrap"><table><thead><tr><th>Job</th><th>Problem</th><th>Detail</th><th><span className="sr">Action</span></th></tr></thead><tbody>{d.dead_letters.map((x: any) => <tr key={x.id}><td>{x.kind}</td><td>{x.error_class}</td><td>{x.error}</td><td>{x.replayed_at ? "Retried" : <button onClick={() => post(`/api/admin/dead-letters/${x.id}/replay`).then(reload)}>Try again</button>}</td></tr>)}</tbody></table></div>}</>}</Load>;
+  <h3>Jobs that failed for good</h3>{d.dead_letters.length === 0 && <div className="empty"><b>None</b>Nothing has failed for good.</div>}{d.dead_letters.length > 0 && <div className="card table-wrap" tabIndex={0} role="region" aria-label="Job · Problem · Detail"><table><thead><tr><th>Job</th><th>Problem</th><th>Detail</th><th><span className="sr">Action</span></th></tr></thead><tbody>{d.dead_letters.map((x: any) => <tr key={x.id}><td>{x.kind}</td><td>{x.error_class}</td><td>{x.error}</td><td>{x.replayed_at ? "Retried" : <button onClick={() => post(`/api/admin/dead-letters/${x.id}/replay`).then(reload)}>Try again</button>}</td></tr>)}</tbody></table></div>}</>}</Load>;
 
-const Costs = () => <Load path="/api/admin/costs">{(d) => <><p className="small muted">{d.note}</p><div className="card table-wrap"><table><thead><tr><th>Provider</th><th>Kind</th><th>Period</th><th>Limit</th><th>Set aside</th><th>Spent</th></tr></thead><tbody>{d.budgets.map((b: any, i: number) => <tr key={i}><td>{b.provider}</td><td>{b.kind}</td><td>{b.period}</td><td>{b.cap}</td><td>{b.reserved}</td><td>{b.spent}</td></tr>)}
-  {d.budgets.length === 0 && <tr><td colSpan={6} className="muted">No budgets configured: no paid provider call can run.</td></tr>}</tbody></table></div></>}</Load>;
+function BudgetDetails() {
+  return <Load path="/api/admin/costs">{(d) => <>
+    <p className="small muted">{d.note}</p>
+    <div className="table-wrap" tabIndex={0} role="region" aria-label="Provider budgets">
+      <table><thead><tr><th>Provider</th><th>Kind</th><th>Period</th><th>Limit</th><th>Set aside</th><th>Spent</th></tr></thead>
+        <tbody>{d.budgets.map((b: any) => <tr key={`${b.provider}-${b.kind}-${b.period}`}><td>{humanize(b.provider)}</td><td>{humanize(b.kind)}</td><td>{b.period}</td><td>{b.cap}</td><td>{b.reserved}</td><td>{b.spent}</td></tr>)}
+          {d.budgets.length === 0 && <tr><td colSpan={6}>No budgets configured.</td></tr>}</tbody></table>
+    </div>
+  </>}</Load>;
+}
 
-const Rules = () => <Load path="/api/admin/rules">{(d) => <><div className="row">{d.summary.map((s: any) => <Badge key={s.status} kind={s.status === "active" ? "ok" : ""}>{humanize(s.status)}: {s.n}</Badge>)}</div><div className="card table-wrap"><table><thead><tr><th>ID</th><th>Signal (original wording)</th><th>Strength</th><th>Stays relevant (days)</th><th>Version</th><th>Status</th></tr></thead><tbody>
+const Rules = () => <Load path="/api/admin/rules">{(d) => <><div className="row">{d.summary.map((s: any) => <Badge key={s.status} kind={s.status === "active" ? "ok" : ""}>{humanize(s.status)}: {s.n}</Badge>)}</div><div className="card table-wrap" tabIndex={0} role="region" aria-label="ID · Signal (original wording) · Strength"><table><thead><tr><th>ID</th><th>Signal (original wording)</th><th>Strength</th><th>Stays relevant (days)</th><th>Version</th><th>Status</th></tr></thead><tbody>
   {d.items.map((r: any) => <tr key={r.id}><td>{r.id}</td><td>{r.signal}</td><td>{r.strength}</td><td>{r.fresh_for_days}</td><td>{r.version}</td><td><Badge kind={r.status === "active" ? "ok" : ""}>{r.status === "active" ? "On" : "Not yet on"}</Badge></td></tr>)}</tbody></table></div></>}</Load>;
 
-const Audit = () => <Load path="/api/admin/audit">{(d) => <div className="card table-wrap"><table><thead><tr><th>When</th><th>Who</th><th>What they did</th><th>About</th><th>Approval</th></tr></thead><tbody>{d.items.map((a: any) => <tr key={a.id}><td>{fmtDateTime(a.at)}</td><td>{a.actor}</td><td>{humanize(a.operation)}</td><td>{humanize(a.record_type)} <span className="small muted">{a.record_id?.slice(0, 8)}</span></td><td>{a.approval_id ? a.approval_id.slice(0, 8) : "None needed"}</td></tr>)}</tbody></table></div>}</Load>;
+function Audit() {
+  const [limit, setLimit] = useState(100);
+  return <Load path={`/api/admin/audit?limit=${limit}`}>{(d) => <>
+    <div className="card table-wrap" tabIndex={0} role="region" aria-label="Audit log"><table><thead><tr><th>When</th><th>Who</th><th>What they did</th><th>About</th><th>Approval</th></tr></thead>
+      <tbody>{d.items.map((a: any) => {
+        const type = a.record_type;
+        const link = type === "opportunity_hypothesis" ? "/opportunities/" : type === "organization" ? "/accounts/" : null;
+        const name = type === "opportunity_hypothesis" ? "Opportunity" : type === "organization" ? "Account" : humanize(type);
+        return <tr key={a.id}><td>{fmtDateTime(a.at)}</td><td>{a.actor}</td><td>{a.operation === "evaluate_hypothesis" ? "Scored opportunity" : humanize(a.operation)}</td>
+          <td>{link && a.record_id ? <Link to={link + a.record_id}>{name}</Link> : name} <span className="small muted">{a.record_id?.slice(0, 8)}</span></td>
+          <td>{a.approval_id ? a.approval_id.slice(0, 8) : "None"}</td></tr>;
+      })}</tbody></table></div>
+    {d.items.length >= limit && limit < 500 && <button onClick={() => setLimit((n) => n + 100)}>Show older entries</button>}
+    {d.items.length >= 500 && <p className="small muted">Showing the latest 500 entries.</p>}
+  </>}</Load>;
+}
 
 const QUALITY_LABELS: Record<string, [string, string]> = {
   stale_sources: ["Sources gone quiet", "Active sources that haven't produced anything recently."],
@@ -238,7 +300,7 @@ const QUALITY_LABELS: Record<string, [string, string]> = {
 };
 const Quality = () => <Load path="/api/admin/metrics">{(d) => <><p className="sub mb-4">Health checks on the platform itself. Anything marked "should be zero" and isn't is worth a look.</p>
   <div className="kpis">{Object.entries(d).filter(([, v]) => typeof v === "number").map(([k, v]: any) => { const [t, hint] = QUALITY_LABELS[k] ?? [humanize(k), ""]; return <div key={k} className="card kpi"><div className="eyebrow">{t}</div><div className="kpi-n">{v}</div>{hint && <div className="small muted">{hint}</div>}</div>; })}</div>
-  <Load path="/api/admin/funnel">{(f) => <><h3>Outcome funnel</h3>{Object.keys(f.cohorts).length === 0 && <div className="empty"><b>No outcomes recorded yet</b>Nothing here is inferred.</div>}{Object.entries(f.cohorts).map(([k, c]: any) => <div key={k} className="card"><b>{humanize(k)}</b> · presented {c.presented} {c.insufficient_sample && <Badge kind="warn">too few to judge</Badge>}</div>)}<ul className="tight small muted">{f.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>}</Load></>}</Load>;
+  <Load path="/api/admin/funnel">{(f) => <><h2 className="h-sub">Outcome funnel</h2>{Object.keys(f.cohorts).length === 0 && <div className="empty"><b>No outcomes recorded yet</b>Nothing here is inferred.</div>}{Object.entries(f.cohorts).map(([k, c]: any) => <div key={k} className="card"><b>{humanize(k)}</b> · presented {c.presented} {c.insufficient_sample && <Badge kind="warn">too few to judge</Badge>}</div>)}<ul className="tight small muted">{f.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul></>}</Load></>}</Load>;
 
 function Imports() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
@@ -279,10 +341,10 @@ function Imports() {
       </div>
       <h3>Recent uploads</h3>
       {!d ? <Skeleton /> : d.uploads.length === 0 ? <div className="empty">No uploads yet.</div> :
-        <div className="card table-wrap"><table><thead><tr><th>When</th><th>File</th><th>Workbook</th><th>Status</th><th>Detail</th></tr></thead><tbody>{d.uploads.map((u: any) => {
+        <div className="card table-wrap" tabIndex={0} role="region" aria-label="When · File · Workbook"><table><thead><tr><th>When</th><th>File</th><th>Workbook</th><th>Status</th><th>Detail</th></tr></thead><tbody>{d.uploads.map((u: any) => {
           const tabs = u.stats?.tabs ? Object.entries(u.stats.tabs) as [string, any][] : [];
           return <tr key={u.id}><td>{fmtDateTime(u.created_at)}</td><td>{u.filename}<div className="small muted">{u.uploaded_by}</div></td><td>{u.workbook_key}</td>
-            <td><Badge kind={u.status === "completed" ? "ok" : u.status === "failed" ? "bad" : "info"}>{({ completed: "Loaded", failed: "Failed", running: "Loading", queued: "Waiting" } as Record<string, string>)[u.status] ?? humanize(u.status)}</Badge></td>
+            <td><Badge kind={u.status === "completed" ? "ok" : u.status === "failed" ? "bad" : "info"}>{({ completed: "Imported", failed: "Failed", running: "Loading", queued: "Waiting" } as Record<string, string>)[u.status] ?? humanize(u.status)}</Badge></td>
             <td className="small">{u.error ?? tabs.map(([k, v]) => `${k}: ${v.status}${v.rows !== undefined ? ` (${v.rows} rows)` : ""}`).join(" · ")}</td></tr>; })}</tbody></table></div>}
     </>
   );
@@ -309,7 +371,7 @@ function Users() {
         </div>
         {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
       </div>
-      {d && <div className="card table-wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Team</th><th>Status</th><th><span className="sr">Actions</span></th></tr></thead><tbody>{d.items.map((u: any) => <tr key={u.id}>
+      {d && <div className="card table-wrap" tabIndex={0} role="region" aria-label="Person · Role · Team"><table><thead><tr><th>Person</th><th>Role</th><th>Team</th><th>Status</th><th><span className="sr">Actions</span></th></tr></thead><tbody>{d.items.map((u: any) => <tr key={u.id}>
         <td>{u.display_name}<div className="small muted">{u.email}</div></td>
         <td><select aria-label={`Role for ${u.email}`} value={u.role} onChange={(e) => run(() => patch(`/api/admin/users/${u.id}`, { role: e.target.value }), "Role updated.")}>{ROLES.map((r) => <option key={r} value={r}>{lab("role", r)}</option>)}</select></td>
         <td>{u.team}</td><td><Badge kind={u.active ? "ok" : ""}>{u.active ? "Active" : "Deactivated"}</Badge></td>
@@ -318,30 +380,31 @@ function Users() {
   );
 }
 
-function SubNav({ me }: { me: { permissions: string[] } }) {
+type AdminUser = { email: string; permissions: string[] };
+
+function SubNav({ me, waiting }: { me: AdminUser; waiting: number }) {
   const p = (x: string) => me.permissions.includes(x);
-  const [waiting, setWaiting] = useState(0);
-  useEffect(() => { api("/api/approvals").then((r) => setWaiting(r.items.filter((a: any) => a.status === "pending").length)).catch(() => undefined); }, []);
-  const L = (show: boolean, to: string, label: string, end = false, badge = 0) => show ? <NavLink key={to} to={to} end={end}>{label}{badge > 0 && <span className="tabn">{badge}</span>}</NavLink> : null;
+  const [expanded, setExpanded] = useState(false);
+  const L = (show: boolean, to: string, label: string, end = false, badge = 0) => show ? <NavLink key={to} to={to} end={end} onClick={() => setExpanded(false)}>{label}{badge > 0 && <span className="tabn">{badge}</span>}</NavLink> : null;
   const groups: [string, (React.ReactNode)[]][] = [
-    ["Needs a person", [L(true, "/admin/approvals", "Approvals", false, waiting), L(p("identity.manage"), "/admin/identity", "Company matches"), L(p("sources.read"), "/admin/verification", "Pages being checked")]],
+    ["Needs a person", [L(p("approvals.read_own") || p("approvals.read_all"), "/admin/approvals", "Approvals", false, waiting), L(p("identity.manage"), "/admin/identity", "Company matches"), L(p("sources.read"), "/admin/verification", "Pages being checked")]],
     ["Is it working?", [L(p("admin.jobs"), "/admin/pipeline", "Pipeline"), L(p("admin.jobs"), "/admin/jobs", "Failed jobs"), L(p("admin.costs"), "/admin/usage", "Usage and cost"), L(p("admin.rules"), "/admin/coverage", "Are we finding things?"), L(p("admin.rules"), "/admin/quality", "Health checks")]],
     ["Data and sources", [L(p("sources.read"), "/admin", "Sources", true), L(p("sources.read"), "/admin/connections", "Where we read from"), L(p("admin.sources"), "/admin/imports", "Workbooks"), L(p("admin.costs"), "/admin/discovery", "Web search"), L(p("admin.rules"), "/admin/deadlines", "Regulation deadlines"), L(p("admin.sources"), "/admin/knowledge", "Knowledge base")]],
     ["Signals", [L(p("admin.rules"), "/admin/rules", "Signal list"), L(p("admin.rules"), "/admin/precision", "Which signals work")]],
     ["Access", [L(p("admin.users"), "/admin/users", "People"), L(p("admin.costs"), "/admin/integrations", "Connected services"), L(p("audit.read"), "/admin/audit", "Audit log")]],
   ];
-  return <nav className="subnav" aria-label="Administration sections">{groups.map(([g, items]) => items.some(Boolean) ? <div key={g} className="subnav-g"><div className="subnav-h">{g}</div>{items}</div> : null)}</nav>;
+  return <div><button type="button" className="admin-nav-toggle" aria-expanded={expanded} aria-controls="admin-sections" onClick={() => setExpanded(!expanded)}>Administration sections</button><nav id="admin-sections" className={`subnav${expanded ? " expanded" : ""}`} aria-label="Administration sections">{groups.map(([g, items]) => items.some(Boolean) ? <div key={g} className="subnav-g"><div className="subnav-h">{g}</div>{items}</div> : null)}</nav></div>;
 }
 
-export default function Admin({ me }: { me: { permissions: string[] } }) {
+export default function Admin({ me, waiting, refreshApprovals }: { me: AdminUser; waiting: number; refreshApprovals: () => void }) {
   const p = (x: string) => me.permissions.includes(x);
   return (
     <>
       <div className="page-head"><h1>Administration</h1></div>
       <div className="admin-grid">
-        <SubNav me={me} />
+        <SubNav me={me} waiting={waiting} />
         <div className="admin-main">
-          <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="integrations" element={<Integrations />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Costs />} /><Route path="usage" element={<Usage />} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
+          <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="integrations" element={<Integrations />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals me={me} refresh={refreshApprovals} />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Navigate to="/admin/usage" replace />} /><Route path="usage" element={<><Usage /><details className="card mt-4"><summary>All provider budgets</summary><BudgetDetails /></details></>} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
             <Route path="rules" element={<Rules />} /><Route path="precision" element={<Precision />} /><Route path="coverage" element={<Coverage />} /><Route path="deadlines" element={<DeadlinesAdmin />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
         </div>
       </div>

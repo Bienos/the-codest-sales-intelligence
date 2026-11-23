@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { ReactNode } from "react";
 import { fmtDate, trackSourceOpened } from "../api";
 
@@ -27,7 +27,7 @@ export const LABELS = {
   state: { observed: "Just spotted", verified: "Checked", relevant: "Relevant", investigating: "Being researched", actionable_hypothesis: "Ready to act on", engaged: "In conversation",
     buyer_need_confirmed: "Buyer confirmed the need", commercially_qualified: "Qualified", proposal_procurement: "Proposal or tender", contracted_delivery: "Won", monitor: "Watching",
     blocked: "Blocked", disqualified: "Ruled out", expired: "Expired", superseded: "Replaced by a newer card" },
-  route: { direct: "Direct", vendor: "Through the platform vendor", prime_subcontract: "Through an integrator", procurement: "Public tender", relationship: "Existing relationship" },
+  route: { direct: "Direct", buyer_direct: "Direct", vendor: "Through the platform vendor", vendor_implementation: "Through the platform vendor", prime_subcontract: "Through an integrator", procurement: "Public tender", relationship: "Existing relationship", framework_panel: "Through a supplier framework", msp_vms: "Through a managed supplier programme", supplier_registration: "Through supplier registration" },
   access: { verified: "Confirmed", potential: "Possible", unknown: "Not confirmed", restricted: "Restricted", blocked: "Blocked" },
   demand: { explicit: "They have asked for help", buyer_confirmed: "Buyer confirmed", inferred: "Likely", unknown: "Not known yet" },
   buyer: { buyer_confirmed: "Buyer confirmed", person_verified: "Named person confirmed", role_identified: "Role known, person not", none: "No buyer yet" },
@@ -46,7 +46,7 @@ export const LABELS = {
   group: { SRC: "buying route", CAP: "hiring", MAN: "new leader", PRG: "funded project", COM: "business event", REG: "deadline", REL: "existing relationship" },
   dismiss: { not_relevant: "Not relevant", wrong_entity: "Wrong company", stale: "Out of date", duplicate: "Duplicate", no_external_demand: "They will not outsource this",
     not_commercially_relevant: "Not worth pursuing", owned_elsewhere: "Someone else owns it", other: "Other" },
-  approval: { crm_write: "Pipedrive change", crm_activity: "Pipedrive activity", outbound_message: "Outreach message", sequence_enrolment: "Add to an email sequence", contact_reveal: "Reveal an email address",
+  approval: { crm_write: "Pipedrive change", crm_activity: "Pipedrive activity", outbound_message: "Outreach message", sequence_enrolment: "Add to an email sequence", contact_reveal: "Reveal an email address", contact_enrichment: "Reveal an email address",
     supplier_application: "Supplier application", quote_or_commitment: "Quote or commitment", proof_release: "Release of proof" },
   committee: { problem_owner: "problem owner", programme_owner: "programme owner", economic_buyer: "budget holder", technical_evaluator: "technical evaluator", procurement_owner: "procurement",
     risk_security: "risk and security", technical_sponsor: "technical sponsor" },
@@ -78,6 +78,11 @@ export function verdict(c: any): { text: string; kind: string } {
   if (access === "restricted" || access === "blocked") return { text: "A real programme, but we cannot sell to them directly. Look for a partner route.", kind: "warn" };
   if (c.buyer_status === "none") return { text: "Worth a conversation, but you still need to find the buyer.", kind: "info" };
   return { text: "Worth a conversation. We do not know yet if they will use outside help, so ask.", kind: "info" };
+}
+export const EVIDENCE_CONFIDENCE = "High: an official source, or a company source plus another independent source. Medium: one company source or at least two other independent sources. Low: less evidence.";
+export function actionReason(action: { action_type: string; reason?: string }): string {
+  if (action.action_type === "qualify_external_demand") return "We checked that the programme exists. Only a conversation with the buyer can confirm if they need outside help.";
+  return action.reason ?? "";
 }
 const GATE_NAMES: Record<string, string> = { G1: "Account fit", G2: "Real programme", G3: "Engineering fit", G4: "Outside demand", G5: "Supplier access", G6: "Buyer path", G7: "Delivery" };
 const GATE_STATUS: Record<string, string> = { pass: "Confirmed", unknown: "Not known yet", fail: "Blocked" };
@@ -189,18 +194,25 @@ export const Skeleton = ({ rows = 3, label = "Loading" }: { rows?: number; label
 /** The backend appends "; route: …; external demand: …" to this sentence. Both are already shown as facts, so keep only the first clause. */
 export const whyShort = (s?: string | null) => String(s ?? "").split(/;\s*route:/)[0].replace(/\s*\(confirmed scope\)/, "");
 /** Accessible tab strip: arrow keys, Home and End move between tabs; only the selected tab is in the tab order. */
-export function Tabs({ items, value, onChange, label, flush = false }: { items: { key: string; label: ReactNode }[]; value: string; onChange: (k: string) => void; label?: string; flush?: boolean }) {
+export function Tabs({ items, value, onChange, label, children }: { items: { key: string; label: ReactNode }[]; value: string; onChange: (k: string) => void; label: string; children: ReactNode }) {
+  const id = useId();
+  const active = items.findIndex((item) => item.key === value);
   const go = (e: React.KeyboardEvent, i: number) => {
     const n = e.key === "ArrowRight" ? (i + 1) % items.length : e.key === "ArrowLeft" ? (i - 1 + items.length) % items.length : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : -1;
     if (n < 0) return;
-    e.preventDefault(); onChange(items[n].key);
-    const strip = e.currentTarget.parentElement;
-    requestAnimationFrame(() => (strip?.children[n] as HTMLElement | undefined)?.focus());
+    e.preventDefault();
+    (e.currentTarget.parentElement?.children[n] as HTMLButtonElement | undefined)?.focus();
+    onChange(items[n].key);
   };
   return (
-    <div className={`tabs${flush ? " flush" : ""}`} role="tablist" aria-label={label}>
-      {items.map((t, i) => <button key={t.key} role="tab" aria-selected={value === t.key} tabIndex={value === t.key ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => go(e, i)}>{t.label}</button>)}
-    </div>
+    <>
+      <div className="tabs" role="tablist" aria-label={label}>
+        {items.map((t, i) => <button key={t.key} id={`${id}-tab-${i}`} type="button" role="tab" aria-controls={`${id}-panel-${i}`} aria-selected={i === active} tabIndex={i === active ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => go(e, i)}>{t.label}</button>)}
+      </div>
+      {items.map((t, i) => <div key={t.key} id={`${id}-panel-${i}`} role="tabpanel" aria-labelledby={`${id}-tab-${i}`} hidden={i !== active} tabIndex={i === active ? 0 : undefined}>
+        {i === active ? children : null}
+      </div>)}
+    </>
   );
 }
 export const reloadPage = () => window.location.reload();

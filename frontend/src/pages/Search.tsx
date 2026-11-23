@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { Badge, Err, LABELS, TIER, humanize } from "../components/ui";
+import { Badge, Err, LABELS, Skeleton, TIER, humanize } from "../components/ui";
 
 const GROUP_LABEL: Record<string, string> = { accounts: "Accounts", events: "Findings", signals: "Signals", sources: "Sources and feeds", documents: "Pages we have read", verifications: "Pages being checked", kb: "Knowledge base" };
 const STATUS_WORD: Record<string, string> = { pending_connector_validation: "not set up yet", active: "live", paused: "paused" };
@@ -27,21 +27,26 @@ export default function Search() {
   const [text, setText] = useState(q);
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
+  const [retry, setRetry] = useState(0);
   useEffect(() => { setText(q); }, [q]);
   useEffect(() => {
-    if (q.trim().length < 2) { setD(null); return; }
-    setErr(null);
-    api(`/api/search?q=${encodeURIComponent(q)}`).then(setD).catch(setErr);
-  }, [q]);
+    setD(null); setErr(null);
+    if (q.trim().length < 2) return;
+    const request = new AbortController();
+    api(`/api/search?q=${encodeURIComponent(q)}`, { signal: request.signal })
+      .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
+    return () => request.abort();
+  }, [q, retry]);
   return (
     <>
       <div className="page-head"><div className="eyebrow">Find anything</div><h1>Search</h1></div>
-      <form onSubmit={(e) => { e.preventDefault(); setSp(text.trim() ? { q: text.trim() } : {}); }} className="searchbar" role="search">
+      <form onSubmit={(e) => { e.preventDefault(); setSp(text.trim() ? { q: text.trim() } : {}); }} className="searchbar" role="search" aria-label="Search page">
         <input autoFocus aria-label="Search everything" placeholder="A company, a keyword, a signal, a source or a URL" value={text} onChange={(e) => setText(e.target.value)} />
         <button className="primary" type="submit">Search</button>
       </form>
       <p className="small muted mt-0">Searches accounts, signals, sources, findings and the knowledge base. Every word you type must match.</p>
-      <Err e={err} />
+      <Err e={err} onRetry={() => setRetry((n) => n + 1)} />
+      {q.trim().length >= 2 && !d && !err && <Skeleton label="Searching" />}
       {!q && <div className="card"><div className="eyebrow">Try one of these</div><div className="chips">{EXAMPLES.map((x) => <button key={x} className="chip" onClick={() => setSp({ q: x })}>{x}</button>)}</div></div>}
       {d && d.total === 0 && <div className="empty"><b>No matches for “{d.query}”</b>Try fewer or shorter words, or check the spelling.</div>}
       {d?.groups.map((g: any) => (

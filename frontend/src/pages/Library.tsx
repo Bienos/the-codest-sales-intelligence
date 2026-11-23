@@ -6,11 +6,20 @@ const TIERS: Record<string, string> = { S1: "Official records", S2: "Company\u20
 const hk = (s: string) => (s === "healthy" ? "ok" : !s || s === "unconfigured" || s === "paused" ? "" : "bad");
 const HEALTH: Record<string, string> = { healthy: "Working", unconfigured: "Not set up yet", paused: "Paused", degraded: "Having problems", failing: "Failing" };
 const METHOD: Record<string, string> = { feed: "Reads its feed", change_monitor: "Checks the page for changes", api: "Calls its API", internal: "Internal" };
-const every = (s: number) => (s >= 86400 ? `${Math.round(s / 86400)}d` : `${Math.round(s / 3600)}h`);
+const cadence = (seconds: number) => {
+  if (!seconds) return "";
+  if (seconds === 86400) return " daily";
+  if (seconds === 3600) return " hourly";
+  return seconds >= 86400 ? ` every ${Math.round(seconds / 86400)} days` : ` every ${Math.max(1, Math.round(seconds / 60))} minutes`;
+};
 
 export default function Library({ render, query, canSetup = true }: { render: (s: any, reload: () => void) => any; query?: string; canSetup?: boolean }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [open, setOpen] = useState<string | null>(null); const [qLocal, setQ] = useState("");
   const q = query ?? qLocal;
+  const [signals, setSignals] = useState<Record<string, string>>({});
+  useEffect(() => {
+    api("/api/library/signals").then((r) => setSignals(Object.fromEntries(r.items.map((item: any) => [item.rule_id, item.signal])))).catch(() => undefined);
+  }, []);
   const load = () => api("/api/admin/library").then(setD).catch(setErr);
   useEffect(() => { load(); }, []);
   if (err) return <Err e={err} onRetry={reloadPage} />;
@@ -33,9 +42,9 @@ export default function Library({ render, query, canSetup = true }: { render: (s
                 <div className="row">{s.validation && s.status !== "active" && <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? "Test passed" : "Test failed"}</Badge>}<Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{s.status === "pending_connector_validation" ? "Not set up yet" : humanize(s.status)}</Badge></div>
               </div>
               <dl className="lib-facts">
-                <dt>How</dt><dd>{METHOD[s.collection_method] ?? humanize(s.collection_method)}, every {every(s.poll_interval_s)}</dd>
+                <dt>How</dt><dd>{METHOD[s.collection_method] ?? humanize(s.collection_method)}{cadence(s.poll_interval_s)}</dd>
                 <dt>Status</dt><dd><Badge kind={hk(s.health)}>{HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health)}</Badge>{s.last_success_at && <span className="small muted"> last worked {fmtDateTime(s.last_success_at)}</span>}</dd>
-                <dt>Feeds signals</dt><dd>{s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill">{r}</span>) : <span className="muted">None yet</span>}</dd>
+                <dt>Feeds signals</dt><dd>{s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill" title={r}>{signals[r] ?? r}</span>) : <span className="muted">None yet</span>}</dd>
                 <dt>So far</dt><dd>{s.documents} pages read, {s.events} findings{Number(s.cost_usd_month) > 0 && <span className="small muted"> · ${Number(s.cost_usd_month).toFixed(3)} this month</span>}</dd>
                 <dt>Permission</dt><dd className="small">{s.licence_notes ?? humanize(s.retention_policy)}</dd>
                 {s.url && <><dt>Page</dt><dd className="small"><a href={s.url} target="_blank" rel="noreferrer noopener">{s.url.replace(/^https?:\/\//, "").slice(0, 52)} ↗</a></dd></>}

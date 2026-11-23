@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
 const del = (p: string) => api(p, { method: "DELETE" });
 import { Badge, Err, Evidence, LABELS, groupName, humanize, lab, priorityKind, Skeleton, reloadPage, whyShort, Tabs } from "../components/ui";
 
 function AddCompany({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
-  const [f, setF] = useState({ website: "", name: "", region: "", links: "", notes: "" });
+  const [params] = useSearchParams();
+  const [f, setF] = useState({ website: "", name: params.get("name") ?? "", region: "", links: "", notes: "" });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
@@ -34,20 +35,37 @@ function AddCompany({ onClose }: { onClose: () => void }) {
 const ICP_NAMES = LABELS.icp as Record<string, string>;
 const BAND: Record<string, ["ok" | "warn" | "info" | "bad" | "", string]> = { hot: ["bad", "Hot"], warm: ["warn", "Warm"], watch: ["info", "Watch"], none: ["", "No signal"] };
 const PRESETS: [string, Record<string, string>][] = [
-  ["Hot", { band: "hot" }], ["Warm", { band: "warm" }], ["UK", { region: "uk" }], ["DACH", { region: "dach" }], ["Nordics", { region: "nordics" }], ["Poland", { region: "poland" }],
-  ["Signal in last 30 days", { signal_days: "30" }], ["Watching", { watched: "true" }], ["Your shortlist", { shortlist: "true" }], ["Added by the team", { origin: "added" }], ["Found by us", { origin: "discovered" }], ["Public sector tenders", { lane: "public" }],
+  ["Hot", { band: "hot" }],
+  ["Signal in last 30 days", { signal_days: "30" }],
+  ["Watching", { watched: "true" }],
+  ["Your shortlist", { shortlist: "true" }],
 ];
+const ORIGIN: Record<string, string> = { list: "On your lists", added: "Added by the team", discovered: "Found by us" };
 type Q = { q: string; region: string; icp: string; segment: string; band: string; origin: string; signal_days: string; shortlist: string; watched: string; lane: string; sort: string; page: number };
 const EMPTY: Q = { q: "", region: "", icp: "", segment: "", band: "", origin: "", signal_days: "", shortlist: "", watched: "", lane: "", sort: "score", page: 1 };
 const qs = (f: Q, extra = "") => { const u = new URLSearchParams(); (Object.entries(f) as [string, any][]).forEach(([k, v]) => { if (v !== "" && v !== 1 && !(k === "sort" && v === "score")) u.set(k, String(v)); }); if (f.page > 1) u.set("page", String(f.page)); return u.toString() + extra; };
 
 export function Accounts({ me }: { me?: { permissions: string[] } }) {
-  const [adding, setAdding] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [adding, setAdding] = useState(params.get("add") === "1");
+  const closeAdd = () => {
+    setAdding(false);
+    if (params.has("add")) setParams({}, { replace: true });
+  };
   const [f, setF] = useState<Q>(EMPTY);
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
+  const [retry, setRetry] = useState(0);
   const [sel, setSel] = useState<Set<string>>(new Set()); const [msg, setMsg] = useState("");
   const can = (p: string) => !me || me.permissions.includes(p);
-  useEffect(() => { const t = setTimeout(() => api(`/api/leads?${qs(f)}`).then(setD).catch(setErr), f.q ? 250 : 0); return () => clearTimeout(t); }, [f]);
+  useEffect(() => {
+    const request = new AbortController();
+    setErr(null);
+    const timer = setTimeout(() => {
+      api(`/api/leads?${qs(f)}`, { signal: request.signal })
+        .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
+    }, f.q ? 250 : 0);
+    return () => { clearTimeout(timer); request.abort(); };
+  }, [f, retry]);
   const set = (k: keyof Q, v: string) => setF({ ...f, [k]: v, page: 1 });
   const preset = (p: Record<string, string>) => setF({ ...EMPTY, ...p, page: 1 });
   const toggle = (id: string) => { const n = new Set(sel); n.has(id) ? n.delete(id) : n.add(id); setSel(n); };
@@ -75,35 +93,44 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
   const pages = d ? Math.max(1, Math.ceil(d.total / d.size)) : 1;
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Companies we know about</div><h1>Accounts</h1></div>
-      <p className="sub sub-tight">{f.lane === "public" ? "Public bodies that publish tenders. Kept apart from private companies because they buy through formal procurement. Scores here come from tender notices only." : "Every company we know about, with a signal score built from its checked signals. Filter by region, size or signal strength. Press “Add a company” if one is missing."}</p>
-      <div className="row mb-3">{can("research.request") && <button className="primary" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "Add a company"}</button>}
+      <div className="page-head"><h1>Accounts</h1></div>
+      <p className="sub sub-tight">{f.lane === "public" ? "Public bodies that publish tenders. Kept apart from private companies because they buy through formal procurement. Scores here come from tender notices only." : "Every company we know about, strongest signals first."}</p>
+      <div className="row mb-3">{can("research.request") && <button className="primary" onClick={() => adding ? closeAdd() : setAdding(true)}>{adding ? "Cancel" : "Add a company"}</button>}
         <button onClick={exportCsv}>Export CSV</button>{sel.size > 0 && can("research.request") && <button onClick={scanSelected}>Check {sel.size} for news</button>}</div>
-      {adding && <AddCompany onClose={() => setAdding(false)} />}
+      {adding && <AddCompany onClose={closeAdd} />}
       {msg && <div className="okmsg" role="status">{msg}</div>}
-      <div className="chips chips-scroll" aria-label="Saved views">{PRESETS.map(([l, p]) => <button key={l} className="chip" aria-pressed={Object.entries(p).every(([k, v]) => (f as any)[k] === v)} onClick={() => preset(p)}>{l}</button>)}<button className="chip" onClick={() => preset({})}>Clear</button></div>
+      <div className="chips chips-scroll" aria-label="Saved views">{PRESETS.map(([l, p]) => <button key={l} className="chip" aria-pressed={Object.entries(p).every(([k, v]) => (f as any)[k] === v)} onClick={() => preset(p)}>{l}</button>)}<button className="chip" onClick={() => preset({})}>Clear filters</button></div>
       <div className="leadbar">
         <input id="lead-q" aria-label="Search accounts" placeholder="Search name or website" value={f.q} onChange={(e) => set("q", e.target.value)} />
+        <select id="lead-band" aria-label="Signal strength" value={f.band} onChange={(e) => set("band", e.target.value)}><option value="">Any signal</option>{["hot", "warm", "watch", "none"].map((k) => <option key={k} value={k}>{BAND[k][1]} ({fac.band?.[k] ?? 0})</option>)}</select>
+        <select id="lead-sort" aria-label="Sort" value={f.sort} onChange={(e) => set("sort", e.target.value)}><option value="score">Highest score</option><option value="recent">Latest signal</option><option value="size">Largest</option><option value="name">Name</option></select>
+      </div>
+      <details className="mb-3"><summary>More filters</summary>
+        <div className="leadbar mt-2">
         <select id="lead-region" aria-label="Region" value={f.region} onChange={(e) => set("region", e.target.value)}><option value="">All regions</option>{d?.regions.map((r: any) => <option key={r.key} value={r.key}>{r.label} ({fac.region?.[r.key] ?? 0})</option>)}</select>
         <select id="lead-icp" aria-label="Company size" value={f.icp} onChange={(e) => set("icp", e.target.value)}><option value="">Any size</option>{opt(fac.icp, (k) => ICP_NAMES[k] ?? k)}</select>
         <select id="lead-segment" aria-label="Segment" value={f.segment} onChange={(e) => set("segment", e.target.value)}><option value="">Any segment</option>{opt(fac.segment)}</select>
-        <select id="lead-band" aria-label="Signal strength" value={f.band} onChange={(e) => set("band", e.target.value)}><option value="">Any signal</option>{["hot", "warm", "watch", "none"].map((k) => <option key={k} value={k}>{BAND[k][1]} ({fac.band?.[k] ?? 0})</option>)}</select>
-        <select id="lead-origin" aria-label="Where it came from" value={f.origin} onChange={(e) => set("origin", e.target.value)}><option value="">Any source</option>{opt(fac.origin, (k) => d.origins[k] ?? k)}</select>
-        <select id="lead-sort" aria-label="Sort" value={f.sort} onChange={(e) => set("sort", e.target.value)}><option value="score">Highest score</option><option value="recent">Latest signal</option><option value="size">Largest</option><option value="name">Name</option></select>
-      </div>
-      <Err e={err} />
-      <div className="card table-wrap flush"><table className="leads-table cards"><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest signal</th><th>Came from</th></tr></thead><tbody>
+        <select id="lead-origin" aria-label="Where it came from" value={f.origin} onChange={(e) => set("origin", e.target.value)}><option value="">Any source</option>{opt(fac.origin, (k) => ORIGIN[k] ?? k)}</select>
+          <select aria-label="Market" value={f.lane} onChange={(e) => set("lane", e.target.value)}>
+            <option value="">Company accounts</option><option value="public">Public sector</option>
+          </select>
+        </div>
+      </details>
+      <p className="small muted">Signal score adds up recent checked signals. Different kinds count for more than repeats. Hot starts at 9 and Warm at 4.</p>
+      <Err e={err} onRetry={d ? undefined : () => setRetry((n) => n + 1)} />
+      {!d && !err && <Skeleton label="Loading accounts" />}
+      {d && <div className="card table-wrap flush" tabIndex={0} role="region" aria-label="Company · Region · Size"><table className="leads-table cards"><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Signals</th><th>Latest signal</th><th>Came from</th></tr></thead><tbody>
         {d?.items.map((r: any) => <tr key={r.id}>
           <td className="sel"><label className="hit44"><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} /></label></td>
-          <td className="sel"><button className="star hit44" aria-pressed={r.watched} aria-label={r.watched ? `Stop watching ${r.name}` : `Watch ${r.name}`} title={r.watched ? "Watching: we re-read its site, news and jobs every week" : "Watch: re-read its site, news and jobs every week"} onClick={() => toggleWatch(r)}>{r.watched ? "★" : "☆"}</button></td>
+          <td className="sel"><button className="star hit44" aria-pressed={r.watched} aria-label={r.watched ? `Stop watching ${r.name}` : `Watch ${r.name}`} title={r.watched ? "Watching: scheduled checks for news and jobs" : "Watch: schedule regular checks for news and jobs"} onClick={() => toggleWatch(r)}>{r.watched ? "★" : "☆"}</button></td>
           <td className="name"><Link to={`/accounts/${r.id}`}>{r.name}</Link>{r.shortlist && <> <Badge kind="ok">Shortlist</Badge></>}<div className="small muted">{r.segment ?? "Segment not known"}{r.canonical_domain ? ` · ${r.canonical_domain}` : ""}</div></td>
           <td data-label="Region">{r.country_code ?? "Not known"}<div className="small muted">{d.regions.find((x: any) => x.key === r.region)?.label ?? humanize(r.region)}</div></td>
-          <td data-label="Size">{r.employees?.toLocaleString() ?? "Not known"}{r.employees_uncertain && <> <span title="Estimated headcount" className="small muted">(estimate)</span></>}<div className="small muted">{ICP_NAMES[r.icp] ?? r.icp}</div></td>
+          <td data-label="Size">{r.employees == null ? "Not known" : <span title={r.employees_uncertain ? "Estimated headcount" : undefined}>{r.employees_uncertain ? "≈" : ""}{r.employees.toLocaleString()}</span>}<div className="small muted">{ICP_NAMES[r.icp] ?? r.icp}</div></td>
           <td data-label="Signal score">{r.score !== null ? <><b>{r.score}</b> <Badge kind={BAND[r.band][0]}>{BAND[r.band][1]}</Badge></> : <span className="muted">None</span>}{r.stopped && <div className="small muted" title="Something we found says not to pursue this now. The score stays at zero until it expires.">On hold: a stop signal was found</div>}</td>
           <td data-label="Signals" className="small">{r.signal_count ? <>{r.signal_count} · {r.groups.map(groupName).join(", ")}</> : <span className="muted">None yet</span>}</td>
           <td data-label="Latest signal" className="small">{r.last_signal_at ? fmtDate(r.last_signal_at) : <span className="muted">None</span>}</td>
-          <td data-label="Came from" className="small">{d.origins[r.origin]}{r.candidate_status === "pending_qualification" && <div className="row gap-2 mt-1"><span className="muted">Found by us. Add it?</span>{can("research.request") && <><button className="chip" onClick={() => decide(r, "qualify")}>Add to accounts</button><button className="chip" onClick={() => decide(r, "reject")}>Not a fit</button></>}</div>}{r.candidate_status === "qualified" && <div><Badge kind="ok">Added</Badge></div>}</td></tr>)}
-        {d && d.items.length === 0 && <tr><td colSpan={9} className="muted">No accounts match these filters. Try clearing some.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " There are no accounts yet: load the workbooks in Administration, Imports, or add a company." : ""}</td></tr>}</tbody></table></div>
+          <td data-label="Came from" className="small">{ORIGIN[r.origin] ?? humanize(r.origin)}{r.candidate_status === "pending_qualification" && <div className="row gap-2 mt-1"><span className="muted">Found by us. Add it?</span>{can("research.request") && <><button className="chip" onClick={() => decide(r, "qualify")}>Add to accounts</button><button className="chip" onClick={() => decide(r, "reject")}>Not a fit</button></>}</div>}{r.candidate_status === "qualified" && <div><Badge kind="ok">Added</Badge></div>}</td></tr>)}
+        {d && d.items.length === 0 && <tr><td colSpan={9} className="muted">No accounts match these filters.{d.facets && Object.values(d.facets.origin ?? {}).length === 0 ? " There are no accounts yet: load the workbooks in Administration, Imports, or add a company." : ""} <button onClick={() => preset({})}>Clear filters</button></td></tr>}</tbody></table></div>}
       {d && <div className="row spread small mt-3"><span>{d.total.toLocaleString()} {d.total === 1 ? "account" : "accounts"}</span>
         <span className="row"><button disabled={f.page <= 1} onClick={() => setF({ ...f, page: f.page - 1 })}>Previous</button><span>Page {f.page} of {pages}</span><button disabled={f.page >= pages} onClick={() => setF({ ...f, page: f.page + 1 })}>Next</button></span></div>}
     </>
@@ -124,11 +151,11 @@ function BriefTab({ briefs }: { briefs: any[] }) {
     <div className="card">
       <p className="small muted mt-0">Written {fmtDateTime(b.finished_at)} from {c.source_count ?? 0} sources we hold. {b.dropped > 0 ? `We left out ${b.dropped} ${b.dropped === 1 ? "statement" : "statements"} we could not match to its source.` : "Every statement below quotes its source."}</p>
       {c.note && <p>{c.note}</p>}
-      {c.summary?.length > 0 && <><h3>What the company is and does</h3><Cited items={c.summary} /></>}
-      {c.signals?.length > 0 && <><h3>Signals</h3><Cited items={c.signals} /></>}
-      {c.hiring?.length > 0 && <><h3>Hiring</h3><Cited items={c.hiring} /></>}
-      {c.icp_fit?.read && <><h3>Does it fit our target customer?</h3><p>{c.icp_fit.read}</p>{c.icp_fit.reasons?.length > 0 && <Cited items={c.icp_fit.reasons} />}</>}
-      {c.open_questions?.length > 0 && <><h3>Still to find out</h3><ul className="tight">{c.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></>}
+      {c.summary?.length > 0 && <><h2 className="h-sub">What the company is and does</h2><Cited items={c.summary} /></>}
+      {c.signals?.length > 0 && <><h2 className="h-sub">Signals</h2><Cited items={c.signals} /></>}
+      {c.hiring?.length > 0 && <><h2 className="h-sub">Hiring</h2><Cited items={c.hiring} /></>}
+      {c.icp_fit?.read && <><h2 className="h-sub">Does it fit our target customer?</h2><p>{c.icp_fit.read}</p>{c.icp_fit.reasons?.length > 0 && <Cited items={c.icp_fit.reasons} />}</>}
+      {c.open_questions?.length > 0 && <><h2 className="h-sub">Still to find out</h2><ul className="tight">{c.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></>}
     </div>
   );
 }
@@ -141,8 +168,8 @@ function FindContacts({ orgId, can }: { orgId: string; can: boolean }) {
   return (
     <div className="card">
       <div className="row spread"><b>Find the people who decide</b>{can && <button className="primary" disabled={busy || !d.apollo_configured} onClick={() => run(() => post(`/api/accounts/${orgId}/find-contacts`), (r) => `Found ${r.found} ${r.found === 1 ? "person" : "people"}, ${r.added} new. Names and job titles only, no email yet.`)}>Search with Apollo</button>}</div>
-      <p className="small muted mt-1 mb-2">Searching is free and gives names and job titles. Revealing an email costs {d.reveal_price ?? "an amount not set yet (ask an administrator)"} {d.reveal_price === 1 ? "credit" : "credits"} per person and needs approval. {d.apollo_configured ? "" : "Apollo is not connected yet. "}{d.paid_enrichment_enabled ? "" : "Revealing emails is switched off for now."}</p>
-      {d.items.length > 0 && <div className="table-wrap"><table><thead><tr><th>Name</th><th>Job title</th><th>Email</th><th><span className="sr">Actions</span></th></tr></thead><tbody>
+      <p className="small muted mt-1 mb-2">Searching is free and gives names and job titles. {d.reveal_price == null ? "The cost per email is not set yet. Ask an administrator." : `Revealing an email costs ${d.reveal_price} ${d.reveal_price === 1 ? "credit" : "credits"} per person and needs approval.`} {d.apollo_configured ? "" : "Apollo is not connected yet. "}{d.paid_enrichment_enabled ? "" : "Revealing emails is switched off for now."}</p>
+      {d.items.length > 0 && <div className="table-wrap" tabIndex={0} role="region" aria-label="Name · Job title · Email"><table><thead><tr><th>Name</th><th>Job title</th><th>Email</th><th><span className="sr">Actions</span></th></tr></thead><tbody>
         {d.items.map((c: any) => <tr key={c.id}><td>{c.linkedin_url ? <a href={c.linkedin_url} target="_blank" rel="noreferrer noopener">{c.name}</a> : c.name}</td><td>{c.title}</td>
           <td><Badge kind={c.status === "revealed" ? "ok" : c.status === "found" ? "info" : ""}>{c.status === "found" ? "Not revealed" : c.status === "revealed" ? "Revealed" : humanize(c.status)}</Badge></td>
           <td>{can && c.status === "found" && <div className="row"><button disabled={busy} onClick={() => run(() => post(`/api/contact-candidates/${c.id}/reveal`), (r) => `Approval requested (${r.credits} ${r.credits === 1 ? "credit" : "credits"}). Approve it under Administration, Approvals, then run it there.`)}>Ask to reveal email</button>
@@ -158,6 +185,10 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
   const load = () => { api(`/api/accounts/${orgId}/contacts-plan`).then(setPlan).catch(() => setPlan(null)); api(`/api/campaigns/${draft.id}/enrolments`).then(setEn).catch(() => undefined); };
   useEffect(load, [draft.id]);
   if (!plan) return null;
+  const unavailable = [
+    [plan.needs_verification.length, "found but unverified"], [plan.manual_review, "need manual review"],
+    [plan.no_email, "without an email"], [plan.suppressed, "opted out"],
+  ].filter(([count]) => Number(count) > 0).map(([count, reason]) => `${count} ${reason}`);
   const toggle = (id: string) => setSel((x) => x.includes(id) ? x.filter((i) => i !== id) : [...x, id]);
   const request = async () => { setErr(null); setMsg(""); try { const r = await post(`/api/campaigns/${draft.id}/enrol`, { person_ids: sel }); setMsg(`Approval requested for ${r.contacts} ${r.contacts === 1 ? "contact" : "contacts"}. A colleague approves it under Administration, Approvals.${r.ownership_checked ? "" : " We could not check who owns this account because it is not linked to Pipedrive yet."}`); setSel([]); load(); } catch (e) { setErr(e); } };
   return (
@@ -166,10 +197,10 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
       <p className="small muted mt-1 mb-2">Only contacts with a checked email address can be used. We build the campaign in Lemlist but do not launch it: a person presses Launch there. {en.outbound_enabled ? "" : "Sending is switched off for now."}{en.lemlist_configured ? "" : " Lemlist is not connected yet."}</p>
       {plan.eligible.length === 0 && <p className="small">No contact here has a checked email address yet.</p>}
       {plan.eligible.map((c: any) => <label key={c.id} className="row small gap-2 mb-1"><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can} /> {c.name}{c.title ? `, ${c.title}` : ""}</label>)}
-      <p className="small muted">Not usable yet: {plan.needs_verification.length} found but unverified · {plan.manual_review} need manual review · {plan.no_email} without an email · {plan.suppressed} suppressed.</p>
+      {unavailable.length > 0 && <p className="small muted">Unavailable for outreach: {unavailable.join(" · ")}.</p>}
       {can && <button className="primary" disabled={sel.length === 0} onClick={request}>Ask for approval to add {sel.length || ""}</button>}
       {msg && <div className="okmsg mt-2" role="status">{msg}</div>}<Err e={err} />
-      {en.items.length > 0 && <div className="table-wrap mt-3"><table><thead><tr><th>Contact</th><th>Status</th><th>Last activity</th></tr></thead><tbody>{en.items.map((x: any) => <tr key={x.id}><td>{x.full_name ?? "Contact"}</td><td><Badge kind={x.status === "interested" ? "ok" : x.status === "unsubscribed" || x.status === "bounced" ? "bad" : "info"}>{humanize(x.status)}</Badge></td><td>{x.last_event_at ? fmtDateTime(x.last_event_at) : "No reply yet"}</td></tr>)}</tbody></table></div>}
+      {en.items.length > 0 && <div className="table-wrap mt-3" tabIndex={0} role="region" aria-label="Contact · Status · Last activity"><table><thead><tr><th>Contact</th><th>Status</th><th>Last activity</th></tr></thead><tbody>{en.items.map((x: any) => <tr key={x.id}><td>{x.full_name ?? "Contact"}</td><td><Badge kind={x.status === "interested" ? "ok" : x.status === "unsubscribed" || x.status === "bounced" ? "bad" : "info"}>{humanize(x.status)}</Badge></td><td>{x.last_event_at ? fmtDateTime(x.last_event_at) : "No reply yet"}</td></tr>)}</tbody></table></div>}
     </div>
   );
 }
@@ -210,7 +241,7 @@ function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; can
 }
 
 const TABS = ["Overview", "Research brief", "Outreach", "People", "Background"];
-const DEMAND_TIER: Record<string, string> = { D1: "They asked for outside help", D2: "Likely to need outside help", D3: "Funded project, need not known", D4: "Shows interest" };
+const DEMAND_TIER: Record<string, string> = { D1: "They asked for outside help", D2: "Likely to need outside help", D3: "Checked programme, outside demand unknown", D4: "Attention, outside demand unknown" };
 const H = ({ children }: { children: React.ReactNode }) => <h2 className="h-sub">{children}</h2>;
 
 export function Account({ me }: { me: { permissions: string[] } }) {
@@ -232,8 +263,10 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const loadCamps = () => api(`/api/accounts/${id}/campaigns`).then(setCamps).catch(() => setCamps({ items: [] }));
   useEffect(() => { loadCamps(); }, [id]);
   useEffect(() => { if (!camps.items.some((b: any) => b.status === "queued" || b.status === "running")) return; const t = setInterval(() => { if (!document.hidden) loadCamps(); }, 6000); return () => clearInterval(t); }, [camps]);
-  if (err) return <><p className="small mt-0"><Link to="/accounts">Accounts</Link></p><Err e={err} onRetry={reloadPage} /></>;
-  if (!d) return <><p className="small mt-0"><Link to="/accounts">Accounts</Link></p><Skeleton rows={4} label="Loading the account" /></>;
+  if (!d) return <>
+    <p className="small mt-0"><Link to="/accounts">Accounts</Link></p><h1 className="title-sm">Account details</h1>
+    {err ? <Err e={err} onRetry={reloadPage} /> : <Skeleton rows={4} label="Loading the account" />}
+  </>;
   const a = d.account;
   const canScan = me.permissions.includes("research.request");
   const makeCampaign = async (role: string) => { try { await post(`/api/accounts/${id}/campaign`, { role: role || null }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
@@ -245,31 +278,33 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     catch (e) { setScan({ busy: false, msg: "", err: e }); }
   };
   const blank = (v: any) => (v === null || v === undefined || v === "" ? "Not known" : v);
-  const briefBusy = briefs.some((b) => b.status === "queued" || b.status === "running");
   return (
     <>
       <p className="small mt-0 mb-2"><Link to="/accounts">Accounts</Link> / {a.display_name}</p>
-      <div className="row spread"><h1 className="m-0 title-sm">{a.display_name}</h1>{canScan && <div className="row"><button className="primary" disabled={briefBusy} onClick={makeBrief}>Write research brief</button><button disabled={scan.busy} onClick={runScan}>Check for news</button></div>}</div>
+      <div className="row spread"><h1 className="m-0 title-sm">{a.display_name}</h1><div className="row">
+        {(briefs.length > 0 || canScan) && <button className="primary" onClick={briefs.length ? () => setTab("Research brief") : makeBrief}>{briefs.length ? "Open brief" : "Write research brief"}</button>}
+        {canScan && <button disabled={scan.busy} onClick={runScan}>Check for news</button>}
+      </div></div>
       {scan.msg && <div className="okmsg mt-2 mb-2" role="status">{scan.msg}</div>}<Err e={scan.err} />
-      <div className="row mt-3 mb-3"><Badge kind={a.in_master_list ? "ok" : "info"}>{a.in_master_list ? "On your lists" : "New company"}</Badge>{a.country_code && <Badge>{a.country_code}</Badge>}<Badge kind={d.ownership_verified ? "ok" : "warn"}>{d.ownership_verified ? `Pipedrive owner ${d.crm.owner_id}` : "No owner in Pipedrive"}</Badge>
+      <div className="row mt-3 mb-3"><Badge kind={a.in_master_list ? "ok" : "info"}>{a.in_master_list ? "On your lists" : "New company"}</Badge>{a.country_code && <Badge>{a.country_code}</Badge>}<Badge kind={d.ownership_verified ? "ok" : "warn"}>{d.ownership_verified ? "Pipedrive owner confirmed" : "No owner confirmed in Pipedrive"}</Badge>
         {a.employees_estimate && <Badge>{a.employees_estimate.toLocaleString()} staff{a.employees_uncertain ? " (estimate)" : ""}</Badge>}</div>
       {d.score && <div className="card"><div className="row spread"><div><span className="eyebrow" title="Adds up this account's recent checked signals. Different kinds count for more than repeats, and each signal fades as it ages. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</span><div className="kpi-n mt-1 mb-1">{d.score.stopped ? "On hold" : d.score.score}<span className="kpi-u"> {BAND[d.score.band][1]}</span></div></div>
         <div className="small measure-sm">{d.score.stopped ? "Something we found says not to pursue this account now, so the score is held at zero until it expires." : `${d.score.signal_count} ${d.score.signal_count === 1 ? "signal" : "signals"} (${d.score.groups.map(groupName).join(", ")}). Different kinds of signal agreeing count for more than the same kind repeated, and each signal fades as it ages. This is a ranking, not a probability.`}
           {d.score.top?.length > 0 && <div className="chips mt-2">{d.score.top.map((t: any) => <Badge key={t.rule_id}>{sigNames[t.rule_id] ?? t.name ?? t.rule_id}</Badge>)}</div>}</div></div></div>}
-      <Tabs items={TABS.map((t) => ({ key: t, label: t }))} value={tab} onChange={setTab} label="Account sections" />
+      <Tabs items={TABS.map((t) => ({ key: t, label: t }))} value={tab} onChange={setTab} label="Account sections">
       {tab === "Overview" && (<>
         <H>Opportunities</H>
         {d.opportunities.length === 0 && <div className="empty"><b>No opportunities yet</b>One appears when checked signals point to a concrete piece of work. Press “Check for news” to look for some.</div>}
         {d.opportunities.map((o: any) => (
-          <div key={o.hypothesis_id} className="card"><div className="row spread"><div><Badge kind={priorityKind(o.priority)}>{lab("priority", o.priority)}</Badge> <b>{o.initiative.title}</b> · {lab("route", o.route.type)} ({o.route.counterparty})</div><Link to={`/opportunities/${o.hypothesis_id}`}>Open</Link></div>
+          <div key={o.hypothesis_id} className="card"><div className="row spread"><div><Badge kind={priorityKind(o.priority)}>{lab("priority", o.priority)}</Badge> <b>{o.initiative.title}</b> · {lab("route", o.route.type)}{o.route.counterparty ? ` (${o.route.counterparty})` : ""} · {lab("access", o.route.access_status).toLowerCase()}</div><Link to={`/opportunities/${o.hypothesis_id}`}>Open</Link></div>
             <p className="small">{o.plain_reason ?? whyShort(o.why_it_matters)}</p>{o.next_action && <p className="small"><b>Next:</b> {o.next_action.objective}</p>}</div>))}
       </>)}
-      {tab === "Research brief" && <BriefTab briefs={briefs} />}
+      {tab === "Research brief" && <><BriefTab briefs={briefs} />{canScan && briefs[0]?.status === "failed" && <button onClick={makeBrief}>Try writing the brief again</button>}</>}
       {tab === "Outreach" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={String(id)} make={makeCampaign} decide={decideCampaign} />}
       {tab === "People" && <>
         <FindContacts orgId={String(id)} can={me.permissions.includes("draft.create")} />
-        {me.permissions.includes("contacts.read") ? <div className="card table-wrap"><table><thead><tr><th>Name</th><th>Job title (as reported)</th><th>Area</th><th>Role confirmed</th><th>Email</th><th>Opted out</th></tr></thead><tbody>
-          {d.buyers.map((b: any) => <tr key={b.id}><td>{b.name}</td><td>{blank(b.title)}</td><td>{blank(b.lane)}</td><td>{blank(b.role_verified)}</td><td>{humanize(b.email_status)}</td><td>{b.suppressed ? <Badge kind="bad">Yes</Badge> : "No"}</td></tr>)}
+        {me.permissions.includes("contacts.read") ? <div className="card table-wrap" tabIndex={0} role="region" aria-label="Name · Job title (as reported) · Area"><table><thead><tr><th>Name</th><th>Job title (as reported)</th><th>Area</th><th>Role confirmed</th><th>Email</th><th>Opted out</th></tr></thead><tbody>
+          {d.buyers.map((b: any) => <tr key={b.id}><td>{b.name}</td><td>{blank(b.title)}</td><td>{blank(b.lane)}</td><td>{b.role_verified === "verified" ? "Confirmed" : b.role_verified === "unverified" ? "Not confirmed" : humanize(b.role_verified)}</td><td>{humanize(b.email_status)}</td><td>{b.suppressed ? <Badge kind="bad">Yes</Badge> : "No"}</td></tr>)}
           {d.buyers.length === 0 && <tr><td colSpan={6} className="muted">No people recorded yet. Use “Find the people who decide” above.</td></tr>}</tbody></table>
           <p className="small muted">A job title does not prove someone holds the budget. Email addresses are not shown here, and every look at personal data is logged.</p></div> : <div className="empty">Your role cannot see contact details.</div>}</>}
       {tab === "Background" && <>
@@ -296,6 +331,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           {eps.length === 0 ? <p className="small muted">Nothing found yet. Press “Check for news” to look for its news feed, press page, careers page and job board.</p>
             : <table><thead><tr><th>Kind</th><th>Address</th><th>Last read</th><th>Items</th></tr></thead><tbody>{eps.map((e, i) => <tr key={i}><td>{humanize(e.kind)}{e.provider ? ` (${e.provider})` : ""}</td><td className="small break-all">{e.url}</td><td className="small">{e.last_scanned_at ? <>{fmtDateTime(e.last_scanned_at)} <Badge kind={e.last_status === "ok" ? "ok" : "bad"}>{e.last_status === "ok" ? "Worked" : "Problem"}</Badge>{e.last_detail && <div className="muted">{e.last_detail}</div>}</> : "Not yet"}</td><td>{e.docs_seen}</td></tr>)}</tbody></table>}</div>
         <H>Sources for its opportunities</H>{d.opportunities.length === 0 ? <p className="small muted">None yet.</p> : d.opportunities.slice(0, 3).map((o: any) => <Evidence key={o.hypothesis_id} items={o.evidence} />)}</>}
+      </Tabs>
     </>
   );
 }

@@ -10,10 +10,15 @@ function Daily({ rows, provider, unit }: { rows: any[]; provider: string; unit: 
   const days = rows.filter((r) => r.provider === provider);
   if (!days.length) return <p className="small muted">Nothing used this month yet.</p>;
   const max = Math.max(...days.map((d) => Number(d.units)), 1);
+  const first = days[0].day;
+  const last = days[days.length - 1].day;
   return (
+    <figure className="usage-chart">
     <div className="chart" role="img" aria-label={`Daily ${provider} use, in ${unit}`}>
-      {days.map((d) => <div key={d.day} className="chart-col" title={`${d.day}: ${num(d.units)} ${unit}, ${d.calls} calls`}><i style={{ height: `${Math.max((Number(d.units) / max) * 100, 4)}%` }} /><span>{String(d.day).slice(8, 10)}</span></div>)}
+      {days.map((d) => <div key={d.day} className="chart-col" title={`${d.day}: ${num(d.units)} ${unit}, ${d.calls} calls`}><i style={{ height: `${Math.max((Number(d.units) / max) * 100, 4)}%` }} /></div>)}
     </div>
+    <figcaption className="small muted row spread"><span>{first}</span>{first !== last && <span>{last}</span>}</figcaption>
+    </figure>
   );
 }
 
@@ -24,7 +29,7 @@ function Provider({ name, label, unit, b, f, rows, month, cost, prices, capUsd }
   return (
     <div className="card kpi">
       <div className="eyebrow">{label}</div>
-      <div className="kpi-n">{isUsd ? usd(used) : capUsd != null && cap > 0 ? usd((used / cap) * capUsd) : num(used)}<span className="kpi-u">{isUsd ? ` of ${usd(cap)} limit` : capUsd != null && cap > 0 ? ` of about ${usd(capUsd)} limit` : " tokens used"}</span></div>{!isUsd && <div className="small muted">{num(used)} of {num(cap)} tokens. A token is a small chunk of text the AI reads or writes.</div>}
+      <div className="kpi-n">{isUsd ? usd(used) : capUsd != null && cap > 0 ? usd(cost ?? (used / cap) * capUsd) : num(used)}<span className="kpi-u">{isUsd ? ` of ${usd(cap)} limit` : capUsd != null && cap > 0 ? ` of about ${usd(capUsd)} limit` : " tokens used"}</span></div>{!isUsd && <div className="small muted">{num(used)} of {num(cap)} tokens. A token is a small chunk of text the AI reads or writes.</div>}
       <Meter used={used} cap={cap} unit={unit} />
       <div className="small mt-3">
         {f ? <>On this pace the month ends at <b>{isUsd ? usd(f.projected_month_end) : capUsd != null && cap > 0 ? usd((f.projected_month_end / cap) * capUsd) : num(Math.round(f.projected_month_end))}</b> {f.will_exceed ? <Badge kind="bad">Would go over the limit</Badge> : <Badge kind="ok">Within the limit</Badge>}</> : <span className="muted">Nothing used yet this month.</span>}
@@ -51,7 +56,7 @@ function Ledger() {
         {d && <span className="small muted">{num(d.total)} calls</span>}
       </div>
       <Err e={err} />
-      {d && <div className="card table-wrap"><table><thead><tr><th>When</th><th>Call</th><th>Used</th><th>Cost</th><th>What it was for</th></tr></thead><tbody>
+      {d && <div className="card table-wrap" tabIndex={0} role="region" aria-label="When · Call · Used"><table><thead><tr><th>When</th><th>Call</th><th>Used</th><th>Cost</th><th>What it was for</th></tr></thead><tbody>
         {d.items.map((u: any) => <tr key={u.id}><td>{fmtDateTime(u.at)}</td>
           <td><b>{humanize(u.provider)}</b> {u.operation}{u.status !== "ok" && <Badge kind="bad">{u.status}</Badge>}</td>
           <td>{num(u.units)} {u.unit}{u.tokens_in ? <div className="small muted">{num(u.tokens_in)} in · {num(u.tokens_out)} out</div> : null}</td>
@@ -71,10 +76,12 @@ export default function Usage() {
   const m = (p: string) => d.months.find((x: any) => x.period === d.period && x.provider === p);
   const cost = (p: string) => m(p)?.cost_usd;
   const outcomes: Record<string, number> = Object.fromEntries(d.verification_outcomes.map((o: any) => [o.status, o.n]));
+  const aboveLimit = [["AI reading", "anthropic"], ["Web search", "exa"]].filter(([, provider]) => d.forecast[provider]?.will_exceed).map(([label]) => label);
   const total = Object.values(outcomes).reduce((a, b) => a + b, 0);
   return (
     <>
       <p className="small muted mt-0">Every paid call is recorded with what it was for. Month: <b>{d.period}</b>. {d.notes.join(" ")}</p>
+      {aboveLimit.length > 0 && <div className="callout" role="status">{aboveLimit.join(" and ")} {aboveLimit.length === 1 ? "is" : "are"} on pace to exceed the monthly limit.</div>}
       <div className="kpis">
         <Provider name="anthropic" label="AI reading (Anthropic)" unit="tokens" b={d.budgets.anthropic} f={d.forecast.anthropic} rows={d.daily} month={m("anthropic")} cost={cost("anthropic")} prices={d.prices} capUsd={d.anthropic_cap_usd_estimate} />
         <Provider name="exa" label="Web search (Exa)" unit="usd" b={d.budgets.exa} f={d.forecast.exa} rows={d.daily} month={m("exa")} cost={cost("exa")} prices={d.prices} />
@@ -85,17 +92,18 @@ export default function Usage() {
           <p className="small mt-3 mb-0">{d.cost_per_verified_event_usd === null ? "The cost of each checked finding appears once there is spend and a result." : <>Cost of each checked finding: <b>{usd(d.cost_per_verified_event_usd)}</b></>}</p>
         </div>
       </div>
-      <Tabs items={[["overview", "By month"], ["source", "By source"], ["plan", "By saved search"], ["ledger", "Every call"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => setTab(k as Tab)} label="Usage views" />
-      {tab === "overview" && <div className="card table-wrap"><table><thead><tr><th>Month</th><th>Service</th><th>Calls</th><th>Used</th><th>Cost</th><th>Failed</th></tr></thead><tbody>
+      <Tabs items={[["overview", "By month"], ["source", "By source"], ["plan", "By saved search"], ["ledger", "Every call"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => setTab(k as Tab)} label="Usage views">
+      {tab === "overview" && <div className="card table-wrap" tabIndex={0} role="region" aria-label="Month · Service · Calls"><table><thead><tr><th>Month</th><th>Service</th><th>Calls</th><th>Used</th><th>Cost</th><th>Failed</th></tr></thead><tbody>
         {d.months.map((x: any, i: number) => <tr key={i}><td>{x.period}</td><td>{humanize(x.provider)}</td><td>{num(x.calls)}</td><td>{num(x.units)}{x.provider === "anthropic" ? ` tokens (${num(x.tokens_in)} read, ${num(x.tokens_out)} written)` : " searches"}</td><td>{x.cost_usd === null ? <span className="muted">unknown</span> : usd(x.cost_usd)}</td><td>{x.errors}</td></tr>)}
         {d.months.length === 0 && <tr><td colSpan={6} className="muted">No paid calls yet.</td></tr>}</tbody></table></div>}
-      {tab === "source" && <div className="card table-wrap"><table><thead><tr><th>Source</th><th>Provider</th><th>Calls</th><th>Used</th><th>Cost</th></tr></thead><tbody>
+      {tab === "source" && <div className="card table-wrap" tabIndex={0} role="region" aria-label="Source · Provider · Calls"><table><thead><tr><th>Source</th><th>Provider</th><th>Calls</th><th>Used</th><th>Cost</th></tr></thead><tbody>
         {d.by_source.map((x: any, i: number) => <tr key={i}><td>{x.display_name ?? x.source_id}<div className="small muted">{x.source_id}</div></td><td>{humanize(x.provider)}</td><td>{num(x.calls)}</td><td>{num(x.units)}</td><td>{x.cost_usd === null ? "unknown" : usd(x.cost_usd)}</td></tr>)}
         {d.by_source.length === 0 && <tr><td colSpan={5} className="muted">Nothing recorded this month.</td></tr>}</tbody></table></div>}
-      {tab === "plan" && <div className="card table-wrap"><table><thead><tr><th>Saved search</th><th>Searches</th><th>Results</th><th>Cost</th></tr></thead><tbody>
+      {tab === "plan" && <div className="card table-wrap" tabIndex={0} role="region" aria-label="Saved search · Searches · Results"><table><thead><tr><th>Saved search</th><th>Searches</th><th>Results</th><th>Cost</th></tr></thead><tbody>
         {d.by_plan.map((x: any) => <tr key={x.plan_id}><td><b>{humanize(x.theme)}</b> · {x.geography}<div className="small muted">{x.query}</div></td><td>{x.searches}</td><td>{x.results}</td><td>{usd(x.cost_usd)}</td></tr>)}
         {d.by_plan.length === 0 && <tr><td colSpan={4} className="muted">No web searches yet.</td></tr>}</tbody></table></div>}
       {tab === "ledger" && <Ledger />}
+      </Tabs>
     </>
   );
 }

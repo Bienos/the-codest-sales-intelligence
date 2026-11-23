@@ -24,7 +24,7 @@ function Signals({ q }: { q: string }) {
         <span className="small muted">{d.items.length} {d.items.length === 1 ? "signal" : "signals"}</span>
       </div>
       <p className="small muted">The 64 buying signals we look for, in their original wording. <b>On</b> means we detect it automatically from checked findings. <b>Not yet on</b> means it is written down and waiting for a source or a test. Nothing is switched on until it has been shown to work. <b>Strength</b> is how strongly the signal suggests outside engineering work, from 1 to 3.</p>
-      <div className="sigs">{d.items.map((s: any) => (
+      <div className="sigs"><div className="small muted">Signal · Strength · Status</div>{d.items.map((s: any) => (
         <details key={s.rule_id} className="sigrow">
           <summary>
             <span className="sigrow-id">{s.rule_id}</span>
@@ -55,7 +55,7 @@ function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   return (
     <>
       <div className="section-title mt-0">Pages and feeds we watch</div>
-      <div className="card table-wrap"><table><thead><tr><th>Source</th><th>Tier</th><th>Status</th><th>Address</th></tr></thead><tbody>
+      <div className="card table-wrap" tabIndex={0} role="region" aria-label="Source · Tier · Status"><table><thead><tr><th>Source</th><th>Tier</th><th>Status</th><th>Address</th></tr></thead><tbody>
         {d.feeds.filter((f: any) => !q || `${f.display_name} ${f.url}`.toLowerCase().includes(q.toLowerCase())).map((f: any) => (
           <tr key={f.source_id}><td>{f.display_name}<div className="small muted">{humanize(f.collection_method)}</div></td><td>{f.source_tier}</td><td><Badge kind={f.status === "active" ? "ok" : "warn"}>{f.status === "active" ? "Live" : "Not set up yet"}</Badge></td>
             <td className="small"><a href={f.url} target="_blank" rel="noreferrer noopener">{f.url.replace(/^https?:\/\//, "").slice(0, 70)} ↗</a>{f.basis && <div className="muted">{f.basis}</div>}</td></tr>))}
@@ -64,7 +64,7 @@ function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
       <div className="chips">{d.domains.map((x: any) => <button key={x.domain} className="chip" onClick={() => setQ(x.domain)}>{x.domain} <b>{x.count}</b></button>)}</div>
       <div className="section-title">Every link in your workbooks</div>
       <p className="small muted">LinkedIn links are left out on purpose. Open the original and read it before you act.</p>
-      <div className="card table-wrap"><table><thead><tr><th>Link</th><th>Account</th><th>Workbook column</th></tr></thead><tbody>
+      <div className="card table-wrap" tabIndex={0} role="region" aria-label="Link · Account · Workbook column"><table><thead><tr><th>Link</th><th>Account</th><th>Workbook column</th></tr></thead><tbody>
         {d.items.map((u: any) => <tr key={u.url}><td className="small"><a href={u.url} target="_blank" rel="noreferrer noopener">{u.url.replace(/^https?:\/\//, "").slice(0, 80)} ↗</a></td><td>{u.organization}</td><td className="small muted">{u.field}</td></tr>)}
         {d.items.length === 0 && <tr><td colSpan={3} className="muted">No cited URLs match.</td></tr>}</tbody></table></div>
     </>
@@ -73,21 +73,21 @@ function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
 
 export default function LibraryHub() {
   const [sp, setSp] = useSearchParams();
-  const tab = (sp.get("tab") as Tab) || "signals";
+  const requested = sp.get("tab");
+  const tab: Tab = requested === "sources" || requested === "urls" ? requested : "signals";
   const q = sp.get("q") ?? "";
   const set = (next: Record<string, string>) => setSp({ tab, ...(q ? { q } : {}), ...next });
   return (
     <>
       <div className="page-head"><div className="eyebrow">Reference</div><h1>Library</h1></div>
-      <div className="row spread">
-        <Tabs flush label="Library sections" items={[["signals", "Signals"], ["sources", "Sources"], ["urls", "Pages and feeds"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => set({ tab: k })} />
+      <Tabs label="Library sections" items={[["signals", "Signals"], ["sources", "Sources"], ["urls", "Pages and feeds"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => set({ tab: k })}>
         <input aria-label="Filter by keyword" placeholder="Filter by keyword" value={q} onChange={(e) => setSp({ tab, ...(e.target.value ? { q: e.target.value } : {}) })} className="field-md" />
-      </div>
       <div className="mt-4">
         {tab === "signals" && <Signals q={q} />}
         {tab === "sources" && <Library render={() => null} query={q} canSetup={false} />}
         {tab === "urls" && <Urls q={q} setQ={(v) => set({ q: v })} />}
       </div>
+      </Tabs>
     </>
   );
 }

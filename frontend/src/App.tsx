@@ -13,7 +13,7 @@ import Feed from "./pages/Feed";
 import Renewals from "./pages/Renewals";
 import LibraryHub from "./pages/LibraryHub";
 import Knowledge from "./pages/Knowledge";
-import { lab, IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
+import { Err, Skeleton, lab, IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 
@@ -30,17 +30,36 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
   useEffect(() => { setMenu(false); window.scrollTo(0, 0); }, [loc.pathname]);
+  const [signInError, setSignInError] = useState<unknown>(null);
   useEffect(() => {
+    setSignInError(null);
     api<Me>("/api/me").then((m) => { setMe(m); setNeedLogin(false); setNotice(null); }).catch((e) => {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
         let t: string | null = null; try { t = sessionStorage.getItem("ri_token"); } catch { /* storage unavailable */ }
         setNotice(t ? (e.status === 403 ? { kind: "denied", email: emailFromToken(t) } : { kind: "expired" }) : null);
         clearToken(); setNeedLogin(true);
-      }
+      } else { setNeedLogin(false); setSignInError(e); }
     });
   }, [n]);
+  const [waiting, setWaiting] = useState(0);
+  const refreshApprovals = () => {
+    if (!me?.permissions.some((p) => p === "approvals.read_own" || p === "approvals.read_all")) {
+      setWaiting(0);
+      return;
+    }
+    api<{ items: { status: string }[] }>("/api/approvals")
+      .then((d) => setWaiting(d.items.filter((a) => a.status === "pending").length))
+      .catch(() => setWaiting(0));
+  };
+  useEffect(refreshApprovals, [me, loc.pathname]);
   if (needLogin) return <Landing onDone={() => setN(n + 1)} notice={notice} />;
-  if (!me) return <div className="page muted">Signing you in…</div>;
+  if (!me) return <div className="shell">
+    <div className="nav"><Brand /></div>
+    <main className="page">
+      <h1>Signing you in</h1>
+      {signInError ? <Err e={signInError} onRetry={() => setN((value) => value + 1)} /> : <Skeleton label="Signing you in" />}
+    </main>
+  </div>;
   const can = (p: string) => me.permissions.includes(p);
   const link = (to: string, label: string, Ico: any) => <NavLink to={to} aria-label={label} className={({ isActive }) => `navlink${isActive ? " active" : ""}`}><Ico /><span>{label}</span></NavLink>;
   return (
@@ -51,16 +70,19 @@ export default function App() {
           <button className="nav-toggle" aria-expanded={menu} aria-controls="nav-panel" onClick={() => setMenu(!menu)}>{menu ? "Close" : "Menu"}</button>
         </div>
         <div className="nav-panel" id="nav-panel">
-          <form className="navsearch" role="search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search everything" placeholder="Search everything" /></form>
+          <form className="navsearch" role="search" aria-label="Navigation search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search everything" placeholder="Search everything" /></form>
+          <span className="nav-group">Work</span>
           {can("today.read") && link("/today", "Today", IconToday)}
           {can("accounts.read") && link("/accounts", "Accounts", IconAccounts)}
           {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
           {can("accounts.read") && link("/renewals", "Renewals", IconToday)}
+          <span className="nav-group">Look up</span>
           {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
           {link("/library", "Library", IconLibrary)}
           {link("/knowledge", "Knowledge base", IconKnowledge)}
           {link("/guide", "How it works", IconGuide)}
           {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", "Administration", IconAdmin)}
+          {waiting > 0 && (can("approvals.read_own") || can("approvals.read_all")) && link("/admin/approvals", `Approvals (${waiting} waiting)`, IconAdmin)}
           <div className="who"><b>{me.email}</b>{lab("role", me.role)}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>Sign out</button></div>
         </div>
       </nav>
@@ -70,15 +92,15 @@ export default function App() {
           <Route path="/today" element={<Today />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/feed" element={<div className="page"><Feed /></div>} />
-          <Route path="/renewals" element={<div className="page"><Renewals /></div>} />
+          <Route path="/renewals" element={<div className="page"><Renewals canAdd={can("research.request")} /></div>} />
           <Route path="/search" element={<div className="page"><Search /></div>} />
           <Route path="/library" element={<div className="page"><LibraryHub /></div>} />
           <Route path="/knowledge/:doc?" element={<div className="page"><Knowledge /></div>} />
           <Route path="/accounts" element={<div className="page"><Accounts me={me} /></div>} />
-          <Route path="/accounts/:id" element={<div className="page"><Account me={me} /></div>} />
-          <Route path="/opportunities/:id" element={<div className="page"><Opportunity me={me} /></div>} />
+          <Route path="/accounts/:id" element={<div className="page"><Account key={loc.pathname} me={me} /></div>} />
+          <Route path="/opportunities/:id" element={<div className="page"><Opportunity key={loc.pathname} me={me} /></div>} />
           <Route path="/explorer" element={<div className="page"><Explorer /></div>} />
-          <Route path="/admin/*" element={<div className="page"><Admin me={me} /></div>} />
+          <Route path="/admin/*" element={<div className="page"><Admin me={me} waiting={waiting} refreshApprovals={refreshApprovals} /></div>} />
         </Routes>
       </main>
     </div>

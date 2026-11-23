@@ -5,9 +5,12 @@ const path = require("path");
 const { fixtures, accountFixtures, empties } = require("./fixtures");
 const AXE = fs.readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 const BASE = "http://127.0.0.1:5173";
-const TOKEN = fs.readFileSync("/tmp/claude-0/tok_admin", "utf8").trim();
+if (!process.env.TOKEN_FILE || !process.env.ORG_ID || !process.env.OPP_ID) {
+  throw new Error("Set TOKEN_FILE, ORG_ID and OPP_ID for the local synthetic dataset.");
+}
+const TOKEN = fs.readFileSync(process.env.TOKEN_FILE, "utf8").trim();
 const ORG = process.env.ORG_ID, OPP = process.env.OPP_ID;
-const OUT = process.env.OUT || "/tmp/claude-0/shots";
+const OUT = process.env.OUT || "/tmp/codest-design-review";
 fs.mkdirSync(OUT, { recursive: true });
 
 const tab = (name) => async (p) => { await p.getByRole("tab", { name, exact: true }).first().click(); await p.waitForTimeout(700); };
@@ -15,34 +18,38 @@ const S = [
   ["today", "/today", null, "/api/today"],
   ["guide", "/guide"],
   ["feed", "/feed", null, "/api/feed"],
-  ["feed-market", "/feed", tab(/Main markets/)],
+  ["feed-market", "/feed", tab(/New companies: main markets/)],
   ["renewals", "/renewals", null, "/api/renewals"],
-  ["renewals-winners", "/renewals", tab("Who wins this work")],
+  ["renewals-winners", "/renewals", tab("Current suppliers")],
   ["search-start", "/search"],
   ["search-results", "/search?q=bank", null, "/api/search"],
   ["library-signals", "/library", null, "/api/library/signals"],
-  ["library-signal-open", "/library", async (p) => { await p.locator("details.sig summary").first().click(); await p.waitForTimeout(300); }],
+  ["library-signal-open", "/library", async (p) => { await p.locator("details.sigrow summary").first().click(); await p.waitForTimeout(300); }],
   ["library-sources", "/library?tab=sources"],
   ["library-urls", "/library?tab=urls"],
   ["knowledge", "/knowledge"],
   ["leads", "/accounts", null, "/api/leads"],
   ["leads-add", "/accounts", async (p) => { await p.getByRole("button", { name: "Add a company" }).click(); await p.waitForTimeout(300); }],
   ["account-overview", `/accounts/${ORG}`, null, `/api/accounts/${ORG}`],
-  ...["Research brief", "Outreach drafts", "Initiatives", "Signals & evidence", "Suppliers", "Buyers", "Access & CRM", "Research & coverage"].map((t) => [`account-${t.toLowerCase().replace(/[^a-z]+/g, "-")}`, `/accounts/${ORG}`, tab(t)]),
+  ...["Research brief", "Outreach", "People", "Background"].map((t) => [`account-${t.toLowerCase().replace(/[^a-z]+/g, "-")}`, `/accounts/${ORG}`, tab(t)]),
   ["opportunity", `/opportunities/${OPP}`, null, `/api/hypotheses/${OPP}`],
   ["opportunity-trace-open", `/opportunities/${OPP}`, async (p) => { await p.locator("details.card summary").first().click(); await p.waitForTimeout(300); }],
   ["explorer", "/explorer", null, "/api/explorer"],
-  ["explorer-companies", "/explorer", async (p) => { await p.getByLabel("Entity").selectOption("companies"); await p.waitForTimeout(900); }],
+  ["explorer-companies", "/explorer", async (p) => { await p.getByLabel("Show").selectOption("companies"); await p.waitForTimeout(900); }],
   ["admin-sources", "/admin"],
   ...["pipeline", "connections", "integrations", "imports", "users", "knowledge", "identity", "approvals", "jobs", "verification", "discovery", "usage", "rules", "precision", "coverage", "deadlines", "quality", "audit", "costs"].map((k) => [`admin-${k}`, `/admin/${k}`, null, k === "pipeline" ? "/api/admin/pipeline" : k === "usage" ? "/api/admin/usage" : undefined]),
-  ...["By source", "By search plan", "Every call"].map((t) => [`admin-usage-${t.toLowerCase().replace(/[^a-z]+/g, "-")}`, "/admin/usage", tab(t)]),
+  ...["By source", "By saved search", "Every call"].map((t) => [`admin-usage-${t.toLowerCase().replace(/[^a-z]+/g, "-")}`, "/admin/usage", tab(t)]),
 ];
 const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY) : null;
 
 async function setupRoutes(page, state, mainApi) {
   await page.route("**/api/**", async (route) => {
     const req = route.request(); const u = new URL(req.url()); const p = u.pathname;
-    if (req.method() !== "GET") return route.continue();
+    // Captures may mint local document links; other writes have no place in this sweep.
+    if (req.method() !== "GET") {
+      if (req.method() === "POST" && /^\/api\/kb\/[^/]+\/link$/.test(p)) return route.continue();
+      return route.abort();
+    }
     if (mainApi && p === mainApi && state === "loading") return; // never answer: the screen stays in its loading state
     if (mainApi && p === mainApi && state === "error") return route.fulfill({ status: 503, contentType: "text/plain", body: "Service Unavailable" });
     const acct = p.match(/^\/api\/accounts\/[^/]+\/(briefs|campaigns|contact-candidates|endpoints)$/);
@@ -81,15 +88,17 @@ async function checks(page, width) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
   const results = {};
+  const format = process.env.FORMAT === "jpg" ? "jpg" : "png";
   const widths = (process.env.WIDTHS || "1440,390").split(",").map(Number);
-  const schemes = (process.env.SCHEMES || "light,dark").split(",");
+  const schemes = (process.env.SCHEMES || "light").split(",");
   const states = (process.env.STATES || "full").split(",");
   for (const [name, url, act, mainApi] of S) {
     if (ONLY && !ONLY.test(name)) continue;
     for (const state of states) {
       if (state !== "full" && !mainApi) continue;
+      if (state === "empty" && !empties[mainApi]) continue;
       for (const w of widths) for (const scheme of schemes) {
         if (state !== "full" && scheme === "dark") continue;
         const ctx = await browser.newContext({ viewport: { width: w, height: w < 500 ? 844 : 900 }, deviceScaleFactor: Number(process.env.DSF || 1), colorScheme: scheme, isMobile: w < 500, hasTouch: w < 500 });
@@ -102,8 +111,10 @@ async function checks(page, width) {
         await page.waitForTimeout(state === "loading" ? 1500 : 2200);
         if (act && state === "full") { try { await act(page); } catch (e) { errs.push("action failed: " + e.message); } }
         const key = `${name}__${w}__${scheme}${state === "full" ? "" : "__" + state}`;
-        await page.screenshot({ path: path.join(OUT, key + ".png"), fullPage: true });
         if (scheme === "light") { try { results[key] = { ...(await checks(page, w)), errs }; } catch (e) { results[key] = { checkError: String(e), errs }; } }
+        // Force off-screen cards to render in a full-page screenshot after measuring the normal layout.
+        await page.addStyleTag({ content: ".lib-card, .sigrow, .fcard { content-visibility: visible !important; }" });
+        await page.screenshot({ path: path.join(OUT, key + "." + format), fullPage: true, ...(format === "jpg" ? { quality: 82 } : {}) });
         await ctx.close();
         process.stdout.write(key + "\n");
       }

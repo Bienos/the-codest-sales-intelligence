@@ -64,7 +64,7 @@ export default function Guide() {
         <div className="controls"><b>Safeguards:</b> monthly spending limits on AI and search (Usage), a full audit log, a role for every person, and approval for anything that leaves the system.</div>
 
         <div className="section-title">Where do I click?</div>
-        <div className="card table-wrap"><table><thead><tr><th>Place</th><th>What it is for</th></tr></thead><tbody>
+        <div className="card table-wrap" tabIndex={0} role="region" aria-label="Place · What it is for"><table><thead><tr><th>Place</th><th>What it is for</th></tr></thead><tbody>
           {CLICK.map(([n, to, d]) => <tr key={n}><td><Link to={to}><b>{n}</b></Link></td><td>{d}</td></tr>)}</tbody></table></div>
 
         <div className="section-title">Your day in three moves</div>
