@@ -222,6 +222,9 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                                    "email_status": b["email_verification_status"]})      # addresses themselves are never returned here
                 audit(conn, actor=p.email, operation="pii_read", record_type="organization", record_id=oid, detail={"count": len(buyers)})
             score = q1(conn, "SELECT score, band, groups, signal_count, top, stopped, downgraded, last_signal_at FROM account_scores WHERE organization_id=%s", (oid,))
+            if score and score.get("top"):
+                names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals WHERE id = ANY(%s)", ([t["rule_id"] for t in score["top"]],))}
+                score["top"] = [{**t, "name": names.get(t["rule_id"])} for t in score["top"]]      # sellers see what the signal means, not just its code
             now = datetime.now(timezone.utc)
             return {"account": dict(o, id=str(o["id"])), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
                     "opportunities": [card(conn, h, now) for h in hyps], "initiatives": [dict(i, id=str(i["id"])) for i in inits], "signals": signals, "suppliers": suppliers,

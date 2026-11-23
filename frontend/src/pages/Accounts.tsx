@@ -33,7 +33,7 @@ function AddCompany({ onClose }: { onClose: () => void }) {
 
 const ICP_NAMES: Record<string, string> = { strategic_5000_plus: "5,000+ staff", enterprise_1000_plus: "1,000+ staff", scaleup_500_999: "500 to 999 staff", below_threshold: "Below threshold", unknown: "Size unknown" };
 const BAND: Record<string, ["ok" | "warn" | "info" | "bad" | "", string]> = { hot: ["bad", "Hot"], warm: ["warn", "Warm"], watch: ["info", "Watch"], none: ["", "No signal"] };
-const GROUP_NAME: Record<string, string> = { SRC: "route", CAP: "capacity", MAN: "leader", PRG: "programme", COM: "business event", REG: "deadline", REL: "relationship" };
+const GROUP_NAME: Record<string, string> = { SRC: "tender or buying route", CAP: "hiring", MAN: "new leader", PRG: "programme", COM: "business event", REG: "regulatory deadline", REL: "supplier change" };
 const PRESETS: [string, Record<string, string>][] = [
   ["Hot or warm", { band: "hot" }], ["UK banks and fintechs", { region: "uk" }], ["DACH", { region: "dach" }], ["Nordics", { region: "nordics" }], ["Poland", { region: "poland" }],
   ["Signal in last 30 days", { signal_days: "30" }], ["Watching", { watched: "true" }], ["Your shortlist", { shortlist: "true" }], ["Added by people", { origin: "added" }], ["Found by the platform", { origin: "discovered" }], ["Public sector tenders", { lane: "public" }],
@@ -82,7 +82,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
         <button onClick={exportCsv}>Export CSV</button>{sel.size > 0 && can("research.request") && <button onClick={scanSelected}>Scan {sel.size} selected</button>}</div>
       {adding && <AddCompany onClose={() => setAdding(false)} />}
       {msg && <div className="okmsg" role="status">{msg}</div>}
-      <div className="chips" aria-label="Saved views">{PRESETS.map(([l, p]) => <button key={l} className="chip" aria-pressed={Object.entries(p).every(([k, v]) => (f as any)[k] === v)} onClick={() => preset(p)}>{l}</button>)}<button className="chip" onClick={() => preset({})}>Clear</button></div>
+      <div className="chips chips-scroll" aria-label="Saved views">{PRESETS.map(([l, p]) => <button key={l} className="chip" aria-pressed={Object.entries(p).every(([k, v]) => (f as any)[k] === v)} onClick={() => preset(p)}>{l}</button>)}<button className="chip" onClick={() => preset({})}>Clear</button></div>
       <div className="leadbar">
         <input id="lead-q" aria-label="Search leads" placeholder="Search name or website" value={f.q} onChange={(e) => set("q", e.target.value)} />
         <select id="lead-region" aria-label="Region" value={f.region} onChange={(e) => set("region", e.target.value)}><option value="">All regions</option>{d?.regions.map((r: any) => <option key={r.key} value={r.key}>{r.label} ({fac.region?.[r.key] ?? 0})</option>)}</select>
@@ -93,7 +93,7 @@ export function Accounts({ me }: { me?: { permissions: string[] } }) {
         <select id="lead-sort" aria-label="Sort" value={f.sort} onChange={(e) => set("sort", e.target.value)}><option value="score">Highest score</option><option value="recent">Latest signal</option><option value="size">Largest</option><option value="name">Name</option></select>
       </div>
       <Err e={err} />
-      <div className="card table-wrap flush"><table><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th>Score</th><th>Signals</th><th>Latest</th><th>Origin</th></tr></thead><tbody>
+      <div className="card table-wrap flush"><table className="leads-table"><thead><tr><th><span className="sr">Select</span></th><th><span className="sr">Watch</span></th><th>Company</th><th>Region</th><th>Size</th><th>Score</th><th>Signals</th><th>Latest</th><th>Origin</th></tr></thead><tbody>
         {d?.items.map((r: any) => <tr key={r.id}>
           <td><input type="checkbox" aria-label={`Select ${r.name}`} checked={sel.has(r.id)} onChange={() => toggle(r.id)} /></td>
           <td><button className="star" aria-pressed={r.watched} aria-label={r.watched ? `Stop watching ${r.name}` : `Watch ${r.name}`} title={r.watched ? "Watching: its site, news and jobs are re-read weekly" : "Watch: re-read its site, news and jobs weekly"} onClick={() => toggleWatch(r)}>{r.watched ? "★" : "☆"}</button></td>
@@ -220,10 +220,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const [eps, setEps] = useState<any[]>([]);
   const [scan, setScan] = useState<{ busy: boolean; msg: string; err: unknown }>({ busy: false, msg: "", err: null });
   useEffect(() => { api(`/api/accounts/${id}`).then(setD).catch(setErr); api(`/api/accounts/${id}/endpoints`).then((r) => setEps(r.items)).catch(() => setEps([])); }, [id]);
-  if (err) return <Err e={err} />;
-  if (!d) return <p className="muted">Loading…</p>;
-  const a = d.account;
-  const canScan = me.permissions.includes("research.request");
+  // every hook runs on every render, before any early return (React rule of hooks)
   const [briefs, setBriefs] = useState<any[]>([]);
   const loadBriefs = () => api(`/api/accounts/${id}/briefs`).then((r) => setBriefs(r.items)).catch(() => setBriefs([]));
   useEffect(() => { loadBriefs(); }, [id]);
@@ -232,6 +229,10 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const loadCamps = () => api(`/api/accounts/${id}/campaigns`).then(setCamps).catch(() => setCamps({ items: [] }));
   useEffect(() => { loadCamps(); }, [id]);
   useEffect(() => { if (!camps.items.some((b: any) => b.status === "queued" || b.status === "running")) return; const t = setInterval(loadCamps, 6000); return () => clearInterval(t); }, [camps]);
+  if (err) return <Err e={err} />;
+  if (!d) return <p className="muted">Loading…</p>;
+  const a = d.account;
+  const canScan = me.permissions.includes("research.request");
   const makeCampaign = async (role: string) => { try { await post(`/api/accounts/${id}/campaign`, { role: role || null }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const decideCampaign = async (did: string, decision: string) => { try { await post(`/api/campaigns/${did}/decision`, { decision }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const makeBrief = async () => { try { await post(`/api/accounts/${id}/brief`); await loadBriefs(); setTab("Research brief"); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
@@ -244,15 +245,15 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     <>
       <div className="row spread"><h2 style={{ margin: 0 }}>{a.display_name}</h2>{canScan && <div className="row"><button className="primary" disabled={scan.busy} onClick={runScan}>Find signals now</button><button disabled={briefs.some((b) => b.status === "queued" || b.status === "running")} onClick={makeBrief}>Write research brief</button></div>}</div>
       {scan.msg && <div className="okmsg" role="status" style={{ margin: "8px 0" }}>{scan.msg}</div>}<Err e={scan.err} />
-      <div className="row"><Badge kind={a.in_master_list ? "ok" : "info"}>{a.in_master_list ? "in master list" : "new candidate"}</Badge><Badge>{a.country_code ?? "country unknown"}</Badge><Badge kind={d.ownership_verified ? "ok" : "warn"}>{d.ownership_verified ? `Pipedrive owner ${d.crm.owner_id}` : "ownership unverified"}</Badge>
+      <div className="row"><Badge kind={a.in_master_list ? "ok" : "info"}>{a.in_master_list ? "in master list" : "new candidate"}</Badge><Badge>{a.country_code ?? "country unknown"}</Badge><Badge kind={d.ownership_verified ? "ok" : "warn"}>{d.ownership_verified ? `Pipedrive owner ${d.crm.owner_id}` : "no owner in Pipedrive"}</Badge>
         <Badge>{a.employees_estimate?.toLocaleString() ?? "?"} employees{a.employees_uncertain ? " (estimate)" : ""}</Badge></div>
       {d.score && <div className="card"><div className="row spread"><div><span className="eyebrow">Account score</span><div className="kpi-n" style={{ margin: "4px 0" }}>{d.score.stopped ? "Stopped" : d.score.score}<span className="kpi-u"> {BAND[d.score.band][1]}</span></div></div>
-        <div className="small" style={{ maxWidth: 520 }}>{d.score.stopped ? "A stop rule is active for this account, so the score is held at zero." : `${d.score.signal_count} signals across ${d.score.groups.map((g: string) => GROUP_NAME[g] ?? g).join(", ")}. Different kinds of signal agreeing count for more than the same kind repeated.`}
-          {d.score.top?.length > 0 && <div className="chips" style={{ marginTop: 6 }}>{d.score.top.map((t: any) => <Badge key={t.rule_id}>{t.rule_id} · {t.weight}</Badge>)}</div>}</div></div></div>}
+        <div className="small" style={{ maxWidth: 520 }}>{d.score.stopped ? "A stop rule is active for this account, so the score is held at zero." : `${d.score.signal_count} ${d.score.signal_count === 1 ? "signal" : "signals"} (${d.score.groups.map((g: string) => GROUP_NAME[g] ?? g).join(", ")}). Different kinds of signal agreeing count for more than the same kind repeated.`}
+          {d.score.top?.length > 0 && <div className="chips" style={{ marginTop: 6 }}>{d.score.top.map((t: any) => <Badge key={t.rule_id}>{t.name ?? t.rule_id}</Badge>)}</div>}</div></div></div>}
       <div className="tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}>{t}</button>)}</div>
       {tab === "Overview" && (<>
         <h3>Opportunities</h3>
-        {d.opportunities.length === 0 && <div className="empty">No hypotheses yet for this account.</div>}
+        {d.opportunities.length === 0 && <div className="empty">No opportunities yet. One appears when verified signals point to a concrete piece of work.</div>}
         {d.opportunities.map((o: any) => (
           <div key={o.hypothesis_id} className="card"><div className="row spread"><div><Badge kind={priorityKind(o.priority)}>{o.priority}</Badge> <b>{o.initiative.title}</b> → {humanize(o.route.type)} via {o.route.counterparty}</div><Link to={`/opportunities/${o.hypothesis_id}`}>Open</Link></div>
             <p className="small">{o.why_it_matters}</p>{o.next_action && <p className="small"><b>Next:</b> {o.next_action.objective}</p>}</div>))}
