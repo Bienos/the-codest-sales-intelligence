@@ -138,7 +138,9 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("tender_relevance", lambda: recheck_procurement_relevance(conn, 2000))
     step("fit_queued", lambda: schedule_fit(conn, now))
     from .renewals import schedule_recent
+    from .renewals import recheck_awards
     step("renewals_refreshed", lambda: schedule_recent(conn, now))
+    step("renewals_rechecked", lambda: recheck_awards(conn))
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))

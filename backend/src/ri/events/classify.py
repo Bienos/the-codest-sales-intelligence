@@ -38,9 +38,9 @@ _WORK = re.compile(
 # goods, not services: equipment, servers, furniture, teaching aids, printers, leasing
 _GOODS = re.compile(r"(dostaw\w* (fabrycznie nowych )?(sprz[eę]tu|pomocy|mebli|wyposa[zż]eni\w*|urz[aą]dze\w*|drukar\w*|serwer\w*|macierz\w*|infrastruktur\w*)|pomocy dydaktycznych|mebl\w*|klimatyzac\w*|drukar\w*|dzier[zż]aw\w*|"
                     r"sprz[eę]t\w* (komputerow\w*|sportow\w*|medyczn\w*)|\bserwer\w*|\bmacierz\w*|infrastruktur\w* serwerow\w*|lieferung von|beschaffung von (hardware|ger[aä]ten)|supply of (computer )?(hardware|equipment)|delivery of equipment|furniture|laptops?|printers?|\bservers?\b|"
-                    r"mro[zź]ni\w*|serwis pogwarancyjn\w*)", re.I)
+                    r"mro[zź]ni\w*|serwis pogwarancyjn\w*|access points?|kontroler\w* sieci|prze[lł][aą]czni\w*|\brout(er|ery)\b|wifi|wi-fi)", re.I)
 # buying, renewing or getting access to a product, or a vendor's support desk, is not engineering work for a partner
-_LICENCE_ONLY = re.compile(r"(licencj\w*|licen[cs]e\w*|lizenz\w*|verl[aä]ngerung|wartungs\w*|opiek\w* serwisow\w*|przed[lł]u[zż]eni\w*|subskrypcj\w*|subscription|maintenance agreement|wsparci\w* techniczn\w*|asyst\w* techniczn\w*|technical support for|renewal|"
+_LICENCE_ONLY = re.compile(r"(us[lł]ug\w* serwisow\w*|nadz[oó]r\w* autorsk\w*|serwis\w* (oprogramowania|system\w*)|licencj\w*|licen[cs]e\w*|lizenz\w*|verl[aä]ngerung|wartungs\w*|opiek\w* serwisow\w*|przed[lł]u[zż]eni\w*|subskrypcj\w*|subscription|maintenance agreement|wsparci\w* techniczn\w*|asyst\w* techniczn\w*|technical support for|renewal|"
                            r"dost[eę]p\w* do (programu|oprogramowania|systemu|platformy)|\bzakup (systemu|oprogramowania|licencji)|security operations cent\w*|\busług\w* soc\b|\bsoc\b)", re.I)
 _NAMES_SYSTEM = re.compile(r"(\b(erp|crm|cms|ict|core banking|platform\w*|software|application\w*|oprogramowani\w*|aplikacj\w*|sovellu\w*|konsult\w*|consultants?|developers?|"
                            r"entwicklung\w*|utvikl\w*|utveckl\w*|kehit\w*)\b|system|j[aä]rjestelm|konsult|webb)", re.I)

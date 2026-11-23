@@ -21,6 +21,7 @@ IT_CPV = "72000000 72200000 72260000 72300000 72500000 72600000 48000000"
 CORE_ISO3 = "GBR DEU AUT CHE SWE DNK NOR FIN POL"
 FIELDS = ["publication-number", "notice-title", "buyer-name", "buyer-country", "publication-date", "dispatch-date", "classification-cpv", "links",
           "winner-name", "winner-country", "winner-size", "duration-period-value-lot", "duration-period-unit-lot"]
+RELEVANCE_V = "v4"          # bump when services_relevant changes: stored awards are rechecked by recheck_awards
 ASSUMED_MONTHS = 36
 MAX_MONTHS = 180            # longer than 15 years is "indefinite" or a data error: treated as no stated term
 
@@ -82,17 +83,17 @@ def parse_award(n: dict[str, Any]) -> dict[str, Any] | None:
             "title": title, "cpv": cpv, "winners": _winners(n.get("winner-name")), "winner_country": ALPHA3.get(wc or "", wc),
             "winner_size": first_text(n.get("winner-size")), "awarded_on": awarded, "duration_months": months,
             "expected_end": add_months(awarded, months or ASSUMED_MONTHS) if awarded else None, "end_basis": "stated" if months else "assumed",
-            "relevant": services_relevant(title, None, cpv), "official_url": url}
+            "relevant": services_relevant(title, None, cpv), "relevance_v": RELEVANCE_V, "official_url": url}
 
 
 def upsert(conn: Conn, rows: list[dict[str, Any]]) -> int:
     for r in rows:
         conn.execute(
-            "INSERT INTO awarded_contracts(notice_id, buyer_name, buyer_country, title, cpv, winners, winner_country, winner_size, awarded_on, duration_months, expected_end, end_basis, relevant, official_url) "
-            "VALUES (%(notice_id)s,%(buyer_name)s,%(buyer_country)s,%(title)s,%(cpv)s,%(winners)s,%(winner_country)s,%(winner_size)s,%(awarded_on)s,%(duration_months)s,%(expected_end)s,%(end_basis)s,%(relevant)s,%(official_url)s) "
+            "INSERT INTO awarded_contracts(notice_id, buyer_name, buyer_country, title, cpv, winners, winner_country, winner_size, awarded_on, duration_months, expected_end, end_basis, relevant, relevance_v, official_url) "
+            "VALUES (%(notice_id)s,%(buyer_name)s,%(buyer_country)s,%(title)s,%(cpv)s,%(winners)s,%(winner_country)s,%(winner_size)s,%(awarded_on)s,%(duration_months)s,%(expected_end)s,%(end_basis)s,%(relevant)s,%(relevance_v)s,%(official_url)s) "
             "ON CONFLICT (notice_id) DO UPDATE SET buyer_name=EXCLUDED.buyer_name, title=EXCLUDED.title, cpv=EXCLUDED.cpv, winners=EXCLUDED.winners, winner_country=EXCLUDED.winner_country, "
             "winner_size=EXCLUDED.winner_size, awarded_on=EXCLUDED.awarded_on, duration_months=EXCLUDED.duration_months, expected_end=EXCLUDED.expected_end, "
-            "end_basis=EXCLUDED.end_basis, relevant=EXCLUDED.relevant, updated_at=now()", r)
+            "end_basis=EXCLUDED.end_basis, relevant=EXCLUDED.relevant, relevance_v=EXCLUDED.relevance_v, updated_at=now()", r)
     return len(rows)
 
 
@@ -165,3 +166,11 @@ def schedule_recent(conn: Conn, now: Any) -> int:
     _, created = enqueue(conn, "ted_awards_window", {"start": (d - timedelta(days=35)).isoformat(), "end": d.isoformat()},
                          idempotency_key=f"ted_awards:recent:{d.isoformat()}", max_attempts=3)
     return int(created)
+
+
+def recheck_awards(conn: Conn, limit: int = 4000) -> int:
+    """Apply the current relevance rule to awards stored under an older one. Returns how many were rechecked."""
+    rows = qa(conn, "SELECT notice_id, title, cpv FROM awarded_contracts WHERE relevance_v IS DISTINCT FROM %s LIMIT %s", (RELEVANCE_V, limit))
+    for r in rows:
+        conn.execute("UPDATE awarded_contracts SET relevant=%s, relevance_v=%s WHERE notice_id=%s", (services_relevant(r["title"], None, list(r["cpv"] or [])), RELEVANCE_V, r["notice_id"]))
+    return len(rows)

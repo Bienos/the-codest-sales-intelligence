@@ -192,6 +192,9 @@ import pytest as _pt
     ("Rozbudowa systemu e-usług dla mieszkańców", ["72000000"], True),
     ("Software development services for the payments platform", [], True),
     ("Entwicklung einer Plattform für Antragsverfahren", [], True),
+    ("Usługa serwisowa wraz z nadzorem autorskim systemów informatycznych", ["72267000"], False),
+    ("Świadczenie usługi w zakresie nadzoru autorskiego oraz serwisu oprogramowania", ["72267000"], False),
+    ("Dostawa Access Point WiFi, kontrolerów sieci bezprzewodowej wraz z oprogramowaniem", ["32420000", "48000000"], False),
     # TED: the CPV label in the summary must not count as evidence
     ("Poland – IT services: consulting, software development, Internet and support – Zakup narzędzia analitycznego wspierającego cyberbezpieczeństwo", ["72000000", "48000000", "48730000"], False),
     ("Germany – Software package and information systems – Rahmenvereinbarung Microsoft Enterprise Agreement 2027", ["48000000"], False),

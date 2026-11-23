@@ -114,3 +114,12 @@ def test_renewal_api_needs_a_seller_login_and_validates_filters(conn, db_url):
         assert c.get("/api/renewals").status_code in (401, 403)
     finally:
         db.close()
+
+
+def test_stored_awards_are_rechecked_when_the_relevance_rule_changes(conn):
+    rn.upsert(conn, [rn.parse_award(_notice())])
+    conn.execute("update awarded_contracts set relevant=false, relevance_v='old'")
+    assert rn.recheck_awards(conn) == 1
+    row = conn.execute("select relevant, relevance_v from awarded_contracts").fetchone()
+    assert row["relevant"] is True and row["relevance_v"] == rn.RELEVANCE_V
+    assert rn.recheck_awards(conn) == 0
