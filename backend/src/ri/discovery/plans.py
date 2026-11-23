@@ -40,14 +40,16 @@ def _score(v) -> float:
     return float(m.group()) if m else 0.0
 
 
-def priority_accounts(conn: Conn, limit: int = 100) -> list[dict]:
+def priority_accounts(conn: Conn, limit: int = 100, *, finance_only: bool = False) -> list[dict]:
     """Your shortlist first (by its own rank), then P1 and P2 accounts by signal score."""
     from ..db import qa
-    short = qa(conn, "SELECT DISTINCT ON (r.organization_id) r.organization_id, o.display_name, o.country_code, r.original FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
-                     "WHERE r.kind='priority_outreach' ORDER BY r.organization_id, r.observed_at DESC")
+    from ..market import sector_sql
+    finance = f" AND o.entity_type <> 'public_body' AND ({sector_sql('o.segment')})='finance'" if finance_only else ""
+    short = qa(conn, "SELECT DISTINCT ON (r.organization_id) r.organization_id, o.display_name, o.country_code, o.segment, r.original FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
+                     f"WHERE r.kind='priority_outreach'{finance} ORDER BY r.organization_id, r.observed_at DESC")
     short.sort(key=lambda r: _score((r["original"] or {}).get("Rank")) or 999)
-    master = qa(conn, "SELECT DISTINCT ON (r.organization_id) r.organization_id, o.display_name, o.country_code, r.original FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
-                      "WHERE r.kind='master_account' AND coalesce(r.original->>'Signal Priority','') IN ('P1','P2') ORDER BY r.organization_id, r.observed_at DESC")
+    master = qa(conn, "SELECT DISTINCT ON (r.organization_id) r.organization_id, o.display_name, o.country_code, o.segment, r.original FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
+                      f"WHERE r.kind='master_account' AND coalesce(r.original->>'Signal Priority','') IN ('P1','P2'){finance} ORDER BY r.organization_id, r.observed_at DESC")
     master.sort(key=lambda r: -_score((r["original"] or {}).get("Buying Signal Score")))
     chosen, seen = [], set()
     for r in [*short, *master]:

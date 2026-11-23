@@ -66,3 +66,19 @@ def contact_hint(event_type: str, rule_ids: list[str], *, buyer_unclear: bool = 
     if buyer_unclear:
         question = "Which company and team own the workstream? If a vendor or integrator leads delivery, who manages specialist partners?"
     return {"role": role, "question": question}
+
+
+# Keep the grouping scoped to one buyer and event type. A date distinguishes repeated milestones.
+# An explicit event key can corroborate a story across independent origins. Otherwise require
+# the same tracked origin and matching wording before folding records together.
+STORY_KEY_SQL = """jsonb_build_array(
+    coalesce(e.subject_org_id::text, nullif(lower(trim(e.subject_name_raw)), ''), e.id::text),
+    e.event_type,
+    (e.event_at AT TIME ZONE 'UTC')::date,
+    CASE WHEN nullif(trim(e.attrs->>'dedup_key'), '') IS NOT NULL
+         THEN jsonb_build_array('key', lower(trim(e.attrs->>'dedup_key')),
+                                CASE WHEN e.event_at IS NULL THEN coalesce(e.independent_origin_group,e.id::text) END)
+         ELSE jsonb_build_array('origin', coalesce(e.independent_origin_group,e.id::text),
+                                trim(regexp_replace(lower(e.summary), '[[:space:][:punct:]]+', ' ', 'g')))
+    END
+)::text"""

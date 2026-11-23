@@ -263,6 +263,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const [tab, setTab] = useState(params.get("event") ? "Background" : TABS[0]);
   const [signalStatus, setSignalStatus] = useState("all");
   const [signalTier, setSignalTier] = useState("all");
+  const [signalOrder, setSignalOrder] = useState("newest");
   const [sigNames, setSigNames] = useState<Record<string, string>>({});
   useEffect(() => { api("/api/library/signals").then((r) => setSigNames(Object.fromEntries(r.items.map((x: any) => [x.rule_id, x.signal])))).catch(() => undefined); }, []);
   const [err, setErr] = useState<unknown>(null);
@@ -286,6 +287,23 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     <p className="small mt-0"><Link to="/accounts">Accounts</Link></p><h1 className="title-sm">Account details</h1>
     {err ? <Err e={err} onRetry={reloadPage} /> : <Skeleton rows={4} label="Loading the account" />}
   </>;
+  const signalGroups = new Map<string, any[]>();
+  for (const signal of d.signals) {
+    if ((signalStatus !== "all" && signal.status !== signalStatus) || (signalTier !== "all" && signal.demand_tier !== signalTier)) continue;
+    const key = signal.story_key ?? signal.event_id;
+    const group = signalGroups.get(key) ?? [];
+    group.push(signal);
+    signalGroups.set(key, group);
+  }
+  const signalStories = [...signalGroups.values()];
+  signalStories.sort(([a], [b]) => {
+    const dateA = a.event_at ?? a.pub_at;
+    const dateB = b.event_at ?? b.pub_at;
+    if (!dateA) return dateB ? 1 : 0;
+    if (!dateB) return -1;
+    const order = Date.parse(dateA) - Date.parse(dateB);
+    return signalOrder === "oldest" ? order : -order;
+  });
   const a = d.account;
   const canScan = me.permissions.includes("research.request");
   const makeCampaign = async (role: string) => { try { await post(`/api/accounts/${id}/campaign`, { role: role || null }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
@@ -337,14 +355,22 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         <H>Signals</H>
         <div className="row gap-2 mb-2">
           <label>Status <select value={signalStatus} onChange={e => setSignalStatus(e.target.value)}><option value="all">All signals</option><option value="active">Current</option><option value="historical">Historical</option></select></label>
+          <label>Order <select value={signalOrder} onChange={e => setSignalOrder(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
           <label>Evidence of demand <select value={signalTier} onChange={e => setSignalTier(e.target.value)}><option value="all">All levels</option><option value="D1">Explicit</option><option value="D2">Inferred</option><option value="D3">Programme</option><option value="D4">Context</option></select></label>
         </div>
-        {Object.values(d.signals.filter((x: any) => (signalStatus === "all" || x.status === signalStatus) && (signalTier === "all" || x.demand_tier === signalTier)).reduce((groups: Record<string, any[]>, x: any) => { (groups[x.event_id] ??= []).push(x); return groups; }, {}) as Record<string, any[]>).map((group: any[]) => <div className="card" id={`event-${group[0].event_id}`} key={group[0].event_id}>
-          <b>{group[0].summary}</b><p className="small muted">{fmtDate(group[0].event_at ?? group[0].pub_at)}{!group[0].event_at && !group[0].pub_at ? " · date unknown" : ""}</p>
-          {group.map((x: any) => <p className="small" key={x.rule_id}><Badge kind={x.status === "active" ? "ok" : ""}>{x.status === "active" ? "Current" : "Historical"}</Badge> {sigNames[x.rule_id] ?? x.rule_id} · {DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier)}</p>)}
-          <Evidence items={group.flatMap((x: any) => x.evidence).filter((e: any, i: number, all: any[]) => all.findIndex((a: any) => a.claim_id === e.claim_id) === i)} />
-        </div>)}
-        {d.signals.length === 0 && <p className="muted">No signals yet.</p>}
+        {signalStories.map(group => {
+          const first = group[0];
+          const eventIds = [...new Set(group.map(x => x.event_id))];
+          const rules = new Map(group.map(x => [`${x.rule_id}:${x.status}:${x.demand_tier}`, x]));
+          const evidence = new Map(group.flatMap(x => x.evidence).map(e => [e.claim_id, e]));
+          return <div className="card" key={first.story_key ?? first.event_id}>
+            {eventIds.map(eventId => <span id={`event-${eventId}`} key={eventId} />)}
+            <b>{first.summary}</b><p className="small muted">{first.event_at || first.pub_at ? fmtDate(first.event_at ?? first.pub_at) : "Date unknown"}</p>
+            {[...rules.entries()].map(([key, x]) => <p className="small" key={key}><Badge kind={x.status === "active" ? "ok" : ""}>{x.status === "active" ? "Current" : "Historical"}</Badge> {sigNames[x.rule_id] ?? x.rule_id} · {DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier)}</p>)}
+            <Evidence items={[...evidence.values()]} />
+          </div>;
+        })}
+        {signalStories.length === 0 && <p className="muted">{d.signals.length ? "No signals match these filters." : "No signals yet."}</p>}
         <H>Suppliers</H>
         <div className="card table-wrap" tabIndex={0} role="region" aria-label="Suppliers table"><table><thead><tr><th>Supplier</th><th>Role</th><th>What they do here</th><th>Relationship</th><th>Exclusive?</th></tr></thead><tbody>{d.suppliers.map((x: any, i: number) => <tr key={i}><td>{x.supplier_name}</td><td>{humanize(x.supplier_role)}</td><td>{blank(x.scope_text)}</td><td>{humanize(x.relation)}</td><td>{blank(x.exclusivity)}</td></tr>)}
           {d.suppliers.length === 0 && <tr><td colSpan={5} className="muted">No suppliers recorded yet.</td></tr>}</tbody></table>

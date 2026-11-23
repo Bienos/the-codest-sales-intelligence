@@ -88,6 +88,15 @@ export default function Feed() {
                     <blockquote key={e.claim_id} className="fquote">{e.claim !== (it.summary_en ?? it.summary) && <>“{e.claim}”</>}{e.translation && <span className="trans">In English{it.language && it.language !== "en" ? ` (from ${LANG[it.language] ?? it.language})` : ""}: “{e.translation}”</span>}
                       <cite>{e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" onClick={() => it.organization && trackSourceOpened({ organization_id: it.organization.id, where: "evidence" })}>{e.source ?? "Original source"} ↗</a> : "Structured record"}
                         {[e.authority ? TIER[e.authority] ?? e.authority : null, e.anchor_verified ? "quote found in collected text" : "quote not matched"].filter(Boolean).join(" · ")}</cite></blockquote>))}
+                  {it.story_sources?.length > 1 && <details className="finding-details">
+                    <summary>Source coverage ({it.story_sources.length})</summary>
+                    <ul className="tight small">{it.story_sources.map((source: any, i: number) => {
+                      const repeated = source.origin_group && it.story_sources.slice(0, i).some((other: any) => other.origin_group === source.origin_group);
+                      return <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer noopener">{source.source}</a>
+                        {source.published_at && <> · {fmtDate(source.published_at)}</>}
+                        {repeated && <> · repeated coverage</>}</li>;
+                    })}</ul>
+                  </details>}
                   <details className="finding-details"><summary>Dates, signals and sales play</summary>
                   <div className="small muted mt-1">{[it.event_at && `Happened ${fmtDate(it.event_at)}`, it.published && `Published ${fmtDate(it.published)}`, it.first_seen && `We saw it ${fmtDate(it.first_seen)}`].filter(Boolean).join(" · ")}</div>
                   {it.signals.length > 0 && <div className="chips mt-3">{it.signals.map((s: any) => <span key={s.rule_id} className="pill" title={`Signal ${s.rule_id}`}>{s.name}</span>)}</div>}

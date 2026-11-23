@@ -161,8 +161,9 @@ function Connections() {
 }
 
 function ScanTop() {
-  const [n, setN] = useState(25); const [search, setSearch] = useState(true); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
-  const go = async () => { setBusy(true); setErr(null); setMsg(""); try { const r = await post("/api/admin/scan-accounts", { limit: n, with_search: search }); setMsg(`Checking ${r.queued} ${r.queued === 1 ? "account" : "accounts"}. ${r.note} Results appear in the Market feed as we check them.`); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  const [n, setN] = useState(10); const [search, setSearch] = useState(false); const [financeOnly, setFinanceOnly] = useState(true);
+  const [showPilot, setShowPilot] = useState(false); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const go = async () => { setBusy(true); setErr(null); setMsg(""); try { const r = await post("/api/admin/scan-accounts", { limit: n, with_search: search, finance_only: financeOnly }); setMsg(`Checking ${r.queued} ${r.queued === 1 ? "account" : "accounts"}. ${r.note} Results appear in the Market feed as we check them.`); } catch (e) { setErr(e); } finally { setBusy(false); } };
   return (
     <div className="card">
       <b>Check your priority accounts for news</b>
@@ -170,8 +171,31 @@ function ScanTop() {
       <div className="row">
         <label className="small">How many accounts <input type="number" min={1} max={300} value={n} onChange={(e) => setN(Number(e.target.value))} className="field-xs" /></label>
         <label className="small row"><input type="checkbox" checked={search} onChange={(e) => setSearch(e.target.checked)} /> Include one web search per account (uses the Exa budget)</label>
+        <label className="small row"><input type="checkbox" checked={financeOnly} onChange={(e) => setFinanceOnly(e.target.checked)} /> Banking and financial services only</label>
         <button className="primary" disabled={busy || n < 1} onClick={go}>Check these accounts</button>
       </div>
+      <button className="mt-2" aria-expanded={showPilot} onClick={() => setShowPilot(!showPilot)}>{showPilot ? "Hide finance pilot" : "View finance pilot"}</button>
+      {showPilot && <Load path="/api/admin/source-pilot">{(d, refresh) => (
+        <div className="mt-2">
+          <div className="row spread"><h2 className="h-sub">Top 10 finance accounts</h2><button onClick={refresh}>Refresh results</button></div>
+          <p className="small muted">Shows checks of company pages and up to five verified findings per account from the last 30 days, with buying signals listed first.</p>
+          {d.items.length === 0 && <p className="small muted">No priority finance accounts found in the workbooks.</p>}
+          {d.items.map((account: any) => <details key={account.id} className="card">
+            <summary>{account.name} · {account.endpoints.length} company sources · {account.recent.length === 5 ? "5+" : account.recent.length} recent findings</summary>
+            <p className="small"><Link to={`/accounts/${account.id}`}>Open company</Link></p>
+            {account.endpoints.length === 0 ? <p className="small muted">No company sources configured.</p> :
+              <ul className="tight small">{account.endpoints.map((source: any) => <li key={source.url}>
+                <a href={source.url} target="_blank" rel="noreferrer noopener">{humanize(source.kind)}</a>
+                {source.last_scanned_at ? <> · {source.last_status === "ok" ? "Checked" : "Check failed"} {fmtDateTime(source.last_scanned_at)} · {source.docs_seen} items read</> : <> · waiting for first check</>}
+              </li>)}</ul>}
+            {account.recent.map((finding: any) => <div className="mt-2" key={finding.event_id}>
+              <b>{finding.summary}</b> <span className="small muted">{fmtDateTime(finding.date)}</span>
+              <div className="small">{finding.demand_tier ? ({ D1: "Explicit outside demand", D2: "Inferred outside demand", D3: "Verified programme", D4: "Early context" } as Record<string, string>)[finding.demand_tier] : "Verified finding · no current buying signal"}</div>
+              <ul className="tight small">{finding.sources.map((source: any) => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer noopener">{source.source}</a></li>)}</ul>
+            </div>)}
+          </details>)}
+        </div>
+      )}</Load>}
       {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
     </div>
   );

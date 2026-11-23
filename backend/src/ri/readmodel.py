@@ -46,6 +46,25 @@ def evidence_for(conn: Conn, claim_ids: list[Any], limit: int = 6) -> list[dict[
     return out
 
 
+
+def story_sources(conn: Conn, event_ids: list[Any]) -> list[dict[str, Any]]:
+    """List distinct source URLs and their tracked origins for a grouped finding."""
+    return qa(conn, """
+        SELECT url, source, published_at, origin_group FROM (
+            SELECT DISTINCT ON (d.canonical_url) d.canonical_url AS url, s.display_name AS source,
+                   d.published_at, coalesce(d.independent_origin_group, e.independent_origin_group) AS origin_group,
+                   s.source_tier, d.origin_document_id IS NULL AS primary_source
+            FROM event_documents ed
+            JOIN events e ON e.id=ed.event_id
+            JOIN source_documents d ON d.id=ed.document_id
+            JOIN sources s ON s.source_id=d.source_id
+            WHERE ed.event_id=ANY(%s::uuid[]) AND d.canonical_url ~* '^https?://'
+            ORDER BY d.canonical_url, s.source_tier, d.published_at NULLS LAST, d.id
+        ) links
+        ORDER BY source_tier, primary_source DESC, published_at NULLS LAST, url
+        LIMIT 12
+        """, (event_ids,))
+
 def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
     org = q1(conn, "SELECT o.id, o.display_name, o.in_master_list, o.country_code, c.owner_id, c.name AS crm_name FROM organizations o LEFT JOIN crm_organizations c ON c.organization_id=o.id AND c.link_status='linked' WHERE o.id=%s", (h["organization_id"],))
     ini = q1(conn, "SELECT * FROM initiatives WHERE id=%s", (h["initiative_id"],))

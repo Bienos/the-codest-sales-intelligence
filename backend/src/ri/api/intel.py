@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from .. import usage
 from ..access import Principal, org_scope_sql
 from ..audit import audit
-from ..readmodel import coverage_health
+from ..readmodel import coverage_health, story_sources
 from ..db import q1, qa
 from ..jobs.queue import enqueue
 from .auth import require
@@ -242,9 +242,14 @@ def register(app: FastAPI) -> None:
         with tx(request) as conn:
             rows = qa(conn,
                 "SELECT s.source_id, s.display_name, s.source_tier, s.source_type, s.source_family, s.provider, s.countries, s.signal_rule_ids, s.collection_method, s.auth_mode, "
-                "s.retention_policy, s.licence_notes, s.poll_interval_s, s.status, s.cost_profile, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, h.state AS health, h.last_success_at, h.consecutive_failures, "
+                "s.retention_policy, s.licence_notes, s.poll_interval_s, s.status, s.cost_profile, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, h.state AS health, h.last_success_at, h.last_attempt_at, h.consecutive_failures, "
                 "(SELECT count(*) FROM source_documents d WHERE d.source_id=s.source_id) AS documents, "
                 "(SELECT count(DISTINCT ed.event_id) FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id WHERE d.source_id=s.source_id) AS events, "
+                "(SELECT count(DISTINCT e.id) FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id "
+                "JOIN events e ON e.id=ed.event_id JOIN signals bs ON bs.event_id=e.id AND bs.organization_id=e.subject_org_id "
+                "WHERE d.source_id=s.source_id AND e.verification_status='verified' AND e.proven AND e.lifecycle_status='active' "
+                "AND NOT e.is_historical_replay AND coalesce(e.event_at,e.pub_at) >= now() - interval '30 days' "
+                "AND bs.status='active' AND bs.verification_status='verified' AND (bs.expires_at IS NULL OR bs.expires_at>now())) AS recent_buying_findings, "
                 "(SELECT coalesce(sum(cost_usd),0) FROM provider_usage u WHERE u.source_id=s.source_id AND u.period=%s) AS cost_usd_month, "
                 "(SELECT coalesce(sum(units),0) FROM provider_usage u WHERE u.source_id=s.source_id AND u.period=%s) AS units_month "
                 "FROM sources s LEFT JOIN source_health h USING (source_id) ORDER BY s.source_tier, s.source_family, s.display_name", (usage.period_now(), usage.period_now()))
@@ -358,33 +363,41 @@ def register_feed(app: FastAPI) -> None:
             ew, ep = org_scope_sql(p, "e.subject_org_id")
             tw, tp = all_like("(e.summary || ' ' || coalesce(o.display_name,''))", toks) if toks else ("TRUE", [])
             rows = qa(conn,
-                f"SELECT e.id, e.event_type, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verification_status, e.is_historical_replay, o.id AS org_id, o.display_name, o.country_code, o.segment, "   # noqa: S608
-                f"o.employees_estimate, o.employees_uncertain, o.in_master_list, e.proven, e.market_tier, e.lane, e.market_country, {sector} AS sector, "
-                f"coalesce((SELECT pn.buyer_name FROM event_documents ed JOIN procurement_notices pn ON pn.document_id=ed.document_id WHERE ed.event_id=e.id LIMIT 1), e.subject_name_raw) AS buyer_name, "
-                f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=e.id AND ({active})) AS sigs, "
-                f"(SELECT coalesce(array_agg(ec.claim_id), '{{}}') FROM event_claims ec WHERE ec.event_id=e.id) AS claim_ids, "
-                f"(SELECT jsonb_build_object('id', i.id, 'title', i.title, 'stage', i.stage) FROM initiative_events ie JOIN initiatives i ON i.id=ie.initiative_id WHERE ie.event_id=e.id LIMIT 1) AS programme, "
-                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened, e.attrs->'fit' AS ai_fit, e.attrs->>'language' AS lang, e.attrs->>'summary_en' AS summary_en "
-                f"FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
-                f"WHERE {VIEWS[view]} AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
+                f"WITH candidates AS (SELECT e.id, {fd.STORY_KEY_SQL} AS story_key, "
+                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
+                f"WHERE {VIEWS[view]} AND e.lifecycle_status='active' AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
                 f"AND (%s='' OR %s='public' OR ({sector})=%s) "
                 f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND ({active}) AND s.rule_id = ANY(%s))) "
-                f"AND (NOT %s OR e.attrs->'fit'->>'level' IN ('strong','possible')) "
+                f"AND (NOT %s OR e.attrs->'fit'->>'level' IN ('strong','possible'))), "
+                f"stories AS (SELECT (array_agg(id ORDER BY happened ASC, id))[1] AS representative, array_agg(id) AS event_ids "
+                f"FROM candidates GROUP BY story_key) "
+                f"SELECT st.event_ids, e.id, e.event_type, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verification_status, e.is_historical_replay, o.id AS org_id, o.display_name, o.country_code, o.segment, "   # noqa: S608
+                f"o.employees_estimate, o.employees_uncertain, o.in_master_list, e.proven, e.market_tier, e.lane, e.market_country, {sector} AS sector, "
+                f"coalesce((SELECT pn.buyer_name FROM event_documents ed JOIN procurement_notices pn ON pn.document_id=ed.document_id WHERE ed.event_id=e.id LIMIT 1), e.subject_name_raw) AS buyer_name, "
+                f"(SELECT coalesce(jsonb_agg(jsonb_build_object('rule_id', s.rule_id, 'demand_tier', s.demand_tier, 'strength', s.strength, 'status', s.status)), '[]'::jsonb) FROM signals s WHERE s.event_id=ANY(st.event_ids) AND ({active})) AS sigs, "
+                f"(SELECT coalesce(array_agg(DISTINCT ec.claim_id), '{{}}') FROM event_claims ec WHERE ec.event_id=ANY(st.event_ids)) AS claim_ids, "
+                f"(SELECT jsonb_build_object('id', i.id, 'title', i.title, 'stage', i.stage) FROM initiative_events ie JOIN initiatives i ON i.id=ie.initiative_id WHERE ie.event_id=e.id LIMIT 1) AS programme, "
+                f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened, e.attrs->'fit' AS ai_fit, e.attrs->>'language' AS lang, e.attrs->>'summary_en' AS summary_en "
+                f"FROM stories st JOIN events e ON e.id=st.representative LEFT JOIN organizations o ON o.id=e.subject_org_id "
                 f"ORDER BY happened DESC NULLS LAST LIMIT %s", [days, *ep, *tp, accounts_only and view == "accounts", focus, view, focus, rule_ids or None, rule_ids or None, fit_only, limit * 2])
             items = []
             for r in rows:
                 mk = market_focus(r["country_code"], r["segment"])
                 if market == "core" and mk["fit"] != "core":
                     continue
-                sig_ids = [x["rule_id"] for x in r["sigs"] if x["status"] == "active"]
-                ev = evidence_for(conn, list(r["claim_ids"]), limit=2) if r["claim_ids"] else []
+                by_rule = {}
+                for signal in sorted(r["sigs"], key=lambda x: (x["demand_tier"], -x["strength"])):
+                    by_rule.setdefault(signal["rule_id"], signal)
+                sig_ids = list(by_rule)
+                ev = evidence_for(conn, list(r["claim_ids"]), limit=2)
+                sources = story_sources(conn, r["event_ids"])
                 items.append({"id": str(r["id"]), "type": r["event_type"], "summary": r["summary"], "happened": r["happened"], "event_at": r["event_at"], "published": r["pub_at"],
                               "first_seen": r["first_observed_at"],
                               "organization": {"id": str(r["org_id"]), "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"],
                                                "in_master_list": r["in_master_list"], "icp": icp_band(r["employees_estimate"], bool(r["employees_uncertain"]), r["segment"])["band"], "market": mk} if r["org_id"] else None,
-                              "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in r["sigs"]], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
-                              "evidence": ev, "programme": r["programme"],
+                              "signals": [{**x, "name": fd._load()["rules"].get(x["rule_id"], {}).get("id")} for x in by_rule.values()], "fit": fd.fit_for(sig_ids), "questions": fd.rule_questions(sig_ids),
+                              "evidence": ev, "story_sources": sources, "programme": r["programme"],
                               "contact_hint": fd.contact_hint(r["event_type"], sig_ids, buyer_unclear=r["org_id"] is None), "why": r["ai_fit"], "language": r["lang"], "summary_en": r["summary_en"],
                               "scope": {"sector": r["sector"], "proven": r["proven"], "linked": bool(r["org_id"]), "tier": r["market_tier"], "lane": r["lane"], "country": r["market_country"], "buyer": r["buyer_name"]}})
                 if len(items) >= limit:
@@ -398,9 +411,9 @@ def register_feed(app: FastAPI) -> None:
             totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified, "
                               "count(*) FILTER (WHERE subject_org_id IS NULL AND verification_status='verified' AND coalesce(event_at, pub_at, first_observed_at) > now() - make_interval(days => %s)) AS market_wide FROM events", (days,)) or {}
             counts = q1(conn, "SELECT " + ", ".join(
-                f"count(*) FILTER (WHERE {w}" + (f" AND (%s='' OR ({sector})=%s)" if k != "public" else "") + f") AS {k}"
+                f"count(DISTINCT {fd.STORY_KEY_SQL}) FILTER (WHERE {w}" + (f" AND (%s='' OR ({sector})=%s)" if k != "public" else "") + f") AS {k}"
                 for k, w in VIEWS.items()
-            ) + f" FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE NOT e.is_historical_replay "
+            ) + f" FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE e.lifecycle_status='active' AND NOT e.is_historical_replay "
                 f"AND coalesce(e.event_at,e.pub_at,e.first_observed_at)>now()-make_interval(days=>%s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew}))", [focus, focus] * (len(VIEWS)-1) + [days, *ep]) or {}
         return {"view": view, "view_counts": counts, "items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
@@ -438,6 +451,7 @@ def normalise_domain(raw: str) -> str | None:
 
 
 class ScanManyIn(BaseModel):
+    finance_only: bool = False
     limit: int = Field(25, ge=1, le=300)
     with_search: bool = True
 
@@ -578,16 +592,39 @@ def register_scan(app: FastAPI) -> None:
                 raise HTTPException(404, "not found")
             return {"items": qa(conn, "SELECT kind, value, added_by, created_at FROM account_context WHERE organization_id=%s ORDER BY created_at", (oid,))}
 
+    @app.get("/api/admin/source-pilot")
+    def source_pilot(request: Request, p: Principal = Depends(require("admin.sources"))):
+        with tx(request) as conn:
+            accounts = priority_accounts(conn, 10, finance_only=True)
+            items = []
+            for account in accounts:
+                oid = account["organization_id"]
+                endpoints = qa(conn, """SELECT kind, url, last_scanned_at, last_status, docs_seen
+                    FROM account_endpoints WHERE organization_id=%s ORDER BY kind, url""", (oid,))
+                recent = qa(conn, """SELECT e.id::text AS event_id, e.summary, coalesce(e.event_at,e.pub_at) AS date,
+                       (SELECT min(s.demand_tier) FROM signals s WHERE s.event_id=e.id AND s.organization_id=e.subject_org_id
+                        AND s.status='active' AND s.verification_status='verified'
+                        AND (s.expires_at IS NULL OR s.expires_at>now())) AS demand_tier
+                    FROM events e WHERE e.subject_org_id=%s AND e.verification_status='verified' AND e.proven
+                    AND NOT e.is_historical_replay AND e.lifecycle_status='active'
+                    AND coalesce(e.event_at,e.pub_at) >= now() - interval '30 days'
+                    ORDER BY demand_tier NULLS LAST, date DESC, e.id LIMIT 5""", (oid,))
+                for finding in recent:
+                    finding["sources"] = story_sources(conn, [finding["event_id"]])
+                items.append({"id": str(oid), "name": account["display_name"], "segment": account["segment"],
+                              "endpoints": endpoints, "recent": recent})
+        return {"items": items}
+
     @app.post("/api/admin/scan-accounts")
     def scan_many(body: ScanManyIn, request: Request, p: Principal = Depends(require("admin.costs"))):
         with tx(request) as conn:
             stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H")
-            accounts = priority_accounts(conn, body.limit)
+            accounts = priority_accounts(conn, body.limit, finance_only=body.finance_only)
             n = 0
             for a in accounts:
                 _queue_one(conn, {"id": a["organization_id"], "display_name": a["display_name"], "country_code": a["country_code"]}, p.email, body.with_search, stamp)
                 n += 1
-            audit(conn, actor=p.email, operation="account_scan_batch_requested", record_type="organization", record_id="batch", detail={"count": n, "with_search": body.with_search})
+            audit(conn, actor=p.email, operation="account_scan_batch_requested", record_type="organization", record_id="batch", detail={"count": n, "with_search": body.with_search, "finance_only": body.finance_only})
             return {"queued": n, "note": "Priority accounts first: your shortlist, then P1 and P2 by signal score."}
 
     @app.get("/api/accounts/{oid}/endpoints")

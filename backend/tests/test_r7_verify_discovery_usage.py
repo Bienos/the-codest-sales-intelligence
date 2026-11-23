@@ -564,3 +564,52 @@ def test_shared_workbook_url_only_verifies_the_account_named_by_the_source(conn,
     assert wrong["status"] == "no_event" and wrong["events"] == 0
     assert right["status"] == "verified" and right["events"] == 1
     assert {str(r["subject_org_id"]) for r in conn.execute("SELECT subject_org_id FROM events")} == {world["org"]}
+
+
+def test_feed_groups_same_buyer_and_origin_and_keeps_source_links(api, conn):
+    c, h, w = api
+    for suffix, summary, date in [
+        ("issuer", "Bank starts a core migration", "now()"),
+        ("copy", "Bank starts a core migration!", "now()"),
+        ("later", "Bank starts a core migration", "now() - interval '10 days'"),
+    ]:
+        event = conn.execute(
+            f"""INSERT INTO events(event_key,event_type,subject_org_id,summary,event_at,proven,verification_status,
+                                    extraction_model_version,independent_origin_group)
+                VALUES (%s,'programme_announced',%s,%s,{date},true,'verified','fixture','syndicated-origin')
+                RETURNING id""",
+            (f"syndication-{suffix}", w["org"], summary),
+        ).fetchone()["id"]
+        document = conn.execute(
+            """INSERT INTO source_documents(source_id,external_id,version_key,canonical_url,independent_origin_group)
+               VALUES ('attention-finextra',%s,'1',%s,'syndicated-origin') RETURNING id""",
+            (suffix, f"https://example.invalid/{suffix}"),
+        ).fetchone()["id"]
+        conn.execute("INSERT INTO event_documents(event_id, document_id) VALUES (%s,%s)", (event, document))
+    conn.commit()
+    result = c.get("/api/feed", headers=h("bdm")).json()
+    assert result["count"] == 2 and result["view_counts"]["accounts"] == 2
+    links = result["items"][0]["story_sources"]
+    assert {link["url"] for link in links} == {"https://example.invalid/issuer", "https://example.invalid/copy"}
+    assert {link["origin_group"] for link in links} == {"syndicated-origin"}
+
+
+def test_finance_source_pilot_reports_only_eligible_priority_accounts(api, conn):
+    c, h, w = api
+    conn.execute("UPDATE organizations SET segment='Insurance' WHERE id=%s", (w["org"],))
+    conn.execute(
+        """INSERT INTO account_endpoints(organization_id, kind, url, last_scanned_at, last_status, docs_seen)
+           VALUES (%s,'newsroom','https://example-bank.invalid/news',now(),'ok',3)""",
+        (w["org"],),
+    )
+    conn.commit()
+    assert c.get("/api/admin/source-pilot", headers=h("bdm")).status_code == 403
+    pilot = c.get("/api/admin/source-pilot", headers=h("admin")).json()["items"]
+    assert len(pilot) == 1 and pilot[0]["id"] == str(w["org"])
+    assert pilot[0]["endpoints"][0]["docs_seen"] == 3
+    result = c.post("/api/admin/scan-accounts", headers=h("admin"),
+                    json={"limit": 10, "finance_only": True, "with_search": False})
+    assert result.status_code == 200 and result.json()["queued"] == 1
+    conn.execute("UPDATE organizations SET segment='Software vendor' WHERE id=%s", (w["org"],))
+    conn.commit()
+    assert c.get("/api/admin/source-pilot", headers=h("admin")).json()["items"] == []

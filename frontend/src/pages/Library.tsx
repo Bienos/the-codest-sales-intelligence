@@ -26,11 +26,11 @@ export default function Library({ render, query, canSetup = true }: { render: (s
   if (!d) return <Skeleton />;
   const items = d.items.filter((s: any) => !q || `${s.display_name} ${s.source_id} ${s.provider}`.toLowerCase().includes(q.toLowerCase()));
   const groups = Object.keys(TIERS).map((t) => [t, items.filter((s: any) => s.source_tier === t)] as [string, any[]]).filter(([, l]) => l.length);
-  const live = d.items.filter((s: any) => s.status === "active" && s.collection_method !== "internal").length;
+  const live = d.items.filter((s: any) => s.status === "active" && s.collection_method !== "internal" && s.last_success_at).length;
   return (
     <>
       <div className="row spread mb-2">
-        <p className="small muted m-0"><b>{d.items.length}</b> sources, <b>{live}</b> live. A source only runs once it has passed a test and someone has confirmed we may read it.</p>
+        <p className="small muted m-0"><b>{d.items.length}</b> sources, <b>{live}</b> active with a successful check. A source only runs once it has passed a test and someone has confirmed we may read it.</p>
         {query === undefined && <input aria-label="Search sources" placeholder="Search sources" value={q} onChange={(e) => setQ(e.target.value)} className="field-md" />}
       </div>
       {groups.map(([t, list]) => (
@@ -43,9 +43,11 @@ export default function Library({ render, query, canSetup = true }: { render: (s
               </div>
               <dl className="lib-facts">
                 <dt>How</dt><dd>{METHOD[s.collection_method] ?? humanize(s.collection_method)}{cadence(s.poll_interval_s)}</dd>
-                <dt>Status</dt><dd><Badge kind={hk(s.health)}>{HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health)}</Badge>{s.last_success_at && <span className="small muted"> last worked {fmtDateTime(s.last_success_at)}</span>}</dd>
+                <dt>Status</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? "Waiting for first successful check" : HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health)}</Badge>{s.last_success_at && <span className="small muted"> last worked {fmtDateTime(s.last_success_at)}</span>}</dd>
+                {s.last_attempt_at && <><dt>Last attempt</dt><dd className="small">{fmtDateTime(s.last_attempt_at)}</dd></>}
                 <dt>Feeds signals</dt><dd>{s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill" title={r}>{signals[r] ?? r}</span>) : <span className="muted">None yet</span>}</dd>
                 <dt>So far</dt><dd>{s.documents} pages read, {s.events} findings{Number(s.cost_usd_month) > 0 && <span className="small muted"> · ${Number(s.cost_usd_month).toFixed(3)} this month</span>}</dd>
+                <dt>Last 30 days</dt><dd>{s.recent_buying_findings ?? 0} verified findings with current buying signals</dd>
                 <dt>Permission</dt><dd className="small">{s.licence_notes ?? humanize(s.retention_policy)}</dd>
                 {s.url && <><dt>Page</dt><dd className="small"><a href={s.url} target="_blank" rel="noreferrer noopener">{s.url.replace(/^https?:\/\//, "").slice(0, 52)} ↗</a></dd></>}
               </dl>
