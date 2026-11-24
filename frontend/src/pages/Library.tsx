@@ -29,7 +29,8 @@ export default function Library({ render, query, canSetup = true }: { render: (s
   if (err) return <Err e={err} onRetry={reloadPage} />;
   if (!d) return <Skeleton />;
   const periodic = (s: any) => s.monitoring_mode === "scheduled";
-  const isReporting = (s: any) => periodic(s) && s.status === "active" && s.health === "healthy" && s.last_success_at && Date.now() - Date.parse(s.last_success_at) <= 2000 * s.poll_interval_s;
+  const isStale = (s: any) => periodic(s) && s.last_success_at && Date.now() - Date.parse(s.last_success_at) > 2000 * s.poll_interval_s;
+  const isReporting = (s: any) => periodic(s) && s.status === "active" && s.health === "healthy" && s.last_success_at && !isStale(s);
   const items = d.items.filter((s: any) =>
     (!q || `${s.display_name} ${s.source_id} ${s.provider}`.toLowerCase().includes(q.toLowerCase())) &&
     (!monitoring || (monitoring === "reporting" ? isReporting(s) : monitoring === "needs_attention" ? periodic(s) && !isReporting(s) : !periodic(s))));
@@ -59,7 +60,7 @@ export default function Library({ render, query, canSetup = true }: { render: (s
               </div>
               <dl className="lib-facts">
                 <dt>{tr("How")}</dt><dd>{tr(METHOD[s.collection_method] ?? humanize(s.collection_method))}{periodic(s) ? cadence(s.poll_interval_s) : ""}</dd>
-                {periodic(s) && <><dt>{tr("Monitoring")}</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? tr("Waiting for first successful check") : tr(HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health))}</Badge>{s.last_success_at && <span className="small muted">{" " + tr("last worked") + " "}{fmtDateTime(s.last_success_at)}</span>}</dd></>}
+                {periodic(s) && <><dt>{tr("Monitoring")}</dt><dd><Badge kind={isStale(s) ? "warn" : hk(s.health)}>{isStale(s) ? tr("Last check overdue") : s.health === "healthy" && !s.last_success_at ? tr("Waiting for first successful check") : tr(HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health))}</Badge>{s.last_success_at && <span className="small muted">{" " + tr("last worked") + " "}{fmtDateTime(s.last_success_at)}</span>}</dd></>}
                 {s.health_detail && <><dt>{tr("Last error")}</dt><dd className="small">{s.health_detail}</dd></>}
                 <dt>{tr("Latest test")}</dt><dd>{s.validation ? <>
                   <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? tr("Test passed") : tr("Test failed")}</Badge>

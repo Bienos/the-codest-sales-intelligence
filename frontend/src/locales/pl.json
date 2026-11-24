@@ -1631,7 +1631,7 @@
   "Prepare a Lemlist campaign": "Przygotuj kampanię w Lemlist",
   "Ready for approval": "Gotowe do zatwierdzenia",
   "Lemlist setup required": "Lemlist wymaga konfiguracji",
-  "Lemlist is not connected yet.": "Lemlist nie jest jeszcze połączony.",
+  "Last check overdue": "Sprawdzenie po terminie",
   "No supplier page found": "Nie znaleziono publicznej strony dla dostawców",
   "Reading {} and searching the web. Verified findings appear in the archive.": "Sprawdzamy {} i wyszukujemy informacje w sieci. Zweryfikowane znaleziska trafią do archiwum.",
   "Started. This account has no website on record, so we will only run the web search.": "Rozpoczęto wyszukiwanie w sieci. Firma nie ma przypisanego adresu strony."

@@ -402,7 +402,19 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const [err, setErr] = useState<unknown>(null);
   const [eps, setEps] = useState<any[]>([]);
   const [scan, setScan] = useState<{ busy: boolean; msg: string; err: unknown }>({ busy: false, msg: "", err: null });
-  useEffect(() => { api(`/api/accounts/${id}?target=true`).then(setD).catch(setErr); api(`/api/accounts/${id}/endpoints`).then((r) => setEps(r.items)).catch(() => setEps([])); }, [id]);
+  useEffect(() => {
+    const request = new AbortController();
+    setD(null);
+    setErr(null);
+    setEps([]);
+    api(`/api/accounts/${id}?target=true`, { signal: request.signal }).then(data => {
+      if (!request.signal.aborted) setD(data);
+    }).catch(error => { if (!request.signal.aborted) setErr(error); });
+    api(`/api/accounts/${id}/endpoints`, { signal: request.signal }).then(data => {
+      if (!request.signal.aborted) setEps(data.items);
+    }).catch(() => undefined);
+    return () => request.abort();
+  }, [id]);
   // every hook runs on every render, before any early return (React rule of hooks)
   const [briefs, setBriefs] = useState<any[]>([]);
   const loadBriefs = () => api(`/api/accounts/${id}/briefs`).then((r) => setBriefs(r.items)).catch(() => setBriefs([]));
@@ -416,7 +428,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     const event = params.get("event");
     if (d && tab === "Signals & sources" && event) document.getElementById(`event-${event}`)?.scrollIntoView({ block: "center" });
   }, [d, tab, params]);
-  if (!d) return <>
+  if (!d || d.account.id !== id) return <>
     <p className="small mt-0"><Link to="/accounts">{tr("Accounts")}</Link></p><h1 className="title-sm">{tr("Account details")}</h1>
     {err ? <Err e={err} onRetry={reloadPage} /> : <Skeleton rows={4} label={tr("Loading the account")} />}
   </>;
