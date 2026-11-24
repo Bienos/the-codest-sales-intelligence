@@ -1,3 +1,4 @@
+import { tr } from "../locale";
 import { Link } from "react-router-dom";
 
 const INPUTS = [
@@ -48,54 +49,54 @@ export default function Guide() {
   return (
     <>
       <div className="hero">
-        <div className="eyebrow">Start here</div>
-        <h1>How it works</h1>
-        <p className="sub">The platform reads public sources and your account lists, checks every claim against the original page, and gives you a short list of what to do next. It tells you what it knows, what it is assuming and what only a buyer can confirm.</p>
+        <div className="eyebrow">{tr("Start here")}</div>
+        <h1>{tr("How it works")}</h1>
+        <p className="sub">{tr("The platform reads public sources and your account lists, checks every claim against the original page, and gives you a short list of what to do next. It tells you what it knows, what it is assuming and what only a buyer can confirm.")}</p>
       </div>
       <div className="page">
-        <div className="section-title mt-2">The whole thing on one page</div>
-        <div className="map3" role="group" aria-label="Structure of the platform">
-          <div className="col"><div className="col-h">Goes in</div>{INPUTS.map(([t, d]) => <div key={t} className="mbox"><b>{t}</b><span>{d}</span></div>)}</div>
+        <div className="section-title mt-2">{tr("The whole thing on one page")}</div>
+        <div className="map3" role="group" aria-label={tr("Structure of the platform")}>
+          <div className="col"><div className="col-h">{tr("Goes in")}</div>{INPUTS.map(([t, d]) => <div key={t} className="mbox"><b>{tr(t)}</b><span>{tr(d)}</span></div>)}</div>
           <div className="arrow" aria-hidden="true">→</div>
-          <div className="col eng"><div className="col-h">What the platform does</div>{ENGINE.map(([t, d]) => <div key={t} className="mbox"><b>{t}</b><span>{d}</span></div>)}</div>
+          <div className="col eng"><div className="col-h">{tr("What the platform does")}</div>{ENGINE.map(([t, d]) => <div key={t} className="mbox"><b>{tr(t)}</b><span>{tr(d)}</span></div>)}</div>
           <div className="arrow" aria-hidden="true">→</div>
-          <div className="col"><div className="col-h">What you get</div>{OUTPUTS.map(([t, d]) => <div key={t} className="mbox out"><b>{t}</b><span>{d}</span></div>)}</div>
+          <div className="col"><div className="col-h">{tr("What you get")}</div>{OUTPUTS.map(([t, d]) => <div key={t} className="mbox out"><b>{tr(t)}</b><span>{tr(d)}</span></div>)}</div>
         </div>
-        <div className="controls"><b>Safeguards:</b> monthly spending limits on AI and search (Usage), a full audit log, a role for every person, and approval for anything that leaves the system.</div>
+        <div className="controls"><b>{tr("Safeguards:")}</b>{" " + tr("monthly spending limits on AI and search (Usage), a full audit log, a role for every person, and approval for anything that leaves the system.")}</div>
 
-        <div className="section-title">Where do I click?</div>
-        <div className="card table-wrap" tabIndex={0} role="region" aria-label="Place · What it is for"><table><thead><tr><th>Place</th><th>What it is for</th></tr></thead><tbody>
-          {CLICK.map(([n, to, d]) => <tr key={n}><td><Link to={to}><b>{n}</b></Link></td><td>{d}</td></tr>)}</tbody></table></div>
+        <div className="section-title">{tr("Where do I click?")}</div>
+        <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Place · What it is for")}><table><thead><tr><th>{tr("Place")}</th><th>{tr("What it is for")}</th></tr></thead><tbody>
+          {CLICK.map(([n, to, d]) => <tr key={n}><td><Link to={to}><b>{tr(n)}</b></Link></td><td>{tr(d)}</td></tr>)}</tbody></table></div>
 
-        <div className="section-title">Your day in three moves</div>
+        <div className="section-title">{tr("Your day in three moves")}</div>
         <div className="moves">
-          <div className="card"><div className="eyebrow">1 · Today</div><p className="m-0">Read the top card. The right-hand panel is the one thing to do. On a shortlist item, press <b>Check this source</b> to have the platform read the original page. Dismiss what does not apply, with a reason.</p></div>
-          <div className="card"><div className="eyebrow">2 · Opportunity</div><p className="m-0">Open it to see which of the seven checks are green, amber or red, the quoted sources, and the questions that would fill the gaps.</p></div>
-          <div className="card"><div className="eyebrow">3 · Propose</div><p className="m-0">Write a draft or ask to add a Pipedrive activity. A colleague approves it in Administration before anything leaves the system.</p></div>
+          <div className="card"><div className="eyebrow">{tr("1 · Today")}</div><p className="m-0">{tr("Read the top card. The right-hand panel is the one thing to do. On a shortlist item, press") + " "}<b>{tr("Check this source")}</b>{" " + tr("to have the platform read the original page. Dismiss what does not apply, with a reason.")}</p></div>
+          <div className="card"><div className="eyebrow">{tr("2 · Opportunity")}</div><p className="m-0">{tr("Open it to see which of the seven checks are green, amber or red, the quoted sources, and the questions that would fill the gaps.")}</p></div>
+          <div className="card"><div className="eyebrow">{tr("3 · Propose")}</div><p className="m-0">{tr("Write a draft or ask to add a Pipedrive activity. A colleague approves it in Administration before anything leaves the system.")}</p></div>
         </div>
 
-        <div className="section-title">Words used in the tool</div>
-        <dl className="gloss">{WORDS.map(([w, d]) => <div key={w}><dt>{w}</dt><dd>{d}</dd></div>)}</dl>
+        <div className="section-title">{tr("Words used in the tool")}</div>
+        <dl className="gloss">{WORDS.map(([w, d]) => <div key={w}><dt>{tr(w)}</dt><dd>{tr(d)}</dd></div>)}</dl>
 
-        <div className="section-title">The seven checks</div>
+        <div className="section-title">{tr("The seven checks")}</div>
         <div className="gate-legend">
-          {[["1", "Account fit", "Is this a company we should pursue?"], ["2", "Real programme", "Is there a checked programme, and what stage is it at?"], ["3", "Engineering fit", "Does the work match what The Codest delivers?"],
-            ["4", "Outside demand", "Will the buyer use outside help? Often not known until you ask."], ["5", "Supplier access", "Can a supplier like us get in: directly, through the vendor or through an integrator?"],
-            ["6", "Buyer path", "Do we know who decides, and have they said so?"], ["7", "Delivery", "Can we staff it in the time they need?"]].map(([g, n, q]) => (
+          {[["1", tr("Account fit"), tr("Is this a company we should pursue?")], ["2", tr("Real programme"), tr("Is there a checked programme, and what stage is it at?")], ["3", tr("Engineering fit"), tr("Does the work match what The Codest delivers?")],
+            ["4", tr("Outside demand"), tr("Will the buyer use outside help? Often not known until you ask.")], ["5", tr("Supplier access"), tr("Can a supplier like us get in: directly, through the vendor or through an integrator?")],
+            ["6", tr("Buyer path"), tr("Do we know who decides, and have they said so?")], ["7", tr("Delivery"), tr("Can we staff it in the time they need?")]].map(([g, n, q]) => (
             <div key={g} className="g"><div className="gi">{g}</div><div className="gn">{n}</div><div className="gr">{q}</div></div>))}
         </div>
-        <p className="small muted mt-3">Green means confirmed. Amber means not known yet. Red means blocked. An opportunity can be worth acting on while checks 4 to 7 are amber. It is not qualified until they are answered.</p>
+        <p className="small muted mt-3">{tr("Green means confirmed. Amber means not known yet. Red means blocked. An opportunity can be worth acting on while checks 4 to 7 are amber. It is not qualified until they are answered.")}</p>
 
         <div className="card mt-5">
-          <div className="eyebrow">What this is not</div>
+          <div className="eyebrow">{tr("What this is not")}</div>
           <ul className="tight mb-0">
-            <li>It does not send email or messages. It only writes drafts.</li>
-            <li>It does not change Pipedrive without a colleague's approval.</li>
-            <li>Scores are our best current weighting. They have not yet been checked against deals won and lost, so treat them as a guide, not a forecast.</li>
-            <li>It only sees the sources we watch. It does not claim to see the whole market.</li>
+            <li>{tr("It does not send email or messages. It only writes drafts.")}</li>
+            <li>{tr("It does not change Pipedrive without a colleague's approval.")}</li>
+            <li>{tr("Scores are our best current weighting. They have not yet been checked against deals won and lost, so treat them as a guide, not a forecast.")}</li>
+            <li>{tr("It only sees the sources we watch. It does not claim to see the whole market.")}</li>
           </ul>
         </div>
-        <p className="mt-4"><Link to="/today"><button className="primary">Go to Today</button></Link></p>
+        <p className="mt-4"><Link to="/today"><button className="primary">{tr("Go to Today")}</button></Link></p>
       </div>
     </>
   );

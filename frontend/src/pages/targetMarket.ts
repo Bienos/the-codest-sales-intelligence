@@ -1,3 +1,4 @@
+import { counted, getLanguage, tr } from "../locale";
 export const REGIONS = [
   ["uk", "United Kingdom"],
   ["dach", "DACH"],
@@ -7,16 +8,21 @@ export const REGIONS = [
   ["international", "International"],
 ];
 
-const countries = new Intl.DisplayNames(["en"], { type: "region" });
+const countries = {
+  en: new Intl.DisplayNames("en", { type: "region" }),
+  pl: new Intl.DisplayNames("pl", { type: "region" }),
+};
 
 export function countryName(code: string | null | undefined) {
-  return code && /^[A-Z]{2}$/.test(code) ? countries.of(code) ?? code : code;
+  return code && /^[A-Z]{2}$/.test(code) ? countries[getLanguage()].of(code) ?? code : code;
 }
 
 export function regionName(key: string) {
-  return REGIONS.find(([region]) => region === key)?.[1] ?? "";
+  return tr(REGIONS.find(([region]) => region === key)?.[1] ?? "");
 }
 
 export function staffCount(count: number | null, estimate?: boolean) {
-  return count == null ? "Headcount unknown" : `${estimate ? "Approx. " : ""}${count.toLocaleString()} employees`;
+  if (count == null) return tr("Headcount unknown");
+  const employees = counted(count, ["employee", "employees"], ["pracownik", "pracowników", "pracowników"]);
+  return estimate ? tr("Approx. {}", employees) : employees;
 }

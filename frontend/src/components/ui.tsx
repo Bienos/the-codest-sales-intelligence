@@ -1,3 +1,4 @@
+import { counted, number, tr } from "../locale";
 import { useId, useState } from "react";
 import { ReactNode } from "react";
 import { fmtDate, trackSourceOpened } from "../api";
@@ -17,10 +18,10 @@ export const IconPass = I(<><circle cx="12" cy="12" r="9" /><path d="M7.5 12.5l3
 export const IconUnknown = I(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 .5c0 1.6-2.5 2-2.5 3.5M12 17v.5" /></>);
 export const IconFail = I(<><circle cx="12" cy="12" r="9" /><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" /></>);
 
-export const Badge = ({ kind = "", children }: { kind?: string; children: ReactNode }) => <span className={`badge ${kind}`}>{children}</span>;
+export const Badge = ({ kind = "", children }: { kind?: string; children: ReactNode }) => <span className={`badge ${kind}`}>{typeof children === "string" ? tr(children) : children}</span>;
 export const priorityKind = (p: string) => ({ urgent: "bad", high: "warn", medium: "info", blocked: "", low: "" } as Record<string, string>)[p] ?? "";
 export const gateKind = (s: string) => (s === "pass" ? "ok" : s === "fail" ? "bad" : "warn");
-export const humanize = (s?: string | null) => { const t = (s ?? "unknown").replace(/_/g, " "); return t.charAt(0).toUpperCase() + t.slice(1); };
+export const humanize = (s?: string | null) => { const t = (s ?? tr("unknown")).replace(/_/g, " "); return tr(t.charAt(0).toUpperCase() + t.slice(1)); };
 
 /** Plain-English labels for every value the API sends as a code. Anything not listed falls back to sentence case. */
 export const LABELS = {
@@ -51,18 +52,18 @@ export const LABELS = {
   committee: { problem_owner: "problem owner", programme_owner: "programme owner", economic_buyer: "budget holder", technical_evaluator: "technical evaluator", procurement_owner: "procurement",
     risk_security: "risk and security", technical_sponsor: "technical sponsor" },
 } as const;
-export const lab = (dict: keyof typeof LABELS, v?: string | null): string => { const d = LABELS[dict] as Record<string, string>; return (v && d[v]) || humanize(v); };
+export const lab = (dict: keyof typeof LABELS, v?: string | null): string => { const d = LABELS[dict] as Record<string, string>; return v && d[v] ? tr(d[v]) : humanize(v); };
 /** Rule IDs such as PRG-01 mean nothing to a seller: group letters become words. */
-export const groupName = (g: string) => (LABELS.group as Record<string, string>)[g] ?? g;
+export const groupName = (g: string) => tr((LABELS.group as Record<string, string>)[g] ?? g);
 
 export const PageHeader = ({ eyebrow, title, sub, right }: { eyebrow?: string; title: string; sub?: ReactNode; right?: ReactNode }) => (
   <div className="page-head row spread end">
-    <div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1>{sub && <p className="sub">{sub}</p>}</div>{right}
+    <div>{eyebrow && <div className="eyebrow">{tr(eyebrow)}</div>}<h1>{tr(title)}</h1>{sub && <p className="sub">{typeof sub === "string" ? tr(sub) : sub}</p>}</div>{right}
   </div>
 );
 
 export const Fact = ({ label, value, kind = "" }: { label: string; value: ReactNode; kind?: string }) => (
-  <div className={`fact ${kind}`}><div className="l">{label}</div><div className="v">{value}</div></div>
+  <div className={`fact ${kind}`}><div className="l">{tr(label)}</div><div className="v">{typeof value === "string" ? tr(value) : value}</div></div>
 );
 export const demandKind = (s: string) => (s === "explicit" || s === "buyer_confirmed" ? "ok" : s === "inferred" ? "info" : "warn");
 export const accessKind = (s: string) => (s === "verified" ? "ok" : s === "potential" ? "info" : s === "blocked" || s === "restricted" ? "bad" : "warn");
@@ -73,15 +74,15 @@ export const GATE_QUESTIONS: Record<string, string> = {
   G6: "Do we know who decides, and have they said so?", G7: "Can we staff it in the window they need?" };
 export function verdict(c: any): { text: string; kind: string } {
   const demand = c.external_demand_status, access = c.route?.access_status;
-  if (c.priority === "urgent") return { text: "A tender with a deadline. Check the date and whether we can bid.", kind: "bad" };
-  if (demand === "explicit" || demand === "buyer_confirmed") return { text: "They have asked for outside help. Move on to qualifying it.", kind: "ok" };
-  if (access === "restricted" || access === "blocked") return { text: "A real programme, but we cannot sell to them directly. Look for a partner route.", kind: "warn" };
-  if (c.buyer_status === "none") return { text: "Worth a conversation, but you still need to find the buyer.", kind: "info" };
-  return { text: "Worth a conversation. We do not know yet if they will use outside help, so ask.", kind: "info" };
+  if (c.priority === "urgent") return { text: tr("A tender with a deadline. Check the date and whether we can bid."), kind: "bad" };
+  if (demand === "explicit" || demand === "buyer_confirmed") return { text: tr("They have asked for outside help. Move on to qualifying it."), kind: "ok" };
+  if (access === "restricted" || access === "blocked") return { text: tr("A real programme, but we cannot sell to them directly. Look for a partner route."), kind: "warn" };
+  if (c.buyer_status === "none") return { text: tr("Worth a conversation, but you still need to find the buyer."), kind: "info" };
+  return { text: tr("Worth a conversation. We do not know yet if they will use outside help, so ask."), kind: "info" };
 }
 export const EVIDENCE_CONFIDENCE = "High: an official source, or a company source plus another independent source. Medium: one company source or at least two other independent sources. Low: less evidence.";
 export function actionReason(action: { action_type: string; reason?: string }): string {
-  if (action.action_type === "qualify_external_demand") return "We checked that the programme exists. Only a conversation with the buyer can confirm if they need outside help.";
+  if (action.action_type === "qualify_external_demand") return tr("We checked that the programme exists. Only a conversation with the buyer can confirm if they need outside help.");
   return action.reason ?? "";
 }
 const GATE_NAMES: Record<string, string> = { G1: "Account fit", G2: "Real programme", G3: "Engineering fit", G4: "Outside demand", G5: "Supplier access", G6: "Buyer path", G7: "Delivery" };
@@ -92,74 +93,74 @@ export function gateReason(g: string, r?: string | null): string {
   const t = (r ?? "").trim(); let m: RegExpMatchArray | null;
   if (!t) return "";
   if (g === "G1") {
-    if ((m = RE(t, /^ICP band (\w+)/))) return `${lab("icp", m[1])}: in our target range`;
-    if (t.startsWith("size unknown")) return "Size unclear: close to a size cut-off";
-    if (t.startsWith("identity review")) return "We are still matching this company";
-    if (t.includes("below ICP size threshold")) return "Under our size threshold. Needs a written exception to pursue.";
+    if ((m = RE(t, /^ICP band (\w+)/))) return tr("{}: in our target range", lab("icp", m[1]));
+    if (t.startsWith("size unknown")) return tr("Size unclear: close to a size cut-off");
+    if (t.startsWith("identity review")) return tr("We are still matching this company");
+    if (t.includes("below ICP size threshold")) return tr("Under our size threshold. Needs a written exception to pursue.");
   }
   if (g === "G2") {
-    if ((m = RE(t, /^stage (\w+) per cited event/))) return `Programme is at the ${humanize(m[1]).toLowerCase()} stage`;
-    if ((m = RE(t, /^initiative (\w+)/))) return `Programme is ${humanize(m[1]).toLowerCase()}`;
-    if (t.includes("stage not established")) return "Programme stage not known yet";
+    if ((m = RE(t, /^stage (\w+) per cited event/))) return tr("Programme is at the {} stage", humanize(m[1]).toLowerCase());
+    if ((m = RE(t, /^initiative (\w+)/))) return tr("Programme is {}", humanize(m[1]).toLowerCase());
+    if (t.includes("stage not established")) return tr("Programme stage not known yet");
   }
   if (g === "G3") {
-    if ((m = RE(t, /^(\w+) \((\w+)\)/))) return `${humanize(m[1])}: ${m[2] === "confirmed_scope" ? "scope confirmed" : m[2] === "implied_engineering_activity" ? "engineering work implied" : humanize(m[2]).toLowerCase()}`;
-    if (t.startsWith("only inferred")) return "A possible fit, not confirmed";
-    if (t.startsWith("no Codest")) return "Does not match what we deliver";
+    if ((m = RE(t, /^(\w+) \((\w+)\)/))) return `${humanize(m[1])}: ${m[2] === "confirmed_scope" ? tr("scope confirmed") : m[2] === "implied_engineering_activity" ? tr("engineering work implied") : humanize(m[2]).toLowerCase()}`;
+    if (t.startsWith("only inferred")) return tr("A possible fit, not confirmed");
+    if (t.startsWith("no Codest")) return tr("Does not match what we deliver");
   }
-  if (g === "G4" && (m = RE(t, /^external demand (\w+)/))) return m[1] === "unknown" ? "Not known yet if they will use outside help" : lab("demand", m[1]);
+  if (g === "G4" && (m = RE(t, /^external demand (\w+)/))) return m[1] === "unknown" ? tr("Not known yet if they will use outside help") : lab("demand", m[1]);
   if (g === "G5") {
-    if (t === "route verified") return "Route confirmed";
+    if (t === "route verified") return tr("Route confirmed");
     if ((m = RE(t, /^route (\w+)/))) return `Route ${lab("access", m[1]).toLowerCase()}`;
   }
   if (g === "G6" && (m = RE(t, /^buyer (\w+)/))) return lab("buyer", m[1]);
   if (g === "G7") {
-    if (t.startsWith("internal delivery feasibility not")) return "Our delivery team has not confirmed we can staff it";
-    if (t.startsWith("internal delivery validation")) return "Our delivery team confirmed we can staff it";
+    if (t.startsWith("internal delivery feasibility not")) return tr("Our delivery team has not confirmed we can staff it");
+    if (t.startsWith("internal delivery validation")) return tr("Our delivery team confirmed we can staff it");
   }
   return humanize(t);
 }
 /** Same idea for the short "still unknown" list on each card. */
 export function unknownText(u: string): string {
   let m: RegExpMatchArray | null;
-  if (u.startsWith("external demand")) return "Not known yet if they will use outside help";
-  if (u === "route unknown") return "How we would get in is not confirmed";
+  if (u.startsWith("external demand")) return tr("Not known yet if they will use outside help");
+  if (u === "route unknown") return tr("How we would get in is not confirmed");
   if ((m = RE(u, /^buyer (\w+)/))) return lab("buyer", m[1]);
-  if (u.startsWith("internal delivery")) return "Our delivery team has not confirmed we can staff it";
+  if (u.startsWith("internal delivery")) return tr("Our delivery team has not confirmed we can staff it");
   return humanize(u);
 }
 export function GateBar({ gates }: { gates: Record<string, { status: string; reason: string }> }) {
   return (
     <>
-      <div className="gatebar" role="list" aria-label="The seven checks">
+      <div className="gatebar" role="list" aria-label={tr("The seven checks")}>
         {Object.entries(gates).map(([g, v]) => {
           const Ico = v.status === "pass" ? IconPass : v.status === "fail" ? IconFail : IconUnknown;
           return (
-            <div key={g} role="listitem" className={`g ${v.status}`} aria-label={`Check ${g.slice(1)}, ${GATE_NAMES[g]}: ${GATE_STATUS[v.status] ?? v.status}. ${GATE_QUESTIONS[g]}`}>
+            <div key={g} role="listitem" className={`g ${v.status}`} aria-label={tr("Check {}, {}: {}. {}", g.slice(1), tr(GATE_NAMES[g] ?? g), tr(GATE_STATUS[v.status] ?? v.status), tr(GATE_QUESTIONS[g] ?? ""))}>
               <div className="gi"><Ico />{g.slice(1)}</div>
-              <div className="gn">{GATE_NAMES[g]}</div>
-              <div className="gs">{GATE_STATUS[v.status] ?? v.status}</div>
-              <div className="gq">{GATE_QUESTIONS[g]}</div>
+              <div className="gn">{tr(GATE_NAMES[g] ?? g)}</div>
+              <div className="gs">{tr(GATE_STATUS[v.status] ?? v.status)}</div>
+              <div className="gq">{tr(GATE_QUESTIONS[g] ?? "")}</div>
               <div className="gr">{gateReason(g, v.reason)}</div>
             </div>
           );
         })}
       </div>
-      <p className="small muted mt-2">Green: confirmed. Amber: not known yet, which is normal early on. Red: blocked.</p>
+      <p className="small muted mt-2">{tr("Green: confirmed. Amber: not known yet, which is normal early on. Red: blocked.")}</p>
     </>
   );
 }
 
 export const TIER: Record<string, string> = { S1: "Official record", S2: "Company\u2019s own site", S3: "Vendor or integrator", S4: "Trade press", S5: "Search find", internal: "Internal" };
 export function Evidence({ items, hypothesisId }: { items: any[]; hypothesisId?: string }) {
-  if (!items?.length) return <span className="muted small">No source attached yet.</span>;
+  if (!items?.length) return <span className="muted small">{tr("No source attached yet.")}</span>;
   return (
     <div>
       {items.map((e) => (
         <div key={e.claim_id} className="small mt-2 mb-2">
-          {e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" title="Open the original source" onClick={() => hypothesisId && trackSourceOpened({ hypothesis_id: hypothesisId })}>{e.source ?? "Original source"} ↗</a> : <span className="pill">Structured record, no link</span>}
-          <span className="prov">{[e.authority ? TIER[e.authority] ?? e.authority : null, e.published_at ? `published ${fmtDate(e.published_at)}` : null, e.retrieved_at ? `read ${fmtDate(e.retrieved_at)}` : null].filter(Boolean).join(" · ")}</span>
-          {e.claim && <div className="mt-1">“{e.claim}” {!e.anchor_verified && e.kind === "quote" && <Badge kind="warn">quote not matched</Badge>}</div>}
+          {e.url ? <a className="pill" href={e.url} target="_blank" rel="noreferrer noopener" title={tr("Open the original source")} onClick={() => hypothesisId && trackSourceOpened({ hypothesis_id: hypothesisId })}>{e.source ?? tr("Original source")} ↗</a> : <span className="pill">{tr("Structured record, no link")}</span>}
+          <span className="prov">{[e.authority ? tr(TIER[e.authority] ?? e.authority) : null, e.published_at ? tr("published {}", fmtDate(e.published_at)) : null, e.retrieved_at ? tr("read {}", fmtDate(e.retrieved_at)) : null].filter(Boolean).join(" · ")}</span>
+          {e.claim && <div className="mt-1">“{e.claim}” {!e.anchor_verified && e.kind === "quote" && <Badge kind="warn">{tr("quote not matched")}</Badge>}</div>}
         </div>
       ))}
     </div>
@@ -171,10 +172,10 @@ export function Coverage({ c, empty }: { c: any; empty?: string | null }) {
   const bad = c.unhealthy?.length > 0 || c.no_active_monitoring;
   return (
     <div className={`cov ${bad ? "bad" : c.all_monitored_healthy ? "ok" : ""}`} role="status">
-      <b>Source health.</b> We are watching {c.monitored_sources} {c.monitored_sources === 1 ? "source" : "sources"}; {c.pending_validation_sources} more {c.pending_validation_sources === 1 ? "is" : "are"} not set up yet.
-      {c.unhealthy?.length > 0 && <> <b>Having problems:</b> {c.unhealthy.map((u: any) => u.source).join(", ")}.</>}
-      {c.no_active_monitoring && <> <b>No source is switched on yet</b>, so a quiet screen does not mean nothing happened.</>}
-      {empty && <div className="mt-1">{empty}</div>}
+      <b>{tr("Source health.")}</b> {tr("Monitoring {}. Still to set up: {}.", counted(c.monitored_sources, ["source", "sources"], ["źródło", "źródła", "źródeł"]), number(c.pending_validation_sources))}
+      {c.unhealthy?.length > 0 && <> <b>{tr("Having problems:")}</b> {c.unhealthy.map((u: any) => u.source).join(", ")}.</>}
+      {c.no_active_monitoring && <> <b>{tr("No source is switched on yet")}</b>{tr(", so a quiet screen does not mean nothing happened.")}</>}
+      {empty && <div className="mt-1">{tr(empty)}</div>}
     </div>
   );
 }
@@ -183,13 +184,13 @@ export function Err({ e, onRetry }: { e: unknown; onRetry?: () => void }) {
   if (!e) return null;
   const msg = String((e as Error).message ?? e); const st = (e as { status?: number }).status;
   const net = e instanceof TypeError;
-  const plain = st === 401 || st === 403 ? "You do not have access to this, or your session has ended. Sign in again, or ask an administrator."
-    : st === 404 ? "This item no longer exists or has moved." : (st && st >= 500) || net ? "The server did not respond. Try again in a minute." : null;
-  return <div className="err" role="alert">{plain ?? msg}{plain && msg && !net && <details><summary>Technical detail</summary>{msg}</details>}{onRetry && <div className="mt-2"><button onClick={onRetry}>Try again</button></div>}</div>;
+  const plain = st === 401 || st === 403 ? tr("You do not have access to this, or your session has ended. Sign in again, or ask an administrator.")
+    : st === 404 ? tr("This item no longer exists or has moved.") : (st && st >= 500) || net ? tr("The server did not respond. Try again in a minute.") : null;
+  return <div className="err" role="alert">{plain ?? tr(msg)}{plain && msg && !net && <details><summary>{tr("Technical detail")}</summary>{msg}</details>}{onRetry && <div className="mt-2"><button onClick={onRetry}>{tr("Try again")}</button></div>}</div>;
 }
 /** Placeholder shown while a screen loads: same footprint as the content, so nothing jumps when it arrives. */
-export const Skeleton = ({ rows = 3, label = "Loading" }: { rows?: number; label?: string }) => (
-  <div className="skel" role="status" aria-busy="true" aria-label={label}>{Array.from({ length: rows }, (_, i) => <div key={i} className="skel-row" />)}</div>
+export const Skeleton = ({ rows = 3, label = tr("Loading") }: { rows?: number; label?: string }) => (
+  <div className="skel" role="status" aria-busy="true" aria-label={tr(label)}>{Array.from({ length: rows }, (_, i) => <div key={i} className="skel-row" />)}</div>
 );
 /** The backend appends "; route: …; external demand: …" to this sentence. Both are already shown as facts, so keep only the first clause. */
 export const whyShort = (s?: string | null) => String(s ?? "").split(/;\s*route:/)[0].replace(/\s*\(confirmed scope\)/, "");
@@ -206,8 +207,8 @@ export function Tabs({ items, value, onChange, label, children }: { items: { key
   };
   return (
     <>
-      <div className="tabs" role="tablist" aria-label={label}>
-        {items.map((t, i) => <button key={t.key} id={`${id}-tab-${i}`} type="button" role="tab" aria-controls={`${id}-panel-${i}`} aria-selected={i === active} tabIndex={i === active ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => go(e, i)}>{t.label}</button>)}
+      <div className="tabs" role="tablist" aria-label={tr(label)}>
+        {items.map((t, i) => <button key={t.key} id={`${id}-tab-${i}`} type="button" role="tab" aria-controls={`${id}-panel-${i}`} aria-selected={i === active} tabIndex={i === active ? 0 : -1} onClick={() => onChange(t.key)} onKeyDown={(e) => go(e, i)}>{typeof t.label === "string" ? tr(t.label) : t.label}</button>)}
       </div>
       {items.map((t, i) => <div key={t.key} id={`${id}-panel-${i}`} role="tabpanel" aria-labelledby={`${id}-tab-${i}`} hidden={i !== active} tabIndex={i === active ? 0 : undefined}>
         {i === active ? children : null}
@@ -216,7 +217,7 @@ export function Tabs({ items, value, onChange, label, children }: { items: { key
   );
 }
 export const reloadPage = () => window.location.reload();
-export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{title}</b>{children}</div>;
+export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{tr(title)}</b>{typeof children === "string" ? tr(children) : children}</div>;
 
 /** Brand mark: the official logo file when it has been supplied, otherwise the plain text mark. Never redrawn here. */
 export function Brand({ sub = true }: { sub?: boolean }) {
@@ -228,7 +229,7 @@ export function Brand({ sub = true }: { sub?: boolean }) {
       {ok ? <img className="brand-logo" src={stage === 0 ? "/brand/logo-white.svg" : "/brand/logo"} alt="The Codest" width={140}
                  style={stage === 1 ? { filter: "brightness(0) invert(1)" } : undefined} onError={() => setStage(stage + 1)} />
         : <div className="brand-row"><span className="brand-mark" /><div className="brand-name">The Codest</div></div>}
-      {sub && <div className="brand-sub mt-0">Revenue Intelligence</div>}
+      {sub && <div className="brand-sub mt-0">{tr("Revenue Intelligence")}</div>}
     </div>
   );
 }
@@ -236,9 +237,9 @@ export function Brand({ sub = true }: { sub?: boolean }) {
 export function Meter({ used, cap, unit = "", warn = 0.8 }: { used: number; cap: number; unit?: string; warn?: number }) {
   const pct = cap > 0 ? Math.min(used / cap, 1) : 0;
   return (
-    <div className="meter" role="img" aria-label={`${used} of ${cap} ${unit} used`}>
+    <div className="meter" role="img" aria-label={tr("{} of {} {} used", used, cap, unit)}>
       <div className="meter-bar"><i style={{ width: `${pct * 100}%` }} className={pct >= 1 ? "full" : pct >= warn ? "hot" : ""} /></div>
-      <div className="small muted">{cap > 0 ? `${Math.round(pct * 100)}% of the monthly limit` : "No limit set, so these calls are blocked"}</div>
+      <div className="small muted">{cap > 0 ? tr("{}% of the monthly limit", Math.round(pct * 100)) : tr("No limit set, so these calls are blocked")}</div>
     </div>
   );
 }

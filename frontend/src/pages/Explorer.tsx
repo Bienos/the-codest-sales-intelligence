@@ -1,5 +1,7 @@
+import { number, tr } from "../locale";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { countryName } from "./targetMarket";
 import { api, fmtDate } from "../api";
 import { Badge, Coverage, Err, Empty, lab, priorityKind, Skeleton } from "../components/ui";
 
@@ -12,24 +14,24 @@ const COLUMNS: Record<string, Col[]> = {
     { h: "Programme", cell: (r) => <Link to={`/opportunities/${r.id}`}>{r.title ?? r.display_name}</Link> },
     { h: "Account", cell: (r) => r.display_name },
     { h: "Priority", cell: (r) => <Badge kind={`${priorityKind(r.priority)} nw`}>{lab("priority", r.priority)}</Badge> },
-    { h: "Score", cell: (r) => (r.score_total != null ? `${r.score_total}/100` : "None") },
+    { h: "Score", cell: (r) => (r.score_total != null ? `${r.score_total}/100` : tr("None")) },
     { h: "How we would get in", cell: (r) => `${lab("route", r.route_type)}${r.counterparty_name ? ` (${r.counterparty_name})` : ""}` },
     { h: "Will they use outside help?", cell: (r) => lab("demand", r.external_demand_status) },
-    { h: "Sources", cell: (r) => (r.evidence_confidence ? <span className="nw">{String(r.evidence_confidence).replace(/^./, (c: string) => c.toUpperCase())}</span> : "None") },
+    { h: "Sources", cell: (r) => (r.evidence_confidence ? <span className="nw">{String(r.evidence_confidence).replace(/^./, (c: string) => c.toUpperCase())}</span> : tr("None")) },
   ],
   companies: [
     { h: "Company", cell: (r) => <Link to={`/accounts/${r.id}`}>{r.display_name}</Link> },
-    { h: "Country", cell: (r) => r.country_code ?? "Not known" },
-    { h: "Segment", cell: (r) => r.segment ?? "Not known" },
-    { h: "Staff", cell: (r) => (r.employees_estimate ? r.employees_estimate.toLocaleString() : "Not known") },
-    { h: "On your lists", cell: (r) => (r.in_master_list ? <Badge kind="ok">Yes</Badge> : "No") },
+    { h: "Country", cell: (r) => countryName(r.country_code) ?? tr("Not known") },
+    { h: "Segment", cell: (r) => r.segment ?? tr("Not known") },
+    { h: "Staff", cell: (r) => (r.employees_estimate ? number(r.employees_estimate) : tr("Not known")) },
+    { h: "On your lists", cell: (r) => (r.in_master_list ? <Badge kind="ok">{tr("Yes")}</Badge> : tr("No")) },
   ],
   events: [
     { h: "What happened", cell: (r) => r.summary },
     { h: "Type", cell: (r) => lab("event", r.event_type) },
     { h: "Date", cell: (r) => fmtDate(r.event_at ?? r.pub_at) },
     { h: "We saw it", cell: (r) => fmtDate(r.first_observed_at) },
-    { h: "Checked", cell: (r) => (r.verification_status === "verified" ? <Badge kind="ok">Yes</Badge> : <Badge kind="warn">Not yet</Badge>) },
+    { h: "Checked", cell: (r) => (r.verification_status === "verified" ? <Badge kind="ok">{tr("Yes")}</Badge> : <Badge kind="warn">{tr("Not yet")}</Badge>) },
   ],
 };
 const SHOW: [string, string][] = [["opportunities", "Opportunities"], ["companies", "Companies"], ["events", "Findings"]];
@@ -59,24 +61,24 @@ export default function Explorer() {
   const ready = d && d.entity === entity;
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Look across the market</div><h1>Explorer</h1><p className="sub">Search companies, opportunities and checked news in your target market.</p></div>
+      <div className="page-head"><div className="eyebrow">{tr("Look across the market")}</div><h1>{tr("Explorer")}</h1><p className="sub">{tr("Search companies, opportunities and checked news in your target market.")}</p></div>
       <div className="row mb-3">
-        <label className="sr" htmlFor="ex-show">Show</label>
-        <select id="ex-show" value={entity} onChange={(e) => setEntity(e.target.value)}>{SHOW.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-        <input aria-label="Search" placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <label className="sr" htmlFor="ex-show">{tr("Show")}</label>
+        <select id="ex-show" value={entity} onChange={(e) => setEntity(e.target.value)}>{SHOW.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}</select>
+        <input aria-label={tr("Search")} placeholder={tr("Search…")} value={q} onChange={(e) => setQ(e.target.value)} />
         {(entity === "opportunities" || entity === "companies") && <>
-          <input aria-label="Country code" placeholder="Country code" list="explorer-countries" maxLength={2} value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} className="field-sm" />
-          <datalist id="explorer-countries">{COUNTRIES.map(([code, name]) => <option key={code} value={code} label={name} />)}</datalist>
+          <input aria-label={tr("Country code")} placeholder={tr("Country code")} list="explorer-countries" maxLength={2} value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} className="field-sm" />
+          <datalist id="explorer-countries">{COUNTRIES.map(([code, name]) => <option key={code} value={code} label={countryName(code) ?? name} />)}</datalist>
         </>}
-        {entity === "companies" && <select aria-label="List membership" value={existing} onChange={(e) => setExisting(e.target.value)}><option value="">All companies</option><option value="true">On your lists</option><option value="false">Not on your lists</option></select>}
+        {entity === "companies" && <select aria-label={tr("List membership")} value={existing} onChange={(e) => setExisting(e.target.value)}><option value="">{tr("All companies")}</option><option value="true">{tr("On your lists")}</option><option value="false">{tr("Not on your lists")}</option></select>}
       </div>
       <Err e={err} onRetry={() => setRetry((n) => n + 1)} />
       {!ready && !err && <Skeleton />}
       {ready && <>
         {d.coverage && (d.coverage.unhealthy?.length > 0 || d.coverage.no_active_monitoring) && <Coverage c={d.coverage} />}
-        <p className="small muted">{SORT_NOTE[entity]}</p>
-        {d.items.length === 0 ? <Empty title="Nothing matches">Try fewer filters. Remember we only see the sources we watch.</Empty> :
-          <div className="card table-wrap" tabIndex={0} role="region" aria-label="Explorer results"><table><thead><tr>{cols.map((c) => <th key={c.h}>{c.h}</th>)}</tr></thead><tbody>
+        <p className="small muted">{tr(SORT_NOTE[entity])}</p>
+        {d.items.length === 0 ? <Empty title={tr("Nothing matches")}>{tr("Try fewer filters. Remember we only see the sources we watch.")}</Empty> :
+          <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Explorer results")}><table><thead><tr>{cols.map((c) => <th key={c.h}>{tr(c.h)}</th>)}</tr></thead><tbody>
             {d.items.map((r: Row, i: number) => <tr key={r.id ?? r.notice_id ?? i}>{cols.map((c) => <td key={c.h}>{c.cell(r)}</td>)}</tr>)}</tbody></table></div>}
       </>}
     </>

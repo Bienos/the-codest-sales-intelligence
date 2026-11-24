@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, api, clearToken } from "./api";
+import { LanguageSwitcher, tr, useLanguage } from "./locale";
 import Today from "./pages/Today";
 import { Accounts, Account } from "./pages/Accounts";
 import Opportunity from "./pages/Opportunity";
@@ -21,6 +22,7 @@ function emailFromToken(t: string | null): string | undefined {
 }
 
 export default function App() {
+  useLanguage();
   const nav = useNavigate();
   const [me, setMe] = useState<Me | null>(null);
   const [needLogin, setNeedLogin] = useState(false);
@@ -53,35 +55,36 @@ export default function App() {
   useEffect(refreshApprovals, [me, loc.pathname]);
   if (needLogin) return <Landing onDone={() => setN(n + 1)} notice={notice} />;
   if (!me) return <div className="shell">
-    <div className="nav"><Brand /></div>
+    <div className="nav"><Brand /><LanguageSwitcher /></div>
     <main className="page">
-      <h1>Signing you in</h1>
-      {signInError ? <Err e={signInError} onRetry={() => setN((value) => value + 1)} /> : <Skeleton label="Signing you in" />}
+      <h1>{tr("Signing you in")}</h1>
+      {signInError ? <Err e={signInError} onRetry={() => setN((value) => value + 1)} /> : <Skeleton label={tr("Signing you in")} />}
     </main>
   </div>;
   const can = (p: string) => me.permissions.includes(p);
   const link = (to: string, label: string, Ico: any) => <NavLink to={to} aria-label={label} className={({ isActive }) => `navlink${isActive ? " active" : ""}`}><Ico /><span>{label}</span></NavLink>;
   return (
     <div className="shell">
-      <nav className={`nav${menu ? " open" : ""}`} aria-label="Primary">
+      <nav className={`nav${menu ? " open" : ""}`} aria-label={tr("Primary")}>
         <div className="nav-top">
           <div className="brand"><Brand /></div>
-          <button className="nav-toggle" aria-expanded={menu} aria-controls="nav-panel" onClick={() => setMenu(!menu)}>{menu ? "Close" : "Menu"}</button>
+          <button className="nav-toggle" aria-expanded={menu} aria-controls="nav-panel" onClick={() => setMenu(!menu)}>{menu ? tr("Close") : "Menu"}</button>
         </div>
         <div className="nav-panel" id="nav-panel">
-          <form className="navsearch" role="search" aria-label="Navigation search" onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label="Search the workspace" placeholder="Search the workspace" /></form>
-          <span className="nav-group">Work</span>
-          {can("today.read") && link("/today", "Today", IconToday)}
-          {can("accounts.read") && link("/accounts", "Accounts & leads", IconAccounts)}
-          {can("explorer.read") && link("/feed", "Market feed", IconFeed)}
-          <span className="nav-group">Look up</span>
-          {can("explorer.read") && link("/explorer", "Explorer", IconExplorer)}
-          {link("/library", "Library", IconLibrary)}
-          {link("/knowledge", "Knowledge base", IconKnowledge)}
-          {link("/guide", "How it works", IconGuide)}
-          {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", "Administration", IconAdmin)}
-          {waiting > 0 && (can("approvals.read_own") || can("approvals.read_all")) && link("/admin/approvals", `Approvals (${waiting} waiting)`, IconAdmin)}
-          <div className="who"><b>{me.email}</b>{lab("role", me.role)}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>Sign out</button></div>
+          <form className="navsearch" role="search" aria-label={tr("Navigation search")} onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label={tr("Search the workspace")} placeholder={tr("Search the workspace")} /></form>
+          <LanguageSwitcher />
+          <span className="nav-group">{tr("Work")}</span>
+          {can("today.read") && link("/today", tr("Today"), IconToday)}
+          {can("accounts.read") && link("/accounts", tr("Accounts & leads"), IconAccounts)}
+          {can("explorer.read") && link("/feed", tr("Market feed"), IconFeed)}
+          <span className="nav-group">{tr("Look up")}</span>
+          {can("explorer.read") && link("/explorer", tr("Explorer"), IconExplorer)}
+          {link("/library", tr("Library"), IconLibrary)}
+          {link("/knowledge", tr("Knowledge base"), IconKnowledge)}
+          {link("/guide", tr("How it works"), IconGuide)}
+          {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", tr("Administration"), IconAdmin)}
+          {waiting > 0 && (can("approvals.read_own") || can("approvals.read_all")) && link("/admin/approvals", tr("Approvals ({} waiting)", waiting), IconAdmin)}
+          <div className="who"><b>{me.email}</b>{lab("role", me.role)}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>{tr("Sign out")}</button></div>
         </div>
       </nav>
       <main className="main">

@@ -1,40 +1,56 @@
 import { useEffect, useRef, useState } from "react";
 import { setToken, startSession } from "../api";
+import { LanguageSwitcher, tr, useLanguage } from "../locale";
 import { Brand } from "../components/ui";
 
 export type Notice = { kind: "denied" | "expired"; email?: string } | null;
 declare global { interface Window { google?: any } }
 
 function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
+  const locale = useLanguage();
+  const initializedClient = useRef<string>();
   const [cfg, setCfg] = useState<any>(null);
   const [t, setT] = useState("");
   const [err, setErr] = useState("");
-  useEffect(() => { fetch("/api/config").then((r) => r.json()).then(setCfg).catch(() => setErr("Cannot reach the server.")); }, []);
+  useEffect(() => { fetch("/api/config").then((r) => r.json()).then(setCfg).catch(() => setErr(tr("Cannot reach the server."))); }, []);
   useEffect(() => {
     if (!cfg?.google_client_id) return;
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client"; s.async = true;
-    s.onload = () => {
-      window.google.accounts.id.initialize({ client_id: cfg.google_client_id, callback: async (r: any) => { setToken(r.credential); await startSession(); onDone(); } });
-      window.google.accounts.id.renderButton(document.getElementById("g-btn"), { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", width: 300 });
+    let active = true;
+    const googleButton = document.getElementById("g-btn");
+    const renderButton = () => {
+      if (!active || !googleButton) return;
+      if (initializedClient.current !== cfg.google_client_id) {
+        window.google.accounts.id.initialize({ client_id: cfg.google_client_id, callback: async (r: any) => { setToken(r.credential); await startSession(); onDone(); } });
+        initializedClient.current = cfg.google_client_id;
+      }
+      googleButton.replaceChildren();
+      window.google.accounts.id.renderButton(googleButton, { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", width: 300, locale });
     };
-    s.onerror = () => setErr("Google Sign-In could not be loaded.");
-    document.head.appendChild(s);
-    return () => { s.remove(); };
-  }, [cfg]);
+    if (window.google?.accounts?.id) {
+      renderButton();
+      return () => { active = false; };
+    }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = renderButton;
+    script.onerror = () => { if (active) setErr(tr("Google Sign-In could not be loaded.")); };
+    document.head.appendChild(script);
+    return () => { active = false; script.remove(); };
+  }, [cfg, locale]);
   return (
     <div className="auth-card" id="signin">
-      <div className="eyebrow">Sign in</div>
-      <h2>Welcome back</h2>
-      {notice?.kind === "denied" && <div className="err" role="alert"><b>{notice.email ?? "This Google account"} has not been given access.</b><br />Ask an administrator to add you, then sign in again. If you have more than one Google account, choose your work account.</div>}
-      {notice?.kind === "expired" && <div className="okmsg" role="status">Your session ended. Sign in again to continue.</div>}
+      <div className="eyebrow">{tr("Sign in")}</div>
+      <h2>{tr("Welcome back")}</h2>
+      {notice?.kind === "denied" && <div className="err" role="alert"><b>{notice.email ?? tr("This Google account")}{" " + tr("has not been given access.")}</b><br />{tr("Ask an administrator to add you, then sign in again. If you have more than one Google account, choose your work account.")}</div>}
+      {notice?.kind === "expired" && <div className="okmsg" role="status">{tr("Your session ended. Sign in again to continue.")}</div>}
       {cfg?.google_client_id ? <div id="g-btn" style={{ minHeight: 44 }} /> :
-        cfg && cfg.env !== "production" ? <><p className="sub mt-0 mb-3">Development environment. Paste a signed development token.</p>
-          <input aria-label="Development token" type="password" value={t} onChange={(e) => setT(e.target.value)} placeholder="Development token" style={{ width: "100%", marginBottom: 14 }} />
-          <button className="primary" onClick={() => { setToken(t); onDone(); }}>Continue</button></> :
-        cfg ? <div className="err">Sign-in is not configured. An administrator must set RI_GOOGLE_CLIENT_ID.</div> : <span className="muted">Loading</span>}
-      {err && <div className="err" role="alert">{err}</div>}
-      <p className="small muted mt-4 mb-0">Access is limited to people an administrator has added.</p>
+        cfg && cfg.env !== "production" ? <><p className="sub mt-0 mb-3">{tr("Development environment. Paste a signed development token.")}</p>
+          <input aria-label={tr("Development token")} type="password" value={t} onChange={(e) => setT(e.target.value)} placeholder={tr("Development token")} style={{ width: "100%", marginBottom: 14 }} />
+          <button className="primary" onClick={() => { setToken(t); onDone(); }}>{tr("Continue")}</button></> :
+        cfg ? <div className="err">{tr("Sign-in is not configured. An administrator must set RI_GOOGLE_CLIENT_ID.")}</div> : <span className="muted">{tr("Loading")}</span>}
+      {err && <div className="err" role="alert">{tr(err)}</div>}
+      <p className="small muted mt-4 mb-0">{tr("Access is limited to people an administrator has added.")}</p>
     </div>
   );
 }
@@ -47,7 +63,7 @@ function SignalField({ uid = "a", target = true }: { uid?: string; target?: bool
   useEffect(() => { if (reducedMotion() && ref.current) ref.current.pauseAnimations(); }, []);
   const paths = ["M0 90 C90 40 200 150 290 120 S350 160 372 167", "M0 170 C100 120 200 230 290 190 S350 170 372 167", "M0 250 C110 200 220 300 300 230 S355 180 372 167", "M0 320 C120 270 230 360 310 270 S360 190 372 167"];
   return (
-    <svg ref={ref} className="field" viewBox="0 0 600 330" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Signals from many sources converge on one next step" fill="none">
+    <svg ref={ref} className="field" viewBox="0 0 600 330" preserveAspectRatio="xMidYMid slice" role="img" aria-label={tr("Signals from many sources converge on one next step")} fill="none">
       {paths.map((d, i) => <path key={i} id={`${uid}w${i}`} d={d} stroke="#B87DFF" strokeWidth="0.9" opacity={0.6 - i * 0.07} />)}
       {paths.map((_, i) => [0, 1, 2].map((k) => (
         <circle key={`${i}-${k}`} r={k === 0 ? 3.2 : 2.4} fill={k === 0 ? "#fff" : "#B87DFF"}>
@@ -64,16 +80,16 @@ const WATCHING = ["tenders", "regulators", "company newsrooms", "job boards", "t
 function Watching() {
   const [i, setI] = useState(0);
   useEffect(() => { if (reducedMotion()) return; const t = setInterval(() => setI((x) => (x + 1) % WATCHING.length), 2300); return () => clearInterval(t); }, []);
-  return <div className="watching" aria-label={`Watching ${WATCHING.join(", ")}`}><span className="watching-k">Watching</span><span key={i} className="watching-w" aria-hidden="true">{WATCHING[i]}</span></div>;
+  return <div className="watching" aria-label={tr("Watching {}", WATCHING.map((name) => tr(name)).join(", "))}><span className="watching-k">{tr("Watching")}</span><span key={i} className="watching-w" aria-hidden="true">{tr(WATCHING[i])}</span></div>;
 }
 
 const SOURCES = ["Tenders", "Regulators", "Company newsrooms", "Job boards", "Trade media", "Your account lists", "Search discovery", "Programme announcements"];
 
 function Ticker() {
   return (
-    <div className="ticker" aria-label="Sources the platform reads">
+    <div className="ticker" aria-label={tr("Sources the platform reads")}>
       <div className="ticker-track" aria-hidden="true">
-        {[0, 1].map((k) => <div className="ticker-set" key={k}>{SOURCES.map((x) => <span key={x + k}>{x}</span>)}</div>)}
+        {[0, 1].map((k) => <div className="ticker-set" key={k}>{SOURCES.map((x) => <span key={x + k}>{tr(x)}</span>)}</div>)}
       </div>
     </div>
   );
@@ -130,27 +146,27 @@ function Demo() {
   const pick = (i: number) => { setAuto(false); setGap(false); setPhase(i); };
   return (
     <div className="demo" ref={ref} data-auto={auto && visible}>
-      <ol className="demo-steps" aria-label="Steps">
+      <ol className="demo-steps" aria-label={tr("Steps")}>
         {PHASES.map((p, i) => (
           <li key={p.k}><button className={i === phase && !gap ? "on" : ""} style={{ ["--dur" as any]: `${DURATIONS[i]}ms` }} aria-current={i === phase ? "step" : undefined} onClick={() => pick(i)}>
-            <span className="demo-n">{String(i + 1).padStart(2, "0")}</span><span><b>{p.k}</b><small>{p.d}</small></span></button></li>))}
-        <li className="demo-ctl"><button className="ghost" onClick={() => { setAuto(true); setGap(false); setPhase(0); }}>{auto ? "Restart" : "Play again"}</button></li>
+            <span className="demo-n">{String(i + 1).padStart(2, "0")}</span><span><b>{tr(p.k)}</b><small>{tr(p.d)}</small></span></button></li>))}
+        <li className="demo-ctl"><button className="ghost" onClick={() => { setAuto(true); setGap(false); setPhase(0); }}>{auto ? "Restart" : tr("Play again")}</button></li>
       </ol>
-      <div className={`stage ${cls}`} role="img" aria-label="Animated example with made-up data: three signals are checked against their original pages, one is dropped for having no quote, the others are tested against seven gates and become one next step.">
-        <div className="stage-top"><span className="badge info">Example data, not real</span><span className="stage-phase">{PHASES[gap ? 0 : phase].k}</span></div>
+      <div className={`stage ${cls}`} role="img" aria-label={tr("Animated example with made-up data: three signals are checked against their original pages, one is dropped for having no quote, the others are tested against seven gates and become one next step.")}>
+        <div className="stage-top"><span className="badge info">{tr("Example data, not real")}</span><span className="stage-phase">{tr(PHASES[gap ? 0 : phase].k)}</span></div>
         <div className="scan" aria-hidden="true" />
         <div className="sigs">
-          <div className="sig bad"><div className="sig-t">Forum post says a bank is “thinking about” a new core</div><div className="sig-s">Forum post, no original page</div>
-            <div className="sig-q"><span className="stamp">No quote, no signal</span></div></div>
-          <div className="sig good"><div className="sig-t">Example Bank AG selects a vendor to replace its core platform</div><div className="sig-s">Press release on the bank's own site</div>
-            <div className="sig-q"><mark><span>“The bank has selected a vendor to replace its core banking platform.”</span></mark><span className="tick">Quote found</span></div></div>
-          <div className="sig good second"><div className="sig-t">Example Fintech Ltd opens 14 payments engineering roles</div><div className="sig-s">Careers page</div>
-            <div className="sig-q"><mark><span>“We are hiring 14 engineers for our payments platform.”</span></mark><span className="tick">Quote found</span></div></div>
+          <div className="sig bad"><div className="sig-t">{tr("Forum post says a bank is “thinking about” a new core")}</div><div className="sig-s">{tr("Forum post, no original page")}</div>
+            <div className="sig-q"><span className="stamp">{tr("No quote, no signal")}</span></div></div>
+          <div className="sig good"><div className="sig-t">{tr("Example Bank AG selects a vendor to replace its core platform")}</div><div className="sig-s">{tr("Press release on the bank's own site")}</div>
+            <div className="sig-q"><mark><span>{tr("“The bank has selected a vendor to replace its core banking platform.”")}</span></mark><span className="tick">{tr("Quote found")}</span></div></div>
+          <div className="sig good second"><div className="sig-t">{tr("Example Fintech Ltd opens 14 payments engineering roles")}</div><div className="sig-s">{tr("Careers page")}</div>
+            <div className="sig-q"><mark><span>{tr("“We are hiring 14 engineers for our payments platform.”")}</span></mark><span className="tick">{tr("Quote found")}</span></div></div>
         </div>
         <div className="gates" aria-hidden="true">{GATES.map(([g, st], i) => <span key={g} className={`gt ${st}`} style={{ ["--i" as any]: i }}>{g}</span>)}</div>
-        <div className="next"><span className="k">Next action</span><b>Qualify external demand</b><span className="small">Ask whether the separable workstream is sourced externally. A buyer conversation, not more web research.</span><span className="next-btn">Needs a second person to approve</span></div>
+        <div className="next"><span className="k">{tr("Next action")}</span><b>{tr("Qualify external demand")}</b><span className="small">{tr("Ask whether the separable workstream is sourced externally. A buyer conversation, not more web research.")}</span><span className="next-btn">{tr("Needs a second person to approve")}</span></div>
       </div>
-      <p className="demo-d" aria-live="polite">{PHASES[gap ? 0 : phase].d}</p>
+      <p className="demo-d" aria-live="polite">{tr(PHASES[gap ? 0 : phase].d)}</p>
     </div>
   );
 }
@@ -180,7 +196,7 @@ function Timeline() {
   }, []);
   return (
     <ol className="tl" ref={ref}>
-      {STEPS.map((s, i) => <li key={s.t}><span className="tl-n">{String(i + 1).padStart(2, "0")}</span><div><h3>{s.t}</h3><p>{s.d}</p></div></li>)}
+      {STEPS.map((s, i) => <li key={s.t}><span className="tl-n">{String(i + 1).padStart(2, "0")}</span><div><h3>{tr(s.t)}</h3><p>{tr(s.d)}</p></div></li>)}
     </ol>
   );
 }
@@ -206,35 +222,35 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
     const r = el.getBoundingClientRect();
     el.style.setProperty("--mx", `${e.clientX - r.left}px`); el.style.setProperty("--my", `${e.clientY - r.top}px`);
   };
-  const words = "See which engineering work is real, and who owns it.".split(" ");
+  const words = tr("See which engineering work is real, and who owns it.").split(" ");
   return (
     <div className="land" ref={root}>
-      <header className="land-nav"><Brand /><a className="land-jump" href="#signin">Sign in</a></header>
+      <header className="land-nav"><Brand /><div className="land-nav-actions"><LanguageSwitcher /><a className="land-jump" href="#signin">{tr("Sign in")}</a></div></header>
 
       <section className="land-hero" ref={hero} onPointerMove={onMove}>
         <div className="dots" aria-hidden="true" /><div className="dots lit" aria-hidden="true" />
         <SignalField />
         <div className="land-hero-in">
           <div className="land-copy">
-            <div className="eyebrow">Revenue intelligence</div>
-            <h1 aria-label="See which engineering work is real, and who owns it.">
-              {words.map((w, i) => <span key={i} className={`w${w.replace(/[^a-z]/gi, "") === "real" ? " hot" : ""}`} style={{ animationDelay: `${120 + i * 70}ms` }} aria-hidden="true">{w}&nbsp;</span>)}
+            <div className="eyebrow">{tr("Revenue intelligence")}</div>
+            <h1 aria-label={tr("See which engineering work is real, and who owns it.")}>
+              {words.map((w, i) => <span key={i} className={`w${/^(real|rzeczywiste)$/i.test(w) ? " hot" : ""}`} style={{ animationDelay: `${120 + i * 70}ms` }} aria-hidden="true">{w}&nbsp;</span>)}
             </h1>
             <Watching />
-            <p>Tenders, programme announcements and hiring patterns land in one place. Each one shows its evidence, what is still unknown, and one specific next step.</p>
-            <ul className="land-points"><li>Every claim quotes its original source</li><li>Unknown stays unknown</li><li>Nothing is sent or changed without approval</li></ul>
+            <p>{tr("Tenders, programme announcements and hiring patterns land in one place. Each one shows its evidence, what is still unknown, and one specific next step.")}</p>
+            <ul className="land-points"><li>{tr("Every claim quotes its original source")}</li><li>{tr("Unknown stays unknown")}</li><li>{tr("Nothing is sent or changed without approval")}</li></ul>
           </div>
           <AuthCard onDone={onDone} notice={notice} />
         </div>
-        <a className="scroll-cue" href="#demo" aria-label="See how it works"><span /></a>
+        <a className="scroll-cue" href="#demo" aria-label={tr("See how it works")}><span /></a>
       </section>
 
       <Ticker />
 
       <section className="land-sec land-tint" id="demo" aria-labelledby="demo-h">
         <div className="land-wrap">
-          <div className="eyebrow" data-reveal>Watch it work</div>
-          <h2 id="demo-h" data-reveal>A signal gets checked, tested and turned into one next step</h2>
+          <div className="eyebrow" data-reveal>{tr("Watch it work")}</div>
+          <h2 id="demo-h" data-reveal>{tr("A signal gets checked, tested and turned into one next step")}</h2>
           <Demo />
         </div>
       </section>
@@ -242,12 +258,12 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
       <section className="land-sec land-how" aria-labelledby="how">
         <div className="land-wrap land-split">
           <div className="land-stick">
-            <div className="eyebrow">How it works</div>
-            <h2 id="how">From noise to one next step</h2>
+            <div className="eyebrow">{tr("How it works")}</div>
+            <h2 id="how">{tr("From noise to one next step")}</h2>
             <div className="facts-c">
-              <CountUp to={64} label="signal rules" />
-              <CountUp to={7} label="gates every card passes" />
-              <CountUp to={1} label="next step, never a list" />
+              <CountUp to={64} label={tr("signal rules")} />
+              <CountUp to={7} label={tr("gates every card passes")} />
+              <CountUp to={1} label={tr("next step, never a list")} />
             </div>
           </div>
           <Timeline />
@@ -256,12 +272,12 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
 
       <section className="land-sec land-tint" aria-labelledby="honest">
         <div className="land-wrap">
-          <div className="eyebrow">How it stays honest</div>
-          <h2 id="honest">What it will not do</h2>
+          <div className="eyebrow">{tr("How it stays honest")}</div>
+          <h2 id="honest">{tr("What it will not do")}</h2>
           <div className="land-cols">
-            {[["It will not guess", "A source that fails to load shows as degraded coverage. A quiet screen does not mean nothing happened."],
-              ["It will not send", "Drafts only. A second person approves any CRM change, and the exact change is shown first."],
-              ["It will not hide the limits", "Scores are provisional weights, not win probabilities. Missing facts are listed, not filled in."]].map(([t, d], i) => (
+            {[[tr("It will not guess"), tr("A source that fails to load shows as degraded coverage. A quiet screen does not mean nothing happened.")],
+              [tr("It will not send"), tr("Drafts only. A second person approves any CRM change, and the exact change is shown first.")],
+              [tr("It will not hide the limits"), tr("Scores are provisional weights, not win probabilities. Missing facts are listed, not filled in.")]].map(([t, d], i) => (
               <div key={t} className="land-col" data-reveal style={{ transitionDelay: `${i * 90}ms` }}><span className="no" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span><h3>{t}</h3><p>{d}</p></div>))}
           </div>
         </div>
@@ -270,13 +286,13 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
       <section className="land-cta" aria-labelledby="cta">
         <SignalField uid="b" target={false} />
         <div className="land-wrap">
-          <h2 id="cta" data-reveal>Ready for your next step?</h2>
-          <a className="btn-pink" href="#signin" data-reveal>Sign in</a>
+          <h2 id="cta" data-reveal>{tr("Ready for your next step?")}</h2>
+          <a className="btn-pink" href="#signin" data-reveal>{tr("Sign in")}</a>
         </div>
       </section>
 
       <footer className="land-foot">
-        <div className="land-wrap land-foot-in"><Brand sub={false} /><span className="small">Internal tool of The Codest. Access is limited to people an administrator has added.</span></div>
+        <div className="land-wrap land-foot-in"><Brand sub={false} /><span className="small">{tr("Internal tool of The Codest. Access is limited to people an administrator has added.")}</span></div>
       </footer>
     </div>
   );

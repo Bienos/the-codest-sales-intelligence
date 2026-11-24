@@ -1,3 +1,5 @@
+import { getLanguage, tr } from "./locale";
+
 // Thin API client. In production an authenticating reverse proxy (e.g. oauth2-proxy) injects the OIDC bearer token;
 // in development a signed dev token can be pasted once and is kept in sessionStorage only.
 export class ApiError extends Error {
@@ -46,14 +48,14 @@ export const patch = <T = any>(p: string, body?: unknown) => api<T>(p, { method:
 export const put = <T = any>(p: string, body?: unknown) => api<T>(p, { method: "PUT", body: JSON.stringify(body ?? {}) });
 
 export function fmtDate(v?: string | null): string {
-  if (!v) return "unknown";
+  if (!v) return tr("Unknown");
   const d = new Date(v);
-  return isNaN(d.getTime()) ? "unknown" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return isNaN(d.getTime()) ? tr("Unknown") : d.toLocaleDateString(getLanguage(), { year: "numeric", month: "short", day: "numeric" });
 }
 export function fmtDateTime(v?: string | null): string {
-  if (!v) return "unknown";
+  if (!v) return tr("Unknown");
   const d = new Date(v);
-  return isNaN(d.getTime()) ? "unknown" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return isNaN(d.getTime()) ? tr("Unknown") : d.toLocaleString(getLanguage(), { dateStyle: "medium", timeStyle: "short" });
 }
 
 export async function upload<T = any>(path: string, file: File): Promise<T> {

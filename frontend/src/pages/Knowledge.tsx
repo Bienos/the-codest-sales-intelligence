@@ -1,3 +1,4 @@
+import { tr } from "../locale";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, post } from "../api";
@@ -25,11 +26,11 @@ export default function Knowledge() {
   const missing = docs.length > 0 && !meta?.available;
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Internal only</div><h1>Knowledge base</h1></div>
+      <div className="page-head"><div className="eyebrow">{tr("Internal only")}</div><h1>{tr("Knowledge base")}</h1></div>
       <Tabs items={docs.map((d) => ({ key: d.id, label: d.title }))} value={current ?? ""} onChange={(k) => nav(`/knowledge/${k}`)} label="Documents">
 
-      {meta && <p className="small muted mt-0">{meta.blurb} Internal only: do not share with prospects. This is a copy of the <a href={meta.source} target="_blank" rel="noreferrer noopener">original document</a>. Ask an administrator to refresh it when the original changes.</p>}
-      {missing ? <div className="empty"><b>This document is not loaded yet</b>An administrator can upload it in Administration, Knowledge.</div> : src ? <iframe className="kb-frame" title={meta?.title ?? "Knowledge base"} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" /> : <Skeleton />}
+      {meta && <p className="small muted mt-0">{meta.blurb}{" " + tr("Internal only: do not share with prospects. This is a copy of the") + " "}<a href={meta.source} target="_blank" rel="noreferrer noopener">{tr("original document")}</a>{tr(". Ask an administrator to refresh it when the original changes.")}</p>}
+      {missing ? <div className="empty"><b>{tr("This document is not loaded yet")}</b>{tr("An administrator can upload it in Administration, Knowledge.")}</div> : src ? <iframe className="kb-frame" title={meta?.title ?? tr("Knowledge base")} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" /> : <Skeleton />}
       </Tabs>
       <Err e={err} onRetry={load} />
       {!docs.length && !err && <Skeleton label="Loading knowledge base" />}

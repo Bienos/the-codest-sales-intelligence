@@ -11,26 +11,32 @@
   .nav-toggle { block-size: 44px; line-height: 1; }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --navy: #eceeff;
-    --white: #1c2037;
-    --body: #d5daef;
-    --muted: #aeb8d6;
-    --tint-1: #121629;
-    --tint-2: #25203b;
-    --tint-3: #382433;
-    --ok-tint: #183a36;
-    --line: #424966;
-    --off: #727c9c;
-    --pink: #ff6eaa;
-  }
+:root { color-scheme: light; }
 
-  .nav, .hero, .land {
-    --navy: #0d124c;
-    --white: #fff;
-  }
-
-  button.primary, a.btn.primary { color: #fff; }
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: .2rem;
+  max-width: 100%;
+  color: inherit;
+}
+.language-switch button {
+  font: 600 .875rem/1.15 var(--font-body);
+  text-transform: none;
+  letter-spacing: normal;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  min-height: 38px;
+  padding: .45rem .55rem;
+  margin: 0;
+}
+.language-switch button[aria-pressed="true"] { border-color: currentColor; }
+.language-switch button:hover { background: rgba(127, 127, 127, .18); }
+.nav .language-switch { margin: .3rem 10px .8rem; align-self: flex-start; }
+.land-nav .land-nav-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .3rem .8rem; }
+.land-nav .language-switch button { color: var(--white); }
+@media (max-width: 640px) {
+  .language-switch button { min-height: 44px; }
+  .land-nav .land-nav-actions { justify-content: flex-start; }
 }

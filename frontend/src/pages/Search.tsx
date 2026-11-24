@@ -1,3 +1,4 @@
+import { tr } from "../locale";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
@@ -14,7 +15,7 @@ function Hit({ it }: { it: any }) {
     <>
       <b className="hit-title">{it.title.replace(/^([A-Z]{3}-\d{2})\s+/, "")}</b>
       {it.meta && <span className="small muted"> · {plainMeta(it.meta)}</span>}
-      {it.field && <span className="small muted"> · in “{it.field}”</span>}
+      {it.field && <span className="small muted">{" " + tr("· in “")}{it.field}”</span>}
       {it.snippet && <div className="small hit-snip">{it.snippet}</div>}
     </>
   );
@@ -39,18 +40,18 @@ export default function Search() {
   }, [q, retry]);
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Find anything</div><h1>Search</h1></div>
-      <form onSubmit={(e) => { e.preventDefault(); setSp(text.trim() ? { q: text.trim() } : {}); }} className="searchbar" role="search" aria-label="Search page">
-        <input autoFocus aria-label="Search everything" placeholder="A company, a keyword, a signal, a source or a URL" value={text} onChange={(e) => setText(e.target.value)} />
-        <button className="primary" type="submit">Search</button>
+      <div className="page-head"><div className="eyebrow">{tr("Find anything")}</div><h1>{tr("Search")}</h1></div>
+      <form onSubmit={(e) => { e.preventDefault(); setSp(text.trim() ? { q: text.trim() } : {}); }} className="searchbar" role="search" aria-label={tr("Search page")}>
+        <input autoFocus aria-label={tr("Search everything")} placeholder={tr("A company, a keyword, a signal, a source or a URL")} value={text} onChange={(e) => setText(e.target.value)} />
+        <button className="primary" type="submit">{tr("Search")}</button>
       </form>
-      <p className="small muted mt-0">Searches accounts, signals, sources, findings and the knowledge base. Every word you type must match.</p>
+      <p className="small muted mt-0">{tr("Searches accounts, signals, sources, findings and the knowledge base. Every word you type must match.")}</p>
       <Err e={err} onRetry={() => setRetry((n) => n + 1)} />
       {q.trim().length >= 2 && !d && !err && <Skeleton label="Searching" />}
-      {!q && <div className="card"><div className="eyebrow">Try one of these</div><div className="chips">{EXAMPLES.map((x) => <button key={x} className="chip" onClick={() => setSp({ q: x })}>{x}</button>)}</div></div>}
-      {d && d.total === 0 && <div className="empty"><b>No matches for “{d.query}”</b>Try fewer or shorter words, or check the spelling.</div>}
+      {!q && <div className="card"><div className="eyebrow">{tr("Try one of these")}</div><div className="chips">{EXAMPLES.map((x) => <button key={x} className="chip" onClick={() => setSp({ q: x })}>{x}</button>)}</div></div>}
+      {d && d.total === 0 && <div className="empty"><b>{tr("No matches for “")}{d.query}”</b>{tr("Try fewer or shorter words, or check the spelling.")}</div>}
       {d?.groups.map((g: any) => (
-        <section key={g.key}><div className="section-title">{GROUP_LABEL[g.key] ?? g.label} <Badge>{g.items.length}</Badge></div>
+        <section key={g.key}><div className="section-title">{tr(GROUP_LABEL[g.key] ?? g.label)} <Badge>{g.items.length}</Badge></div>
           <ul className="hits">{g.items.map((it: any, i: number) => <Hit key={i} it={it} />)}</ul></section>))}
     </>
   );
