@@ -1654,5 +1654,12 @@
   "Follow-up due": "Termin kolejnego działania",
   "Not scheduled": "Bez wyznaczonego terminu",
   "suppressed or opted out": "wykluczone z kontaktu lub wypisane",
-  "already enrolled": "już w kampanii"
+  "already enrolled": "już w kampanii",
+  "No contacts are eligible for this campaign.": "Brak kontaktów spełniających warunki tej kampanii.",
+  "Pushed": "Dodano do Lemlist",
+  "Replied": "Odpowiedź",
+  "Unsubscribed": "Wypisano",
+  "Bounced": "Wiadomość odrzucona",
+  "Interested": "Zainteresowanie",
+  "Not interested": "Brak zainteresowania"
 }

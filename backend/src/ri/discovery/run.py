@@ -7,7 +7,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from .. import budget, usage
 from ..db import Conn, q1, qa
@@ -27,7 +27,13 @@ PER_PLAN_TOP = 3
 _RFP_REGIONS = {label: code for code, label in TARGET_REGIONS} | {"UK": "uk"}
 _RFP_CLOSED = re.compile(r"\b(contract award(?: notice)?|tender result|closed tender|cancelled tender|"
                          r"vergabebekanntmachung|tilldelningsbeslut|wynik postępowania|ogłoszenie o wyniku)\b", re.I)
-_RFP_JOBS = re.compile(r"/(?:careers?|jobs|vacancies|karriere|kariera)(?:/|$)", re.I)
+_RFP_JOBS = re.compile(r"(?:^|[./_-])(?:careers?|jobs?|vacancies|karriere|kariera)(?:[./_-]|$)", re.I)
+_RFP_CUES = re.compile(
+    r"\b(?:rf[piq]|tenders?|procurement|purchasing|suppliers?|bids?|quotations?|"
+    r"ausschreib\w*|vergab\w*|lieferant\w*|upphandl\w*|anskaffels\w*|udbud|"
+    r"anbud|hankin\w*|tarjouspyynt\w*|przetarg\w*|ofert\w*|postępowan\w*|"
+    r"dostawc\w*|zam[oó]wieni\w*|appel d.offres|marchés publics|leveranciers?)\b", re.I,
+)
 
 
 def private_rfp_domains(conn: Conn, geography: str) -> dict[str, Any]:
@@ -51,6 +57,22 @@ def private_rfp_domains(conn: Conn, geography: str) -> dict[str, Any]:
         # A shared group domain does not establish the buyer's legal identity.
         domains.setdefault(host, []).append(row["id"])
     return {host: ids[0] if len(ids) == 1 else None for host, ids in list(domains.items())[:20]}
+
+
+
+def _buyer_rfp_site(url: str, title: str, domains: dict[str, Any]) -> str | None:
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+    except ValueError:
+        return None
+    if parsed.scheme not in {"https", "http"} or parsed.username or parsed.password:
+        return None
+    domain = next((d for d in sorted(domains, key=len, reverse=True) if _under(host, d)), None)
+    path = unquote(parsed.path)
+    if not domain or _RFP_JOBS.search(f"{host}{path}") or _RFP_CLOSED.search(title):
+        return None
+    return domain if _RFP_CUES.search(f"{host} {path.replace('-', ' ').replace('_', ' ')} {title}") else None
 
 
 def _period() -> str:
@@ -118,14 +140,8 @@ def run_discovery(conn: Conn, exa: ExaClient, *, max_searches: int, max_new_requ
             url = it.payload["url"]
             org_id = p.get("organization_id")
             if private_rfp:
-                try:
-                    parsed = urlparse(url)
-                    host = parsed.hostname or ""
-                    domain = next((d for d in sorted(domains, key=len, reverse=True) if _under(host, d)), None)
-                    buyer_link = parsed.scheme in {"https", "http"} and not parsed.username and not parsed.password
-                except ValueError:
-                    buyer_link, domain = False, None
-                if not buyer_link or domain is None or _RFP_JOBS.search(parsed.path) or _RFP_CLOSED.search(it.payload.get("title") or ""):
+                domain = _buyer_rfp_site(url, it.payload.get("title") or "", domains)
+                if domain is None:
                     out["rfp_results_filtered"] = out.get("rfp_results_filtered", 0) + 1
                     continue
                 org_id = domains[domain]

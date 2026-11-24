@@ -289,7 +289,7 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
     <div className="card mt-3">
       <div className="row spread"><b>{tr("Prepare a Lemlist campaign")}</b>{typeof en.lemlist_configured === "boolean" && <Badge kind={ready ? "ok" : "warn"}>{ready ? tr("Ready for approval") : tr("Lemlist setup required")}</Badge>}</div>
       <p className="small muted mt-1 mb-2">{tr("Only contacts with a checked email address can be used. We build the campaign in Lemlist but do not launch it: a person presses Launch there.") + " "}{en.outbound_enabled === false && tr("Sending is switched off for now.")}{en.lemlist_configured === false && tr("Lemlist is not connected yet.")}</p>
-      {plan.eligible.length === 0 && <p className="small">{tr("No contact here has a checked email address yet.")}</p>}
+      {plan.eligible.length === 0 && <p className="small">{tr("No contacts are eligible for this campaign.")}</p>}
       {plan.eligible.map((c: any) => <label key={c.id} className="row small gap-2 mb-1"><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can || !ready} /> {c.name}{c.title ? `, ${c.title}` : ""}</label>)}
       {unavailable.length > 0 && <p className="small muted">{tr("Unavailable for outreach:") + " "}{unavailable.join(" · ")}.</p>}
       {can && <button className="primary" disabled={!ready || sel.length === 0} onClick={request}>{tr("Ask for approval to add") + " "}{sel.length || ""}</button>}

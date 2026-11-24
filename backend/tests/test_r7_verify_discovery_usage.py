@@ -194,12 +194,15 @@ def test_private_rfp_discovery_keeps_buyer_owned_links_in_research(conn):
             urls = [("https://public.invalid/notice", "Bank database RFP"),
                     ("https://buyer.invalid.aggregator.invalid/tender", "Aggregated engineering tender"),
                     ("https://buyer.invalid/careers", "Engineering roles"),
+                    ("https://jobs.buyer.invalid/job/203", "Strategic Procurement Manager"),
+                    ("https://buyer.invalid/about/partners", "Business partners"),
+                    ("https://buyer.invalid/apis", "Developer API portal"),
                     ("https://buyer.invalid/supplier/old", "Contract award notice"),
                     ("https://suppliers.buyer.invalid/rfp/203", "Invitation to bid for software services")]
             return [RawItem(external_id=url, version=None, payload={"title": title, "url": url}) for url, title in urls], {"reported_cost": 0.01}
 
     result = run_discovery(conn, BuyerSearch(), plan_ids=[pid], max_searches=1, max_new_requests=3, interval_days=7, est_cost=None)
-    assert result["rfp_results_filtered"] == 4 and result["requests_created"] == 1
+    assert result["rfp_results_filtered"] == 7 and result["requests_created"] == 1
     assert conn.execute("SELECT organization_id, status FROM verification_requests").fetchone() == {"organization_id": buyer, "status": "queued"}
     assert conn.execute("SELECT count(*) AS n FROM events").fetchone()["n"] == 0
 
