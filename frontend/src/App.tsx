@@ -78,7 +78,7 @@ export default function App() {
           {can("accounts.read") && link("/accounts", tr("Accounts & leads"), IconAccounts)}
           {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}
           <span className="nav-group">{tr("Look up")}</span>
-          {can("explorer.read") && link("/explorer", tr("Explorer"), IconExplorer)}
+          {can("explorer.read") && link("/explorer", tr("Research explorer"), IconExplorer)}
           {link("/library", tr("Library"), IconLibrary)}
           {link("/knowledge", tr("Knowledge base"), IconKnowledge)}
           {link("/guide", tr("How it works"), IconGuide)}

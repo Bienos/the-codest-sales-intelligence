@@ -22,7 +22,7 @@ from ..signals.seller import leading_signals
 from ..feed import STORY_KEY_SQL
 from ..readmodel import card, coverage_health, evidence_for, fingerprint, today
 from ..research import planner
-from ..target_market import commercial_sql, target_sql
+from ..target_market import account_workspace_sql, target_sql
 from .auth import TokenVerifier, principal_dep, require
 
 CSP = ("default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; "
@@ -207,7 +207,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     def account(oid: str, request: Request, target: bool = False, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
-            focus = (commercial_sql() if p.can("research.request") else target_sql()) if target else "TRUE"
+            focus = account_workspace_sql(research=p.can("research.request")) if target else "TRUE"
             o = q1(conn, f"SELECT o.* FROM organizations o WHERE o.id=%s AND ({where}) AND {focus}", [oid, *params])       # noqa: S608
             if not o:
                 raise HTTPException(404, "not found")

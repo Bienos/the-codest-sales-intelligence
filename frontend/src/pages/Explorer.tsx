@@ -61,7 +61,7 @@ export default function Explorer() {
   const ready = d && d.entity === entity;
   return (
     <>
-      <div className="page-head"><div className="eyebrow">{tr("Look across the market")}</div><h1>{tr("Explorer")}</h1><p className="sub">{tr("Search companies, opportunities and checked news in your target market.")}</p></div>
+      <div className="page-head"><div className="eyebrow">{tr("Research")}</div><h1>{tr("Explorer")}</h1><p className="sub">{tr("Search across companies, verified findings and opportunities. Use All findings to browse by date or tender type.")}</p></div>
       <div className="row mb-3">
         <label className="sr" htmlFor="ex-show">{tr("Show")}</label>
         <select id="ex-show" value={entity} onChange={(e) => setEntity(e.target.value)}>{SHOW.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}</select>

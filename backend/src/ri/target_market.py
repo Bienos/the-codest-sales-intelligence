@@ -34,6 +34,25 @@ def target_sql(alias: str = "o", *, review: bool = False) -> str:
     )
 
 
+def workbook_company_sql(alias: str = "o") -> str:
+    """Allow users to see their imported commercial records before qualification."""
+    return (
+        f"({commercial_sql(alias)} AND {alias}.company_ownership IN ('unknown','private') "
+        f"AND NOT EXISTS (SELECT 1 FROM new_company_candidates nc "
+        f"WHERE nc.organization_id={alias}.id AND nc.status='rejected'))"
+    )
+
+
+def account_workspace_sql(alias: str = "o", *, research: bool = False) -> str:
+    if research:
+        return commercial_sql(alias)
+    return (
+        f"({target_sql(alias)} OR {target_sql(alias, review=True)} OR ({workbook_company_sql(alias)} AND "
+        f"EXISTS (SELECT 1 FROM legacy_account_research r WHERE r.organization_id={alias}.id "
+        f"AND r.kind IN ('priority_outreach','master_account'))))"
+    )
+
+
 def target_region(country: str | None) -> str:
     region = region_for(country)
     return "international" if region in {"us", "other"} else region

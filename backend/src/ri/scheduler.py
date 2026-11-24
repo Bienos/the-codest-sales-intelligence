@@ -75,11 +75,22 @@ def schedule_watchlist(conn: Conn, now: datetime | None = None, limit: int = 25,
 
 def schedule_finance_pilot(conn: Conn, now: datetime) -> int:
     """Check the finance pilot accounts daily so open invitations stay current."""
-    from .discovery.plans import finance_pilot_accounts
+    from .discovery.plans import FINANCE_PILOT_LIMIT, finance_pilot_accounts
 
     day = now.date().isoformat()
+    conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"finance-pilot:{day}",))
+    scheduled = {row["organization_id"] for row in qa(conn, """
+        SELECT DISTINCT payload->>'organization_id' AS organization_id FROM jobs
+        WHERE kind='account_scan' AND correlation_id='finance-pilot'
+        AND split_part(idempotency_key, ':', 3)=%s
+        """, (day,))}
+    available = FINANCE_PILOT_LIMIT - len(scheduled)
+    if available <= 0:
+        return 0
+
     queued = 0
-    for account in finance_pilot_accounts(conn):
+    remaining = [account for account in finance_pilot_accounts(conn) if str(account["organization_id"]) not in scheduled]
+    for account in remaining[:available]:
         oid = str(account["organization_id"])
         _, created = enqueue(
             conn, "account_scan", {"organization_id": oid},
@@ -87,6 +98,7 @@ def schedule_finance_pilot(conn: Conn, now: datetime) -> int:
         )
         queued += int(created)
     return queued
+
 
 def requeue_stuck_verifications(conn: Conn, now: datetime | None = None, minutes: int = 20) -> int:
     """A request left 'fetching' or 'extracting' after its job died is retried, at most twice; after that it is marked failed with a reason."""

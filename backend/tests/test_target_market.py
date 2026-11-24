@@ -70,6 +70,16 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
             leads = client.get("/api/prospects?target=true&lane=shortlist&region=dach&q=payments%20platform")
             assert leads.status_code == 200
             assert [r["organization"]["name"] for r in leads.json()["items"]] == ["Example Swiss Payments"]
+            workbook = client.get("/api/prospects?workbook=true&lane=all&region=nordics").json()
+            assert [(r["organization"]["name"], r["target_fit"]) for r in workbook["items"]] == [
+                ("Example Nordic Insurance", True), ("Example Unknown Ownership Bank", False),
+            ]
+            excluded = client.get("/api/prospects?workbook=true&q=Listed%20Bank").json()
+            assert excluded["total"] == 0
+            picked = client.post("/api/prospects/verify-batch", json={
+                "workbook": True, "lane": "all", "region": "nordics", "q": "Unknown Ownership",
+            })
+            assert picked.json()["queued"] == 1
             assigned = client.get(f"/api/findings?scope=account&organization={ids['Example Swiss Payments']}").json()["leads"]
             assert [(r["url"], r["status"]) for r in assigned] == [("https://example.com/news/2", "not_checked")]
             review = client.get("/api/leads?scope=review").json()["items"]

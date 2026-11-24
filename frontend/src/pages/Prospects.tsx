@@ -5,7 +5,7 @@ import { api, fmtDate, post, trackSourceOpened } from "../api";
 import { Badge, Empty, Err, Skeleton } from "../components/ui";
 import { REGIONS, countryName, regionName, staffCount } from "./targetMarket";
 
-type Lane = "shortlist" | "signals";
+type Lane = "all" | "shortlist" | "signals";
 
 const SOURCE_STATUS: Record<string, [string, string]> = {
   queued: ["info", "Check queued"],
@@ -19,11 +19,11 @@ const SOURCE_STATUS: Record<string, [string, string]> = {
 };
 
 export default function Prospects({ q = "", region = "", canVerify = false }: { q?: string; region?: string; canVerify?: boolean }) {
-  const [lane, setLane] = useState<Lane>("shortlist");
+  const [lane, setLane] = useState<Lane>("all");
   const [offset, setOffset] = useState({ page: 1, q, region, lane });
   const page = offset.q === q && offset.region === region && offset.lane === lane ? offset.page : 1;
   const limit = 20;
-  const query = new URLSearchParams({ lane, q, region, target: "true", page: String(page), limit: String(limit) }).toString();
+  const query = new URLSearchParams({ lane, q, region, workbook: "true", page: String(page), limit: String(limit) }).toString();
   const [result, setResult] = useState<{ query: string; data: any } | null>(null);
   const d = result?.query === query ? result.data : null;
   const [err, setErr] = useState<unknown>(null);
@@ -56,7 +56,7 @@ export default function Prospects({ q = "", region = "", canVerify = false }: { 
         await post("/api/prospects/verify", { organization_id: item.organization.id, url: item.source_url });
         setFeedback("single");
       } else {
-        const r = await post("/api/prospects/verify-batch", { lane, q, region, target: true, page: d?.page ?? page, page_size: limit, limit: 10 });
+        const r = await post("/api/prospects/verify-batch", { lane, q, region, workbook: true, page: d?.page ?? page, page_size: limit, limit: 10 });
         setFeedback(r.queued);
       }
       setTick((n) => n + 1);
@@ -74,7 +74,7 @@ export default function Prospects({ q = "", region = "", canVerify = false }: { 
       <p className="small muted">{tr("Buying signals from your workbooks. Open the original source to check the claim.")}</p>
       <div className="directory-toolbar">
         <label className="row small">{tr("Lead list")}<select aria-label={tr("Lead list")} value={lane} onChange={(e) => { setLane(e.target.value as Lane); setFeedback(null); }}>
-            <option value="shortlist">{tr("Outreach shortlist")}</option><option value="signals">{tr("Workbook signals")}</option>
+            <option value="all">{tr("All workbook leads")}</option><option value="shortlist">{tr("Outreach shortlist")}</option><option value="signals">{tr("Workbook signals")}</option>
           </select>
         </label>
         {canVerify && d?.items.some((it: any) => it.source_url && !it.verification) && <button disabled={busy} onClick={() => check()}>{tr("Check up to 10 sources")}</button>}
@@ -96,7 +96,7 @@ export default function Prospects({ q = "", region = "", canVerify = false }: { 
                 <h3><Link to={`/accounts/${org.id}`}>{org.name}</Link></h3>
                 <p className="small muted">{[countryName(org.country), org.segment, staffCount(org.employees, org.employees_uncertain)].filter(Boolean).join(" · ")}</p>
               </div>
-              <Badge kind={state?.[0] ?? "warn"}>{state ? tr(state[1]) : it.source_url ? tr("Source unchecked") : tr("Source missing")}</Badge>
+              <div className="row">{it.target_fit === false && <Badge>{tr("Account fit unconfirmed")}</Badge>}<Badge kind={state?.[0] ?? "warn"}>{state ? tr(state[1]) : it.source_url ? tr("Source unchecked") : tr("Source missing")}</Badge></div>
             </div>
             {it.signal && <p className="lead-description">{it.signal}</p>}
             {it.signal_date && <p className="small muted mt-1">{fmtDate(it.signal_date)}</p>}

@@ -36,6 +36,17 @@ def classify(src: dict[str, Any], health: dict[str, Any] | None) -> str:
     return "testing"
 
 
+def monitoring_mode(src: dict[str, Any]) -> str:
+    note = _notes().get(src["source_id"], {})
+    if note.get("state") == "per_account":
+        return "account"
+    if src["source_family"] == "registry":
+        return "identity"
+    if src["collection_method"] in ("feed", "change_monitor", "api", "official_api") and src["poll_interval_s"]:
+        return "scheduled"
+    return "on_demand"
+
+
 def directory(conn: Conn) -> list[dict[str, Any]]:
     docs = {r["source_id"]: r for r in qa(conn, "SELECT source_id, count(*) AS docs, max(fetched_at) AS last_doc FROM source_documents GROUP BY source_id")}
     health = {r["source_id"]: r for r in qa(conn, "SELECT source_id, state, last_success_at, last_attempt_at, error_class, detail FROM source_health")}

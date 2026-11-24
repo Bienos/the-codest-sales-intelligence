@@ -168,10 +168,20 @@ export default function Today({ canReview }: { canReview: boolean }) {
           <div>
             <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(getLanguage(), { weekday: "long", day: "numeric", month: "long" })}</div>
             <h1>{tr("Today")}</h1>
+            <p className="today-intro">{tr("Open tenders and buying signals for banking and financial services.")}</p>
+          </div>
+          <div className="today-actions">
+            <Link to="/feed?kind=tender">{tr("Open RFPs and tenders")} →</Link>
+            <Link to="/accounts?view=leads">{tr("Workbook leads")} →</Link>
           </div>
         </div>
       </header>
       <div className="page today-page">
+        {findings.data && <div className="today-summary" aria-label={tr("Daily overview")}>
+          <Link to="/feed?kind=tender"><span>{tr("Open RFPs in this view")}</span><b>{number(findings.data.items.filter(item => item.tender).length)}</b></Link>
+          <Link to="/feed?kind=signal&days=14"><span>{tr("Buying signals in this view")}</span><b>{number(findings.data.items.filter(item => !item.tender).length)}</b></Link>
+          <Link to="/library?tab=sources"><span>{tr("Sources reporting successfully")}</span><b>{number(findings.data.coverage.monitored_sources - findings.data.coverage.unhealthy.length)} <small>/ {number(findings.data.coverage.monitored_sources)}</small></b></Link>
+        </div>}
         <section aria-labelledby="latest-findings">
           <div className="row spread finding-heading">
             <h2 id="latest-findings">{tr("Latest findings")}</h2>

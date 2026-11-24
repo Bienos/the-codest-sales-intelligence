@@ -5,8 +5,8 @@ import re
 
 _ENG = re.compile(r"\b(engineer(ing)?|developer|devops|sre|site reliability|architect|qa|sdet|test automation|data scientist|"
                   r"machine learning|ml ?ops|platform|backend|front[- ]?end|full[- ]?stack|software|tech lead|cto|head of (engineering|platform|payments))\b", re.I)
-_ENG_EXCL = re.compile(r"\b(sales engineer|solutions? engineer(ing)? (sales)|recruit|account (executive|manager)|hr |marketing|customer success|"
-                       r"mechanical|electrical|civil|hardware engineer|facilities)\b", re.I)
+_ENG_EXCL = re.compile(r"\b(sales engineer|business develop(?:er|ment)|fx sales|solutions? engineer(ing)? (sales)|recruit|account (executive|manager)|hr |marketing|customer success|"
+                       r"mechanical|electrical|civil|hardware engineer|embedded android engineer[^a-z]*hardware|facilities)\b", re.I)
 _SVC_KW = re.compile(r"\b(software|development|digital|it consult|it services|information technology|application|platform|cloud|api|"
                      r"integration|migration|quality assurance|testing|artificial intelligence|machine learning|data platform|devops|"
                      r"cyber|payment|banking system|core banking|telematics|saas|web|mobile)\b", re.I)
@@ -15,6 +15,11 @@ _HARDWARE_ONLY = re.compile(r"\b(supply of (computer )?hardware|laptops?|servers
 
 def engineering_relevant(title: str) -> bool:
     return bool(_ENG.search(title)) and not _ENG_EXCL.search(title)
+
+
+def non_engineering_title_sql_pattern() -> str:
+    """The same exclusions for historical job titles in the findings read model."""
+    return _ENG_EXCL.pattern.replace(r"\b(", r"\m(", 1).removesuffix(r"\b") + r"\M"
 
 
 # CPV codes for engineering SERVICES we sell: programming, custom development, systems analysis, implementation, configuration, web and app development.

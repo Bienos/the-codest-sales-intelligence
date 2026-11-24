@@ -7,6 +7,8 @@ const TIERS: Record<string, string> = { S1: "Official records", S2: "Company\u20
 const hk = (s: string) => s === "healthy" ? "ok" : ["degraded", "failed", "blocked", "failing"].includes(s) ? "bad" : "";
 const HEALTH: Record<string, string> = { healthy: "Working", unconfigured: "Not set up yet", paused: "Paused", degraded: "Having problems", failing: "Failing", failed: "Failed", blocked: "Access blocked" };
 const METHOD: Record<string, string> = { feed: "Reads its feed", change_monitor: "Checks the page for changes", api: "Calls its API", official_api: "Calls its API", search: "Searches the web", internal: "Internal" };
+const MODES: Record<string, string> = { account: "Runs per account", identity: "Company identity checks", on_demand: "On demand or requires setup" };
+
 const cadence = (seconds: number) => {
   if (!seconds) return "";
   if (seconds === 86400) return ` · ${tr("daily")}`;
@@ -17,6 +19,7 @@ const cadence = (seconds: number) => {
 export default function Library({ render, query, canSetup = true }: { render: (s: any, reload: () => void) => any; query?: string; canSetup?: boolean }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [open, setOpen] = useState<string | null>(null); const [qLocal, setQ] = useState("");
   const q = query ?? qLocal;
+  const [monitoring, setMonitoring] = useState("");
   const [signals, setSignals] = useState<Record<string, string>>({});
   useEffect(() => {
     api("/api/library/signals").then((r) => setSignals(Object.fromEntries(r.items.map((item: any) => [item.rule_id, item.signal])))).catch(() => undefined);
@@ -25,26 +28,38 @@ export default function Library({ render, query, canSetup = true }: { render: (s
   useEffect(() => { load(); }, []);
   if (err) return <Err e={err} onRetry={reloadPage} />;
   if (!d) return <Skeleton />;
-  const items = d.items.filter((s: any) => !q || `${s.display_name} ${s.source_id} ${s.provider}`.toLowerCase().includes(q.toLowerCase()));
+  const periodic = (s: any) => s.monitoring_mode === "scheduled";
+  const isReporting = (s: any) => periodic(s) && s.status === "active" && s.health === "healthy" && s.last_success_at && Date.now() - Date.parse(s.last_success_at) <= 2000 * s.poll_interval_s;
+  const items = d.items.filter((s: any) =>
+    (!q || `${s.display_name} ${s.source_id} ${s.provider}`.toLowerCase().includes(q.toLowerCase())) &&
+    (!monitoring || (monitoring === "reporting" ? isReporting(s) : monitoring === "needs_attention" ? periodic(s) && !isReporting(s) : !periodic(s))));
   const groups = Object.keys(TIERS).map((t) => [t, items.filter((s: any) => s.source_tier === t)] as [string, any[]]).filter(([, l]) => l.length);
-  const live = d.items.filter((s: any) => s.status === "active" && s.collection_method !== "internal" && s.last_success_at).length;
+  const live = d.items.filter(isReporting).length;
   return (
     <>
       <div className="row spread mb-2">
         <p className="small muted m-0"><b>{d.items.length}</b>{" " + tr("sources,") + " "}<b>{live}</b>{" " + tr("active with a successful check. Open a source to see its last test and whether monitoring is running.")}</p>
         {query === undefined && <input aria-label={tr("Search sources")} placeholder={tr("Search sources")} value={q} onChange={(e) => setQ(e.target.value)} className="field-md" />}
       </div>
+      <div className="row mb-3">
+        <label>{tr("Monitoring status")} <select value={monitoring} onChange={e => setMonitoring(e.target.value)}>
+          <option value="">{tr("All sources")}</option><option value="reporting">{tr("Reporting successfully")}</option>
+          <option value="needs_attention">{tr("Scheduled sources needing attention")}</option><option value="other">{tr("Sources outside the regular schedule")}</option>
+        </select></label>
+      </div>
+      <p className="small muted">{tr("Company careers and supplier pages discovered for an account appear on its profile.")}</p>
+      {items.length === 0 && <div className="empty">{tr("No sources match these filters")}</div>}
       {groups.map(([t, list]) => (
         <section key={t}><div className="section-title">{tr(TIERS[t])}</div>
           <div className="lib-grid">{list.map((s) => (
             <article key={s.source_id} className="lib-card">
               <div className="row spread start">
                 <div><b className="lib-name">{s.display_name}</b><div className="small muted">{s.provider ?? s.source_id} · {humanize(s.source_family)}</div></div>
-                <div className="row"><Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{s.status === "pending_connector_validation" ? tr("Not set up yet") : humanize(s.status)}</Badge></div>
+                <div className="row"><Badge kind={isReporting(s) ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{periodic(s) ? (isReporting(s) ? tr("Reporting successfully") : tr("Needs attention")) : tr(MODES[s.monitoring_mode] ?? "On demand or requires setup")}</Badge></div>
               </div>
               <dl className="lib-facts">
-                <dt>{tr("How")}</dt><dd>{tr(METHOD[s.collection_method] ?? humanize(s.collection_method))}{cadence(s.poll_interval_s)}</dd>
-                <dt>{tr("Monitoring")}</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? tr("Waiting for first successful check") : tr(HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health))}</Badge>{s.last_success_at && <span className="small muted">{" " + tr("last worked") + " "}{fmtDateTime(s.last_success_at)}</span>}</dd>
+                <dt>{tr("How")}</dt><dd>{tr(METHOD[s.collection_method] ?? humanize(s.collection_method))}{periodic(s) ? cadence(s.poll_interval_s) : ""}</dd>
+                {periodic(s) && <><dt>{tr("Monitoring")}</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? tr("Waiting for first successful check") : tr(HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health))}</Badge>{s.last_success_at && <span className="small muted">{" " + tr("last worked") + " "}{fmtDateTime(s.last_success_at)}</span>}</dd></>}
                 {s.health_detail && <><dt>{tr("Last error")}</dt><dd className="small">{s.health_detail}</dd></>}
                 <dt>{tr("Latest test")}</dt><dd>{s.validation ? <>
                   <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? tr("Test passed") : tr("Test failed")}</Badge>

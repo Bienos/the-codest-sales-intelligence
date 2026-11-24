@@ -1,4 +1,4 @@
-import { tr } from "../locale";
+import { number, tr } from "../locale";
 import { useEffect, useState } from "react";
 import { api, fmtDateTime, patch, post } from "../api";
 import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
@@ -6,25 +6,74 @@ import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
 const VLABEL: Record<string, string> = { verified: "Checked", failed: "Could not check", blocked: "Page not allowed", waiting_budget: "Waiting for AI budget", no_event: "Nothing quotable", queued: "Waiting", fetching: "Reading", extracting: "Finding events" };
 const vk = (s: string) => (s === "verified" ? "ok" : s === "failed" || s === "blocked" ? "bad" : s === "waiting_budget" ? "warn" : s === "no_event" ? "" : "info");
 
+const ORIGINS: Record<string, string> = {
+  sheet_signal: "From your workbooks", exa_discovery: "From web search",
+  seller_miss: "Reported by sellers", manual: "Submitted link",
+};
+
 export function Verification() {
-  const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [status, setStatus] = useState(""); const [origin, setOrigin] = useState("");
-  const load = () => api(`/api/verifications?status=${status}&origin=${origin}&limit=100`).then(setD).catch(setErr);
-  useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) load(); }, 10000); return () => clearInterval(t); }, [status, origin]);
-  return (
-    <>
-      <p className="small muted mt-0">{tr("Each row is a page we were asked to check, from your workbooks or from a search. We read the original page, pull out events with word-for-word quotes, and keep only those whose quote is really on the page.")}</p>
-      {d && <div className="chips mb-3">{Object.entries(d.counts).map(([k, v]: any) => <button key={k} className={`chip ${status === k ? "on" : ""}`} onClick={() => setStatus(status === k ? "" : k)}>{VLABEL[k] ?? humanize(k)} <b>{v}</b></button>)}
-        <select aria-label={tr("Origin")} value={origin} onChange={(e) => setOrigin(e.target.value)}><option value="">{tr("All origins")}</option><option value="sheet_signal">{tr("From your workbooks")}</option><option value="exa_discovery">{tr("From web search")}</option><option value="seller_miss">{tr("Reported by sellers")}</option></select></div>}
-      <Err e={err} />
-      {d && d.items.length === 0 && <div className="empty"><b>{tr("Nothing here yet")}</b>{tr("Check a company from Today, or run a web search under Admin, Web search.")}</div>}
-      {d && d.items.length > 0 && <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("When · Account and page · Came from")}><table><thead><tr><th>{tr("When")}</th><th>{tr("Account and page")}</th><th>{tr("Came from")}</th><th>{tr("Status")}</th><th>{tr("Result")}</th><th><span className="sr">{tr("Action")}</span></th></tr></thead><tbody>
-        {d.items.map((v: any) => <tr key={v.id}><td>{fmtDateTime(v.created_at)}</td>
-          <td><b>{v.organization ?? tr("No company matched")}</b><div className="small">{v.claimed_text}</div><a className="small" href={v.url} target="_blank" rel="noreferrer noopener">{v.url.replace(/^https?:\/\//, "").slice(0, 60)} ↗</a></td>
-          <td>{v.origin === "sheet_signal" ? "Your workbooks" : v.origin === "seller_miss" ? "Seller report" : tr("Web search")}</td><td><Badge kind={vk(v.status)}>{VLABEL[v.status] ?? humanize(v.status)}</Badge></td>
-          <td className="small">{v.status === "verified" ? `${v.events_created} ${v.events_created === 1 ? "finding" : tr("findings")}, ${v.result?.signals ?? 0} ${v.result?.signals === 1 ? "signal" : "signals"}` : v.result?.reason ?? (v.status === "no_event" ? tr("Nothing on the page we could quote") : "")}</td>
-          <td>{(v.status === "failed" || v.status === "waiting_budget") && <button className="ghost" onClick={() => post(`/api/verifications/${v.id}/retry`).then(load).catch(setErr)}>{tr("Retry")}</button>}</td></tr>)}</tbody></table></div>}
-    </>
-  );
+  const [d, setD] = useState<any>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const [status, setStatus] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const filters = new URLSearchParams({ status, origin, limit: "100" });
+  const query = filters.toString();
+  useEffect(() => {
+    const request = new AbortController();
+    const load = () => api(`/api/verifications?${query}`, { signal: request.signal })
+      .then(data => { if (!request.signal.aborted) { setD({ query, data }); setErr(null); } })
+      .catch(error => { if (!request.signal.aborted) setErr(error); });
+    load();
+    const timer = setInterval(() => { if (!document.hidden) load(); }, 10000);
+    return () => { request.abort(); clearInterval(timer); };
+  }, [query, revision]);
+  const result = d?.query === query ? d.data : null;
+  const counts = d?.data.counts;
+  const retry = async (id: string) => {
+    setRetrying(id);
+    try { await post(`/api/verifications/${id}/retry`); setRevision(n => n + 1); }
+    catch (error) { setErr(error); }
+    finally { setRetrying(null); }
+  };
+  return <>
+    <h2>{tr("Pages being checked")}</h2>
+    <p className="small muted">{tr("Follow each source link from discovery to a verified finding. Open the details to see what was checked and why a check stopped.")}</p>
+    <div className="verification-filters">
+      <label>{tr("Status")}<select value={status} onChange={e => setStatus(e.target.value)}>
+        <option value="">{tr("All statuses")}</option>
+        {Object.entries(VLABEL).map(([key, label]) => <option key={key} value={key}>{tr(label)}{counts?.[key] !== undefined ? ` (${number(counts[key])})` : ""}</option>)}
+      </select></label>
+      <label>{tr("Origin")}<select value={origin} onChange={e => setOrigin(e.target.value)}>
+        <option value="">{tr("All origins")}</option>
+        {Object.entries(ORIGINS).map(([key, label]) => <option key={key} value={key}>{tr(label)}</option>)}
+      </select></label>
+      {result && <p className="small muted">{tr("Showing {} most recent checks", number(result.items.length))}</p>}
+    </div>
+    <Err e={err} onRetry={() => setRevision(n => n + 1)} />
+    {!result && !err && <Skeleton />}
+    {result?.items.length === 0 && <div className="empty"><b>{tr("No checks match these filters")}</b></div>}
+    <ul className="verification-list">
+      {result?.items.map((v: any) => <li className="card" key={v.id}>
+        <div className="row spread start">
+          <div><b>{v.organization || tr("No company matched")}</b><div className="small muted">{tr(ORIGINS[v.origin] ?? "Submitted link")} · {fmtDateTime(v.updated_at ?? v.created_at)}</div></div>
+          <Badge kind={vk(v.status)}>{tr(VLABEL[v.status] ?? humanize(v.status))}</Badge>
+        </div>
+        {v.status === "verified" && <p className="small">{tr("Findings created: {} · Signals created: {}", number(v.events_created ?? 0), number(v.result?.signals ?? 0))}</p>}
+        <div className="row spread">
+          {/^https?:/i.test(v.url) && <a href={v.url} target="_blank" rel="noreferrer noopener">{tr("Original source")} ↗</a>}
+          {(v.status === "failed" || v.status === "waiting_budget") && <button disabled={retrying !== null} onClick={() => retry(v.id)}>{tr("Retry")}</button>}
+        </div>
+        {(v.claimed_text || v.result?.reason || v.plan_id) && <details className="small">
+          <summary>{tr("Check details")}</summary>
+          {v.claimed_text && <p>{v.claimed_text}</p>}
+          {v.result?.reason && <p>{tr(v.result.reason)}</p>}
+          {v.plan_id && <p className="muted">{tr("Search plan")} · {v.plan_id}</p>}
+        </details>}
+      </li>)}
+    </ul>
+  </>;
 }
 
 export function Discovery() {

@@ -16,7 +16,7 @@ from ..sheets.reconcile import VENDOR_WORDS, market_focus
 from ..db import q1, qa
 from ..jobs.queue import enqueue
 from ..sheets.client import MAX_XLSX_BYTES, detect_workbook
-from ..target_market import TARGET_REGION_ORDER, target_region, target_sql
+from ..target_market import TARGET_REGION_ORDER, target_region, target_sql, workbook_company_sql
 from .auth import require
 from .search import all_like, tokens
 
@@ -65,16 +65,17 @@ def prospect_item(r: dict[str, Any], kind: str, can_contacts: bool, today: date)
     return item
 
 
-def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: str = "", target: bool = False, region: str = "", offset: int = 0) -> list[dict[str, Any]]:
+def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: str = "", target: bool = False, region: str = "", offset: int = 0, workbook: bool = False) -> list[dict[str, Any]]:
     today = datetime.now(timezone.utc).date()
     from ..market import sector_sql
 
     where, params = org_scope_sql(p, "o.id")
-    eligibility = target_sql() if target else "TRUE"
+    eligibility = target_sql() if target else workbook_company_sql() if workbook else "TRUE"
     sector = sector_sql("o.segment")
+    target_match = target_sql()
     match, search_args = all_like("concat_ws(' ', o.display_name, o.canonical_domain, o.segment, o.country_code, r.original->>'Strongest buying signal', r.original->>'Verified Buying Signal')", tokens(q) or [q.strip()]) if q.strip() else ("TRUE", [])
     rows = qa(conn,
-        f"SELECT DISTINCT ON (r.organization_id, r.kind) r.organization_id, r.kind, r.original, o.display_name, o.country_code, o.segment, o.employees_estimate, o.employees_uncertain, "   # noqa: S608
+        f"SELECT DISTINCT ON (r.organization_id, r.kind) r.organization_id, r.kind, r.original, o.display_name, o.country_code, o.segment, o.employees_estimate, o.employees_uncertain, {target_match} AS target_fit, "   # noqa: S608
         f"(SELECT count(*) FROM opportunity_hypotheses h WHERE h.organization_id=o.id AND h.state NOT IN ('superseded')) AS opps "
         f"FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
         f"WHERE r.kind IN ('priority_outreach','master_account') AND ({where}) AND {eligibility} AND ({match}) "
@@ -85,7 +86,7 @@ def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: s
     for r in rows:
         if region and target_region(r["country_code"]) != region:
             continue
-        if target and lane != "all" and ("shortlist" if r["kind"] == "priority_outreach" else "signals") != lane:
+        if (target or workbook) and lane != "all" and ("shortlist" if r["kind"] == "priority_outreach" else "signals") != lane:
             continue
         oid = str(r["organization_id"])
         it = prospect_item(r, r["kind"], can_contacts, today)
@@ -95,10 +96,10 @@ def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: s
         if cur and cur["lane"] == "shortlist":      # curated shortlist wins over the generic master row
             continue
         by_org[oid] = {"organization": {"id": oid, "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"], "employees_uncertain": r["employees_uncertain"], "region": target_region(r["country_code"])},
-                       "has_opportunity": bool(r["opps"]), "market": market_focus(r["country_code"], r["segment"]),
+                       "has_opportunity": bool(r["opps"]), "target_fit": bool(r["target_fit"]), "market": market_focus(r["country_code"], r["segment"]),
                        "vendor_flag": bool(r["segment"] and VENDOR_WORDS.search(r["segment"])), **it}
     items = [i for i in by_org.values() if lane == "all" or i["lane"] == lane]
-    items.sort(key=lambda i: (TARGET_REGION_ORDER.get(i["organization"]["region"], 99) if target else 0,
+    items.sort(key=lambda i: (TARGET_REGION_ORDER.get(i["organization"]["region"], 99) if target or workbook else 0,
                               i["lane"] != "shortlist", i["rank"] if i["rank"] is not None else 999,
                               _PRIORITY.get(str(i["priority"] or "").lower(), 3), -(i["score"] or 0)))
     total = len(items)
@@ -136,9 +137,9 @@ def register(app: FastAPI) -> None:
     @app.get("/api/prospects")
     def prospects(request: Request, lane: str = Query("all", pattern="^(all|shortlist|signals)$"), q: str = Query("", max_length=120), limit: int = Query(40, ge=1, le=200),
                   focus: str = Query("", pattern="^(|finance|other)$"), target: bool = False, region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"), page: int = Query(1, ge=1),
-                  p: Principal = Depends(require("accounts.read"))):
+                  workbook: bool = False, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            items = prospects_for(conn, p, lane=lane, q=q, limit=limit, focus=focus, target=target, region=region, offset=(page - 1) * limit)
+            items = prospects_for(conn, p, lane=lane, q=q, limit=limit, focus=focus, target=target, region=region, offset=(page - 1) * limit, workbook=workbook)
             total = items[0]["_total"] if items else 0
             for i in items:
                 i.pop("_total", None)

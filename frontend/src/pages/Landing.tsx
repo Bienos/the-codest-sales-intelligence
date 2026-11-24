@@ -150,7 +150,7 @@ function Demo() {
         {PHASES.map((p, i) => (
           <li key={p.k}><button className={i === phase && !gap ? "on" : ""} style={{ ["--dur" as any]: `${DURATIONS[i]}ms` }} aria-current={i === phase ? "step" : undefined} onClick={() => pick(i)}>
             <span className="demo-n">{String(i + 1).padStart(2, "0")}</span><span><b>{tr(p.k)}</b><small>{tr(p.d)}</small></span></button></li>))}
-        <li className="demo-ctl"><button className="ghost" onClick={() => { setAuto(true); setGap(false); setPhase(0); }}>{auto ? "Restart" : tr("Play again")}</button></li>
+        <li className="demo-ctl"><button className="ghost" onClick={() => { setAuto(true); setGap(false); setPhase(0); }}>{auto ? tr("Restart") : tr("Play again")}</button></li>
       </ol>
       <div className={`stage ${cls}`} role="img" aria-label={tr("Animated example with made-up data: three signals are checked against their original pages, one is dropped for having no quote, the others are tested against seven gates and become one next step.")}>
         <div className="stage-top"><span className="badge info">{tr("Example data, not real")}</span><span className="stage-phase">{tr(PHASES[gap ? 0 : phase].k)}</span></div>
@@ -222,10 +222,9 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
     const r = el.getBoundingClientRect();
     el.style.setProperty("--mx", `${e.clientX - r.left}px`); el.style.setProperty("--my", `${e.clientY - r.top}px`);
   };
-  const words = tr("See which engineering work is real, and who owns it.").split(" ");
   return (
     <div className="land" ref={root}>
-      <header className="land-nav"><Brand /><div className="land-nav-actions"><LanguageSwitcher /><a className="land-jump" href="#signin">{tr("Sign in")}</a></div></header>
+      <div className="land-top"><header className="land-nav"><Brand /><div className="land-nav-actions"><LanguageSwitcher /><a className="land-jump" href="#signin">{tr("Sign in")}</a></div></header>
 
       <section className="land-hero" ref={hero} onPointerMove={onMove}>
         <div className="dots" aria-hidden="true" /><div className="dots lit" aria-hidden="true" />
@@ -233,17 +232,14 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
         <div className="land-hero-in">
           <div className="land-copy">
             <div className="eyebrow">{tr("Revenue intelligence")}</div>
-            <h1 aria-label={tr("See which engineering work is real, and who owns it.")}>
-              {words.map((w, i) => <span key={i} className={`w${/^(real|rzeczywiste)$/i.test(w) ? " hot" : ""}`} style={{ animationDelay: `${120 + i * 70}ms` }} aria-hidden="true">{w}&nbsp;</span>)}
-            </h1>
+            <h1>{tr("Find the next engineering opportunity")}</h1>
+            <p>{tr("See open RFPs and buying signals from banks and financial services firms. Check the original source, then decide what to do next.")}</p>
+            <div className="land-copy-actions"><a href="#demo">{tr("See how it works")} ↓</a></div>
             <Watching />
-            <p>{tr("Tenders, programme announcements and hiring patterns land in one place. Each one shows its evidence, what is still unknown, and one specific next step.")}</p>
-            <ul className="land-points"><li>{tr("Every claim quotes its original source")}</li><li>{tr("Unknown stays unknown")}</li><li>{tr("Nothing is sent or changed without approval")}</li></ul>
           </div>
           <AuthCard onDone={onDone} notice={notice} />
         </div>
-        <a className="scroll-cue" href="#demo" aria-label={tr("See how it works")}><span /></a>
-      </section>
+      </section></div>
 
       <Ticker />
 

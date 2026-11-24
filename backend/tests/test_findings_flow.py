@@ -92,6 +92,11 @@ def test_findings_acceptance_matrix(conn, db_url):
         ("Unverified country", {"country": "ZZ"}),
     ]:
         signal(label, org(label, **options))
+    waiting = org("Private ownership pending", ownership="unknown", proof=False)
+    waiting_signal, _ = signal("Verified payments programme", waiting)
+    pending_tender, _ = notice("pending-owner-rfp", waiting)
+    bad_hiring, _ = signal("FX sales recruitment", waiting, type_="engineering_job_opened")
+    conn.execute("UPDATE events SET attrs=attrs || '{\"title\":\"Business Developer / FX Sales Associate\"}'::jsonb WHERE id=%s", (bad_hiring,))
     signal("Unverified extract", target, verified=False)
     signal("Historical replay", target, replay=True)
     signal("Expired event", target, lifecycle="expired")
@@ -149,6 +154,11 @@ def test_findings_acceptance_matrix(conn, db_url):
             assert request("?limit=2").json()["items"][0]["id"] != request("?limit=2&page=2").json()["items"][0]["id"]
             assert len(request("?q=core%20migration").json()["items"]) == 1
 
+            review = request("?qualification=review&q=Private%20ownership%20pending").json()["items"]
+            assert [(row["id"], row["organization"]["qualified"]) for row in review] == [(waiting_signal, False)]
+            assert pending_tender not in {row["id"] for row in request("?qualification=all&kind=tender").json()["items"]}
+            pending_profile = request(f"?scope=account&organization={waiting}&event={waiting_signal}").json()
+            assert pending_profile["items"][0]["id"] == request(f"?event={waiting_signal}").json()["items"][0]["id"]
             account = request(f"?scope=account&organization={target}&event={first}").json()
             assert account["items"][0]["event_ids"] == hit[0]["event_ids"]
             assert {lead["claimed_text"] for lead in account["leads"]} == {"Workbook lead", "Pending lead"}

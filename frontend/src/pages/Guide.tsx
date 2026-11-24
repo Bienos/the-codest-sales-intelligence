@@ -19,15 +19,10 @@ const OUTPUTS = [
   ["Opportunity", "The full page: the seven checks, the sources, what is not known yet, and questions to ask."],
   ["Drafts and Pipedrive requests", "Prepared for you. A colleague approves before anything leaves."],
 ];
-const CLICK: [string, string, string][] = [
-  ["Today", "/today", "Your queue. Start here every morning. It also lists your shortlist from the workbooks, each with a Check button."],
-  ["Accounts & leads", "/accounts", "Search your target companies by region. Open the Leads tab to see buying signals from your workbooks and check their sources."],
-  ["Market feed", "/feed", "Every checked finding, newest first, with why it could be work for us."],
-  ["Explorer", "/explorer", "Search opportunities, companies and findings in your target market."],
-  ["Library", "/library", "The 64 signals, every source with its licence terms, and every page and feed we watch. Searchable."],
-  ["Knowledge base", "/knowledge", "The ICP map and the sales field guide, inside the tool."],
-  ["Search box (left)", "/search", "One box for companies, signals, sources, findings and the knowledge base."],
-  ["Administration", "/admin", "Imports, people, sources, approvals, usage and cost, and the audit log."],
+const WORKFLOW = [
+  ["Today", "/today", "Start with open requests and current buying signals. Read the source and review the suggested next step."],
+  ["Accounts & leads", "/accounts?view=leads", "Find your workbook leads, then open the company to see its signals, people and assigned sources."],
+  ["All findings", "/feed", "Browse the evidence by region, date or type. The status shows whether company ownership is confirmed."],
 ];
 const WORDS: [string, string][] = [
   ["Account", "A company you can research and track."],
@@ -47,14 +42,22 @@ const WORDS: [string, string][] = [
 
 export default function Guide() {
   return (
-    <>
-      <div className="hero">
-        <div className="eyebrow">{tr("Start here")}</div>
-        <h1>{tr("How it works")}</h1>
-        <p className="sub">{tr("The platform reads public sources and your account lists, checks every claim against the original page, and gives you a short list of what to do next. It tells you what it knows, what it is assuming and what only a buyer can confirm.")}</p>
+    <div className="guide-workspace">
+      <header className="page-head"><div><h1>{tr("How it works")}</h1>
+        <p className="sub">{tr("Find evidence of engineering demand, understand the account and decide what to do next.")}</p></div></header>
+      <div className="guide-steps">
+        {WORKFLOW.map(([title, href, description]) => <section className="card" key={href}>
+          <h2>{tr(title)}</h2><p>{tr(description)}</p><Link to={href}>{tr("Open {}", tr(title))} →</Link>
+        </section>)}
       </div>
-      <div className="page">
-        <div className="section-title mt-2">{tr("The whole thing on one page")}</div>
+      <div className="guide-secondary">
+        <section className="card"><h2>{tr("Check source coverage")}</h2>
+          <p>{tr("Use the Library to see which sources are working. If a source is delayed, check its last successful run.")}</p><Link to="/library?tab=sources">{tr("View source health")} →</Link></section>
+        <section className="card"><h2>{tr("Research explorer")}</h2>
+          <p>{tr("Search across companies, verified findings and opportunities. Use All findings to browse by date or tender type.")}</p><Link to="/explorer">{tr("Open Explorer")} →</Link></section>
+      </div>
+      <details className="card guide-details">
+        <summary>{tr("How evidence is processed")}</summary>
         <div className="map3" role="group" aria-label={tr("Structure of the platform")}>
           <div className="col"><div className="col-h">{tr("Goes in")}</div>{INPUTS.map(([t, d]) => <div key={t} className="mbox"><b>{tr(t)}</b><span>{tr(d)}</span></div>)}</div>
           <div className="arrow" aria-hidden="true">→</div>
@@ -62,23 +65,13 @@ export default function Guide() {
           <div className="arrow" aria-hidden="true">→</div>
           <div className="col"><div className="col-h">{tr("What you get")}</div>{OUTPUTS.map(([t, d]) => <div key={t} className="mbox out"><b>{tr(t)}</b><span>{tr(d)}</span></div>)}</div>
         </div>
-        <div className="controls"><b>{tr("Safeguards:")}</b>{" " + tr("monthly spending limits on AI and search (Usage), a full audit log, a role for every person, and approval for anything that leaves the system.")}</div>
-
-        <div className="section-title">{tr("Where do I click?")}</div>
-        <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Place · What it is for")}><table><thead><tr><th>{tr("Place")}</th><th>{tr("What it is for")}</th></tr></thead><tbody>
-          {CLICK.map(([n, to, d]) => <tr key={n}><td><Link to={to}><b>{tr(n)}</b></Link></td><td>{tr(d)}</td></tr>)}</tbody></table></div>
-
-        <div className="section-title">{tr("Your day in three moves")}</div>
-        <div className="moves">
-          <div className="card"><div className="eyebrow">{tr("1 · Today")}</div><p className="m-0">{tr("Read the top card. The right-hand panel is the one thing to do. On a shortlist item, press") + " "}<b>{tr("Check this source")}</b>{" " + tr("to have the platform read the original page. Dismiss what does not apply, with a reason.")}</p></div>
-          <div className="card"><div className="eyebrow">{tr("2 · Opportunity")}</div><p className="m-0">{tr("Open it to see which of the seven checks are green, amber or red, the quoted sources, and the questions that would fill the gaps.")}</p></div>
-          <div className="card"><div className="eyebrow">{tr("3 · Propose")}</div><p className="m-0">{tr("Write a draft or ask to add a Pipedrive activity. A colleague approves it in Administration before anything leaves the system.")}</p></div>
-        </div>
-
-        <div className="section-title">{tr("Words used in the tool")}</div>
+      </details>
+      <details className="card guide-details">
+        <summary>{tr("Words used in the tool")}</summary>
         <dl className="gloss">{WORDS.map(([w, d]) => <div key={w}><dt>{tr(w)}</dt><dd>{tr(d)}</dd></div>)}</dl>
-
-        <div className="section-title">{tr("The seven checks")}</div>
+      </details>
+      <details className="card guide-details">
+        <summary>{tr("The seven checks")}</summary>
         <div className="gate-legend">
           {[["1", tr("Account fit"), tr("Is this a company we should pursue?")], ["2", tr("Real programme"), tr("Is there a checked programme, and what stage is it at?")], ["3", tr("Engineering fit"), tr("Does the work match what The Codest delivers?")],
             ["4", tr("Outside demand"), tr("Will the buyer use outside help? Often not known until you ask.")], ["5", tr("Supplier access"), tr("Can a supplier like us get in: directly, through the vendor or through an integrator?")],
@@ -87,17 +80,7 @@ export default function Guide() {
         </div>
         <p className="small muted mt-3">{tr("Green means confirmed. Amber means not known yet. Red means blocked. An opportunity can be worth acting on while checks 4 to 7 are amber. It is not qualified until they are answered.")}</p>
 
-        <div className="card mt-5">
-          <div className="eyebrow">{tr("What this is not")}</div>
-          <ul className="tight mb-0">
-            <li>{tr("It does not send email or messages. It only writes drafts.")}</li>
-            <li>{tr("It does not change Pipedrive without a colleague's approval.")}</li>
-            <li>{tr("Scores are our best current weighting. They have not yet been checked against deals won and lost, so treat them as a guide, not a forecast.")}</li>
-            <li>{tr("It only sees the sources we watch. It does not claim to see the whole market.")}</li>
-          </ul>
-        </div>
-        <p className="mt-4"><Link to="/today"><button className="primary">{tr("Go to Today")}</button></Link></p>
-      </div>
-    </>
+      </details>
+    </div>
   );
 }

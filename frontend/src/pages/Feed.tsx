@@ -12,7 +12,7 @@ export default function Feed() {
   const page = Math.max(1, Number(params.get("page")) || 1);
   const query = new URLSearchParams({
     q: params.get("q") ?? "", days: params.get("days") ?? "60", kind: params.get("kind") ?? "",
-    region: params.get("region") ?? "", page: String(page),
+    region: params.get("region") ?? "", qualification: params.get("qualification") ?? "all", page: String(page),
   });
   const event = params.get("finding");
   if (event) query.set("event", event);
@@ -26,7 +26,7 @@ export default function Feed() {
     setParams(next);
   };
   return <>
-    <div className="page-head"><h1>{tr("All findings")}</h1></div>
+    <div className="page-head"><div><h1>{tr("All findings")}</h1><p className="sub">{tr("Search verified activity and open requests by company, region or date.")}</p></div></div>
     {event && <p><Link to="/feed">{tr("Show all findings")}</Link></p>}
     <form className="feedbar" onSubmit={e => { e.preventDefault(); update("q", search.trim()); }}>
       <input type="search" aria-label={tr("Search the feed")} placeholder={tr("Search company or keyword")}
@@ -38,6 +38,9 @@ export default function Feed() {
       <select aria-label={tr("Finding type")} value={query.get("kind") ?? ""} onChange={e => update("kind", e.target.value)}>
         <option value="">{tr("All types")}</option><option value="tender">{tr("Open RFPs and tenders")}</option><option value="signal">{tr("Buying signals")}</option>
       </select>
+      <select aria-label={tr("Company eligibility")} value={query.get("qualification") ?? "all"} onChange={e => update("qualification", e.target.value)}>
+        <option value="all">{tr("All eligible and pending accounts")}</option><option value="target">{tr("Confirmed target accounts")}</option><option value="review">{tr("Ownership to check")}</option>
+      </select>
       <select aria-label={tr("Time window")} value={query.get("days") ?? "60"} onChange={e => update("days", e.target.value)}>
         <option value="14">{tr("Last 2 weeks")}</option><option value="30">{tr("Last 30 days")}</option>
         <option value="60">{tr("Last 60 days")}</option><option value="180">{tr("Last 6 months")}</option>
@@ -47,6 +50,11 @@ export default function Feed() {
       <FindingsResult data={data} error={error} retry={retry} empty="No matching findings">
         {data?.items.map(item => <FindingCard key={item.id} item={item} />)}
       </FindingsResult>
+      {data?.items.length === 0 && !event && <div className="card archive-next">
+        <p>{tr("Workbook leads and their original sources are available while new findings are being verified.")}</p>
+        <Link to="/accounts?view=leads">{tr("Browse workbook leads")} →</Link>
+        {params.get("kind") && <Link to="/feed">{tr("Show all findings")}</Link>}
+      </div>}
       <FindingsPagination page={page} hasMore={data?.has_more} change={n => update("page", String(n))} />
     </div><aside>
       {data && <><SourceCoverage coverage={data.coverage} /><ResearchLeads data={data} /></>}

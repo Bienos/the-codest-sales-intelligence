@@ -41,8 +41,10 @@ class ExaClient:
 
     async def search(self, plan: SearchPlan, *, num_results: int = 10) -> tuple[list[RawItem], dict[str, Any]]:
         from datetime import timedelta
-        body: dict[str, Any] = {"query": plan.query, "numResults": num_results, "type": "auto",
-                                "startPublishedDate": (self.now() - timedelta(days=plan.recency_days)).strftime("%Y-%m-%dT00:00:00.000Z")}
+        body: dict[str, Any] = {"query": plan.query, "numResults": num_results, "type": "auto"}
+        if plan.sector != "private-rfp":
+            body["startPublishedDate"] = (self.now() - timedelta(days=plan.recency_days)).strftime("%Y-%m-%dT00:00:00.000Z")
+        # Supplier portals and invitations can be undated. The original notice still has to prove its deadline.
         if plan.include_domains:
             body["includeDomains"] = list(plan.include_domains)
         if self.client is None:       # one client per call: an AsyncClient is bound to the event loop that first used it

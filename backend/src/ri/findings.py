@@ -5,6 +5,7 @@ from uuid import UUID
 
 from .access import Principal, org_scope_sql
 from .db import Conn, qa
+from .events.classify import non_engineering_title_sql_pattern
 from .feed import STORY_KEY_SQL, fit_for
 from .market import REGIONS
 from .readmodel import evidence_for, story_sources
@@ -32,7 +33,7 @@ _EVIDENCE = """EXISTS (SELECT 1 FROM event_claims ec JOIN claims cl ON cl.id=ec.
 
 
 def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, page: int = 1, kind: str = "",
-             region: str = "", organization_id: UUID | None = None, event: UUID | None = None, search: str = "") -> list[dict]:
+             region: str = "", organization_id: UUID | None = None, event: UUID | None = None, search: str = "", qualification: str = "target") -> list[dict]:
     from .api.search import all_like, tokens
 
     where, args = org_scope_sql(p, "o.id")
@@ -45,11 +46,14 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
         region_args = [sorted({country for members in region_members.values() for country in members})]
     elif region:
         region_clause, region_args = "o.country_code=ANY(%s)", [region_members[region]]
+    target = target_sql()
+    review = target_sql(review=True)
+    eligible = review if qualification == "review" else f"({target} OR {review})" if qualification == "all" else target
     rows = qa(conn, f"""
         WITH candidates AS (
             SELECT e.id, e.event_type, e.summary, e.attrs, e.event_at, e.pub_at, e.first_observed_at,
                    coalesce(e.event_at,e.pub_at,e.first_observed_at) AS happened,
-                   o.id AS org_id, o.display_name, o.country_code,
+                   o.id AS org_id, o.display_name, o.country_code, {target} AS qualified,
                    CASE WHEN n.id IS NOT NULL THEN jsonb_build_array('tender',o.id,n.source_id,n.notice_id)::text
                         ELSE {STORY_KEY_SQL} END AS story_key,
                    CASE WHEN ({_OPEN}) IS TRUE THEN jsonb_build_object(
@@ -58,12 +62,17 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
                    ARRAY(SELECT DISTINCT s.rule_id FROM signals s WHERE {_SIGNAL} ORDER BY s.rule_id) AS rules
             FROM events e JOIN organizations o ON o.id=e.subject_org_id
             LEFT JOIN LATERAL ({_NOTICE}) n ON e.event_type LIKE 'procurement_%%'
-            WHERE ({where}) AND {target_sql()} AND ({region_clause}) AND ({match}) AND {_EVIDENCE}
+            WHERE ({where}) AND {eligible} AND ({region_clause}) AND ({match}) AND {_EVIDENCE}
             AND (%s::uuid IS NULL OR o.id=%s::uuid) AND e.verification_status='verified'
             AND e.lifecycle_status='active' AND NOT e.is_historical_replay
-            AND ((e.event_type IN ('procurement_published','procurement_amended') AND ({_OPEN}))
+            AND (({target} AND e.event_type IN ('procurement_published','procurement_amended') AND ({_OPEN}))
                  OR (e.lane IS DISTINCT FROM 'public' AND e.event_type NOT LIKE 'procurement_%%'
                      AND e.event_type NOT IN ('crm_buyer_response','relationship_changed')
+                     AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened')
+                          OR (coalesce(e.attrs->>'title','') !~* %s AND
+                              (NOT (e.attrs ? 'job_id') OR EXISTS (SELECT 1 FROM job_postings j
+                               WHERE j.provider=e.attrs->>'provider' AND j.board=e.attrs->>'board'
+                               AND j.job_id=e.attrs->>'job_id' AND j.open_status='open'))))
                      AND coalesce(e.event_at,e.pub_at,e.first_observed_at)>now()-make_interval(days => %s)
                      AND coalesce(e.event_at,e.pub_at,e.first_observed_at)<=now()
                      AND (%s <> 'today' OR EXISTS (SELECT 1 FROM signals s WHERE {_SIGNAL} AND s.strength>0)
@@ -79,7 +88,7 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
                  CASE WHEN %s='today' THEN (tender->>'deadline')::timestamptz END NULLS LAST,
                  happened DESC, id
         LIMIT %s OFFSET %s
-        """, [*args, *region_args, *search_args, organization_id, organization_id, days, scope, kind, kind,
+        """, [*args, *region_args, *search_args, organization_id, organization_id, non_engineering_title_sql_pattern(), days, scope, kind, kind,
               event, event, scope, scope, limit + 1, (page - 1) * limit])
     out = []
     for r in rows:
@@ -97,7 +106,7 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
         out.append({"id": r["id"], "event_ids": sorted(r["event_ids"]), "type": r["event_type"], "summary": r["summary"],
                     "happened": r["happened"], "published": r["pub_at"], "first_seen": r["first_observed_at"],
                     "organization": {"id": r["org_id"], "name": r["display_name"], "country": r["country_code"],
-                                     "region": target_region(r["country_code"])},
+                                     "region": target_region(r["country_code"]), "qualified": r["qualified"]},
                     "tender": r["tender"], "evidence": evidence, "sources": sources,
                     "fit": fit_for(r["rules"]), "why": attrs.get("fit"), "language": attrs.get("language"),
                     "summary_en": attrs.get("summary_en"), "summary_pl": attrs.get("summary_pl")})

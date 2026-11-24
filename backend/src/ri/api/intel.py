@@ -15,7 +15,7 @@ from ..audit import audit
 from ..readmodel import coverage_health, story_sources
 from ..db import q1, qa
 from ..jobs.queue import enqueue
-from ..target_market import commercial_sql, target_sql
+from ..target_market import account_workspace_sql, target_sql
 from .auth import principal_dep, require
 
 URL_KEYS = ("Primary source URL", "Primary Source URL", "Secondary Source URL", "Source URL", "Source link", "Signal Source URL", "Supplier evidence URL", "Existing source URL", "Second Signal Source URL", "Third Signal Source URL", "Matched Signal Source URL", "Evidence URL")
@@ -27,10 +27,11 @@ class VerifyIn(BaseModel):
 
 
 class BatchIn(BaseModel):
-    lane: str = Field(default="shortlist", pattern="^(shortlist|signals)$")
+    lane: str = Field(default="shortlist", pattern="^(all|shortlist|signals)$")
     limit: int = Field(default=10, ge=1, le=25)
     focus: str = Field(default="", pattern="^(|finance|other)$")
     target: bool = False
+    workbook: bool = False
     page: int = Field(default=1, ge=1)
     page_size: int = Field(default=20, ge=1, le=100)
     q: str = Field(default="", max_length=120)
@@ -118,8 +119,8 @@ def register(app: FastAPI) -> None:
     def verify_batch(body: BatchIn, request: Request, p: Principal = Depends(require("research.request"))):
         from .lists import prospects_for      # shared ranking
         with tx(request) as conn:
-            limit = body.page_size if body.target else 100
-            items = prospects_for(conn, p, lane=body.lane, q=body.q, limit=limit, focus=body.focus, target=body.target, region=body.region, offset=(body.page - 1) * limit)
+            limit = body.page_size if body.target or body.workbook else 100
+            items = prospects_for(conn, p, lane=body.lane, q=body.q, limit=limit, focus=body.focus, target=body.target, region=body.region, offset=(body.page - 1) * limit, workbook=body.workbook)
             queued = skipped = 0
             for it in items:
                 if queued >= body.limit:
@@ -246,6 +247,8 @@ def register(app: FastAPI) -> None:
     # ------------------------------------------------------------ source library
     @app.get("/api/admin/library")
     def library(request: Request, p: Principal = Depends(require("today.read"))):
+        from ..connections import monitoring_mode
+
         with tx(request) as conn:
             rows = qa(conn,
                 "SELECT s.source_id, s.display_name, s.source_tier, s.source_type, s.source_family, s.provider, s.countries, s.signal_rule_ids, s.collection_method, s.auth_mode, "
@@ -260,7 +263,7 @@ def register(app: FastAPI) -> None:
                 "(SELECT coalesce(sum(cost_usd),0) FROM provider_usage u WHERE u.source_id=s.source_id AND u.period=%s) AS cost_usd_month, "
                 "(SELECT coalesce(sum(units),0) FROM provider_usage u WHERE u.source_id=s.source_id AND u.period=%s) AS units_month "
                 "FROM sources s LEFT JOIN source_health h USING (source_id) ORDER BY s.source_tier, s.source_family, s.display_name", (usage.period_now(), usage.period_now()))
-            return {"items": rows}
+            return {"items": [dict(row, monitoring_mode=monitoring_mode(row)) for row in rows]}
 
 
 def register_pipeline(app: FastAPI) -> None:
@@ -364,6 +367,7 @@ def register_feed(app: FastAPI) -> None:
                           days: int = Query(30, ge=1, le=365), page: int = Query(1, ge=1, le=1000),
                           limit: int = Query(20, ge=1, le=50), kind: str = Query("", pattern="^(|tender|signal)$"),
                           region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
+                          qualification: str = Query("target", pattern="^(target|review|all)$"),
                           p: Principal = Depends(principal_dep)):
         from ..findings import account_leads, findings, rfp_research
 
@@ -376,14 +380,15 @@ def register_feed(app: FastAPI) -> None:
             leads = []
             if organization is not None:
                 where, args = org_scope_sql(p)
-                eligible = commercial_sql() if p.can("research.request") else target_sql()
+                eligible = account_workspace_sql(research=p.can("research.request"))
                 if not q1(conn, f"SELECT o.id FROM organizations o WHERE o.id=%s AND ({where}) AND {eligible}", [organization, *args]):
                     raise HTTPException(404, "not found")
                 leads = account_leads(conn, organization)
             elif scope == "archive" and p.can("research.request"):
                 leads = rfp_research(conn)
             items = findings(conn, p, scope=scope, days=365 if event else days, limit=limit, page=page, kind=kind, region=region,
-                             organization_id=organization, event=event, search=q)
+                             organization_id=organization, event=event, search=q,
+                             qualification="target" if scope == "today" else "all" if organization or event else qualification)
             return {"items": items[:limit], "page": page, "has_more": len(items)>limit, "leads": leads,
                     "coverage": coverage_health(conn, p)}
 
@@ -651,7 +656,7 @@ def register_scan(app: FastAPI) -> None:
                         AND s.status='active' AND s.verification_status='verified'
                         AND (s.expires_at IS NULL OR s.expires_at>now())) AS demand_tier
                     FROM events e WHERE e.subject_org_id=%s AND e.verification_status='verified' AND e.proven
-                    AND NOT e.is_historical_replay AND e.lifecycle_status='active'
+                    AND NOT e.is_historical_replay AND e.lifecycle_status='active' AND e.lane IS DISTINCT FROM 'public'
                     AND coalesce(e.event_at,e.pub_at) >= now() - interval '30 days'
                     ORDER BY demand_tier NULLS LAST, date DESC, e.id LIMIT 5""", (oid,))
                 for finding in recent:

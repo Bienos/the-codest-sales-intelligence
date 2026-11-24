@@ -75,7 +75,7 @@ function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
 export default function LibraryHub() {
   const [sp, setSp] = useSearchParams();
   const requested = sp.get("tab");
-  const tab: Tab = requested === "sources" || requested === "urls" ? requested : "signals";
+  const tab: Tab = requested === "signals" || requested === "urls" ? requested : "sources";
   const q = sp.get("q") ?? "";
   const set = (next: Record<string, string>) => setSp({ tab, ...(q ? { q } : {}), ...next });
   return (

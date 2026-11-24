@@ -15,9 +15,9 @@ import httpx
 from .http import UA
 from .webwatch import RobotsCache
 
-NEWS_PATH = re.compile(r"/(news|newsroom|press|press-releases?|media|media-centre|media-center|insights|stories|blog)(/|$|\?)", re.I)
-CAREERS_PATH = re.compile(r"/(careers?|jobs|join-us|work-with-us|vacancies)(/|$|\?)", re.I)
-PROCUREMENT_PATH = re.compile(r"/(procurement|suppliers?|supplier-portal|tenders?|ausschreibungen|lieferanten|zamowienia|przetargi|dostawcy|upphandling|anskaffelser|udbud)(/|$)", re.I)
+NEWS_PATH = re.compile(r"/(news|newsroom|press|press-releases?|media|media-centre|media-center|presse|pressemitteilungen|medien|medienmitteilungen|biuro-prasowe|aktualnosci|pressrum|pressemeddelelser|insights|stories|blog)(/|$|\?)", re.I)
+CAREERS_PATH = re.compile(r"/(careers?|jobs|join-us|work-with-us|vacancies|karriere|offene-stellen|kariera|oferty-pracy|ledige-stillinger|lediga-jobb)(/|$|\?)", re.I)
+PROCUREMENT_PATH = re.compile(r"/(procurement|suppliers?|supplier-portal|become-a-supplier|supplier-registration|supplying-goods-and-services|tenders?|ausschreibungen|lieferanten|zamowienia|przetargi|dostawcy|upphandling|anskaffelser|udbud)(/|$)", re.I)
 ATS = [("greenhouse", re.compile(r"(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
        ("greenhouse_eu", re.compile(r"(?:boards|job-boards)\.eu\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
        ("lever", re.compile(r"jobs\.lever\.co/([a-z0-9_-]+)", re.I)),
@@ -94,7 +94,8 @@ def _same_site(host: str, base: str) -> bool:
 def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
     p = _Links()
     p.feed(html[:MAX_BYTES])
-    feeds = [urljoin(page_url, f) for f in p.feeds]
+    feeds = [urljoin(page_url, f) for f in p.feeds
+             if not re.search(r"/comments/feed/?$", urlparse(f).path, re.I)]
     news, careers, procurement, ats = [], [], [], []
     for raw in p.links:
         u = urljoin(page_url, raw.strip())
@@ -107,11 +108,11 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
         host = urlparse(u).netloc
         path = urlparse(u).path
         depth = len([x for x in path.split("/") if x and not re.fullmatch(r"[a-z]{2}(-[a-z]{2})?", x, re.I)])   # ignore a language prefix such as /en/
-        last = "/" + ([x for x in path.split("/") if x] or [""])[-1] + "/"
-        if _same_site(host, domain) and depth <= 2:          # section index pages only: the last path segment must itself be the section, not an article
+        last = "/" + ([x for x in path.split("/") if x] or [""])[-1].removesuffix(".html") + "/"
+        if _same_site(host, domain) and depth <= 3:          # section index pages only: the last path segment must itself be the section, not an article
             if NEWS_PATH.search(last):
                 news.append(u.split("#")[0])
-            if CAREERS_PATH.search(last):
+            if CAREERS_PATH.search(last) or (last == "//" and CAREERS_PATH.search("/" + host.split(".")[0] + "/")):
                 careers.append(u.split("#")[0])
             if PROCUREMENT_PATH.search(last):
                 procurement.append(u.split("#")[0])
@@ -251,6 +252,8 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                     if batch.complete_listing:
                         for closed in close_unseen_jobs(conn, ep["provider"], ep["board"], ids, now):   # only after an affirmative full listing
                             res.structured_changes.append(("job", closed, "closed"))
+                else:
+                    raise ValueError("Account endpoint has no supported connector")
             scanned += 1
         except Exception as exc:   # noqa: BLE001 - one bad endpoint must not stop the others
             status, detail = "failed", f"{type(exc).__name__}: {exc}"[:300]

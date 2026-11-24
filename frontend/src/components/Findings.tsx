@@ -10,7 +10,7 @@ type Play = { play_id: string; offers: string[] };
 type Finding = {
   id: string; event_ids: string[]; type: string; summary: string; language?: string;
   summary_en?: string; summary_pl?: string; happened: string;
-  organization: { id: string; name: string; country: string };
+  organization: { id: string; name: string; country: string; qualified?: boolean };
   tender: { title: string; url: string; deadline: string; checked_at: string; notice_id: string; scope?: string | null } | null;
   evidence: Array<Source & { claim: string; claim_id: string; translation?: string | null }>;
   sources: Source[];
@@ -21,7 +21,7 @@ type Lead = {
   id: string; url: string; origin: string; status: string; claimed_text: string | null;
   updated_at: string | null; event_id: string | null;
 };
-type Coverage = { monitored_sources: number; unhealthy: unknown[]; pending_validation_sources: number };
+type Coverage = { monitored_sources: number; unhealthy: unknown[]; pending_validation_sources: number; extraction_waiting_for_credit?: boolean };
 type Result = { items: Finding[]; leads: Lead[]; has_more: boolean; coverage: Coverage };
 
 const WHY: Record<string, string> = {
@@ -51,6 +51,7 @@ export function SourceCoverage({ coverage }: { coverage: Coverage }) {
       {monitored ? tr("Sources reporting successfully: {} of {} monitored.", number(monitored - unhealthy.length), number(monitored))
         : tr("Source monitoring has not started yet.")}
       {pending > 0 && <> {tr("{} still need validation.", number(pending))}</>}
+      {coverage.extraction_waiting_for_credit && <span className="coverage-warning">{tr("New pages are waiting for verification because the provider is out of credit.")}</span>}
     </span>
     <Link to="/library?tab=sources">{tr("View source health")}</Link>
   </div>;
@@ -77,9 +78,12 @@ export function useFindings(query: string) {
 export function FindingCard({ item, onAccount = false }: { item: Finding; onAccount?: boolean }) {
   const language = getLanguage();
   const summary = (language === "pl" ? item.summary_pl : item.summary_en) || item.summary;
+  const hiring = item.type === "engineering_job_opened" || item.type === "contractor_job_opened";
+  const translated = summary !== item.summary;
   const play = item.fit.plays.find(p => WHY[p.play_id]);
   const service = item.why?.service ? SERVICES[item.why.service] : undefined;
   const reason = item.tender ? tr("The notice requests engineering services. Review scope and supplier eligibility before bidding.")
+    : hiring ? tr("Engineering hiring can indicate a need for skills or capacity. Check the team and whether it uses external partners.")
     : play ? tr(WHY[play.play_id])
     : item.why?.level === "strong" && service ? tr("This finding may fit {}. Confirm the workstream and supplier need.", tr(service))
     : tr("Confirm the workstream and whether the company needs an external team.");
@@ -93,10 +97,12 @@ export function FindingCard({ item, onAccount = false }: { item: Finding; onAcco
         <Badge kind={item.tender ? "bad" : "info"}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</Badge>
         {!onAccount && <Link to={`/accounts/${item.organization.id}?finding=${item.id}`}><b>{item.organization.name}</b></Link>}
         <span className="muted">{countryName(item.organization.country)}</span>
+        {item.organization.qualified === false && <Badge kind="warn">{tr("Ownership to check")}</Badge>}
       </div>
       <time className="small muted" dateTime={item.happened}>{fmtDate(item.happened)}</time>
     </div>
     <h3 className="fcard-t">{summary}</h3>
+    {translated && <details className="small finding-details"><summary>{tr("Translated summary · view original")}</summary><p>{item.summary}</p></details>}
     {item.tender && <p className="small"><b>{tr("Deadline")}</b> {deadline} UTC
       <span className="muted"> · {tr("Status checked {}.", fmtDateTime(item.tender.checked_at))}</span></p>}
     {item.tender?.scope && <p className="small"><b>{tr("Scope")}</b> {item.tender.scope}</p>}
@@ -108,6 +114,7 @@ export function FindingCard({ item, onAccount = false }: { item: Finding; onAcco
     <p className="small muted">{item.tender ? tr("The source confirms the notice. Supplier eligibility still needs checking.")
       : tr("The source confirms the reported event. The need for outside help still needs checking.")}</p>
     <p className="small"><b>{tr("Next step")}</b>{" "}{item.tender ? tr("Check how to submit and whether we meet the supplier requirements.")
+      : item.organization.qualified === false ? tr("Confirm company ownership and qualify demand for outside engineering.")
       : tr("Identify the delivery owner and qualify demand for outside engineering.")}</p>
     {item.evidence.length > 0 && <details className="finding-details">
       <summary>{tr("View evidence")}</summary>

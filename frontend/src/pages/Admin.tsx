@@ -144,11 +144,11 @@ function Connections() {
           {rows.map((r: any) => <article key={r.source_id} className={`conn ${r.state}`}>
             <div className="conn-head">
               <div><div className="conn-name">{r.name}</div><div className="conn-meta">{humanize(r.family)}{r.countries?.length ? ` · ${r.countries.join(", ")}` : ""}</div></div>
-              <Badge kind={STATE_KIND[r.state] ?? "info"}>{r.state_label}</Badge>
+              <Badge kind={STATE_KIND[r.state] ?? "info"}>{tr(r.state_label)}</Badge>
             </div>
             <div className="conn-cols">
-              <div><span className="k">{tr("What to do next")}</span>{r.what_to_do}{r.last_error && <div className="small muted">{tr("Last problem:") + " "}{r.last_error}</div>}</div>
-              <div><span className="k">{tr("Where to get it")}</span>{r.where_to_get ?? <span className="muted">{tr("Nothing to obtain")}</span>}</div>
+              <div><span className="k">{tr("What to do next")}</span>{tr(r.what_to_do)}{r.last_error && <div className="small muted">{tr("Last problem:") + " "}{r.last_error}</div>}</div>
+              <div><span className="k">{tr("Where to get it")}</span>{r.where_to_get ? tr(r.where_to_get) : <span className="muted">{tr("Nothing to obtain")}</span>}</div>
             </div>
             <div className="small muted">
               {r.documents ? <>{r.documents.toLocaleString()}{" " + tr("pages read · latest") + " "}{fmtDateTime(r.last_document_at)}</> : tr("Nothing read yet")}
@@ -196,9 +196,11 @@ function ScanTop() {
             <p className="small muted">{account.scan ? <>{tr("Scheduled check ·") + " "}{account.scan.status === "completed" ? tr(({ no_website: "Company website missing", no_sources: "No sources found", all_sources_failed: "All source checks failed", partially_checked: "Some source checks failed" } as Record<string, string>)[account.scan.outcome] ?? (account.scan.result?.endpoints === 0 ? "No sources found" : account.scan.result?.scanned === 0 ? "All source checks failed" : "Scan completed")) : humanize(account.scan.status)} · {fmtDateTime(account.scan.updated_at)}</> : tr("Waiting for the first scheduled check.")}</p>
             {account.scan?.status === "completed" && account.scan?.result && <p className="small">
               {tr("New or changed materials: {}", account.scan.result.documents ?? 0)} · {tr("New findings in this scan: {}", account.scan.result.processed?.events_created ?? 0)}
-              {account.scan.result.error && <> · {account.scan.result.error}</>}
+              {account.scan.result.error && <> · {humanize(account.scan.result.error)}</>}
+              {account.scan.result.processed?.deferred_provider === "provider_billing" && <span className="coverage-warning">{tr("New pages are waiting for verification because the provider is out of credit.")}</span>}
             </p>}
             {account.scan?.last_error && <p className="small">{tr("Last scan error")} · {account.scan.last_error}</p>}
+            {account.endpoints.length > 0 && !account.endpoints.some((source: any) => source.kind === "procurement") && <p className="small muted">{tr("No supplier page found")}</p>}
             {account.endpoints.length === 0 ? <p className="small muted">{tr("No company sources configured.")}</p> :
               <ul className="tight small">{account.endpoints.map((source: any) => <li key={source.url}>
                 <a href={source.url} target="_blank" rel="noreferrer noopener">{source.kind === "procurement" ? tr("Supplier page") : humanize(source.kind)}</a>
@@ -429,10 +431,10 @@ function SubNav({ me, waiting }: { me: AdminUser; waiting: number }) {
   const L = (show: boolean, to: string, label: string, end = false, badge = 0) => show ? <NavLink key={to} to={to} end={end} onClick={() => setExpanded(false)}>{label}{badge > 0 && <span className="tabn">{badge}</span>}</NavLink> : null;
   const groups: [string, (React.ReactNode)[]][] = [
     [tr("Needs a person"), [L(p("approvals.read_own") || p("approvals.read_all"), "/admin/approvals", tr("Approvals"), false, waiting), L(p("identity.manage"), "/admin/identity", tr("Company matches")), L(p("sources.read"), "/admin/verification", tr("Pages being checked"))]],
-    [tr("Is it working?"), [L(p("admin.jobs"), "/admin/pipeline", "Pipeline"), L(p("admin.jobs"), "/admin/jobs", tr("Failed jobs")), L(p("admin.costs"), "/admin/usage", tr("Usage and cost")), L(p("admin.rules"), "/admin/coverage", tr("Are we finding things?")), L(p("admin.rules"), "/admin/quality", tr("Health checks"))]],
-    [tr("Data and sources"), [L(p("sources.read"), "/admin", tr("Sources"), true), L(p("sources.read"), "/admin/connections", tr("Where we read from")), L(p("admin.sources"), "/admin/imports", "Workbooks"), L(p("admin.costs"), "/admin/discovery", tr("Web search")), L(p("admin.rules"), "/admin/deadlines", tr("Regulation deadlines")), L(p("admin.sources"), "/admin/knowledge", tr("Knowledge base"))]],
+    [tr("Monitoring health"), [L(p("admin.jobs"), "/admin/pipeline", tr("Processing pipeline")), L(p("admin.jobs"), "/admin/jobs", tr("Failed jobs")), L(p("admin.costs"), "/admin/usage", tr("Usage and cost")), L(p("admin.rules"), "/admin/coverage", tr("Are we finding things?")), L(p("admin.rules"), "/admin/quality", tr("Health checks"))]],
+    [tr("Sources and imports"), [L(p("sources.read"), "/admin", tr("Sources"), true), L(p("sources.read"), "/admin/connections", tr("Where we read from")), L(p("admin.sources"), "/admin/imports", tr("Workbooks")), L(p("admin.costs"), "/admin/discovery", tr("Web search")), L(p("admin.rules"), "/admin/deadlines", tr("Regulation deadlines")), L(p("admin.sources"), "/admin/knowledge", tr("Knowledge base"))]],
     [tr("Signals"), [L(p("admin.rules"), "/admin/rules", tr("Signal list")), L(p("admin.rules"), "/admin/precision", tr("Which signals work"))]],
-    ["Access", [L(p("admin.users"), "/admin/users", tr("People")), L(p("admin.costs"), "/admin/integrations", tr("Connected services")), L(p("audit.read"), "/admin/audit", tr("Audit log"))]],
+    [tr("Access and integrations"), [L(p("admin.users"), "/admin/users", tr("People")), L(p("admin.costs"), "/admin/integrations", tr("Connected services")), L(p("audit.read"), "/admin/audit", tr("Audit log"))]],
   ];
   return <div><button type="button" className="admin-nav-toggle" aria-expanded={expanded} aria-controls="admin-sections" onClick={() => setExpanded(!expanded)}>{tr("Administration sections")}</button><nav id="admin-sections" className={`subnav${expanded ? " expanded" : ""}`} aria-label={tr("Administration sections")}>{groups.map(([g, items]) => items.some(Boolean) ? <div key={g} className="subnav-g"><div className="subnav-h">{tr(String(g))}</div>{items}</div> : null)}</nav></div>;
 }
@@ -441,7 +443,12 @@ export default function Admin({ me, waiting, refreshApprovals }: { me: AdminUser
   const p = (x: string) => me.permissions.includes(x);
   return (
     <>
-      <div className="page-head"><h1>{tr("Administration")}</h1></div>
+      <div className="page-head"><div><h1>{tr("Administration")}</h1><p className="sub">{tr("Monitor data collection, review issues and manage integrations.")}</p></div></div>
+      <div className="admin-shortcuts">
+        {p("sources.read") && <Link to="/admin/verification"><b>{tr("Pages being checked")}</b><span>{tr("Find stalled checks and open their original sources.")}</span></Link>}
+        {p("admin.rules") && <Link to="/admin/quality"><b>{tr("Health checks")}</b><span>{tr("See whether scheduled work is completing.")}</span></Link>}
+        {p("sources.read") && <Link to="/admin/connections"><b>{tr("Source connections")}</b><span>{tr("See what runs on a schedule and what needs setup.")}</span></Link>}
+      </div>
       <div className="admin-grid">
         <SubNav me={me} waiting={waiting} />
         <div className="admin-main">

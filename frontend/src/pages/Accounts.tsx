@@ -67,7 +67,7 @@ export function Accounts({ me }: { me: { permissions: string[] } }) {
   return (
     <>
       <div className="page-head directory-heading">
-        <div><h1>{tr("Accounts & leads")}</h1><p className="sub">{tr("Privately held banks and financial services companies. Over 500 employees in Europe and the UK, or over 2,000 elsewhere.")}</p></div>
+        <div><h1>{tr("Accounts & leads")}</h1><p className="sub">{view === "leads" ? tr("Find buying signals from the workbooks and open the companies they belong to.") : tr("Privately held banks and financial services companies. Over 500 employees in Europe and the UK, or over 2,000 elsewhere.")}</p></div>
         {research && view !== "leads" && <button className="primary" onClick={() => update({ add: adding ? "" : "1" })}>{adding ? tr("Cancel") : tr("Add a company")}</button>}
       </div>
       {adding && research && view !== "leads" && <AddCompany onClose={() => update({ add: "", name: "" })} />}
@@ -81,7 +81,7 @@ export function Accounts({ me }: { me: { permissions: string[] } }) {
             <input aria-label={view === "leads" ? tr("Search leads") : tr("Search companies")} type="search" maxLength={120} placeholder={view === "leads" ? tr("Company, website or buying signal") : tr("Company, website, sector or country code")} value={q} onChange={(e) => update({ q: e.target.value })} />
           </label>
           <label>{tr("Region")}
-            <select aria-label="Region" value={region} onChange={(e) => update({ region: e.target.value })}>
+            <select aria-label={tr("Region")} value={region} onChange={(e) => update({ region: e.target.value })}>
               <option value="">{tr("All regions")}</option>
               {REGIONS.map(([key, label]) => <option key={key} value={key}>{tr(label)}</option>)}
             </select>
@@ -277,6 +277,7 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
   const load = () => { api(`/api/accounts/${orgId}/contacts-plan`).then(setPlan).catch(() => setPlan(null)); api(`/api/campaigns/${draft.id}/enrolments`).then(setEn).catch(() => undefined); };
   useEffect(load, [draft.id]);
   if (!plan) return null;
+  const ready = en.outbound_enabled === true && en.lemlist_configured === true;
   const unavailable = [
     [plan.needs_verification.length, tr("found but unverified")], [plan.manual_review, tr("need manual review")],
     [plan.no_email, tr("without an email")], [plan.suppressed, tr("opted out")],
@@ -285,12 +286,12 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
   const request = async () => { setErr(null); setMsg(""); try { const r = await post(`/api/campaigns/${draft.id}/enrol`, { person_ids: sel }); setMsg(tr("Approval requested for {} {}. A colleague approves it under Administration, Approvals.{}", r.contacts, r.contacts === 1 ? "contact" : "contacts", r.ownership_checked ? "" : " We could not check who owns this account because it is not linked to Pipedrive yet.")); setSel([]); load(); } catch (e) { setErr(e); } };
   return (
     <div className="card mt-3">
-      <b>{tr("Send through Lemlist")}</b>
-      <p className="small muted mt-1 mb-2">{tr("Only contacts with a checked email address can be used. We build the campaign in Lemlist but do not launch it: a person presses Launch there.") + " "}{en.outbound_enabled ? "" : tr("Sending is switched off for now.")}{en.lemlist_configured ? "" : " Lemlist is not connected yet."}</p>
+      <div className="row spread"><b>{tr("Prepare a Lemlist campaign")}</b>{typeof en.lemlist_configured === "boolean" && <Badge kind={ready ? "ok" : "warn"}>{ready ? tr("Ready for approval") : tr("Lemlist setup required")}</Badge>}</div>
+      <p className="small muted mt-1 mb-2">{tr("Only contacts with a checked email address can be used. We build the campaign in Lemlist but do not launch it: a person presses Launch there.") + " "}{en.outbound_enabled === false && tr("Sending is switched off for now.")}{en.lemlist_configured === false && tr("Lemlist is not connected yet.")}</p>
       {plan.eligible.length === 0 && <p className="small">{tr("No contact here has a checked email address yet.")}</p>}
-      {plan.eligible.map((c: any) => <label key={c.id} className="row small gap-2 mb-1"><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can} /> {c.name}{c.title ? `, ${c.title}` : ""}</label>)}
+      {plan.eligible.map((c: any) => <label key={c.id} className="row small gap-2 mb-1"><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can || !ready} /> {c.name}{c.title ? `, ${c.title}` : ""}</label>)}
       {unavailable.length > 0 && <p className="small muted">{tr("Unavailable for outreach:") + " "}{unavailable.join(" · ")}.</p>}
-      {can && <button className="primary" disabled={sel.length === 0} onClick={request}>{tr("Ask for approval to add") + " "}{sel.length || ""}</button>}
+      {can && <button className="primary" disabled={!ready || sel.length === 0} onClick={request}>{tr("Ask for approval to add") + " "}{sel.length || ""}</button>}
       {msg && <div className="okmsg mt-2" role="status">{tr(msg)}</div>}<Err e={err} />
       {en.items.length > 0 && <div className="table-wrap mt-3" tabIndex={0} role="region" aria-label={tr("Contact · Status · Last activity")}><table><thead><tr><th>{tr("Contact")}</th><th>{tr("Status")}</th><th>{tr("Last activity")}</th></tr></thead><tbody>{en.items.map((x: any) => <tr key={x.id}><td>{x.full_name ?? tr("Contact")}</td><td><Badge kind={x.status === "interested" ? "ok" : x.status === "unsubscribed" || x.status === "bounced" ? "bad" : "info"}>{humanize(x.status)}</Badge></td><td>{x.last_event_at ? fmtDateTime(x.last_event_at) : tr("No reply yet")}</td></tr>)}</tbody></table></div>}
     </div>
@@ -340,7 +341,7 @@ const OWNERSHIP: Record<string, string> = {
   private: "Privately held",
   listed: "Publicly listed",
   state_owned: "State-owned",
-  unknown: "Ownership to check",
+  unknown: "Ownership unconfirmed",
 };
 
 function CompanyProfile({ account, onSave }: { account: any; onSave: (profile: any) => void }) {
@@ -438,38 +439,43 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   });
   const a = d.account;
   const canScan = me.permissions.includes("research.request");
+  const activeSignals = new Set(d.signals.filter((signal: any) => signal.status === "active").map((signal: any) => signal.story_key ?? signal.event_id)).size;
   const makeCampaign = async (role: string) => { try { await post(`/api/accounts/${id}/campaign`, { role: role || null }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const decideCampaign = async (did: string, decision: string) => { try { await post(`/api/campaigns/${did}/decision`, { decision }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const makeBrief = async () => { try { await post(`/api/accounts/${id}/brief`); await loadBriefs(); setTab("Research brief"); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const runScan = async () => {
     setScan({ busy: true, msg: "", err: null });
-    try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? `Reading ${r.website} and searching the web. New findings appear in the archive once we have checked them. Reload this page in a minute.` : "Started. This account has no website on record, so we will only run the web search.", err: null }); }
+    try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? tr("Reading {} and searching the web. Verified findings appear in the archive.", r.website) : tr("Started. This account has no website on record, so we will only run the web search."), err: null }); }
     catch (e) { setScan({ busy: false, msg: "", err: e }); }
   };
   const blank = (v: any) => (v === null || v === undefined || v === "" ? tr("Not known") : v);
   return (
     <>
-      <p className="small mt-0 mb-2"><Link to="/accounts">{tr("Accounts")}</Link> / {a.display_name}</p>
-      <div className="row spread"><h1 className="m-0 title-sm">{a.display_name}</h1><div className="row">
-        {(briefs.length > 0 || canScan) && <button className="primary" onClick={briefs.length ? () => setTab("Research brief") : makeBrief}>{briefs.length ? tr("Open brief") : tr("Write research brief")}</button>}
-        {canScan && <button disabled={scan.busy} onClick={runScan}>{tr("Check for news")}</button>}
-      </div></div>
-      {scan.msg && <div className="okmsg mt-2 mb-2" role="status">{scan.msg}</div>}<Err e={scan.err} />
-      <div className="card account-facts">
-        <dl>
-          <div><dt>{tr("Sector")}</dt><dd>{a.segment || tr("Sector unknown")}</dd></div>
-          <div><dt>{tr("Headquarters")}</dt><dd>{countryName(a.country_code) || tr("Country unknown")}</dd></div>
+      <div className="account-profile">
+        <p className="account-breadcrumb small"><Link to="/accounts">{tr("Accounts & leads")}</Link></p>
+        <div className="row spread start">
+          <div>
+            <h1 className="title-sm">{a.display_name}</h1>
+            <p className="small">{[a.segment, countryName(a.country_code)].filter(Boolean).join(" · ")}</p>
+            <div className="row">
+              {a.in_master_list && <Badge>{tr("From your workbooks")}</Badge>}
+              {a.canonical_domain && <a href={`https://${a.canonical_domain}`} target="_blank" rel="noreferrer noopener">{a.canonical_domain} ↗</a>}
+            </div>
+          </div>
+          <div className="row account-actions">
+            {canScan && <button className="primary" disabled={scan.busy} onClick={runScan}>{tr("Check for news")}</button>}
+            {(briefs.length > 0 || canScan) && <button onClick={briefs.length ? () => setTab("Research brief") : makeBrief}>{briefs.length ? tr("Open brief") : tr("Write research brief")}</button>}
+          </div>
+        </div>
+        <dl className="account-profile-facts">
           <div><dt>{tr("Size")}</dt><dd>{staffCount(a.employees_estimate, a.employees_uncertain)}</dd></div>
           <div><dt>{tr("Ownership")}</dt><dd>{tr(OWNERSHIP[a.company_ownership] ?? OWNERSHIP.unknown)}{a.company_profile_source_url && <> · <a href={a.company_profile_source_url} target="_blank" rel="noreferrer noopener">{tr("View source ↗")}</a></>}</dd></div>
+          <div><dt>{tr("Current signals")}</dt><dd>{number(activeSignals)}</dd></div>
+          <div><dt>{tr("Monitored company pages")}</dt><dd>{number(eps.length)}</dd></div>
         </dl>
-        <div className="row spread">
-          <div className="row small">
-            {a.canonical_domain && <a href={`https://${a.canonical_domain}`} target="_blank" rel="noreferrer noopener">{a.canonical_domain} ↗</a>}
-            <span className="muted">{d.ownership_verified ? tr("Pipedrive owner confirmed") : tr("Pipedrive owner unknown")}</span>
-          </div>
-          {canScan && a.entity_type !== "public_body" && <button aria-expanded={editing} onClick={() => setEditing(!editing)}>{editing ? tr("Close company details") : tr("Edit company details")}</button>}
-        </div>
       </div>
+      {scan.msg && <div className="okmsg mt-2 mb-2" role="status">{scan.msg}</div>}<Err e={scan.err} />
+      {canScan && a.entity_type !== "public_body" && <p className="small"><button className="ghost" aria-expanded={editing} onClick={() => setEditing(!editing)}>{editing ? tr("Close company details") : tr("Edit company details")}</button></p>}
       {editing && canScan && a.entity_type !== "public_body" && <CompanyProfile account={a} onSave={(profile) => setD({ ...d, account: { ...a, ...profile } })} />}
       {d.score && <div className="card"><div className="row spread"><div><span className="eyebrow" title={tr("Adds up this account's recent checked signals. Different kinds count for more than repeats, and each signal fades as it ages. Hot is 9 or more, warm 4 or more. It is not a probability.")}>{tr("Signal score")}</span><div className="kpi-n mt-1 mb-1">{d.score.stopped ? tr("On hold") : d.score.score}<span className="kpi-u"> {tr(BAND[d.score.band][1])}</span></div></div>
         <div className="small measure-sm">{d.score.stopped ? "Something we found says not to pursue this account now, so the score is held at zero until it expires." : `${d.score.signal_count} ${d.score.signal_count === 1 ? "signal" : "signals"} (${d.score.groups.map(groupName).join(", ")}). Recent signals carry more weight. A mix of signals raises the score more than repeated signals of the same kind.`}
@@ -485,6 +491,10 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         }
       }} label={tr("Account sections")}>
       {tab === "Overview" && (<>
+        <div className="account-shortcuts">
+          <button onClick={() => setTab("Assigned leads")}>{tr("Assigned leads")} →</button>
+          <button onClick={() => setTab("Findings timeline")}>{tr("Findings timeline")} →</button>
+        </div>
         <H>{tr("Strongest current buying signal")}</H>
         <div className="card"><SignalSummary signal={d.buying_signal} detailed /></div>
         <H>{tr("Opportunities")}</H>

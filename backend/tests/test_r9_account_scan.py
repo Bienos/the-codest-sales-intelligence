@@ -31,6 +31,23 @@ def site(request: httpx.Request) -> httpx.Response:
     return httpx.Response(404)
 
 
+def test_parse_local_company_sections_and_ignore_comment_feeds():
+    html = """
+        <link rel="alternate" type="application/rss+xml" href="/comments/feed/">
+        <a href="/de/ueber-uns/medien.html">Medien</a>
+        <a href="/de/ueber-uns/jobs/offene-stellen.html">Stellen</a>
+        <a href="https://karriere.bank.example/">Karriere</a>
+        <a href="/en/supplying-goods-and-services/become-a-supplier/">Become a supplier</a>
+    """
+    result = parse_page(html, "https://bank.example/", "bank.example")
+    assert result["feeds"] == []
+    assert result["news"] == ["https://bank.example/de/ueber-uns/medien.html"]
+    assert result["careers"] == [
+        "https://bank.example/de/ueber-uns/jobs/offene-stellen.html", "https://karriere.bank.example/",
+    ]
+    assert result["procurement"] == ["https://bank.example/en/supplying-goods-and-services/become-a-supplier/"]
+
+
 def test_parse_page_finds_feed_news_careers_and_job_board_but_not_other_sites():
     f = parse_page(HOME + CAREERS, "https://bank.example/", "bank.example")
     assert f["procurement"] == ["https://bank.example/en/suppliers"]
