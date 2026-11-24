@@ -402,8 +402,11 @@ def test_seed_refreshes_shipped_addresses_but_never_an_operators_own(conn):
     seed_registry(conn)
     conn.execute("update sources set config = jsonb_set(jsonb_set(config,'{url}','\"https://old.invalid/404\"'),'{url_basis}','\"derived earlier\"') where source_id='vendor-thoughtmachine-news'")
     conn.execute("update sources set config = jsonb_set(jsonb_set(config,'{url}','\"https://www.fca.org.uk/mine\"'),'{url_basis}','\"set by admin@x\"') where source_id='regulator-fca'")
+    conn.execute("update sources set status='active', config=config || %s::jsonb where source_id='vendor-thoughtmachine-news'", (jb({"validation": {"ok": True}}),))
     conn.commit()
     seed_registry(conn)
+    refreshed = conn.execute("select status, config from sources where source_id='vendor-thoughtmachine-news'").fetchone()
+    assert refreshed["status"] == "paused" and "validation" not in refreshed["config"]
     q = lambda sid: conn.execute("select config->>'url' u from sources where source_id=%s", (sid,)).fetchone()["u"]  # noqa: E731
     assert q("vendor-thoughtmachine-news") == "https://www.thoughtmachine.net/press" and q("regulator-fca") == "https://www.fca.org.uk/mine"
 
