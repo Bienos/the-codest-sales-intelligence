@@ -74,6 +74,15 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
             assert [(r["url"], r["status"]) for r in assigned] == [("https://example.com/news/2", "not_checked")]
             review = client.get("/api/leads?scope=review").json()["items"]
             assert [r["name"] for r in review] == ["Example Unknown Ownership Bank"]
+            review_today = client.get("/api/review-companies")
+            assert review_today.status_code == 200
+            assert review_today.json()["total"] == 1
+            candidate = review_today.json()["items"][0]
+            assert candidate["name"] == "Example Unknown Ownership Bank"
+            assert candidate["region"] == "nordics"
+            assert candidate["signal"]["summary"] == "Replacing its payments platform"
+            assert candidate["signal"]["verified"] is False
+            assert candidate["signal"]["url"].startswith("https://example.com/news/")
             overview = client.get("/api/overview?target=true").json()
             assert overview["imported_accounts"] == len(records)
             assert overview["accounts"] == 6

@@ -249,7 +249,7 @@ def register(app: FastAPI) -> None:
         with tx(request) as conn:
             rows = qa(conn,
                 "SELECT s.source_id, s.display_name, s.source_tier, s.source_type, s.source_family, s.provider, s.countries, s.signal_rule_ids, s.collection_method, s.auth_mode, "
-                "s.retention_policy, s.licence_notes, s.poll_interval_s, s.status, s.cost_profile, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, h.state AS health, h.last_success_at, h.last_attempt_at, h.consecutive_failures, "
+                "s.retention_policy, s.licence_notes, s.poll_interval_s, s.status, s.cost_profile, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, h.state AS health, h.last_success_at, h.last_attempt_at, h.consecutive_failures, h.error_class, h.detail AS health_detail, "
                 "(SELECT count(*) FROM source_documents d WHERE d.source_id=s.source_id) AS documents, "
                 "(SELECT count(DISTINCT ed.event_id) FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id WHERE d.source_id=s.source_id) AS events, "
                 "(SELECT count(DISTINCT e.id) FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id "
@@ -656,11 +656,13 @@ def register_scan(app: FastAPI) -> None:
                     ORDER BY demand_tier NULLS LAST, date DESC, e.id LIMIT 5""", (oid,))
                 for finding in recent:
                     finding["sources"] = story_sources(conn, [finding["event_id"]])
-                scan = q1(conn, """SELECT status, updated_at, result->>'status' AS outcome
+                scan = q1(conn, """SELECT status, updated_at, result->>'status' AS outcome, result, last_error
                     FROM jobs WHERE kind='account_scan' AND correlation_id='finance-pilot'
                       AND payload->>'organization_id'=%s
                     ORDER BY created_at DESC LIMIT 1""", (str(oid),))
+                from ..target_market import target_region
                 items.append({"id": str(oid), "name": account["display_name"], "segment": account["segment"],
+                              "region": target_region(account["country_code"]),
                               "endpoints": endpoints, "recent": recent, "scan": scan, "confirmed": account["confirmed"]})
         return {"items": items}
 

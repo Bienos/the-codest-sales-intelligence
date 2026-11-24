@@ -11,8 +11,8 @@ type Finding = {
   id: string; event_ids: string[]; type: string; summary: string; language?: string;
   summary_en?: string; summary_pl?: string; happened: string;
   organization: { id: string; name: string; country: string };
-  tender: { title: string; url: string; deadline: string; checked_at: string; notice_id: string } | null;
-  evidence: Array<Source & { claim: string; claim_id: string }>;
+  tender: { title: string; url: string; deadline: string; checked_at: string; notice_id: string; scope?: string | null } | null;
+  evidence: Array<Source & { claim: string; claim_id: string; translation?: string | null }>;
   sources: Source[];
   fit: { plays: Play[] };
   why?: { level: string; service: string; reason: string };
@@ -99,17 +99,22 @@ export function FindingCard({ item, onAccount = false }: { item: Finding; onAcco
     <h3 className="fcard-t">{summary}</h3>
     {item.tender && <p className="small"><b>{tr("Deadline")}</b> {deadline} UTC
       <span className="muted"> · {tr("Status checked {}.", fmtDateTime(item.tender.checked_at))}</span></p>}
+    {item.tender?.scope && <p className="small"><b>{tr("Scope")}</b> {item.tender.scope}</p>}
     <p className="finding-fit"><b>{tr("Why it fits The Codest")}</b><br />{reason}</p>
     <div className="row spread">
       {source && <a href={source.url} target="_blank" rel="noreferrer noopener">{tr("Original source")} ↗</a>}
       {onAccount && <Link to={`/feed?finding=${item.id}`}>{tr("Open in findings archive")}</Link>}
     </div>
+    <p className="small muted">{item.tender ? tr("The source confirms the notice. Supplier eligibility still needs checking.")
+      : tr("The source confirms the reported event. The need for outside help still needs checking.")}</p>
     <p className="small"><b>{tr("Next step")}</b>{" "}{item.tender ? tr("Check how to submit and whether we meet the supplier requirements.")
       : tr("Identify the delivery owner and qualify demand for outside engineering.")}</p>
     {item.evidence.length > 0 && <details className="finding-details">
       <summary>{tr("View evidence")}</summary>
       {item.evidence.map(e => <blockquote key={e.claim_id} className="fquote">
-        “{e.claim}” <cite><a href={e.url} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a></cite>
+        <span>{tr("Original wording")}: “{e.claim}”</span>
+        {language === "en" && e.translation && <span className="trans">{tr("English translation")}: “{e.translation}”</span>}
+        <cite><a href={e.url} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a></cite>
       </blockquote>)}
     </details>}
   </article>;

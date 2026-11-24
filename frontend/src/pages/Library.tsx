@@ -44,14 +44,14 @@ export default function Library({ render, query, canSetup = true }: { render: (s
               </div>
               <dl className="lib-facts">
                 <dt>{tr("How")}</dt><dd>{tr(METHOD[s.collection_method] ?? humanize(s.collection_method))}{cadence(s.poll_interval_s)}</dd>
-                <dt>Monitoring</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? tr("Waiting for first successful check") : tr(HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health))}</Badge>{s.last_success_at && <span className="small muted">{" " + tr("last worked") + " "}{fmtDateTime(s.last_success_at)}</span>}</dd>
+                <dt>{tr("Monitoring")}</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? tr("Waiting for first successful check") : tr(HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health))}</Badge>{s.last_success_at && <span className="small muted">{" " + tr("last worked") + " "}{fmtDateTime(s.last_success_at)}</span>}</dd>
+                {s.health_detail && <><dt>{tr("Last error")}</dt><dd className="small">{s.health_detail}</dd></>}
                 <dt>{tr("Latest test")}</dt><dd>{s.validation ? <>
                   <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? tr("Test passed") : tr("Test failed")}</Badge>
                   <span className="small muted"> {fmtDateTime(s.validation.at)}</span>
                   {!s.validation.ok && s.validation.detail && <div className="small">{s.validation.detail}</div>}
                 </> : <span className="muted">{tr("No test on record")}</span>}</dd>
                 {s.last_attempt_at && <><dt>{tr("Last attempt")}</dt><dd className="small">{fmtDateTime(s.last_attempt_at)}</dd></>}
-                <dt>{tr("Last 30 days")}</dt><dd>{number(s.recent_buying_findings ?? 0)}{" " + tr("verified findings with current buying signals")}</dd>
                 <dt>{tr("Feeds signals")}</dt><dd>{s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill" title={r}>{signals[r] ?? r}</span>) : <span className="muted">{tr("None yet")}</span>}</dd>
                 <dt>{tr("So far")}</dt><dd>{s.documents}{" " + tr("pages read,") + " "}{s.events}{" " + tr("findings")}{Number(s.cost_usd_month) > 0 && <span className="small muted"> · ${Number(s.cost_usd_month).toFixed(3)}{" " + tr("this month")}</span>}</dd>
                 <dt>{tr("Last 30 days")}</dt><dd>{number(s.recent_buying_findings ?? 0)}{" " + tr("verified findings with current buying signals")}</dd>

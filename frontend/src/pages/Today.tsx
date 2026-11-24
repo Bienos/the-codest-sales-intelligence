@@ -1,3 +1,4 @@
+import { regionName } from "./targetMarket";
 import { FindingCard, FindingsResult, SourceCoverage, useFindings } from "../components/Findings";
 import { getLanguage, number, tr } from "../locale";
 import { useEffect, useState } from "react";
@@ -116,7 +117,38 @@ function Group({ g, reload }: { g: any[]; reload: () => void }) {
   );
 }
 
-export default function Today() {
+function ReviewCompanies() {
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const request = new AbortController();
+    setError(null);
+    api("/api/review-companies", { signal: request.signal }).then(setData).catch(e => {
+      if (!request.signal.aborted) setError(e);
+    });
+    return () => request.abort();
+  }, [revision]);
+  if (error) return <Err e={error} onRetry={() => setRevision(n => n + 1)} />;
+  if (!data || !data.total) return null;
+  return <section className="mt-4" aria-labelledby="review-companies-title">
+    <div className="row spread finding-heading"><h2 id="review-companies-title">{tr("Companies awaiting ownership verification")}</h2>
+      <Link to="/accounts?view=review">{tr("View all {} companies", number(data.total))}</Link></div>
+    <p className="small muted">{tr("These companies meet the sector, location and size criteria. Their private ownership needs a source.")}</p>
+    {data.items.map((company: any) => <article className="card" key={company.id}>
+      <div className="row spread"><Link to={`/accounts/${company.id}?profile=1`}><b>{company.name}</b></Link>
+        <Badge kind="warn">{tr("Ownership to check")}</Badge></div>
+      <div className="small muted">{regionName(company.region)}</div>
+      {company.signal ? <p className="small">{company.signal.summary || tr("Source available")}
+        {" · "}<a href={company.signal.url} target="_blank" rel="noopener noreferrer">{tr("Original source")} ↗</a>
+        {" · "}{company.signal.verified ? tr("Verified signal") : tr("Workbook lead, not yet verified")}</p>
+        : <p className="small muted">{tr("No source-backed signal yet")}</p>}
+      <div className="small">{tr("Private ownership has not been confirmed with a source.")}</div>
+    </article>)}
+  </section>;
+}
+
+export default function Today({ canReview }: { canReview: boolean }) {
   const [d, setD] = useState<any>(null);
   const findings = useFindings("scope=today&days=14&limit=12");
   const [err, setErr] = useState<unknown>(null);
@@ -150,6 +182,7 @@ export default function Today() {
           </FindingsResult>
           {findings.data && <SourceCoverage coverage={findings.data.coverage} />}
         </section>
+        {canReview && <ReviewCompanies />}
         {err ? <Err e={err} onRetry={load} /> : null}
         {d?.count > 0 && <details className="today-work">
           <summary>{tr("Sales opportunities to review")} · {number(d.count)}</summary>

@@ -54,7 +54,7 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
                         ELSE {STORY_KEY_SQL} END AS story_key,
                    CASE WHEN ({_OPEN}) IS TRUE THEN jsonb_build_object(
                         'deadline',n.deadline_at,'checked_at',n.last_status_check_at,
-                        'url',n.official_url,'notice_id',n.notice_id,'status',n.status,'title',n.title) END AS tender,
+                        'url',n.official_url,'notice_id',n.notice_id,'status',n.status,'title',n.title,'scope',n.scope) END AS tender,
                    ARRAY(SELECT DISTINCT s.rule_id FROM signals s WHERE {_SIGNAL} ORDER BY s.rule_id) AS rules
             FROM events e JOIN organizations o ON o.id=e.subject_org_id
             LEFT JOIN LATERAL ({_NOTICE}) n ON e.event_type LIKE 'procurement_%%'
@@ -94,7 +94,7 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
         if not evidence and not sources and not r["tender"]:
             continue
         attrs = r["attrs"] or {}
-        out.append({"id": r["id"], "event_ids": r["event_ids"], "type": r["event_type"], "summary": r["summary"],
+        out.append({"id": r["id"], "event_ids": sorted(r["event_ids"]), "type": r["event_type"], "summary": r["summary"],
                     "happened": r["happened"], "published": r["pub_at"], "first_seen": r["first_observed_at"],
                     "organization": {"id": r["org_id"], "name": r["display_name"], "country": r["country_code"],
                                      "region": target_region(r["country_code"])},

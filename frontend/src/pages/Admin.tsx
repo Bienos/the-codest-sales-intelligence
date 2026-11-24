@@ -1,3 +1,4 @@
+import { regionName } from "./targetMarket";
 import { tr } from "../locale";
 import { useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes } from "react-router-dom";
@@ -181,10 +182,23 @@ function ScanTop() {
           <div className="row spread"><h2 className="h-sub">{tr("Finance monitoring pilot")}</h2><button onClick={refresh}>{tr("Refresh results")}</button></div>
           <p className="small muted">{tr("Shows checks of company pages and up to five verified findings per account from the last 30 days, with buying signals listed first.")}</p>
           {d.items.length === 0 && <p className="small muted">{tr("No companies match the finance pilot criteria.")}</p>}
+          {d.items.length > 0 && <div className="card">
+            <b>{tr("Pilot coverage by region")}</b>
+            <ul className="tight small">{Array.from(new Set<string>(d.items.map((item: any) => item.region))).map(region => {
+              const companies = d.items.filter((item: any) => item.region === region);
+              const withoutWorkingSources = companies.filter((item: any) => !item.endpoints.some((source: any) => source.last_status === "ok")).length;
+              return <li key={region}>{regionName(region)} · {tr("{} companies", companies.length)} · {tr("{} without a successful source check", withoutWorkingSources)}</li>;
+            })}</ul>
+          </div>}
           {d.items.map((account: any) => <details key={account.id} className="card">
             <summary>{account.name} · {account.confirmed ? tr("Target account") : tr("Ownership to check")} · {account.endpoints.length}{" " + tr("company sources ·") + " "}{account.recent.length === 5 ? "5+" : account.recent.length}{" " + tr("recent findings")}</summary>
             <p className="small"><Link to={`/accounts/${account.id}`}>{tr("Open company")}</Link></p>
             <p className="small muted">{account.scan ? <>{tr("Scheduled check ·") + " "}{account.scan.outcome === "no_website" ? tr("Company website missing") : humanize(account.scan.status)} · {fmtDateTime(account.scan.updated_at)}</> : tr("Waiting for the first scheduled check.")}</p>
+            {account.scan?.status === "completed" && account.scan?.result && <p className="small">
+              {tr("New or changed materials: {}", account.scan.result.documents ?? 0)} · {tr("New findings in this scan: {}", account.scan.result.processed?.events_created ?? 0)}
+              {account.scan.result.error && <> · {account.scan.result.error}</>}
+            </p>}
+            {account.scan?.last_error && <p className="small">{tr("Last scan error")} · {account.scan.last_error}</p>}
             {account.endpoints.length === 0 ? <p className="small muted">{tr("No company sources configured.")}</p> :
               <ul className="tight small">{account.endpoints.map((source: any) => <li key={source.url}>
                 <a href={source.url} target="_blank" rel="noreferrer noopener">{source.kind === "procurement" ? tr("Supplier page") : humanize(source.kind)}</a>

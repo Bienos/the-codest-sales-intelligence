@@ -134,6 +134,31 @@ def register_leads(app: FastAPI) -> None:
         return {"items": items, "total": total, "page": page, "size": size, "facets": _facets(_filter(allrows, region="", icp="", segment="", band="", origin="", signal_days=0, shortlist=False, public=public, lane=lane, focus=focus)),
                 "regions": [{"key": k, "label": l} for k, l in (TARGET_REGIONS if scope else [(k, l) for k, l, _ in REGIONS])], "origins": ORIGIN_LABEL}
 
+    @app.get("/api/review-companies")
+    def review_companies(request: Request, p: Principal = Depends(require("research.request"))):
+        from .intel import org_urls
+
+        with tx(request) as conn:
+            rows = _filter(_rows(conn, p, "", "review"), region="", icp="", segment="", band="", origin="",
+                           signal_days=0, shortlist=False, public=False, lane="")
+            rows.sort(key=lambda row: (row["last_signal_at"] is None,
+                                      -(row["last_signal_at"].timestamp() if row["last_signal_at"] else 0),
+                                      row["name"].lower()))
+            items = rows[:10]
+            signals = leading_signals(conn, [row["id"] for row in items], commercial_only=True)
+            result = []
+            for row in items:
+                signal = signals.get(row["id"])
+                if signal:
+                    evidence = {"summary": signal["summary"], "url": signal["source_url"], "verified": True}
+                else:
+                    links = org_urls(conn, row["id"])
+                    url, claim = next(iter(links.items()), (None, None))
+                    evidence = {"summary": claim["claimed_text"], "url": url, "verified": False} if claim else None
+                result.append({"id": row["id"], "name": row["name"], "region": row["region"],
+                               "country": row["country_code"], "signal": evidence})
+            return {"items": result, "total": len(rows)}
+
     @app.get("/api/leads.csv")
     def leads_csv(request: Request, q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"], segment: str = Params["segment"], band: str = Params["band"],
                   origin: str = Params["origin"], signal_days: int = Params["signal_days"], shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"],
