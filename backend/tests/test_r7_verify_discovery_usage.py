@@ -596,7 +596,8 @@ def test_feed_groups_same_buyer_and_origin_and_keeps_source_links(api, conn):
 
 def test_finance_source_pilot_reports_only_eligible_priority_accounts(api, conn):
     c, h, w = api
-    conn.execute("UPDATE organizations SET segment='Insurance' WHERE id=%s", (w["org"],))
+    conn.execute("""UPDATE organizations SET segment='Insurance', country_code='GB', employees_estimate=700,
+                    canonical_domain='example-bank.invalid' WHERE id=%s""", (w["org"],))
     conn.execute(
         """INSERT INTO account_endpoints(organization_id, kind, url, last_scanned_at, last_status, docs_seen)
            VALUES (%s,'newsroom','https://example-bank.invalid/news',now(),'ok',3)""",

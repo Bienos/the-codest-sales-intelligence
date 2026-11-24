@@ -33,7 +33,7 @@ def run_discovery(conn: Conn, exa: ExaClient, *, max_searches: int, max_new_requ
     est = est_cost if est_cost is not None else DEFAULT_EST
     due = qa(conn,
              "SELECT * FROM discovery_plans WHERE enabled AND (%s::text[] IS NULL OR plan_id = ANY(%s)) AND (%s::text[] IS NOT NULL OR theme <> 'account_watch') AND "
-             "(%s::text[] IS NOT NULL OR last_run_at IS NULL OR last_run_at < %s) ORDER BY last_run_at NULLS FIRST, plan_id LIMIT %s",
+             "(%s::text[] IS NOT NULL OR last_run_at IS NULL OR last_run_at < %s) ORDER BY last_run_at NULLS FIRST, (theme='private-rfp') DESC, plan_id LIMIT %s",
              (plan_ids, plan_ids, plan_ids, plan_ids, now - timedelta(days=interval_days), max_searches))
     out: dict[str, Any] = {"searches": 0, "results": 0, "requests_created": 0, "cost_usd": 0.0, "stopped": None}
     for p in due:

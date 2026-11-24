@@ -66,3 +66,15 @@ themes:
     rule: PRG-06
     recency_days: 30
     query: "banks prepare IT changes for DORA OR PSD3 OR instant payments regulation deadline {geo}"
+
+  - id: private-rfp
+    rule: SRC-01
+    recency_days: 14
+    query: "bank insurer payments fintech supplier portal open RFP invitation to tender software engineering development payments integration QA cloud migration {geo}"
+    local:
+      DACH: "Bank Versicherung Ausschreibung Dienstleister Softwareentwicklung IT Integration Vergabe Angebotsfrist"
+      Nordics: "bank försäkring förfrågningsunderlag upphandling mjukvaruutveckling IT konsult anbud"
+      Poland: "bank ubezpieczyciel otwarte zapytanie ofertowe przetarg usługi programistyczne integracja dostawca termin"
+    extra_geographies:
+      Rest of Europe: "France Netherlands Belgium Ireland Spain Italy"
+      International: "large private banks and insurers outside Europe"

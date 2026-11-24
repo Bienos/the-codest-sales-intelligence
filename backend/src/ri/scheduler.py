@@ -74,16 +74,16 @@ def schedule_watchlist(conn: Conn, now: datetime | None = None, limit: int = 25,
 
 
 def schedule_finance_pilot(conn: Conn, now: datetime) -> int:
-    """Check the top finance accounts once per week through the first-party scanner."""
-    from .discovery.plans import priority_accounts
+    """Check the finance pilot accounts daily so open invitations stay current."""
+    from .discovery.plans import finance_pilot_accounts
 
-    week = now.strftime("%G-W%V")
+    day = now.date().isoformat()
     queued = 0
-    for account in priority_accounts(conn, 10, finance_only=True):
+    for account in finance_pilot_accounts(conn):
         oid = str(account["organization_id"])
         _, created = enqueue(
             conn, "account_scan", {"organization_id": oid},
-            idempotency_key=f"finance-pilot:{oid}:{week}", correlation_id="finance-pilot", max_attempts=2,
+            idempotency_key=f"finance-pilot:{oid}:{day}", correlation_id="finance-pilot", max_attempts=2,
         )
         queued += int(created)
     return queued

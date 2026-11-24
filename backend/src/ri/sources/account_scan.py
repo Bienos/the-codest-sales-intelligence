@@ -17,6 +17,7 @@ from .webwatch import RobotsCache
 
 NEWS_PATH = re.compile(r"/(news|newsroom|press|press-releases?|media|media-centre|media-center|insights|stories|blog)(/|$|\?)", re.I)
 CAREERS_PATH = re.compile(r"/(careers?|jobs|join-us|work-with-us|vacancies)(/|$|\?)", re.I)
+PROCUREMENT_PATH = re.compile(r"/(procurement|suppliers?|supplier-portal|tenders?|ausschreibungen|lieferanten|zamowienia|przetargi|dostawcy|upphandling|anskaffelser|udbud)(/|$)", re.I)
 ATS = [("greenhouse", re.compile(r"(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
        ("greenhouse_eu", re.compile(r"(?:boards|job-boards)\.eu\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9_-]+)", re.I)),
        ("lever", re.compile(r"jobs\.lever\.co/([a-z0-9_-]+)", re.I)),
@@ -94,7 +95,7 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
     p = _Links()
     p.feed(html[:MAX_BYTES])
     feeds = [urljoin(page_url, f) for f in p.feeds]
-    news, careers, ats = [], [], []
+    news, careers, procurement, ats = [], [], [], []
     for raw in p.links:
         u = urljoin(page_url, raw.strip())
         if not u.startswith("http"):
@@ -112,8 +113,10 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
                 news.append(u.split("#")[0])
             if CAREERS_PATH.search(last):
                 careers.append(u.split("#")[0])
+            if PROCUREMENT_PATH.search(last):
+                procurement.append(u.split("#")[0])
     dedupe = lambda xs: list(dict.fromkeys(xs))   # noqa: E731
-    return {"feeds": dedupe(feeds), "news": dedupe(news), "careers": dedupe(careers), "ats": dedupe(ats)}
+    return {"feeds": dedupe(feeds), "news": dedupe(news), "careers": dedupe(careers), "procurement": dedupe(procurement), "ats": dedupe(ats)}
 
 
 async def _get(client: httpx.AsyncClient, robots: RobotsCache, url: str) -> str | None:
@@ -167,6 +170,8 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
         eps.append({"kind": "feed", "url": u, "provider": None, "board": None})
     for u in news[:2]:
         eps.append({"kind": "newsroom", "url": u, "provider": None, "board": None})
+    for u in found["procurement"][:2]:
+        eps.append({"kind": "procurement", "url": u, "provider": None, "board": None})
     for u in careers[:1]:
         eps.append({"kind": "careers", "url": u, "provider": None, "board": None})
     for prov, board in list(dict.fromkeys(ats))[:3]:
@@ -192,7 +197,9 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
         return {"status": "no_website", "error": f"{org['display_name']} has no website recorded, so there is nothing to scan"}
     existing = qa(conn, "SELECT * FROM account_endpoints WHERE organization_id=%s", (org_id,))
     notes: list[str] = []
-    if force_discover or not existing:
+    if force_discover or not existing or not q1(
+        conn, "SELECT 1 FROM account_source_coverage WHERE organization_id=%s AND source_family='procurement'", (org_id,)
+    ):
         d = _run(discover(client, org["canonical_domain"], org_name=org["display_name"]))
         notes += d["notes"]
         for e in d["endpoints"]:
@@ -209,7 +216,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
         status, detail, seen = "ok", None, 0
         try:
             with conn.transaction():
-                if ep["kind"] in ("feed", "newsroom", "careers"):
+                if ep["kind"] in ("feed", "newsroom", "careers", "procurement"):
                     sid = "corporate-ir-newsrooms"
                     con = FeedConnector(client, ep["url"], source_id=sid, robots=robots) if ep["kind"] == "feed" else PageWatchConnector(client, ep["url"], source_id=sid, robots=robots)
                     batch = _run(con.fetch(None, 30))
@@ -217,6 +224,14 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                         d = con.canonicalize(item)
                         doc_id, st = upsert_document(conn, sid, d, retention.get(sid) or "excerpt")
                         seen += 1
+                        if ep["kind"] == "procurement":
+                            # Recertify an unchanged notice from the exact same bytes.
+                            # New content must pass extraction again before it can stay open.
+                            conn.execute("""UPDATE procurement_notices
+                                SET last_status_check_at=CASE WHEN document_id=%s THEN %s ELSE last_status_check_at END,
+                                    status=CASE WHEN document_id=%s THEN status ELSE 'unknown' END
+                                WHERE buyer_org_id=%s AND official_url=%s AND source_id=%s AND status IN ('open','amended')""",
+                                (doc_id, now, doc_id, org_id, ep["url"], sid))
                         if st == "new":
                             res.new_doc_ids.append(doc_id)
                         elif st == "changed":
@@ -239,9 +254,13 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
             scanned += 1
         except Exception as exc:   # noqa: BLE001 - one bad endpoint must not stop the others
             status, detail = "failed", f"{type(exc).__name__}: {exc}"[:300]
+            if ep["kind"] == "procurement":
+                conn.execute("""UPDATE procurement_notices SET last_status_check_at=NULL
+                    WHERE buyer_org_id=%s AND official_url=%s AND source_id='corporate-ir-newsrooms'""",
+                    (org_id, ep["url"]))
         conn.execute("UPDATE account_endpoints SET last_scanned_at=%s, last_status=%s, last_detail=%s, docs_seen=%s WHERE id=%s", (now, status, detail, seen, ep["id"]))
         conn.commit()
-    for fam, kinds in (("newsroom", ("feed", "newsroom")), ("jobs", ("job_board", "careers"))):
+    for fam, kinds in (("newsroom", ("feed", "newsroom")), ("jobs", ("job_board", "careers")), ("procurement", ("procurement",))):
         rows = qa(conn, "SELECT url, last_status FROM account_endpoints WHERE organization_id=%s AND kind = ANY(%s)", (org_id, list(kinds)))
         state = "source_not_found" if not rows else ("monitored_healthy" if any(r["last_status"] == "ok" for r in rows) else "monitored_degraded")
         conn.execute("INSERT INTO account_source_coverage(organization_id, source_family, coverage_state, source_ids, last_success_at, note, updated_at) VALUES (%s,%s,%s,%s,%s,%s,now()) "

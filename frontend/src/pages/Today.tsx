@@ -1,8 +1,9 @@
+import { FindingCard, FindingsResult, SourceCoverage, useFindings } from "../components/Findings";
 import { getLanguage, number, tr } from "../locale";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
-import { actionReason, Badge, EVIDENCE_CONFIDENCE, Coverage, Err, Evidence, Fact, accessKind, demandKind, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
+import { actionReason, Badge, EVIDENCE_CONFIDENCE, Coverage, Err, Evidence, Fact, accessKind, demandKind, humanize, lab, priorityKind, unknownText, verdict, whyShort } from "../components/ui";
 import { SignalSummary } from "../components/BuyingSignal";
 
 const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_accounts", "Your accounts"], ["new_discoveries", "New companies worth a look"],
@@ -115,13 +116,9 @@ function Group({ g, reload }: { g: any[]; reload: () => void }) {
   );
 }
 
-type Overview = { accounts: number; imported_accounts: number; ownership_to_check: number };
-type SourceCoverage = { monitored_sources: number; unhealthy: unknown[] };
-
-export default function Today({ canReview, canImport }: { canReview: boolean; canImport: boolean }) {
+export default function Today() {
   const [d, setD] = useState<any>(null);
-  const [overview, setOverview] = useState<Overview | null>(null);
-  const [overviewError, setOverviewError] = useState<unknown>(null);
+  const findings = useFindings("scope=today&days=14&limit=12");
   const [err, setErr] = useState<unknown>(null);
   const [revision, setRevision] = useState(0);
   const load = () => setRevision((n) => n + 1);
@@ -132,15 +129,6 @@ export default function Today({ canReview, canImport }: { canReview: boolean; ca
       .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
     return () => request.abort();
   }, [revision]);
-  useEffect(() => {
-    const request = new AbortController();
-    setOverviewError(null);
-    api<Overview>("/api/overview?target=true", { signal: request.signal })
-      .then(setOverview).catch((error) => { if (!request.signal.aborted) setOverviewError(error); });
-    return () => request.abort();
-  }, [revision]);
-  const all: any[] = d ? Object.values(d.sections).flat() : [];
-  const urgent = all.filter(c => c.priority === "urgent").length;
   return (
     <>
       <header className="today-heading">
@@ -149,21 +137,23 @@ export default function Today({ canReview, canImport }: { canReview: boolean; ca
             <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(getLanguage(), { weekday: "long", day: "numeric", month: "long" })}</div>
             <h1>{tr("Today")}</h1>
           </div>
-          {!err && d?.count > 0 && <dl className="today-queue">
-            {urgent > 0 && <div className="today-urgent"><dt>{tr("Urgent")}</dt><dd>{number(urgent)}</dd></div>}
-            <div><dt>{tr("To review")}</dt><dd>{number(d.count)}</dd></div>
-          </dl>}
         </div>
       </header>
       <div className="page today-page">
-        {err ? <div className="first-results"><Err e={err} onRetry={load} /></div> : !d ? <div className="first-results"><Skeleton rows={4} label={tr("Loading Today")} /></div> : <>
-        {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
-        {d.count === 0 && (
-          <>
-            {overviewError ? <Err e={overviewError} onRetry={load} /> : overview ? <TodayEmpty overview={overview} canReview={canReview} canImport={canImport} /> : <Skeleton rows={2} label={tr("Loading company counts")} />}
-            <Monitoring coverage={d.coverage} />
-          </>
-        )}
+        <section aria-labelledby="latest-findings">
+          <div className="row spread finding-heading">
+            <h2 id="latest-findings">{tr("Latest findings")}</h2>
+            <Link to="/feed">{tr("All findings")}</Link>
+          </div>
+          <FindingsResult data={findings.data} error={findings.error} retry={findings.retry} empty="No new verified findings in the last 14 days">
+            {findings.data?.items.map(item => <FindingCard key={item.id} item={item} />)}
+          </FindingsResult>
+          {findings.data && <SourceCoverage coverage={findings.data.coverage} />}
+        </section>
+        {err ? <Err e={err} onRetry={load} /> : null}
+        {d?.count > 0 && <details className="today-work">
+          <summary>{tr("Sales opportunities to review")} · {number(d.count)}</summary>
+          <Coverage c={d.coverage} empty={d.empty_state} />
         {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{tr(label)}</div>{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
         {d.hot_accounts?.length > 0 && <section><div className="section-title">{tr("Hot accounts")}</div><p className="small muted sec-note">{tr("Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.")}</p>
           <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("Account · Signals · Latest")}><table className="cards"><thead><tr><th>{tr("Account")}</th><th title={tr("Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.")}>{tr("Signal score")}</th><th>{tr("Buying signal and source")}</th><th>{tr("Latest")}</th></tr></thead><tbody>
@@ -171,63 +161,9 @@ export default function Today({ canReview, canImport }: { canReview: boolean; ca
               <td data-label={tr("Signal score")}><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? tr("Hot") : tr("Warm")}</Badge></td>
               <td data-label={tr("Buying signal and source")}><SignalSummary signal={a.buying_signal} /></td><td className="small" data-label={tr("Latest")}>{a.last_signal_at ? fmtDate(a.last_signal_at) : tr("None yet")}</td></tr>)}
           </tbody></table></div></section>}
+        </details>}
         <Deadlines />
-
-        {d.count > 0 && overview && overview.accounts > 0 && <p><Link to="/accounts?view=leads">{tr("Browse workbook leads →")}</Link></p>}
-        </>}
       </div>
     </>
-  );
-}
-
-function TodayEmpty({ overview, canReview, canImport }: { overview: Overview; canReview: boolean; canImport: boolean }) {
-  const { accounts, imported_accounts: imported, ownership_to_check: pending } = overview;
-  const hasTargetAccounts = accounts > 0;
-  const awaitingOwnership = !hasTargetAccounts && pending > 0;
-  let title = "No new opportunities to review";
-  let detail = "Open Accounts & leads to see your target companies and buying signals.";
-  if (awaitingOwnership) {
-    title = "Confirm ownership to see target accounts";
-    detail = "These companies meet the sector and size rules. Confirm private ownership with a source to include them in Accounts, Leads and Today.";
-  } else if (!hasTargetAccounts) {
-    title = "No companies match the target criteria yet";
-    detail = "Target companies must be privately held financial services firms with over 500 employees in Europe or the UK, or over 2,000 elsewhere.";
-  }
-
-  const action = awaitingOwnership
-    ? (canReview ? { to: "/accounts?view=review", label: "Review company ownership" } : null)
-    : (canImport && imported === 0 && !hasTargetAccounts
-      ? { to: "/admin/imports", label: "Import workbooks" }
-      : { to: "/accounts", label: "Open Accounts & leads" });
-  return (
-    <section className="card today-empty" aria-labelledby="today-empty-title">
-      <div className="today-next">
-        <div>
-          <h2 id="today-empty-title">{tr(title)}</h2>
-          <p>{tr(detail)}</p>
-        </div>
-        {action && <Link className="btn primary" to={action.to}>{tr(action.label)}</Link>}
-      </div>
-      <dl className="today-counts">
-        <div><dt>{tr("Companies from workbooks")}</dt><dd>{number(imported)}</dd></div>
-        <div><dt>{tr("Target accounts")}</dt><dd>{number(accounts)}</dd></div>
-        <div className={awaitingOwnership ? "today-pending" : undefined}><dt>{tr("Ownership to check")}</dt><dd>{number(pending)}</dd></div>
-      </dl>
-    </section>
-  );
-}
-
-function Monitoring({ coverage }: { coverage: SourceCoverage }) {
-  const working = coverage.monitored_sources - coverage.unhealthy.length;
-  return (
-    <section className="card today-monitoring" aria-labelledby="today-monitoring-title">
-      <div>
-        <h2 id="today-monitoring-title">{tr("Source monitoring")}</h2>
-        <p>{coverage.monitored_sources > 0
-          ? tr("Sources reporting successfully: {} of {} monitored.", number(working), number(coverage.monitored_sources))
-          : tr("Source monitoring has not started yet.")}</p>
-      </div>
-      <Link to="/library?tab=sources">{tr("View source health")}</Link>
-    </section>
   );
 }

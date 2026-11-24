@@ -101,12 +101,12 @@ def card(conn: Conn, h: dict[str, Any], now: datetime, last_snapshot: dict[str, 
 
 
 def coverage_health(conn: Conn, p: Principal) -> dict[str, Any]:
-    rows = qa(conn, "SELECT s.source_id, s.display_name, s.source_family, s.status, h.state, h.last_success_at, h.error_class FROM sources s LEFT JOIN source_health h USING (source_id) "
+    rows = qa(conn, "SELECT s.source_id, s.display_name, s.source_family, s.status, h.state, h.last_success_at, h.error_class, (h.last_success_at < now() - make_interval(secs => 2 * s.poll_interval_s)) AS stale FROM sources s LEFT JOIN source_health h USING (source_id) "
                     "WHERE s.source_tier <> 'internal' AND s.collection_method <> 'internal'")
     active = [r for r in rows if r["status"] in {"active", "degraded", "failed", "blocked"}]
-    bad = [r for r in active if r["state"] in {"degraded", "failed", "blocked"} or r["status"] in {"failed", "blocked"} or r["last_success_at"] is None]
+    bad = [r for r in active if r["state"] in {"degraded", "failed", "blocked"} or r["status"] in {"failed", "blocked"} or r["last_success_at"] is None or r["stale"]]
     pending = [r for r in rows if r["status"] == "pending_connector_validation"]
-    return {"monitored_sources": len(active), "unhealthy": [{"source": r["display_name"], "family": r["source_family"], "state": r["state"] if r["last_success_at"] else "never_succeeded", "error": r["error_class"]} for r in bad],
+    return {"monitored_sources": len(active), "unhealthy": [{"source": r["display_name"], "family": r["source_family"], "state": "stale" if r["stale"] else r["state"] if r["last_success_at"] else "never_succeeded", "error": r["error_class"]} for r in bad],
             "pending_validation_sources": len(pending), "all_monitored_healthy": not bad and len(active) > 0,
             "no_active_monitoring": len(active) == 0}
 

@@ -76,7 +76,7 @@ export default function App() {
           <span className="nav-group">{tr("Work")}</span>
           {can("today.read") && link("/today", tr("Today"), IconToday)}
           {can("accounts.read") && link("/accounts", tr("Accounts & leads"), IconAccounts)}
-          {can("explorer.read") && link("/feed", tr("Market feed"), IconFeed)}
+          {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}
           <span className="nav-group">{tr("Look up")}</span>
           {can("explorer.read") && link("/explorer", tr("Explorer"), IconExplorer)}
           {link("/library", tr("Library"), IconLibrary)}
@@ -90,7 +90,7 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Navigate to={can("today.read") ? "/today" : "/admin"} replace />} />
-          <Route path="/today" element={<Today canReview={can("research.request")} canImport={can("admin.sources")} />} />
+          <Route path="/today" element={<Today />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/feed" element={<div className="page"><Feed /></div>} />
           <Route path="/renewals" element={<Navigate to="/accounts" replace />} />

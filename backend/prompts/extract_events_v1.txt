@@ -22,8 +22,12 @@ RULES
   partnership_scope_explicit (bool: integration scope or phases are named), tech_scope_stated (bool: a technology scope such as legacy retirement, nearshoring or automation is named),
   dedup_key (short canonical key of the fact).
 - Use market_launch for a new country or market launch, licence_granted for a new regulatory licence, cost_programme for a cost or efficiency programme with a technology element.
+- PRIVATE BUYER RFP: when this is a public page from the buying company and the page explicitly invites submissions for
+  software engineering, include the verbatim `deadline_quote` (including the deadline with date, time and explicit UTC offset),
+  the verbatim `scope_quote` for the engineering services, and the verbatim `notice_reference` identifier in attrs.
+  Never normalize the quoted text, infer a time zone, or describe an award or cancellation as an open call.
 - LANGUAGE: the document may be in any language (German, Polish, Swedish, Norwegian, Danish, Finnish, English...). Read it in its own language.
-  Write `summary` in plain English. Keep every `anchor` VERBATIM in the document's original language (it is checked against the text), and add
+  Write `summary` in plain English and `summary_pl` as a faithful Polish translation. Keep company and product names unchanged. Keep every `anchor` VERBATIM in the document's original language (it is checked against the text), and add
   `anchor_en`: a faithful English translation of that anchor (repeat it unchanged when the document is English). Set `language` to the document's
   ISO 639-1 code (de, pl, sv, no, da, fi, en...).
 - FIT FOR THE CODEST: The Codest is a software engineering and AI partner for banks, payment companies, fintechs and insurers in the UK, Germany,
@@ -38,5 +42,5 @@ RULES
   show one, say what is unclear. No marketing words.
 - If nothing qualifies return {{"events": []}}.
 
-Return ONLY JSON: {{"events":[{{"event_type":..,"subject_name":..,"event_date":..,"summary":..,"language":..,"fit":{{"level":..,"service":..,"reason":..}},"attrs":{{}},
+Return ONLY JSON: {{"events":[{{"event_type":..,"subject_name":..,"event_date":..,"summary":..,"summary_pl":..,"language":..,"fit":{{"level":..,"service":..,"reason":..}},"attrs":{{}},
 "other_entities":[{{"name":..,"role":..}}],"claims":[{{"predicate":..,"object":{{}},"anchor":..,"anchor_en":..}}]}}]}}

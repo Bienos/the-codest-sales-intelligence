@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from itertools import zip_longest
 from pathlib import Path
 
 import yaml
 
-from ..db import Conn
+from ..db import Conn, qa
 from ..sources.exa import SearchPlan
 from ..sources.util import sha
+from ..target_market import target_region, target_sql
+
+FINANCE_PILOT_LIMIT = 25
 
 PATH = Path(__file__).resolve().parents[3] / "rules" / "discovery_plans.yaml"
 
@@ -16,7 +20,7 @@ def build_plans(path: Path = PATH) -> list[SearchPlan]:
     out = []
     langs = cfg.get("local_languages") or {}
     for t in cfg["themes"]:
-        for g, geo in cfg["geographies"].items():
+        for g, geo in (cfg["geographies"] | (t.get("extra_geographies") or {})).items():
             out.append(SearchPlan(t["rule"], t["id"], g, "en", "news_and_press", int(t["recency_days"]), t["query"].format(geo=geo)))
         for g, q in (t.get("local") or {}).items():            # the same theme in the market's own language
             if g in cfg["geographies"]:
@@ -42,7 +46,6 @@ def _score(v) -> float:
 
 def priority_accounts(conn: Conn, limit: int = 100, *, finance_only: bool = False) -> list[dict]:
     """Your shortlist first (by its own rank), then P1 and P2 accounts by signal score."""
-    from ..db import qa
     from ..market import sector_sql
     finance = f" AND o.entity_type <> 'public_body' AND ({sector_sql('o.segment')})='finance'" if finance_only else ""
     short = qa(conn, "SELECT DISTINCT ON (r.organization_id) r.organization_id, o.display_name, o.country_code, o.segment, r.original FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
@@ -59,6 +62,28 @@ def priority_accounts(conn: Conn, limit: int = 100, *, finance_only: bool = Fals
         if len(chosen) >= limit:
             break
     return chosen
+
+
+def finance_pilot_accounts(conn: Conn) -> list[dict]:
+    """Prioritize confirmed companies, then size-qualified research candidates, across regions."""
+    rows = qa(conn, f"""
+        SELECT o.id AS organization_id, o.display_name, o.country_code, o.segment,
+               {target_sql()} AS confirmed
+        FROM organizations o
+        LEFT JOIN account_scores sc ON sc.organization_id=o.id
+        WHERE ({target_sql()} OR {target_sql(review=True)})
+          AND o.canonical_domain IS NOT NULL AND NOT coalesce(sc.stopped,false)
+        ORDER BY confirmed DESC, o.in_master_list DESC, sc.score DESC NULLS LAST, o.id
+        """)
+    selected = []
+    for confirmed in (True, False):
+        by_region: dict[str, list[dict]] = {}
+        for row in rows:
+            if row["confirmed"] == confirmed:
+                by_region.setdefault(target_region(row["country_code"]), []).append(row)
+        for turn in zip_longest(*by_region.values()):
+            selected.extend(row for row in turn if row)
+    return selected[:FINANCE_PILOT_LIMIT]
 
 
 def ensure_account_plan(conn: Conn, org_id: str, name: str, country: str | None) -> str:

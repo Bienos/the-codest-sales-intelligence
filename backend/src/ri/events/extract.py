@@ -49,6 +49,7 @@ class XEvent(BaseModel):
     subject_name: str = Field(min_length=1)
     event_date: str | None = None
     summary: str = Field(min_length=3, max_length=500)
+    summary_pl: str | None = Field(default=None, max_length=500)
     attrs: dict[str, Any] = Field(default_factory=dict)
     other_entities: list[XEntity] = Field(default_factory=list)
     claims: list[XClaim] = Field(min_length=1)
@@ -197,10 +198,22 @@ def process_document(conn: Conn, doc_id: str, extractor: EventExtractor, *, reso
         org_id = resolve_org(ev.subject_name) if resolve_org else None
         others = [{"name": o.name, "role": o.role, "org_id": (resolve_org(o.name) if resolve_org else None)} for o in ev.other_entities]
         attrs = {**ev.attrs, "source_tier": d["source_tier"], "flags": flags, **clean_fit(ev.fit, ev.language)}
+        if ev.summary_pl and ev.summary_pl.strip():
+            attrs["summary_pl"] = ev.summary_pl.strip()
+        if ev.event_type in {"procurement_published", "procurement_amended"}:
+            # A model-provided date or status never establishes that bidding is open.
+            for key in ("notice_status", "submission_deadline", "notice_id", "relevant_services", "authoritative_url"):
+                attrs.pop(key, None)
+            if org_id and not replay:
+                from .private_rfp import record_buyer_notice
+                notice = record_buyer_notice(conn, d, ev, org_id, text)
+                if notice:
+                    attrs.update(notice)
         dk = ev.attrs.get("dedup_key") or norm_key(ev.summary)
         # same fact in mirrored articles shares the origin group => one event; independent first-party issuers do not
         eid, created = store_event(conn, event_type=ev.event_type, subject_name=ev.subject_name, subject_org_id=org_id, summary=ev.summary, attrs=attrs,
-                                   key_parts=(norm_key(str(dk)), group), event_at=parse_dt(ev.event_date), pub_at=d["published_at"], claim_ids=claim_ids,
+                                   key_parts=(norm_key(str(dk)), group, attrs["notice_id"], attrs["submission_deadline"])
+                                   if attrs.get("notice_id") and attrs.get("submission_deadline") else (norm_key(str(dk)), group), event_at=parse_dt(ev.event_date), pub_at=d["published_at"], claim_ids=claim_ids,
                                    document_ids=[doc_id], origin_document_id=d["origin_document_id"] or doc_id, origin_group=group,
                                    other_entities=others, model_version=extractor.version, replay=replay)
         stored.append((eid, created))

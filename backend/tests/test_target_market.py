@@ -70,6 +70,8 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
             leads = client.get("/api/prospects?target=true&lane=shortlist&region=dach&q=payments%20platform")
             assert leads.status_code == 200
             assert [r["organization"]["name"] for r in leads.json()["items"]] == ["Example Swiss Payments"]
+            assigned = client.get(f"/api/findings?scope=account&organization={ids['Example Swiss Payments']}").json()["leads"]
+            assert [(r["url"], r["status"]) for r in assigned] == [("https://example.com/news/2", "not_checked")]
             review = client.get("/api/leads?scope=review").json()["items"]
             assert [r["name"] for r in review] == ["Example Unknown Ownership Bank"]
             overview = client.get("/api/overview?target=true").json()

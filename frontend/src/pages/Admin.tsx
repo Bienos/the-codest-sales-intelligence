@@ -168,7 +168,7 @@ function ScanTop() {
   return (
     <div className="card">
       <b>{tr("Check your priority accounts for news")}</b>
-      <div className="small muted mt-1 mb-3">{tr("Reads each account's own news, press, careers and job-board pages")}{search ? " and runs one web search per account" : ""}{tr(". The top 10 finance accounts are checked weekly. Use the button to run an extra check. Cost stays within the monthly limits under Usage and cost.")}</div>
+      <div className="small muted mt-1 mb-3">{tr("Reads company news, career pages, job boards and public supplier pages")}{search ? tr(" and runs one web search per account") : ""}{tr(". The finance pilot checks up to 25 companies daily within the existing usage limits.")}</div>
       <div className="row">
         <label className="small">{tr("How many accounts") + " "}<input type="number" min={1} max={300} value={n} onChange={(e) => setN(Number(e.target.value))} className="field-xs" /></label>
         <label className="small row"><input type="checkbox" checked={search} onChange={(e) => setSearch(e.target.checked)} />{" " + tr("Include one web search per account (uses the Exa budget)")}</label>
@@ -178,17 +178,17 @@ function ScanTop() {
       <button className="mt-2" aria-expanded={showPilot} onClick={() => setShowPilot(!showPilot)}>{showPilot ? tr("Hide finance pilot") : tr("View finance pilot")}</button>
       {showPilot && <Load path="/api/admin/source-pilot">{(d, refresh) => (
         <div className="mt-2">
-          <div className="row spread"><h2 className="h-sub">{tr("Top 10 finance accounts")}</h2><button onClick={refresh}>{tr("Refresh results")}</button></div>
+          <div className="row spread"><h2 className="h-sub">{tr("Finance monitoring pilot")}</h2><button onClick={refresh}>{tr("Refresh results")}</button></div>
           <p className="small muted">{tr("Shows checks of company pages and up to five verified findings per account from the last 30 days, with buying signals listed first.")}</p>
-          {d.items.length === 0 && <p className="small muted">{tr("No priority finance accounts found in the workbooks.")}</p>}
+          {d.items.length === 0 && <p className="small muted">{tr("No companies match the finance pilot criteria.")}</p>}
           {d.items.map((account: any) => <details key={account.id} className="card">
-            <summary>{account.name} · {account.endpoints.length}{" " + tr("company sources ·") + " "}{account.recent.length === 5 ? "5+" : account.recent.length}{" " + tr("recent findings")}</summary>
+            <summary>{account.name} · {account.confirmed ? tr("Target account") : tr("Ownership to check")} · {account.endpoints.length}{" " + tr("company sources ·") + " "}{account.recent.length === 5 ? "5+" : account.recent.length}{" " + tr("recent findings")}</summary>
             <p className="small"><Link to={`/accounts/${account.id}`}>{tr("Open company")}</Link></p>
             <p className="small muted">{account.scan ? <>{tr("Scheduled check ·") + " "}{account.scan.outcome === "no_website" ? tr("Company website missing") : humanize(account.scan.status)} · {fmtDateTime(account.scan.updated_at)}</> : tr("Waiting for the first scheduled check.")}</p>
             {account.endpoints.length === 0 ? <p className="small muted">{tr("No company sources configured.")}</p> :
               <ul className="tight small">{account.endpoints.map((source: any) => <li key={source.url}>
-                <a href={source.url} target="_blank" rel="noreferrer noopener">{humanize(source.kind)}</a>
-                {source.last_scanned_at ? <> · {source.last_status === "ok" ? tr("Checked") : tr("Check failed")} {fmtDateTime(source.last_scanned_at)} · {source.docs_seen}{" " + tr("items read")}</> : <>{" " + tr("· waiting for first check")}</>}
+                <a href={source.url} target="_blank" rel="noreferrer noopener">{source.kind === "procurement" ? tr("Supplier page") : humanize(source.kind)}</a>
+                {source.last_scanned_at ? <> · {source.last_status === "ok" ? tr("Checked") : tr("Check failed")} {fmtDateTime(source.last_scanned_at)} · {source.docs_seen}{" " + tr("items read")}</> : <>{" " + tr("· waiting for first check")}</>}{source.last_status !== "ok" && source.last_detail && <div className="muted">{source.last_detail}</div>}
               </li>)}</ul>}
             {account.recent.map((finding: any) => <div className="mt-2" key={finding.event_id}>
               <b>{finding.summary}</b> <span className="small muted">{fmtDateTime(finding.date)}</span>

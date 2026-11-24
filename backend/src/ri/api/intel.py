@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import calendar
+from uuid import UUID
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,8 +15,8 @@ from ..audit import audit
 from ..readmodel import coverage_health, story_sources
 from ..db import q1, qa
 from ..jobs.queue import enqueue
-from ..target_market import target_sql
-from .auth import require
+from ..target_market import commercial_sql, target_sql
+from .auth import principal_dep, require
 
 URL_KEYS = ("Primary source URL", "Primary Source URL", "Secondary Source URL", "Source URL", "Source link", "Signal Source URL", "Supplier evidence URL", "Existing source URL", "Second Signal Source URL", "Third Signal Source URL", "Matched Signal Source URL", "Evidence URL")
 
@@ -357,6 +358,35 @@ def register_feed(app: FastAPI) -> None:
     def tx(request: Request):
         return request.app.state.db.tx()
 
+    @app.get("/api/findings")
+    def verified_findings(request: Request, scope: str = Query("archive", pattern="^(today|archive|account)$"),
+                          organization: UUID | None = None, event: UUID | None = None, q: str = Query("", max_length=120),
+                          days: int = Query(30, ge=1, le=365), page: int = Query(1, ge=1, le=1000),
+                          limit: int = Query(20, ge=1, le=50), kind: str = Query("", pattern="^(|tender|signal)$"),
+                          region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
+                          p: Principal = Depends(principal_dep)):
+        from ..findings import account_leads, findings, rfp_research
+
+        permission = {"today": "today.read", "archive": "explorer.read", "account": "accounts.read"}[scope]
+        if not p.can(permission):
+            raise HTTPException(403, f"missing permission {permission}")
+        if (scope == "account") != (organization is not None):
+            raise HTTPException(422, "Select a company for the account view.")
+        with tx(request) as conn:
+            leads = []
+            if organization is not None:
+                where, args = org_scope_sql(p)
+                eligible = commercial_sql() if p.can("research.request") else target_sql()
+                if not q1(conn, f"SELECT o.id FROM organizations o WHERE o.id=%s AND ({where}) AND {eligible}", [organization, *args]):
+                    raise HTTPException(404, "not found")
+                leads = account_leads(conn, organization)
+            elif scope == "archive" and p.can("research.request"):
+                leads = rfp_research(conn)
+            items = findings(conn, p, scope=scope, days=365 if event else days, limit=limit, page=page, kind=kind, region=region,
+                             organization_id=organization, event=event, search=q)
+            return {"items": items[:limit], "page": page, "has_more": len(items)>limit, "leads": leads,
+                    "coverage": coverage_health(conn, p)}
+
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
                     market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, ge=1, le=100), fit_only: bool = False, focus: str = Query("", pattern="^(|finance|other|unclassified)$"), target: bool = False, p: Principal = Depends(require("explorer.read"))):
@@ -609,11 +639,12 @@ def register_scan(app: FastAPI) -> None:
     @app.get("/api/admin/source-pilot")
     def source_pilot(request: Request, p: Principal = Depends(require("admin.sources"))):
         with tx(request) as conn:
-            accounts = priority_accounts(conn, 10, finance_only=True)
+            from ..discovery.plans import finance_pilot_accounts
+            accounts = finance_pilot_accounts(conn)
             items = []
             for account in accounts:
                 oid = account["organization_id"]
-                endpoints = qa(conn, """SELECT kind, url, last_scanned_at, last_status, docs_seen
+                endpoints = qa(conn, """SELECT kind, url, last_scanned_at, last_status, last_detail, docs_seen
                     FROM account_endpoints WHERE organization_id=%s ORDER BY kind, url""", (oid,))
                 recent = qa(conn, """SELECT e.id::text AS event_id, e.summary, coalesce(e.event_at,e.pub_at) AS date,
                        (SELECT min(s.demand_tier) FROM signals s WHERE s.event_id=e.id AND s.organization_id=e.subject_org_id
@@ -630,7 +661,7 @@ def register_scan(app: FastAPI) -> None:
                       AND payload->>'organization_id'=%s
                     ORDER BY created_at DESC LIMIT 1""", (str(oid),))
                 items.append({"id": str(oid), "name": account["display_name"], "segment": account["segment"],
-                              "endpoints": endpoints, "recent": recent, "scan": scan})
+                              "endpoints": endpoints, "recent": recent, "scan": scan, "confirmed": account["confirmed"]})
         return {"items": items}
 
     @app.post("/api/admin/scan-accounts")

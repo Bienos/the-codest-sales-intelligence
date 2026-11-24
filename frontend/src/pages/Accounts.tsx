@@ -2,6 +2,7 @@ import { counted, number, tr } from "../locale";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post, put } from "../api";
+import { AccountFindings } from "../components/Findings";
 import { SignalSummary } from "../components/BuyingSignal";
 import Prospects from "./Prospects";
 import { REGIONS, countryName, regionName, staffCount } from "./targetMarket";
@@ -331,7 +332,7 @@ function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; can
   );
 }
 
-const TABS = ["Overview", "Research brief", "Outreach", "People", "Signals & sources"];
+const TABS = ["Overview", "Findings timeline", "Assigned leads", "Signals & sources", "Research brief", "People", "Outreach"];
 const DEMAND_TIER: Record<string, string> = { D1: "They asked for outside help", D2: "Likely to need outside help", D3: "Checked programme, outside demand unknown", D4: "Attention, outside demand unknown" };
 const H = ({ children }: { children: React.ReactNode }) => <h2 className="h-sub">{children}</h2>;
 
@@ -385,10 +386,13 @@ function CompanyProfile({ account, onSave }: { account: any; onSave: (profile: a
 
 export function Account({ me }: { me: { permissions: string[] } }) {
   const { id } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState(params.get("profile") === "1");
   const [d, setD] = useState<any>(null);
-  const [tab, setTab] = useState(params.get("event") ? "Signals & sources" : TABS[0]);
+  const linkedTab = params.has("finding") || params.has("timeline") ? "Findings timeline"
+    : params.has("event") ? "Signals & sources" : null;
+  const [tab, setTab] = useState(linkedTab ?? TABS[0]);
+  useEffect(() => { if (linkedTab) setTab(linkedTab); }, [linkedTab, params]);
   const [signalStatus, setSignalStatus] = useState("all");
   const [signalTier, setSignalTier] = useState("all");
   const [signalOrder, setSignalOrder] = useState("newest");
@@ -439,7 +443,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const makeBrief = async () => { try { await post(`/api/accounts/${id}/brief`); await loadBriefs(); setTab("Research brief"); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const runScan = async () => {
     setScan({ busy: true, msg: "", err: null });
-    try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? `Reading ${r.website} and searching the web. New findings appear in the Market feed once we have checked them. Reload this page in a minute.` : "Started. This account has no website on record, so we will only run the web search.", err: null }); }
+    try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? `Reading ${r.website} and searching the web. New findings appear in the archive once we have checked them. Reload this page in a minute.` : "Started. This account has no website on record, so we will only run the web search.", err: null }); }
     catch (e) { setScan({ busy: false, msg: "", err: e }); }
   };
   const blank = (v: any) => (v === null || v === undefined || v === "" ? tr("Not known") : v);
@@ -470,7 +474,16 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       {d.score && <div className="card"><div className="row spread"><div><span className="eyebrow" title={tr("Adds up this account's recent checked signals. Different kinds count for more than repeats, and each signal fades as it ages. Hot is 9 or more, warm 4 or more. It is not a probability.")}>{tr("Signal score")}</span><div className="kpi-n mt-1 mb-1">{d.score.stopped ? tr("On hold") : d.score.score}<span className="kpi-u"> {tr(BAND[d.score.band][1])}</span></div></div>
         <div className="small measure-sm">{d.score.stopped ? "Something we found says not to pursue this account now, so the score is held at zero until it expires." : `${d.score.signal_count} ${d.score.signal_count === 1 ? "signal" : "signals"} (${d.score.groups.map(groupName).join(", ")}). Recent signals carry more weight. A mix of signals raises the score more than repeated signals of the same kind.`}
           {d.score.top?.length > 0 && <div className="chips mt-2">{d.score.top.map((t: any) => <Badge key={t.rule_id}>{sigNames[t.rule_id] ?? t.name ?? t.rule_id}</Badge>)}</div>}</div></div></div>}
-      <Tabs items={TABS.map((t) => ({ key: t, label: tr(t) }))} value={tab} onChange={setTab} label={tr("Account sections")}>
+      <Tabs items={TABS.map((t) => ({ key: t, label: tr(t) }))} value={tab} onChange={next => {
+        setTab(next);
+        if (linkedTab && linkedTab !== next) {
+          const q = new URLSearchParams(params);
+          q.delete("finding");
+          q.delete("timeline");
+          q.delete("event");
+          setParams(q, { replace: true });
+        }
+      }} label={tr("Account sections")}>
       {tab === "Overview" && (<>
         <H>{tr("Strongest current buying signal")}</H>
         <div className="card"><SignalSummary signal={d.buying_signal} detailed /></div>
@@ -480,6 +493,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           <div key={o.hypothesis_id} className="card"><div className="row spread"><div><Badge kind={priorityKind(o.priority)}>{lab("priority", o.priority)}</Badge> <b>{o.initiative.title}</b> · {lab("route", o.route.type)}{o.route.counterparty ? ` (${o.route.counterparty})` : ""} · {lab("access", o.route.access_status).toLowerCase()}</div><Link to={`/opportunities/${o.hypothesis_id}`}>{tr("Open")}</Link></div>
             <p className="small">{o.plain_reason ?? whyShort(o.why_it_matters)}</p>{o.next_action && <p className="small"><b>{tr("Next:")}</b> {o.next_action.objective}</p>}</div>))}
       </>)}
+      {(tab === "Findings timeline" || tab === "Assigned leads") && id &&
+        <AccountFindings key={tab + (params.get("finding") ?? "")} accountId={id} selected={params.get("finding")} leadsOnly={tab === "Assigned leads"} />}
       {tab === "Research brief" && <><BriefTab briefs={briefs} />{canScan && briefs[0]?.status === "failed" && <button onClick={makeBrief}>{tr("Try writing the brief again")}</button>}</>}
       {tab === "Outreach" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={String(id)} make={makeCampaign} decide={decideCampaign} />}
       {tab === "People" && <>

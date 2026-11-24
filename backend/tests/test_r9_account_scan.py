@@ -10,7 +10,7 @@ from ri.sources.registry import seed_registry
 from test_r7_verify_discovery_usage import ANCHOR, TEXT, FakeInner
 
 HOME = """<html><head><link rel="alternate" type="application/rss+xml" href="/news/feed.xml"></head><body>
-<a href="/newsroom/">News</a><a href="/careers">Careers</a><a href="https://other.example/press">not ours</a></body></html>"""
+<a href="/en/suppliers">Suppliers</a><a href="https://other.example/tenders">External tender portal</a><a href="/newsroom/">News</a><a href="/careers">Careers</a><a href="https://other.example/press">not ours</a></body></html>"""
 CAREERS = '<html><body><a href="https://boards.greenhouse.io/syntheticbank">Open roles</a><a href="https://jobs.lever.co/embed">x</a></body></html>'
 RSS = (f"<rss><channel><item><title>Bank selects vendor for core banking platform replacement</title><link>https://bank.example/news/1</link><guid>n1</guid>"
        f"<description>{TEXT}</description></item></channel></rss>")
@@ -27,12 +27,13 @@ def site(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=GH)
     if u.host == "bank.example":
         return {"/": httpx.Response(200, text=HOME), "/careers": httpx.Response(200, text=CAREERS), "/news/feed.xml": httpx.Response(200, text=RSS, headers={"content-type": "application/rss+xml"}),
-                "/newsroom/": httpx.Response(200, text="<html><body>Newsroom</body></html>")}.get(u.path, httpx.Response(404))
+                "/en/suppliers": httpx.Response(200, text="<html><body>Supplier notices</body></html>"), "/newsroom/": httpx.Response(200, text="<html><body>Newsroom</body></html>")}.get(u.path, httpx.Response(404))
     return httpx.Response(404)
 
 
 def test_parse_page_finds_feed_news_careers_and_job_board_but_not_other_sites():
     f = parse_page(HOME + CAREERS, "https://bank.example/", "bank.example")
+    assert f["procurement"] == ["https://bank.example/en/suppliers"]
     assert f["feeds"] == ["https://bank.example/news/feed.xml"]
     assert "https://bank.example/newsroom/" in f["news"] and "https://bank.example/careers" in f["careers"]
     assert ("greenhouse", "syntheticbank") in f["ats"] and all(b != "embed" for _, b in f["ats"])
@@ -64,7 +65,7 @@ def test_scan_reads_feed_and_job_board_extracts_a_quoted_event_and_records_cover
     assert conn.execute("select count(*) c from job_postings where organization_id=%s", (org,)).fetchone()["c"] == 1
     assert conn.execute("select count(*) c from events where subject_org_id=%s", (org,)).fetchone()["c"] >= 1
     cov = {r["source_family"]: r["coverage_state"] for r in conn.execute("select * from account_source_coverage where organization_id=%s", (org,)).fetchall()}
-    assert cov == {"newsroom": "monitored_healthy", "jobs": "monitored_healthy"}
+    assert cov == {"newsroom": "monitored_healthy", "jobs": "monitored_healthy", "procurement": "monitored_healthy"}
     again = run_scan(conn, str(org), client=client, extractor=BudgetedExtractor(FakeInner(ANCHOR), conn), resolver=None)
     assert again["documents"] == 0                      # nothing new: a second press of the button costs nothing
 
