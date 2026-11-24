@@ -90,7 +90,7 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Navigate to={can("today.read") ? "/today" : "/admin"} replace />} />
-          <Route path="/today" element={<Today />} />
+          <Route path="/today" element={<Today canReview={can("research.request")} canImport={can("admin.sources")} />} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/feed" element={<div className="page"><Feed /></div>} />
           <Route path="/renewals" element={<Navigate to="/accounts" replace />} />

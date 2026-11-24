@@ -115,9 +115,13 @@ function Group({ g, reload }: { g: any[]; reload: () => void }) {
   );
 }
 
-export default function Today() {
+type Overview = { accounts: number; imported_accounts: number; ownership_to_check: number };
+type SourceCoverage = { monitored_sources: number; unhealthy: unknown[] };
+
+export default function Today({ canReview, canImport }: { canReview: boolean; canImport: boolean }) {
   const [d, setD] = useState<any>(null);
-  const [ov, setOv] = useState<any>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [overviewError, setOverviewError] = useState<unknown>(null);
   const [err, setErr] = useState<unknown>(null);
   const [revision, setRevision] = useState(0);
   const load = () => setRevision((n) => n + 1);
@@ -128,24 +132,33 @@ export default function Today() {
       .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
     return () => request.abort();
   }, [revision]);
-  useEffect(() => { api("/api/overview?target=true").then(setOv).catch(() => undefined); }, []);
+  useEffect(() => {
+    const request = new AbortController();
+    setOverviewError(null);
+    api<Overview>("/api/overview?target=true", { signal: request.signal })
+      .then(setOverview).catch((error) => { if (!request.signal.aborted) setOverviewError(error); });
+    return () => request.abort();
+  }, [revision]);
   const all: any[] = d ? Object.values(d.sections).flat() : [];
   const urgent = all.filter(c => c.priority === "urgent").length;
   return (
-    <>
-      <header className="hero today-hero">
-        <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(getLanguage(), { weekday: "long", day: "numeric", month: "long" })}</div>
-        <h1>{tr("Today")}</h1>
-        <p className="sub">{err ? tr("Today could not load.") : !d ? tr("Loading your opportunities.") : d.count === 0 ? tr("No new opportunities to review for your target accounts.") : tr("{} to review.", counted(d.count, ["opportunity", "opportunities"], ["szansa", "szanse", "szans"]))}</p>
-        <div className="stats">
-          <div className="stat urgent"><div className="n">{!err && d ? urgent : "—"}</div><div className="l">{tr("Urgent")}</div></div>
-          <div className="stat"><div className="n">{!err && d ? d.count : "—"}</div><div className="l">{tr("To review")}</div></div>
+    <div className="page today-page">
+      <header className="page-head today-heading">
+        <div>
+          <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(getLanguage(), { weekday: "long", day: "numeric", month: "long" })}</div>
+          <h1>{tr("Today")}</h1>
+          {!err && d?.count > 0 && <p className="sub">{tr("{} to review.", counted(d.count, ["opportunity", "opportunities"], ["szansa", "szanse", "szans"]))}</p>}
         </div>
+        {!err && urgent > 0 && <Badge kind="bad">{tr("Urgent: {}", number(urgent))}</Badge>}
       </header>
-      <div className="page pt-5">
         {err ? <div className="first-results"><Err e={err} onRetry={load} /></div> : !d ? <div className="first-results"><Skeleton rows={4} label={tr("Loading Today")} /></div> : <>
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
-        {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
+        {d.count === 0 && (
+          <>
+            {overviewError ? <Err e={overviewError} onRetry={load} /> : overview ? <TodayEmpty overview={overview} canReview={canReview} canImport={canImport} /> : <Skeleton rows={2} label={tr("Loading company counts")} />}
+            <Monitoring coverage={d.coverage} />
+          </>
+        )}
         {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{tr(label)}</div>{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
         {d.hot_accounts?.length > 0 && <section><div className="section-title">{tr("Hot accounts")}</div><p className="small muted sec-note">{tr("Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.")}</p>
           <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("Account · Signals · Latest")}><table className="cards"><thead><tr><th>{tr("Account")}</th><th title={tr("Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.")}>{tr("Signal score")}</th><th>{tr("Buying signal and source")}</th><th>{tr("Latest")}</th></tr></thead><tbody>
@@ -155,24 +168,60 @@ export default function Today() {
           </tbody></table></div></section>}
         <Deadlines />
 
-        <p><Link to="/accounts?view=leads">{tr("Browse workbook leads →")}</Link></p>
+        {overview && overview.accounts > 0 && <p><Link to="/accounts?view=leads">{tr("Browse workbook leads →")}</Link></p>}
         </>}
-      </div>
-    </>
+    </div>
   );
 }
 
-function Setup({ ov, reason }: { ov: any; reason?: string | null }) {
-  const steps = [
-    { done: !!ov?.last_import, t: tr("Workbooks loaded"), d: ov?.last_import ? tr("{} companies match the target criteria.", number(ov.accounts)) : tr("Load both workbooks in Administration, Imports.") },
-    { done: (ov?.sources_live ?? 0) > 0, t: tr("Sources switched on and checking for news"), d: ov ? tr("{} of {} sources are switched on. The rest still need an address or a test.", number(ov.sources_live), number(ov.sources_total)) : "" },
-    { done: (ov?.verified_opportunities ?? 0) > 0, t: tr("First opportunity"), d: tr("Appears here once a source finds something we can check against the original page.") },
-  ];
+function TodayEmpty({ overview, canReview, canImport }: { overview: Overview; canReview: boolean; canImport: boolean }) {
+  const { accounts, imported_accounts: imported, ownership_to_check: pending } = overview;
+  const hasTargetAccounts = accounts > 0;
+  const awaitingOwnership = !hasTargetAccounts && pending > 0;
+  let title = "No new opportunities to review";
+  let detail = "Open Accounts & leads to see your target companies and buying signals.";
+  if (awaitingOwnership) {
+    title = "Confirm ownership to see target accounts";
+    detail = "These companies meet the sector and size rules. Confirm private ownership with a source to include them in Accounts, Leads and Today.";
+  } else if (!hasTargetAccounts) {
+    title = "No companies match the target criteria yet";
+    detail = "Target companies must be privately held financial services firms with over 500 employees in Europe or the UK, or over 2,000 elsewhere.";
+  }
+
+  const action = awaitingOwnership
+    ? (canReview ? { to: "/accounts?view=review", label: "Review company ownership" } : null)
+    : (canImport && imported === 0 && !hasTargetAccounts
+      ? { to: "/admin/imports", label: "Import workbooks" }
+      : { to: "/accounts", label: "Open Accounts & leads" });
   return (
-    <div className="card setup">
-      <div className="eyebrow">{tr("Why Today is quiet")}</div>
-      <p className="mt-0 mb-4">{tr(reason ?? tr("Nothing has been checked against a source yet."))}{" " + tr("Until sources are switched on, a quiet screen says nothing about your market.")}</p>
-      <ol className="steps">{steps.map((s) => <li key={s.t} className={s.done ? "done" : ""}><span className="setup-tick" aria-hidden="true">{s.done ? "✓" : "·"}</span><div><b>{s.t}</b><div className="small muted">{s.d}</div></div></li>)}</ol>
-    </div>
+    <section className="card today-empty" aria-labelledby="today-empty-title">
+      <dl className="today-counts">
+        <div><dt>{tr("Companies from workbooks")}</dt><dd>{number(imported)}</dd></div>
+        <div><dt>{tr("Target accounts")}</dt><dd>{number(accounts)}</dd></div>
+        <div><dt>{tr("Ownership to check")}</dt><dd>{number(pending)}</dd></div>
+      </dl>
+      <div className="today-next">
+        <div>
+          <h2 id="today-empty-title">{tr(title)}</h2>
+          <p>{tr(detail)}</p>
+        </div>
+        {action && <Link className="btn primary" to={action.to}>{tr(action.label)}</Link>}
+      </div>
+    </section>
+  );
+}
+
+function Monitoring({ coverage }: { coverage: SourceCoverage }) {
+  const working = coverage.monitored_sources - coverage.unhealthy.length;
+  return (
+    <section className="card today-monitoring" aria-labelledby="today-monitoring-title">
+      <div>
+        <h2 id="today-monitoring-title">{tr("Source monitoring")}</h2>
+        <p>{coverage.monitored_sources > 0
+          ? tr("Sources reporting successfully: {} of {} monitored.", number(working), number(coverage.monitored_sources))
+          : tr("Source monitoring has not started yet.")}</p>
+      </div>
+      <Link to="/library?tab=sources">{tr("View source health")}</Link>
+    </section>
   );
 }

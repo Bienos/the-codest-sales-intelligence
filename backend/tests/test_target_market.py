@@ -72,10 +72,18 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
             assert [r["organization"]["name"] for r in leads.json()["items"]] == ["Example Swiss Payments"]
             review = client.get("/api/leads?scope=review").json()["items"]
             assert [r["name"] for r in review] == ["Example Unknown Ownership Bank"]
+            overview = client.get("/api/overview?target=true").json()
+            assert overview["imported_accounts"] == len(records)
+            assert overview["accounts"] == 6
+            assert overview["ownership_to_check"] == len(review)
             profile = f"/api/accounts/{ids['Example Unknown Ownership Bank']}/company-profile"
             assert client.put(profile, json={"ownership": "private"}).status_code == 422
             assert client.put(profile, json={"ownership": "private", "source_url": "https://example.com/ownership"}).status_code == 200
             assert client.get("/api/leads?scope=target&region=nordics").json()["total"] == 2
+            refreshed = client.get("/api/overview?target=true").json()
+            assert refreshed["imported_accounts"] == len(records)
+            assert refreshed["accounts"] == 7
+            assert refreshed["ownership_to_check"] == 0
             assert client.get("/api/accounts/" + ids["ZUS Example"] + "?target=true").status_code == 404
             explorer = client.get("/api/explorer?target=true&entity=companies").json()
             assert explorer["count"] == 7

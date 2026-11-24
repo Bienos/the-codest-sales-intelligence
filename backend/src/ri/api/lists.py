@@ -150,7 +150,12 @@ def register(app: FastAPI) -> None:
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
             focus = target_sql() if target else "TRUE"
-            c = q1(conn, f"SELECT count(*) AS orgs, count(*) FILTER (WHERE o.in_master_list) AS master FROM organizations o WHERE ({where}) AND {focus}", params) or {}   # noqa: S608
+            review = target_sql(review=True) if target else "FALSE"
+            c = q1(conn, f"SELECT count(*) FILTER (WHERE {focus}) AS orgs, "  # noqa: S608
+                         f"count(*) FILTER (WHERE o.in_master_list AND {focus}) AS master, "
+                         f"count(*) FILTER (WHERE o.in_master_list) AS imported, "
+                         f"count(*) FILTER (WHERE {review}) AS ownership_to_check "
+                         f"FROM organizations o WHERE ({where})", params) or {}
             people = q1(conn, "SELECT count(*) AS n FROM employment") or {}
             run = q1(conn, "SELECT workbook_key, status, finished_at FROM import_runs WHERE status IN ('completed','paused_schema_drift') ORDER BY finished_at DESC NULLS LAST LIMIT 1")
             shortlist = q1(conn, "SELECT count(DISTINCT organization_id) AS n FROM legacy_account_research WHERE kind='priority_outreach'") or {}
@@ -160,7 +165,8 @@ def register(app: FastAPI) -> None:
             bud = {r["provider"]: {"cap": float(r["cap"]), "used": float(r["spent"]) + float(r["reserved"])} for r in qa(conn, "SELECT provider, cap, spent, reserved FROM provider_budgets WHERE kind='monthly' AND period=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')")}
             return {"accounts": c.get("orgs", 0), "master_accounts": c.get("master", 0), "contacts": people.get("n", 0), "shortlist": shortlist.get("n", 0),
                     "verified_opportunities": verified.get("n", 0), "sources_live": src.get("live", 0), "sources_total": src.get("total", 0),
-                    "last_import": run, "verifications": vr, "budgets": bud}
+                    "last_import": run, "verifications": vr, "budgets": bud,
+                    **({"imported_accounts": c.get("imported", 0), "ownership_to_check": c.get("ownership_to_check", 0)} if target else {})}
 
     @app.post("/api/admin/import/upload")
     async def upload(request: Request, file: UploadFile = File(...), p: Principal = Depends(require("admin.sources"))):
