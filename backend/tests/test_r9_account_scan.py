@@ -237,7 +237,8 @@ def test_scan_preserves_last_success_when_a_company_source_fails(conn):
     conn.commit()
     def failed(request):
         return httpx.Response(404) if request.url.path == "/robots.txt" else httpx.Response(500)
-    run_scan(conn, str(org), client=httpx.AsyncClient(transport=httpx.MockTransport(failed)))
+    result = run_scan(conn, str(org), client=httpx.AsyncClient(transport=httpx.MockTransport(failed)))
+    assert result["status"] == "all_sources_failed"
     row = conn.execute("SELECT * FROM account_endpoints WHERE organization_id=%s", (org,)).fetchone()
     assert row["last_status"] == "failed" and row["last_success_at"] == old
     coverage = conn.execute("SELECT * FROM account_source_coverage WHERE organization_id=%s AND source_family='newsroom'", (org,)).fetchone()

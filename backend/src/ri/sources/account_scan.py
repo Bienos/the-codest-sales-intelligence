@@ -269,7 +269,15 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                      "ON CONFLICT (organization_id, source_family) DO UPDATE SET coverage_state=EXCLUDED.coverage_state, source_ids=EXCLUDED.source_ids, last_success_at=coalesce(EXCLUDED.last_success_at,account_source_coverage.last_success_at), note=EXCLUDED.note, updated_at=now()",
                      (org_id, fam, state, [r["url"] for r in rows][:5], now if state == "monitored_healthy" else None, "; ".join(notes)[:300] or None))
     conn.commit()
-    out: dict[str, Any] = {"status": "ok", "endpoints": len(existing), "scanned": scanned, "documents": len(res.new_doc_ids) + len(res.changed_doc_ids), "job_changes": len(res.structured_changes), "notes": notes}
+    if not existing:
+        outcome = "no_sources"
+    elif not scanned:
+        outcome = "all_sources_failed"
+    elif scanned < len(existing):
+        outcome = "partially_checked"
+    else:
+        outcome = "ok"
+    out: dict[str, Any] = {"status": outcome, "endpoints": len(existing), "scanned": scanned, "documents": len(res.new_doc_ids) + len(res.changed_doc_ids), "job_changes": len(res.structured_changes), "notes": notes}
     if res.new_doc_ids or res.changed_doc_ids or res.structured_changes:
         from ..verify.run import org_aware_resolver
         res_resolver = org_aware_resolver(conn, resolver, org_id)

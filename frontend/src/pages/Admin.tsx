@@ -193,7 +193,7 @@ function ScanTop() {
           {d.items.map((account: any) => <details key={account.id} className="card">
             <summary>{account.name} · {account.confirmed ? tr("Target account") : tr("Ownership to check")} · {account.endpoints.length}{" " + tr("company sources ·") + " "}{account.recent.length === 5 ? "5+" : account.recent.length}{" " + tr("recent findings")}</summary>
             <p className="small"><Link to={`/accounts/${account.id}`}>{tr("Open company")}</Link></p>
-            <p className="small muted">{account.scan ? <>{tr("Scheduled check ·") + " "}{account.scan.outcome === "no_website" ? tr("Company website missing") : humanize(account.scan.status)} · {fmtDateTime(account.scan.updated_at)}</> : tr("Waiting for the first scheduled check.")}</p>
+            <p className="small muted">{account.scan ? <>{tr("Scheduled check ·") + " "}{account.scan.status === "completed" ? tr(({ no_website: "Company website missing", no_sources: "No sources found", all_sources_failed: "All source checks failed", partially_checked: "Some source checks failed" } as Record<string, string>)[account.scan.outcome] ?? (account.scan.result?.endpoints === 0 ? "No sources found" : account.scan.result?.scanned === 0 ? "All source checks failed" : "Scan completed")) : humanize(account.scan.status)} · {fmtDateTime(account.scan.updated_at)}</> : tr("Waiting for the first scheduled check.")}</p>
             {account.scan?.status === "completed" && account.scan?.result && <p className="small">
               {tr("New or changed materials: {}", account.scan.result.documents ?? 0)} · {tr("New findings in this scan: {}", account.scan.result.processed?.events_created ?? 0)}
               {account.scan.result.error && <> · {account.scan.result.error}</>}

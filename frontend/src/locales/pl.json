@@ -1559,5 +1559,9 @@
   "{} companies": "Liczba firm: {}",
   "{} without a successful source check": "Bez udanego sprawdzenia źródła: {}",
   "Scope": "Zakres",
-  "Worked": "Działa"
+  "Worked": "Działa",
+  "No sources found": "Brak znalezionych źródeł",
+  "All source checks failed": "Sprawdzenie wszystkich źródeł zakończyło się błędem",
+  "Some source checks failed": "Część źródeł zwróciła błąd",
+  "Scan completed": "Skan zakończony"
 }
