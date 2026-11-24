@@ -25,6 +25,10 @@ def mount_frontend(app: FastAPI, dist: Path = DIST) -> bool:
             f = (root / path).resolve()
         except (OSError, ValueError):
             f = root / "index.html"
-        # never serve anything outside the build folder (path traversal): fall back to the SPA shell
-        return FileResponse(f if f.is_file() and f.is_relative_to(root) else root / "index.html")
+        # Fall back to the shell for client-side routes and paths outside the build.
+        shell = root / "index.html"
+        file = f if f.is_file() and f.is_relative_to(root) else shell
+        # Google Identity Services needs the parent origin to validate its sign-in iframe.
+        headers = {"Referrer-Policy": "strict-origin-when-cross-origin"} if file == shell and app.state.settings.google_client_id else None
+        return FileResponse(file, headers=headers)
     return True

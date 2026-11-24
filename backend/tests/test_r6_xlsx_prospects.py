@@ -173,7 +173,7 @@ def test_static_server_cannot_read_outside_the_build_folder_and_sets_security_he
     from ri.api.static import mount_frontend
     db = Database(db_url, max_size=2)
     try:
-        app = create_app(Settings(env="production", auth_mode="oidc", oidc_issuer="https://i", oidc_audience="a", oidc_jwks_url="https://i/j", approval_ttl_hours=72), db=db)
+        app = create_app(Settings(env="production", auth_mode="oidc", oidc_issuer="https://i", oidc_audience="a", oidc_jwks_url="https://i/j", google_client_id="example.apps.googleusercontent.com", approval_ttl_hours=72), db=db)
         assert mount_frontend(app, dist)
         c = TestClient(app)
         for evil in ("../../secret.txt", "..%2f..%2fsecret.txt", "%2e%2e/%2e%2e/secret.txt", "..%2f..%2f..%2f..%2f..%2f..%2fetc/hostname", "/etc/hostname"):
@@ -182,7 +182,10 @@ def test_static_server_cannot_read_outside_the_build_folder_and_sets_security_he
         r = c.get("/today")
         assert r.headers["X-Frame-Options"] == "DENY" and r.headers["X-Content-Type-Options"] == "nosniff"
         assert "frame-ancestors 'none'" in r.headers["Content-Security-Policy"] and "Strict-Transport-Security" in r.headers
-        assert c.get("/api/me").headers["Cache-Control"] == "no-store"
+        assert r.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+        identity = c.get("/api/me")
+        assert identity.headers["Cache-Control"] == "no-store"
+        assert identity.headers["Referrer-Policy"] == "no-referrer"
     finally:
         db.close()
 
