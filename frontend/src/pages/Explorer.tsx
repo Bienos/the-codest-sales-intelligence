@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, fmtDate, fmtDateTime } from "../api";
+import { api, fmtDate } from "../api";
 import { Badge, Coverage, Err, Empty, lab, priorityKind, Skeleton } from "../components/ui";
 
 type Row = Record<string, any>;
 type Col = { h: string; cell: (r: Row) => React.ReactNode };
 
-const SORT_NOTE: Record<string, string> = { opportunities: "Sorted by opportunity score, highest first. The score ranks what to look at first; it is not a chance of winning.", companies: "Sorted by name.", procurement: "Open tenders first, then by closing date.", events: "Newest first." };
+const SORT_NOTE: Record<string, string> = { opportunities: "Sorted by opportunity score, highest first. The score ranks what to look at first; it is not a chance of winning.", companies: "Sorted by name.", events: "Newest first." };
 const COLUMNS: Record<string, Col[]> = {
   opportunities: [
     { h: "Programme", cell: (r) => <Link to={`/opportunities/${r.id}`}>{r.title ?? r.display_name}</Link> },
@@ -24,13 +24,6 @@ const COLUMNS: Record<string, Col[]> = {
     { h: "Staff", cell: (r) => (r.employees_estimate ? r.employees_estimate.toLocaleString() : "Not known") },
     { h: "On your lists", cell: (r) => (r.in_master_list ? <Badge kind="ok">Yes</Badge> : "No") },
   ],
-  procurement: [
-    { h: "Tender", cell: (r) => (r.official_url ? <a href={r.official_url} target="_blank" rel="noreferrer noopener">{r.title} ↗</a> : r.title) },
-    { h: "Buyer", cell: (r) => r.buyer_name ?? "Not named" },
-    { h: "Status", cell: (r) => <Badge kind={r.status === "open" ? "ok" : ""}>{r.status === "open" ? "Open" : String(r.status).replace(/^./, (c: string) => c.toUpperCase())}</Badge> },
-    { h: "Closes", cell: (r) => (r.deadline_at ? fmtDateTime(r.deadline_at) : "No date") },
-    { h: "Last checked", cell: (r) => (r.last_status_check_at ? fmtDateTime(r.last_status_check_at) : "Not yet") },
-  ],
   events: [
     { h: "What happened", cell: (r) => r.summary },
     { h: "Type", cell: (r) => lab("event", r.event_type) },
@@ -39,7 +32,7 @@ const COLUMNS: Record<string, Col[]> = {
     { h: "Checked", cell: (r) => (r.verification_status === "verified" ? <Badge kind="ok">Yes</Badge> : <Badge kind="warn">Not yet</Badge>) },
   ],
 };
-const SHOW: [string, string][] = [["opportunities", "Opportunities"], ["companies", "Companies"], ["procurement", "Public tenders"], ["events", "Findings"]];
+const SHOW: [string, string][] = [["opportunities", "Opportunities"], ["companies", "Companies"], ["events", "Findings"]];
 
 const COUNTRIES = [
   ["GB", "United Kingdom"], ["AT", "Austria"], ["BE", "Belgium"], ["CH", "Switzerland"],
@@ -57,7 +50,7 @@ export default function Explorer() {
   useEffect(() => {
     const request = new AbortController();
     setErr(null); setD(null);
-    const p = new URLSearchParams({ entity, q }); if (country) p.set("country", country); if (existing) p.set("existing", existing);
+    const p = new URLSearchParams({ entity, q, target: "true" }); if (country) p.set("country", country); if (existing) p.set("existing", existing);
     const t = setTimeout(() => api(`/api/explorer?${p}`, { signal: request.signal }).then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); }), 200);
     return () => { clearTimeout(t); request.abort(); };
   }, [entity, q, country, existing, retry]);
@@ -66,7 +59,7 @@ export default function Explorer() {
   const ready = d && d.entity === entity;
   return (
     <>
-      <div className="page-head"><div className="eyebrow">Look across the market</div><h1>Explorer</h1><p className="sub">Search and filter everything we hold. Results are limited to what you can see, and no result does not mean nothing is happening: we only see the sources we watch.</p></div>
+      <div className="page-head"><div className="eyebrow">Look across the market</div><h1>Explorer</h1><p className="sub">Search companies, opportunities and checked news in your target market.</p></div>
       <div className="row mb-3">
         <label className="sr" htmlFor="ex-show">Show</label>
         <select id="ex-show" value={entity} onChange={(e) => setEntity(e.target.value)}>{SHOW.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>

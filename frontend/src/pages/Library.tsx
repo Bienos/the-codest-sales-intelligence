@@ -3,9 +3,9 @@ import { api, fmtDateTime } from "../api";
 import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
 
 const TIERS: Record<string, string> = { S1: "Official records", S2: "Company\u2019s own sites", S3: "Vendors and integrators", S4: "Trade press", S5: "Search finds", internal: "Internal" };
-const hk = (s: string) => (s === "healthy" ? "ok" : !s || s === "unconfigured" || s === "paused" ? "" : "bad");
-const HEALTH: Record<string, string> = { healthy: "Working", unconfigured: "Not set up yet", paused: "Paused", degraded: "Having problems", failing: "Failing" };
-const METHOD: Record<string, string> = { feed: "Reads its feed", change_monitor: "Checks the page for changes", api: "Calls its API", internal: "Internal" };
+const hk = (s: string) => s === "healthy" ? "ok" : ["degraded", "failed", "blocked", "failing"].includes(s) ? "bad" : "";
+const HEALTH: Record<string, string> = { healthy: "Working", unconfigured: "Not set up yet", paused: "Paused", degraded: "Having problems", failing: "Failing", failed: "Failed", blocked: "Access blocked" };
+const METHOD: Record<string, string> = { feed: "Reads its feed", change_monitor: "Checks the page for changes", api: "Calls its API", official_api: "Calls its API", search: "Searches the web", internal: "Internal" };
 const cadence = (seconds: number) => {
   if (!seconds) return "";
   if (seconds === 86400) return " daily";
@@ -30,7 +30,7 @@ export default function Library({ render, query, canSetup = true }: { render: (s
   return (
     <>
       <div className="row spread mb-2">
-        <p className="small muted m-0"><b>{d.items.length}</b> sources, <b>{live}</b> active with a successful check. A source only runs once it has passed a test and someone has confirmed we may read it.</p>
+        <p className="small muted m-0"><b>{d.items.length}</b> sources, <b>{live}</b> active with a successful check. Open a source to see its last test and whether monitoring is running.</p>
         {query === undefined && <input aria-label="Search sources" placeholder="Search sources" value={q} onChange={(e) => setQ(e.target.value)} className="field-md" />}
       </div>
       {groups.map(([t, list]) => (
@@ -39,12 +39,18 @@ export default function Library({ render, query, canSetup = true }: { render: (s
             <article key={s.source_id} className="lib-card">
               <div className="row spread start">
                 <div><b className="lib-name">{s.display_name}</b><div className="small muted">{s.provider ?? s.source_id} · {humanize(s.source_family)}</div></div>
-                <div className="row">{s.validation && s.status !== "active" && <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? "Test passed" : "Test failed"}</Badge>}<Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{s.status === "pending_connector_validation" ? "Not set up yet" : humanize(s.status)}</Badge></div>
+                <div className="row"><Badge kind={s.status === "active" ? "ok" : s.status === "pending_connector_validation" ? "warn" : "bad"}>{s.status === "pending_connector_validation" ? "Not set up yet" : humanize(s.status)}</Badge></div>
               </div>
               <dl className="lib-facts">
                 <dt>How</dt><dd>{METHOD[s.collection_method] ?? humanize(s.collection_method)}{cadence(s.poll_interval_s)}</dd>
-                <dt>Status</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? "Waiting for first successful check" : HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health)}</Badge>{s.last_success_at && <span className="small muted"> last worked {fmtDateTime(s.last_success_at)}</span>}</dd>
+                <dt>Monitoring</dt><dd><Badge kind={hk(s.health)}>{s.health === "healthy" && !s.last_success_at ? "Waiting for first successful check" : HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health)}</Badge>{s.last_success_at && <span className="small muted"> last worked {fmtDateTime(s.last_success_at)}</span>}</dd>
+                <dt>Latest test</dt><dd>{s.validation ? <>
+                  <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? "Test passed" : "Test failed"}</Badge>
+                  <span className="small muted"> {fmtDateTime(s.validation.at)}</span>
+                  {!s.validation.ok && s.validation.detail && <div className="small">{s.validation.detail}</div>}
+                </> : <span className="muted">No test on record</span>}</dd>
                 {s.last_attempt_at && <><dt>Last attempt</dt><dd className="small">{fmtDateTime(s.last_attempt_at)}</dd></>}
+                <dt>Last 30 days</dt><dd>{s.recent_buying_findings ?? 0} verified findings with current buying signals</dd>
                 <dt>Feeds signals</dt><dd>{s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill" title={r}>{signals[r] ?? r}</span>) : <span className="muted">None yet</span>}</dd>
                 <dt>So far</dt><dd>{s.documents} pages read, {s.events} findings{Number(s.cost_usd_month) > 0 && <span className="small muted"> · ${Number(s.cost_usd_month).toFixed(3)} this month</span>}</dd>
                 <dt>Last 30 days</dt><dd>{s.recent_buying_findings ?? 0} verified findings with current buying signals</dd>

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .access import Principal, org_scope_sql
+from .target_market import target_sql
 from .db import Conn, canonical_json, jb, q1, qa
 from .market import sector_sql
 from .opportunity.model import initiative_tender
@@ -123,15 +124,16 @@ def _pre_section(h: dict[str, Any], rel: set[str]) -> str:
     return "existing_accounts" if h["in_master_list"] else "new_discoveries"
 
 
-def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10, focus: str = "") -> dict[str, Any]:
+def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10, focus: str = "", *, target: bool = False) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     where, params = org_scope_sql(p, "h.organization_id")
     sector = sector_sql("o.segment")
+    eligibility = target_sql() if target else "TRUE"
     rows = qa(conn, f"SELECT h.*, o.in_master_list, o.entity_type, {sector} AS sector, "
                     "EXISTS (SELECT 1 FROM initiative_events ie JOIN events e ON e.id=ie.event_id "
                     "WHERE ie.initiative_id=h.initiative_id AND ie.role='evidence' AND e.attrs ? 'notice_id') AS public_notice "
                     "FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id "  # noqa: S608
-                    f"WHERE h.state NOT IN ('disqualified','superseded','expired') AND h.priority IN ('urgent','high','medium') AND ({where}) "
+                    f"WHERE h.state NOT IN ('disqualified','superseded','expired') AND h.priority IN ('urgent','high','medium') AND ({where}) AND {eligibility} "
                     "ORDER BY CASE h.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 ELSE 2 END, h.score_total DESC", params)
     rel = {str(r["initiative_id"]) for r in qa(conn, "SELECT DISTINCT ie.initiative_id FROM signals s JOIN initiative_events ie ON ie.event_id=s.event_id WHERE s.rule_id='REL-03' AND s.status='active'")}
     rank = {"urgent": 0, "high": 1, "medium": 2}
@@ -142,6 +144,8 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
     for h in rows:
         pre = _pre_section(h, rel)
         public = pre == "public_tenders" or h["entity_type"] == "public_body"
+        if target and public:
+            continue
         if focus == "finance" and (public or h["sector"] != "finance"):
             continue
         if focus == "other" and (public or h["sector"] == "finance"):
@@ -183,10 +187,10 @@ def today(conn: Conn, p: Principal, now: datetime | None = None, limit: int = 10
     sw, sp = org_scope_sql(p, "o.id")
     hot = qa(conn, f"SELECT o.id, o.display_name, o.country_code, o.segment, s.score, s.band, s.groups, s.signal_count, s.last_signal_at, "      # noqa: S608
                    f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
-                   f"FROM account_scores s JOIN organizations o ON o.id=s.organization_id WHERE s.band IN ('hot','warm') AND NOT s.stopped AND o.entity_type <> 'public_body' AND ({sw}) "
+                   f"FROM account_scores s JOIN organizations o ON o.id=s.organization_id WHERE s.band IN ('hot','warm') AND NOT s.stopped AND o.entity_type <> 'public_body' AND ({sw}) AND {eligibility} "
                    f"AND (%s='' OR (%s='finance' AND ({sector})='finance') OR (%s='other' AND ({sector})<>'finance')) "
                    f"ORDER BY s.score DESC LIMIT 8", [p.email, *sp, focus, focus, focus])
-    signals = leading_signals(conn, [str(r["id"]) for r in hot])
+    signals = leading_signals(conn, [str(r["id"]) for r in hot], commercial_only=target)
     return {"generated_at": now, "count": len(cards), "sections": sections, "empty_state": empty, "coverage": health,
             "hot_accounts": [dict(r, id=str(r["id"]), score=float(r["score"]), groups=list(r["groups"] or []),
                                   buying_signal=signals.get(str(r["id"]))) for r in hot]}

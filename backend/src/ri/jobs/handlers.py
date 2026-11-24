@@ -255,12 +255,14 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     def sources_validate_all(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..sources import registry
         only = job["payload"].get("only")
-        rows = conn.execute("SELECT source_id FROM sources WHERE collection_method <> 'internal' AND status <> 'active' AND (%s::text[] IS NULL OR source_id = ANY(%s)) ORDER BY source_tier, source_id", (only, only)).fetchall()
+        activate = bool(job["payload"].get("activate"))
+        rows = conn.execute("SELECT source_id FROM sources WHERE collection_method <> 'internal' AND (NOT %s OR status <> 'active') "
+                            "AND (%s::text[] IS NULL OR source_id = ANY(%s)) ORDER BY source_tier, source_id", (activate, only, only)).fetchall()
         out: dict[str, Any] = {}
         for r in rows:
             sid = r["source_id"]
             try:
-                out[sid] = registry.validate_and_maybe_activate(conn, sid, activate=bool(job["payload"].get("activate")), by=job["payload"].get("by", "system:bulk-validate"))
+                out[sid] = registry.validate_and_maybe_activate(conn, sid, activate=activate, by=job["payload"].get("by", "system:bulk-validate"))
                 conn.commit()
             except Exception as exc:  # noqa: BLE001  (one bad source must not stop the rest)
                 conn.rollback()

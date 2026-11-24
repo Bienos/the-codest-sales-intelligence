@@ -1,88 +1,122 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, post, trackSourceOpened } from "../api";
-import { Badge, Empty, Err, humanize, Skeleton, Tabs } from "../components/ui";
+import { api, fmtDate, post, trackSourceOpened } from "../api";
+import { Badge, Empty, Err, Skeleton } from "../components/ui";
+import { REGIONS, countryName, regionName, staffCount } from "./targetMarket";
 
 type Lane = "shortlist" | "signals";
 
-const VSTATE: Record<string, [string, string]> = {
-  queued: ["info", "Waiting to be checked"], fetching: ["info", "Reading the page"], extracting: ["info", "Finding events"], verified: ["ok", "Checked"],
-  no_event: ["", "Nothing we could quote"], failed: ["bad", "Could not check"], blocked: ["bad", "Page not allowed"], waiting_budget: ["warn", "Waiting for AI budget"] };
+const SOURCE_STATUS: Record<string, [string, string]> = {
+  queued: ["info", "Check queued"],
+  fetching: ["info", "Reading source"],
+  extracting: ["info", "Checking the claim"],
+  verified: ["ok", "Source checked"],
+  no_event: ["warn", "Claim could not be confirmed"],
+  failed: ["bad", "Source could not be read"],
+  blocked: ["bad", "Access blocked"],
+  waiting_budget: ["warn", "Check waiting for budget"],
+};
 
-function age(d: number | null): string {
-  if (d === null) return "date unknown";
-  if (d < 0) return "future date";
-  if (d === 0) return "today";
-  if (d < 60) return `${d} days ago`;
-  return `${Math.round(d / 30)} months ago`;
-}
-
-export default function Prospects({ focus = "" }: { focus?: string }) {
+export default function Prospects({ q = "", region = "", canVerify = false }: { q?: string; region?: string; canVerify?: boolean }) {
   const [lane, setLane] = useState<Lane>("shortlist");
-  const [q, setQ] = useState("");
-  const [d, setD] = useState<any>(null);
+  const [offset, setOffset] = useState({ page: 1, q, region, lane });
+  const page = offset.q === q && offset.region === region && offset.lane === lane ? offset.page : 1;
+  const limit = 20;
+  const query = new URLSearchParams({ lane, q, region, target: "true", page: String(page), limit: String(limit) }).toString();
+  const [result, setResult] = useState<{ query: string; data: any } | null>(null);
+  const d = result?.query === query ? result.data : null;
   const [err, setErr] = useState<unknown>(null);
   const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const t = setTimeout(() => api(`/api/prospects?lane=${lane}&q=${encodeURIComponent(q)}&limit=30&focus=${focus}`).then(setD).catch(setErr), q ? 250 : 0);
-    return () => clearTimeout(t);
-  }, [lane, q, tick, focus]);
-  const busy = d?.items.some((i: any) => ["queued", "fetching", "extracting"].includes(i.verification?.status));
-  useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) setTick((n) => n + 1); }, 6000); return () => clearInterval(t); }, [busy]);
-  const verify = async (id: string, url: string) => { setErr(null); try { await post("/api/prospects/verify", { organization_id: id, url }); setTick((n) => n + 1); } catch (e) { setErr(e); } };
-  const batch = async () => { setErr(null); try { const r = await post("/api/prospects/verify-batch", { lane, limit: 10, focus, q }); setMsg(`${r.queued} ${r.queued === 1 ? "page" : "pages"} queued. Each check reads one page and uses some of the monthly AI budget.`); setTick((n) => n + 1); } catch (e) { setErr(e); } };
+    const request = new AbortController();
+    setErr(null);
+    const timer = setTimeout(() => {
+      api(`/api/prospects?${query}`, { signal: request.signal })
+        .then((data) => { if (!request.signal.aborted) setResult({ query, data }); })
+        .catch((error) => { if (!request.signal.aborted) setErr(error); });
+    }, q ? 250 : 0);
+    return () => { clearTimeout(timer); request.abort(); };
+  }, [query, q, tick]);
+  const checking = d?.items.some((it: any) => ["queued", "fetching", "extracting"].includes(it.verification?.status));
+  useEffect(() => {
+    if (!checking) return;
+    const timer = setInterval(() => { if (!document.hidden) setTick((n) => n + 1); }, 6000);
+    return () => clearInterval(timer);
+  }, [checking]);
+
+  const check = async (item?: any) => {
+    setBusy(true);
+    setErr(null);
+    setMsg("");
+    try {
+      if (item) {
+        await post("/api/prospects/verify", { organization_id: item.organization.id, url: item.source_url });
+        setMsg("Source check queued.");
+      } else {
+        const r = await post("/api/prospects/verify-batch", { lane, q, region, target: true, page: d?.page ?? page, page_size: limit, limit: 10 });
+        setMsg(r.queued ? `${r.queued} source ${r.queued === 1 ? "check" : "checks"} queued.` : "There are no unchecked source links in this view.");
+      }
+      setTick((n) => n + 1);
+    } catch (error) { setErr(error); }
+    finally { setBusy(false); }
+  };
+
+  const pages = d ? Math.max(1, Math.ceil(d.total / limit)) : 1;
+  const visiblePage = d?.page ?? page;
+  const groups = REGIONS.map(([key, title]) => ({ key, title, items: d?.items.filter((item: any) => item.organization.region === key) ?? [] })).filter(({ items }) => items.length > 0);
   return (
-    <section aria-label="From your workbooks">
-      <div className="section-title">From your workbooks</div>
-      <div className="callout">
-        <b>From your workbooks. Not checked yet.</b> Open the source and confirm it before you act, or press “Check this source” and we will read the page for you.
+    <section aria-label="Buying signals from your workbooks">
+      <p className="small muted">Buying signals from your workbooks. Open the original source to check the claim.</p>
+      <div className="directory-toolbar">
+        <label className="row small">Lead list
+          <select aria-label="Lead list" value={lane} onChange={(e) => { setLane(e.target.value as Lane); setMsg(""); }}>
+            <option value="shortlist">Outreach shortlist</option><option value="signals">Workbook signals</option>
+          </select>
+        </label>
+        {canVerify && d?.items.some((it: any) => it.source_url && !it.verification) && <button disabled={busy} onClick={() => check()}>Check up to 10 sources</button>}
       </div>
-      <Tabs label="Which list" items={[{ key: "shortlist", label: "Your shortlist" }, { key: "signals", label: "Recent signals" }]} value={lane} onChange={(k) => setLane(k as Lane)}>
-        <div className="row mb-2"><input aria-label="Search accounts" placeholder="Search accounts" value={q} onChange={(e) => setQ(e.target.value)} className="field-md" />
-          <button onClick={batch} title="Reads the first 10 unchecked items in this list and keeps only what it can quote from the page">Check the top 10</button></div>
-      <p className="small muted mt-0">Reads the original page for the first 10 unchecked items in this list and keeps only what it can quote.</p>
-      {msg && <div className="okmsg mb-3" role="status">{msg}</div>}
-      <Err e={err} />
-      {!d && !err && <Skeleton />}
-      {d && d.items.length === 0 && <Empty title="Nothing matches">Try the other list, or clear the search box.</Empty>}
-      <ol className="pros">
-        {d?.items.map((it: any) => (
-          <li key={it.organization.id} className="pro">
-            <div className="pro-rank" aria-label={it.rank ? `Rank ${it.rank}` : "Signal"}>{it.rank ?? (it.priority || "·")}</div>
-            <div className="pro-main">
-              <div className="row spread start">
-                <div>
-                  <div className="pro-name">{it.organization.name}</div>
-                  <div className="small muted">{[it.organization.country, it.organization.segment, it.organization.employees ? `${it.organization.employees.toLocaleString()} staff` : null].filter(Boolean).join(" · ")}</div>
-                </div>
-                <div className="row">
-                  {it.score !== null && <Badge kind={it.score >= 80 ? "ok" : "info"}><span title="The score column from your workbook. It is not calculated here.">Workbook score {it.score}/100</span></Badge>}
-                  {it.confidence && <Badge>Workbook confidence: {String(it.confidence).split("(")[0].trim()}</Badge>}
-                  {it.market && it.market.fit !== "core" && <Badge kind={it.market.fit === "backup" ? "warn" : ""}>{it.market.label}</Badge>}
-                  {it.vendor_flag && <Badge kind="warn">Looks like a software vendor: approach as a partner</Badge>}
-                </div>
+      {msg && <div className="okmsg" role="status">{msg}</div>}
+      <Err e={err} onRetry={() => setTick((n) => n + 1)} />
+      {!d && !err && <Skeleton label="Loading leads" />}
+      {d && <p className="small muted directory-count" role="status">{d.total.toLocaleString()} {d.total === 1 ? "lead" : "leads"}{regionName(region) && ` in ${regionName(region)}`}</p>}
+      {d?.items.length === 0 && <Empty title="No matching leads">Try the other lead list or broaden your search.</Empty>}
+      {groups.map(({ key, title, items }) => <section key={key} className="directory-region">
+        <h2 className={region ? "sr" : undefined}>{title}</h2>
+        <div className="directory-leads">
+        {items.map((it: any) => {
+          const org = it.organization;
+          const state = it.verification && SOURCE_STATUS[it.verification.status];
+          return <article key={org.id} className="card directory-lead">
+            <div className="directory-lead-head">
+              <div>
+                <h3><Link to={`/accounts/${org.id}`}>{org.name}</Link></h3>
+                <p className="small muted">{[countryName(org.country), org.segment, staffCount(org.employees, org.employees_uncertain)].filter(Boolean).join(" · ")}</p>
               </div>
-              <p className="pro-signal">{it.signal}</p>
-              <div className="small muted">{it.signal_type ? `${it.signal_type} · ` : ""}{it.signal_date ?? "Date not given"} · {age(it.age_days)}</div>
-              {it.why && <p className="small mt-2 mb-0"><b>Possible engineering need (our guess).</b> {it.why}</p>}
-              {it.caveat && <p className="small mt-2 mb-0"><b>Be aware:</b> {it.caveat}</p>}
-              <div className="row small mt-3">
-                {it.buyer_role && <span><b>Likely buyer</b> {it.buyer_name ? `${it.buyer_name}, ` : ""}{it.buyer_role}</span>}
-                {it.service_fit && <span><b>Our offer</b> {({ staff_augmentation: "Staff augmentation", team_extension: "Team extension", ai_services: "AI services" } as Record<string, string>)[it.service_fit] ?? humanize(it.service_fit)}</span>}
-              </div>
-              <div className="row mt-3">
-                {it.source_url ? <a className="pill" href={it.source_url} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: it.organization.id, where: "prospect" })}>Open source ↗</a> : <Badge kind="warn">No source link: find one first</Badge>}
-                {it.source_url && !it.verification && <button className="primary" onClick={() => verify(it.organization.id, it.source_url)}>Check this source</button>}
-                {it.verification && <><Badge kind={VSTATE[it.verification.status]?.[0]}>{VSTATE[it.verification.status]?.[1] ?? it.verification.status}</Badge>{it.verification.status === "verified" && <span className="small">{it.verification.events} {it.verification.events === 1 ? "finding" : "findings"} added</span>}{it.verification.reason && <span className="small muted">{it.verification.reason}</span>}</>}
-                <Link to={`/accounts/${it.organization.id}`} className="small">Open account</Link>
-              </div>
+              <Badge kind={state?.[0] ?? "warn"}>{state?.[1] ?? (it.source_url ? "Source unchecked" : "Source missing")}</Badge>
             </div>
-          </li>
-        ))}
-      </ol>
-      {d && d.total > d.items.length && <p className="small muted">Showing {d.items.length} of {d.total}. Search to narrow it down.</p>}
-      </Tabs>
+            {it.signal && <p className="lead-description">{it.signal}</p>}
+            {it.signal_date && <p className="small muted mt-1">{fmtDate(it.signal_date)}</p>}
+            {it.why && <p><strong>Possible engineering need</strong><br />{it.why}</p>}
+            {(it.caveat || it.buyer_role || it.score !== null) && <details className="small">
+              <summary>Workbook notes</summary>
+              {it.buyer_role && <p><strong>Suggested contact</strong><br />{[it.buyer_name, it.buyer_role].filter(Boolean).join(", ")}</p>}
+              {it.caveat && <p>{it.caveat}</p>}
+              {it.score !== null && <p>Workbook score {it.score}/100</p>}
+            </details>}
+            <div className="row mt-3">
+              {it.source_url && <a href={it.source_url} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "prospect" })}>Open original source ↗</a>}
+              {canVerify && it.source_url && !it.verification && <button disabled={busy} onClick={() => check(it)}>Check source</button>}
+            </div>
+          </article>;
+        })}
+        </div></section>)}
+      {pages > 1 && <div className="directory-pagination">
+        <button disabled={visiblePage <= 1} onClick={() => setOffset({ page: visiblePage - 1, q, region, lane })}>Previous</button>
+        <span>Page {visiblePage} of {pages}</span>
+        <button disabled={visiblePage >= pages} onClick={() => setOffset({ page: visiblePage + 1, q, region, lane })}>Next</button>
+      </div>}
     </section>
   );
 }

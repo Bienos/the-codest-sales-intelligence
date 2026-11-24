@@ -77,7 +77,7 @@ def validate_and_maybe_activate(conn: Conn, source_id: str, *, activate: bool, b
 
     from .factory import NoConnector, build_connector
     src = get(conn, source_id)
-    if src["status"] == "active":
+    if src["status"] == "active" and activate:
         return {"result": "already_active"}
     if src["auth_mode"] != "none":
         import os

@@ -22,6 +22,7 @@ from ..signals.seller import leading_signals
 from ..feed import STORY_KEY_SQL
 from ..readmodel import card, coverage_health, evidence_for, fingerprint, today
 from ..research import planner
+from ..target_market import commercial_sql, target_sql
 from .auth import TokenVerifier, principal_dep, require
 
 CSP = ("default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; "
@@ -141,9 +142,9 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
 
     # ------------------------------------------------------------------ Today
     @app.get("/api/today")
-    def get_today(request: Request, focus: str = Query("", pattern="^(|finance|other|public)$"), p: Principal = Depends(require("today.read"))):
+    def get_today(request: Request, focus: str = Query("", pattern="^(|finance|other|public)$"), target: bool = False, p: Principal = Depends(require("today.read"))):
         with tx(request) as conn:
-            out = today(conn, p, focus=focus)
+            out = today(conn, p, focus=focus, target=target)
             for sec in out["sections"].values():
                 for c in sec:
                     event(conn, p, "recommendation_presented", c["hypothesis_id"], c["account"]["id"], priority=c["priority"])
@@ -203,17 +204,18 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                 f"WHERE ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') ORDER BY o.in_master_list DESC, o.display_name LIMIT %s", [*params, q, q, limit])]}
 
     @app.get("/api/accounts/{oid}")
-    def account(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+    def account(oid: str, request: Request, target: bool = False, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
-            o = q1(conn, f"SELECT o.* FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params])       # noqa: S608
+            focus = (commercial_sql() if p.can("research.request") else target_sql()) if target else "TRUE"
+            o = q1(conn, f"SELECT o.* FROM organizations o WHERE o.id=%s AND ({where}) AND {focus}", [oid, *params])       # noqa: S608
             if not o:
                 raise HTTPException(404, "not found")
             crm = q1(conn, "SELECT crm_id, owner_id, open_deals_count, synced_at FROM crm_organizations WHERE organization_id=%s AND link_status='linked'", (oid,))
-            hyps = qa(conn, "SELECT h.* FROM opportunity_hypotheses h WHERE h.organization_id=%s AND h.state NOT IN ('superseded') ORDER BY h.score_total DESC", (oid,))
+            hyps = qa(conn, "SELECT h.* FROM opportunity_hypotheses h WHERE h.organization_id=%s AND h.state NOT IN ('superseded') AND (NOT %s OR h.route_type <> 'procurement') ORDER BY h.score_total DESC", (oid, target))
             inits = qa(conn, "SELECT id, title, title_is_official, stage, programme_domain, technology_tags, research_gaps, budget_verified, last_material_event_at, next_milestone_at FROM initiatives WHERE owner_org_id=%s AND status='active'", (oid,))
             sources = qa(conn, "SELECT sheet_title, source_file_id, row_number FROM account_source_links WHERE organization_id=%s", (oid,))
-            signals = qa(conn, f"SELECT {STORY_KEY_SQL} AS story_key, s.rule_id, s.demand_tier, s.strength, CASE WHEN s.status='active' AND (s.expires_at IS NULL OR s.expires_at>now()) AND e.lifecycle_status='active' THEN 'active' ELSE 'historical' END AS status, s.effective_from, s.expires_at, e.id::text AS event_id, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verified_at, s.evidence_claim_ids FROM signals s JOIN events e ON e.id=s.event_id AND e.subject_org_id=s.organization_id WHERE s.organization_id=%s ORDER BY s.effective_from DESC", (oid,))
+            signals = qa(conn, f"SELECT {STORY_KEY_SQL} AS story_key, s.rule_id, s.demand_tier, s.strength, CASE WHEN s.status='active' AND (s.expires_at IS NULL OR s.expires_at>now()) AND e.lifecycle_status='active' THEN 'active' ELSE 'historical' END AS status, s.effective_from, s.expires_at, e.id::text AS event_id, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verified_at, s.evidence_claim_ids FROM signals s JOIN events e ON e.id=s.event_id AND e.subject_org_id=s.organization_id WHERE s.organization_id=%s AND (NOT %s OR e.lane <> 'public') ORDER BY s.effective_from DESC", (oid, target))
             for signal in signals:
                 signal["evidence"] = evidence_for(conn, list(signal.pop("evidence_claim_ids") or []))
             suppliers = qa(conn, "SELECT supplier_name, supplier_role, scope_text, relation, exclusivity, status FROM supplier_edges WHERE buyer_org_id=%s", (oid,))
@@ -230,7 +232,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                 names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals WHERE id = ANY(%s)", ([t["rule_id"] for t in score["top"]],))}
                 score["top"] = [{**t, "name": names.get(t["rule_id"])} for t in score["top"]]      # sellers see what the signal means, not just its code
             now = datetime.now(timezone.utc)
-            return {"account": dict(o, id=str(o["id"])), "buying_signal": leading_signals(conn, [oid]).get(oid), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
+            return {"account": dict(o, id=str(o["id"])), "buying_signal": leading_signals(conn, [oid], commercial_only=target).get(oid), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
                     "opportunities": [card(conn, h, now) for h in hyps], "initiatives": [dict(i, id=str(i["id"])) for i in inits], "signals": signals, "suppliers": suppliers,
                     "routes": routes, "buyers": buyers, "coverage": coverage, "source_coverage_note": "Only source families listed above are monitored; missing families mean visibility unknown, not 'no activity'."}
 
@@ -249,28 +251,31 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     @app.get("/api/explorer")
     def explorer(request: Request, entity: str = Query("opportunities", pattern="^(opportunities|companies|procurement|events)$"), q: str = "", country: str | None = None,
                  existing: bool | None = None, stage: str | None = None, confidence: str | None = None, signal_family: str | None = None, blocked: bool | None = None,
-                 limit: int = Query(50, le=200), p: Principal = Depends(require("explorer.read"))):
+                 limit: int = Query(50, le=200), target: bool = False, p: Principal = Depends(require("explorer.read"))):
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
             cov = coverage_health(conn, p)
+            focus = target_sql() if target else "TRUE"
             if entity == "companies":
-                sql = ("SELECT o.id, o.display_name, o.country_code, o.segment, o.in_master_list, o.employees_estimate FROM organizations o WHERE (" + where + ") "
+                sql = ("SELECT o.id, o.display_name, o.country_code, o.segment, o.in_master_list, o.employees_estimate FROM organizations o WHERE (" + where + f") AND {focus} "
                        "AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') AND (%s::text IS NULL OR o.country_code=%s) AND (%s::bool IS NULL OR o.in_master_list=%s) ORDER BY o.display_name LIMIT %s")
                 rows = qa(conn, sql, [*params, q, q, country, country, existing, existing, limit]); basis = "alphabetical (ICP fit not applied)"
             elif entity == "procurement":
+                if target:
+                    raise HTTPException(404, "Not found.")
                 rows = qa(conn, "SELECT n.notice_id, n.buyer_name, n.title, n.status, n.deadline_at, n.deadline_tz, n.last_status_check_at, n.official_url FROM procurement_notices n "
                                 "LEFT JOIN organizations o ON o.id=n.buyer_org_id WHERE (n.buyer_org_id IS NULL OR (" + where + ")) AND (%s='' OR n.title ILIKE '%%'||%s||'%%') "
                                 "ORDER BY (n.status IN ('open','amended')) DESC, n.deadline_at LIMIT %s", [*params, q, q, limit]); basis = "open notices first, then deadline"
             elif entity == "events":
                 rows = qa(conn, "SELECT e.id, e.event_type, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verification_status, e.is_historical_replay FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
-                                "WHERE (e.subject_org_id IS NULL OR (" + where + ")) AND (%s='' OR e.summary ILIKE '%%'||%s||'%%') ORDER BY coalesce(e.event_at, e.pub_at) DESC NULLS LAST LIMIT %s", [*params, q, q, limit]); basis = "freshness (event date, publication date shown separately)"
+                                "WHERE (e.subject_org_id IS NULL OR (" + where + f")) AND {focus} AND (NOT %s OR e.lane <> 'public') AND (%s='' OR e.summary ILIKE '%%'||%s||'%%') ORDER BY coalesce(e.event_at, e.pub_at) DESC NULLS LAST LIMIT %s", [*params, target, q, q, limit]); basis = "freshness (event date, publication date shown separately)"
             else:
                 rows = qa(conn, "SELECT h.id, o.display_name, h.route_type, h.counterparty_name, h.priority, h.state, h.score_total, h.evidence_confidence, h.access_status, h.external_demand_status, i.title, i.stage "
-                                "FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id JOIN initiatives i ON i.id=h.initiative_id WHERE (" + where + ") "
+                                "FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id JOIN initiatives i ON i.id=h.initiative_id WHERE (" + where + f") AND {focus} AND (NOT %s OR h.route_type <> 'procurement') "
                                 "AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%' OR i.title ILIKE '%%'||%s||'%%') AND (%s::text IS NULL OR o.country_code=%s) AND (%s::bool IS NULL OR o.in_master_list=%s) "
                                 "AND (%s::text IS NULL OR i.stage=%s) AND (%s::text IS NULL OR h.evidence_confidence=%s) AND (%s::bool IS NULL OR (h.priority='blocked')=%s) "
                                 "AND (%s::text IS NULL OR EXISTS (SELECT 1 FROM signals s JOIN initiative_events ie ON ie.event_id=s.event_id WHERE ie.initiative_id=i.id AND s.rule_id LIKE %s||'-%%')) "
-                                "ORDER BY h.score_total DESC LIMIT %s", [*params, q, q, q, country, country, existing, existing, stage, stage, confidence, confidence, blocked, blocked, signal_family, signal_family, limit])
+                                "ORDER BY h.score_total DESC LIMIT %s", [*params, target, q, q, q, country, country, existing, existing, stage, stage, confidence, confidence, blocked, blocked, signal_family, signal_family, limit])
                 basis = "opportunity prioritisation score (provisional weights; not a probability). Confidence is a separate column."
             return {"entity": entity, "ranking_basis": basis, "count": len(rows), "items": [{k: (str(v) if k == "id" else v) for k, v in r.items()} for r in rows],
                     "coverage": cov, "coverage_note": "Empty results are NOT proof of no market activity: see coverage."}

@@ -14,6 +14,7 @@ from ..audit import audit
 from ..readmodel import coverage_health, story_sources
 from ..db import q1, qa
 from ..jobs.queue import enqueue
+from ..target_market import target_sql
 from .auth import require
 
 URL_KEYS = ("Primary source URL", "Primary Source URL", "Secondary Source URL", "Source URL", "Source link", "Signal Source URL", "Supplier evidence URL", "Existing source URL", "Second Signal Source URL", "Third Signal Source URL", "Matched Signal Source URL", "Evidence URL")
@@ -28,7 +29,11 @@ class BatchIn(BaseModel):
     lane: str = Field(default="shortlist", pattern="^(shortlist|signals)$")
     limit: int = Field(default=10, ge=1, le=25)
     focus: str = Field(default="", pattern="^(|finance|other)$")
+    target: bool = False
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=100)
     q: str = Field(default="", max_length=120)
+    region: str = Field(default="", pattern="^(|uk|dach|nordics|poland|europe|international)$")
 
 
 class OpenedIn(BaseModel):
@@ -112,7 +117,8 @@ def register(app: FastAPI) -> None:
     def verify_batch(body: BatchIn, request: Request, p: Principal = Depends(require("research.request"))):
         from .lists import prospects_for      # shared ranking
         with tx(request) as conn:
-            items = prospects_for(conn, p, lane=body.lane, q=body.q, limit=100, focus=body.focus)
+            limit = body.page_size if body.target else 100
+            items = prospects_for(conn, p, lane=body.lane, q=body.q, limit=limit, focus=body.focus, target=body.target, region=body.region, offset=(body.page - 1) * limit)
             queued = skipped = 0
             for it in items:
                 if queued >= body.limit:
@@ -353,7 +359,7 @@ def register_feed(app: FastAPI) -> None:
 
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
-                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, ge=1, le=100), fit_only: bool = False, focus: str = Query("", pattern="^(|finance|other|unclassified)$"), p: Principal = Depends(require("explorer.read"))):
+                    market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, ge=1, le=100), fit_only: bool = False, focus: str = Query("", pattern="^(|finance|other|unclassified)$"), target: bool = False, p: Principal = Depends(require("explorer.read"))):
         from .search import all_like, tokens
         toks = tokens(q)
         rule_ids = fd.rules_for_play(play) if play else ([rule] if rule else [])
@@ -361,11 +367,12 @@ def register_feed(app: FastAPI) -> None:
         active = "s.status='active' AND s.verification_status='verified' AND (s.expires_at IS NULL OR s.expires_at>now()) AND s.organization_id=e.subject_org_id"
         with tx(request) as conn:
             ew, ep = org_scope_sql(p, "e.subject_org_id")
+            eligibility = f"{target_sql()} AND e.lane <> 'public'" if target else "TRUE"
             tw, tp = all_like("(e.summary || ' ' || coalesce(o.display_name,''))", toks) if toks else ("TRUE", [])
             rows = qa(conn,
                 f"WITH candidates AS (SELECT e.id, {fd.STORY_KEY_SQL} AS story_key, "
                 f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
-                f"WHERE {VIEWS[view]} AND e.lifecycle_status='active' AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
+                f"WHERE {VIEWS[view]} AND {eligibility} AND e.lifecycle_status='active' AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
                 f"AND (%s='' OR %s='public' OR ({sector})=%s) "
                 f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND ({active}) AND s.rule_id = ANY(%s))) "
@@ -406,16 +413,23 @@ def register_feed(app: FastAPI) -> None:
             for it in items:
                 for s in it["signals"]:
                     s["name"] = names.get(s["rule_id"], s["rule_id"])
-            leads = qa(conn, "SELECT v.url, v.claimed_text, v.status, v.created_at, v.plan_id, v.result FROM verification_requests v WHERE v.origin IN ('exa_discovery','seller_miss') AND v.status IN ('queued','fetching','extracting','waiting_budget','no_event','blocked','failed') ORDER BY v.created_at DESC LIMIT 12")
             cov = coverage_health(conn, p)
-            totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified, "
-                              "count(*) FILTER (WHERE subject_org_id IS NULL AND verification_status='verified' AND coalesce(event_at, pub_at, first_observed_at) > now() - make_interval(days => %s)) AS market_wide FROM events", (days,)) or {}
-            counts = q1(conn, "SELECT " + ", ".join(
-                f"count(DISTINCT {fd.STORY_KEY_SQL}) FILTER (WHERE {w}" + (f" AND (%s='' OR ({sector})=%s)" if k != "public" else "") + f") AS {k}"
-                for k, w in VIEWS.items()
-            ) + f" FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE e.lifecycle_status='active' AND NOT e.is_historical_replay "
-                f"AND coalesce(e.event_at,e.pub_at,e.first_observed_at)>now()-make_interval(days=>%s) "
-                f"AND (e.subject_org_id IS NULL OR ({ew}))", [focus, focus] * (len(VIEWS)-1) + [days, *ep]) or {}
+            vw, vp = org_scope_sql(p, "o.id")
+            lead_scope = f"{target_sql()} AND ({vw})" if target else "TRUE"
+            leads = qa(conn, "SELECT v.url, v.claimed_text, v.status, v.created_at, v.plan_id, v.result FROM verification_requests v "
+                       f"LEFT JOIN organizations o ON o.id=v.organization_id WHERE {lead_scope} "
+                       "AND v.origin IN ('exa_discovery','seller_miss') AND v.status IN ('queued','fetching','extracting','waiting_budget','no_event','blocked','failed') "
+                       "ORDER BY v.created_at DESC LIMIT 12", vp if target else ())
+            totals = counts = {}
+            if not target:
+                totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified, "
+                                  "count(*) FILTER (WHERE subject_org_id IS NULL AND verification_status='verified' AND coalesce(event_at, pub_at, first_observed_at) > now() - make_interval(days => %s)) AS market_wide FROM events", (days,)) or {}
+                counts = q1(conn, "SELECT " + ", ".join(
+                    f"count(DISTINCT {fd.STORY_KEY_SQL}) FILTER (WHERE {w}" + (f" AND (%s='' OR ({sector})=%s)" if k != "public" else "") + f") AS {k}"
+                    for k, w in VIEWS.items()
+                ) + f" FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE e.lifecycle_status='active' AND NOT e.is_historical_replay "
+                    f"AND coalesce(e.event_at,e.pub_at,e.first_observed_at)>now()-make_interval(days=>%s) "
+                    f"AND (e.subject_org_id IS NULL OR ({ew}))", [focus, focus] * (len(VIEWS)-1) + [days, *ep]) or {}
         return {"view": view, "view_counts": counts, "items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,
                 "plays": [{"id": i, "name": n} for i, n in fd.play_ids()],
                 "note": "Findings include claims checked against collected source text. Searches and sheet signals that have not been checked are listed as leads, never as findings."}

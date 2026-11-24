@@ -17,3 +17,69 @@
 }
 
 .stack { display: grid; gap: 12px; margin-top: 6px; }
+
+.directory-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.directory-heading .sub { max-width: 60ch; margin-bottom: 0; }
+.directory-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(10rem, 1fr);
+  gap: .8rem 1rem;
+  margin: 0 0 1rem;
+}
+.directory-filters label { font-size: .875rem; font-weight: 600; }
+.directory-filters input:not([type="checkbox"]), .directory-filters select {
+  display: block;
+  width: 100%;
+  margin-top: .35rem;
+}
+.directory-toolbar, .directory-pagination, .directory-lead-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .65rem 1rem;
+}
+.directory-presets, .directory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.directory-presets button, .directory-toolbar button, .directory-toolbar select,
+.directory-filters input:not([type="checkbox"]), .directory-filters select, .directory-pagination button { min-height: 44px; }
+.directory-count { margin: 1rem 0 .5rem; }
+.directory-table th, .directory-table td { padding: .75rem 1rem; vertical-align: top; }
+.directory-table td > .muted { display: block; margin-top: .25rem; }
+.directory-company { min-width: 10rem; overflow-wrap: anywhere; }
+.directory-company > a { font-size: 1.05rem; font-weight: 700; }
+.directory-pagination { justify-content: flex-end; margin-top: 1rem; }
+.directory-leads { display: grid; gap: .75rem; }
+.directory-lead { margin-bottom: 0; overflow-wrap: anywhere; }
+.directory-lead-head { align-items: flex-start; }
+.directory-lead h3, .company-profile h2 { font-size: 1.15rem; margin: 0 0 .3rem; }
+.directory-lead-head p { margin: 0; }
+.lead-description { max-width: 85ch; font-weight: 600; margin-bottom: 0; }
+.account-facts dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .9rem 1rem; margin-top: 0; }
+.account-facts dt { color: var(--muted); font-size: .875rem; }
+.account-facts dd { margin: .2rem 0 0; }
+.company-profile .profile-estimate { display: flex; align-items: center; gap: .5rem; align-self: end; min-height: 44px; }
+
+@media (max-width: 640px) {
+  .directory-filters { grid-template-columns: minmax(0, 1.2fr) minmax(8.25rem, .85fr); }
+  .company-profile .directory-filters { grid-template-columns: minmax(0, 1fr); }
+  .directory-table, .directory-table tbody, .directory-table tr, .directory-table td { display: block; }
+  .directory-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .directory-table tr { padding: .6rem .85rem; }
+  .directory-table tr + tr { border-top: 1px solid var(--line); }
+  .directory-table td { padding: .4rem 0; border: 0; }
+  .directory-table td[data-label]::before { content: attr(data-label); display: block; font-weight: 600; font-size: .8rem; }
+  .directory-table td:last-child { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .55rem; }
+}
+
+.directory-region + .directory-region { margin-top: 1.25rem; }
+.directory-region > h2 { margin: .6rem 0 .45rem; font-size: 1.05rem; }
+
+@media (max-width: 350px) {
+  .directory-filters { grid-template-columns: minmax(0, 1fr); }
+}

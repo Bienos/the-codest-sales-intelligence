@@ -13,10 +13,12 @@ from pydantic import BaseModel, Field
 from ..access import Principal, org_scope_sql
 from ..audit import audit
 from ..sheets.reconcile import VENDOR_WORDS, market_focus
-from ..db import jb, q1, qa
+from ..db import q1, qa
 from ..jobs.queue import enqueue
 from ..sheets.client import MAX_XLSX_BYTES, detect_workbook
-from .auth import principal_dep, require
+from ..target_market import TARGET_REGION_ORDER, target_region, target_sql
+from .auth import require
+from .search import all_like, tokens
 
 _PRIORITY = {"p1": 0, "p2": 1, "p3": 2}
 
@@ -63,22 +65,28 @@ def prospect_item(r: dict[str, Any], kind: str, can_contacts: bool, today: date)
     return item
 
 
-def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: str = "") -> list[dict[str, Any]]:
+def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: str = "", target: bool = False, region: str = "", offset: int = 0) -> list[dict[str, Any]]:
     today = datetime.now(timezone.utc).date()
     from ..market import sector_sql
 
     where, params = org_scope_sql(p, "o.id")
+    eligibility = target_sql() if target else "TRUE"
     sector = sector_sql("o.segment")
+    match, search_args = all_like("concat_ws(' ', o.display_name, o.canonical_domain, o.segment, o.country_code, r.original->>'Strongest buying signal', r.original->>'Verified Buying Signal')", tokens(q) or [q.strip()]) if q.strip() else ("TRUE", [])
     rows = qa(conn,
-        f"SELECT DISTINCT ON (r.organization_id, r.kind) r.organization_id, r.kind, r.original, o.display_name, o.country_code, o.segment, o.employees_estimate, "   # noqa: S608
+        f"SELECT DISTINCT ON (r.organization_id, r.kind) r.organization_id, r.kind, r.original, o.display_name, o.country_code, o.segment, o.employees_estimate, o.employees_uncertain, "   # noqa: S608
         f"(SELECT count(*) FROM opportunity_hypotheses h WHERE h.organization_id=o.id AND h.state NOT IN ('superseded')) AS opps "
         f"FROM legacy_account_research r JOIN organizations o ON o.id=r.organization_id "
-        f"WHERE r.kind IN ('priority_outreach','master_account') AND ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') "
+        f"WHERE r.kind IN ('priority_outreach','master_account') AND ({where}) AND {eligibility} AND ({match}) "
         f"AND (%s='' OR (o.entity_type<>'public_body' AND (({sector})='finance')=(%s='finance'))) "
-        f"ORDER BY r.organization_id, r.kind, r.observed_at DESC", [*params, q, q, focus, focus])
+        f"ORDER BY r.organization_id, r.kind, r.observed_at DESC", [*params, *search_args, focus, focus])
     can_contacts = p.can("contacts.read")
     by_org: dict[str, dict[str, Any]] = {}
     for r in rows:
+        if region and target_region(r["country_code"]) != region:
+            continue
+        if target and lane != "all" and ("shortlist" if r["kind"] == "priority_outreach" else "signals") != lane:
+            continue
         oid = str(r["organization_id"])
         it = prospect_item(r, r["kind"], can_contacts, today)
         if not it["signal"] and not it["source_url"]:
@@ -86,14 +94,16 @@ def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: s
         cur = by_org.get(oid)
         if cur and cur["lane"] == "shortlist":      # curated shortlist wins over the generic master row
             continue
-        by_org[oid] = {"organization": {"id": oid, "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"]},
+        by_org[oid] = {"organization": {"id": oid, "name": r["display_name"], "country": r["country_code"], "segment": r["segment"], "employees": r["employees_estimate"], "employees_uncertain": r["employees_uncertain"], "region": target_region(r["country_code"])},
                        "has_opportunity": bool(r["opps"]), "market": market_focus(r["country_code"], r["segment"]),
                        "vendor_flag": bool(r["segment"] and VENDOR_WORDS.search(r["segment"])), **it}
     items = [i for i in by_org.values() if lane == "all" or i["lane"] == lane]
-    items.sort(key=lambda i: (i["lane"] != "shortlist", i["rank"] if i["rank"] is not None else 999,
+    items.sort(key=lambda i: (TARGET_REGION_ORDER.get(i["organization"]["region"], 99) if target else 0,
+                              i["lane"] != "shortlist", i["rank"] if i["rank"] is not None else 999,
                               _PRIORITY.get(str(i["priority"] or "").lower(), 3), -(i["score"] or 0)))
     total = len(items)
-    items = items[:max(limit, 1)]
+    start = min(offset, max(0, ((total - 1) // limit) * limit))
+    items = items[start:start + limit]
     urls = [i["source_url"] for i in items if i["source_url"]]
     scope = [i["organization"]["id"] for i in items]
     ver = {(str(v["organization_id"]), v["url"]): v for v in qa(conn, """
@@ -124,26 +134,27 @@ def register(app: FastAPI) -> None:
         return request.app.state.db.tx()
 
     @app.get("/api/prospects")
-    def prospects(request: Request, lane: str = Query("all", pattern="^(all|shortlist|signals)$"), q: str = "", limit: int = Query(40, le=200),
-                  focus: str = Query("", pattern="^(|finance|other)$"),
+    def prospects(request: Request, lane: str = Query("all", pattern="^(all|shortlist|signals)$"), q: str = Query("", max_length=120), limit: int = Query(40, ge=1, le=200),
+                  focus: str = Query("", pattern="^(|finance|other)$"), target: bool = False, region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"), page: int = Query(1, ge=1),
                   p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            items = prospects_for(conn, p, lane=lane, q=q, limit=limit, focus=focus)
+            items = prospects_for(conn, p, lane=lane, q=q, limit=limit, focus=focus, target=target, region=region, offset=(page - 1) * limit)
             total = items[0]["_total"] if items else 0
             for i in items:
                 i.pop("_total", None)
-            return {"items": items, "total": total,
+            return {"items": items, "total": total, "page": min(page, max(1, (total + limit - 1) // limit)),
                     "note": "From your imported sheets. Not yet verified by this platform: confirm the source before acting."}
 
     @app.get("/api/overview")
-    def overview(request: Request, p: Principal = Depends(require("today.read"))):
+    def overview(request: Request, target: bool = False, p: Principal = Depends(require("today.read"))):
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
-            c = q1(conn, f"SELECT count(*) AS orgs, count(*) FILTER (WHERE o.in_master_list) AS master FROM organizations o WHERE ({where})", params) or {}   # noqa: S608
+            focus = target_sql() if target else "TRUE"
+            c = q1(conn, f"SELECT count(*) AS orgs, count(*) FILTER (WHERE o.in_master_list) AS master FROM organizations o WHERE ({where}) AND {focus}", params) or {}   # noqa: S608
             people = q1(conn, "SELECT count(*) AS n FROM employment") or {}
             run = q1(conn, "SELECT workbook_key, status, finished_at FROM import_runs WHERE status IN ('completed','paused_schema_drift') ORDER BY finished_at DESC NULLS LAST LIMIT 1")
             shortlist = q1(conn, "SELECT count(DISTINCT organization_id) AS n FROM legacy_account_research WHERE kind='priority_outreach'") or {}
-            verified = q1(conn, "SELECT count(*) AS n FROM opportunity_hypotheses WHERE state NOT IN ('superseded')") or {}
+            verified = q1(conn, f"SELECT count(*) AS n FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id WHERE h.state NOT IN ('superseded') AND ({where}) AND {focus} AND (NOT %s OR h.route_type <> 'procurement')", [*params, target]) or {}
             src = q1(conn, "SELECT count(*) FILTER (WHERE s.status='active') AS live, count(*) AS total FROM sources s WHERE s.collection_method <> 'internal'") or {}
             vr = {r["status"]: r["n"] for r in qa(conn, "SELECT status, count(*) AS n FROM verification_requests GROUP BY status")}
             bud = {r["provider"]: {"cap": float(r["cap"]), "used": float(r["spent"]) + float(r["reserved"])} for r in qa(conn, "SELECT provider, cap, spent, reserved FROM provider_budgets WHERE kind='monthly' AND period=to_char(now() AT TIME ZONE 'UTC','YYYY-MM')")}

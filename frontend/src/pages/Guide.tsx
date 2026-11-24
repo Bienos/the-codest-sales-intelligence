@@ -20,17 +20,17 @@ const OUTPUTS = [
 ];
 const CLICK: [string, string, string][] = [
   ["Today", "/today", "Your queue. Start here every morning. It also lists your shortlist from the workbooks, each with a Check button."],
-  ["Accounts", "/accounts", "Every company we know about, with its signal score, contacts and opportunities. Add a company that is missing."],
+  ["Accounts & leads", "/accounts", "Search your target companies by region. Open the Leads tab to see buying signals from your workbooks and check their sources."],
   ["Market feed", "/feed", "Every checked finding, newest first, with why it could be work for us."],
-  ["Renewals", "/renewals", "Public IT contracts likely to be re-tendered soon, and who holds them now."],
-  ["Explorer", "/explorer", "Search opportunities, companies, public tenders and findings across the market."],
+  ["Explorer", "/explorer", "Search opportunities, companies and findings in your target market."],
   ["Library", "/library", "The 64 signals, every source with its licence terms, and every page and feed we watch. Searchable."],
   ["Knowledge base", "/knowledge", "The ICP map and the sales field guide, inside the tool."],
   ["Search box (left)", "/search", "One box for companies, signals, sources, findings and the knowledge base."],
   ["Administration", "/admin", "Imports, people, sources, approvals, usage and cost, and the audit log."],
 ];
 const WORDS: [string, string][] = [
-  ["Account", "A company in our database, from your workbooks, added by someone, or found by us."],
+  ["Account", "A company you can research and track."],
+  ["Lead", "A buying signal from a workbook. Its source shows whether the claim has been checked."],
   ["Opportunity", "A specific piece of work we think we could win at an account, through one route in. Not the same as a Pipedrive deal."],
   ["Finding", "One dated fact we checked against the original page, for example “Bank X chose vendor Y on 10 November”."],
   ["Signal", "One of 64 patterns that suggest a company may need outside engineering help, such as a vendor being chosen or an engineering team being hired."],

@@ -1,51 +1,39 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, post, trackSourceOpened } from "../api";
-import { Badge, Err, Skeleton, TIER, lab, Tabs } from "../components/ui";
+import { Badge, Err, Skeleton, TIER, lab } from "../components/ui";
 import { demandLabel } from "../components/BuyingSignal";
+import { countryName, staffCount } from "./targetMarket";
 const SERVICE: Record<string, string> = { staff_augmentation: "Staff Augmentation", team_extension: "Team Extension", ai_services: "AI Services" };
 const LANG: Record<string, string> = { de: "German", pl: "Polish", sv: "Swedish", no: "Norwegian", nb: "Norwegian", da: "Danish", fi: "Finnish", fr: "French", nl: "Dutch", es: "Spanish", it: "Italian", is: "Icelandic" };
 
-const ICP_LABEL: Record<string, string> = { strategic_5000_plus: "5,000+ staff", enterprise_1000_plus: "1,000+ staff", scaleup_500_999: "500 to 999 staff", below_threshold: "Below size threshold", unknown: "Size unknown" };
 const dayKey = (d: string | null) => (d ? new Date(d).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "Date unknown");
 const LEAD: Record<string, [string, string]> = { queued: ["info", "Waiting to be checked"], fetching: ["info", "Reading the page"], extracting: ["info", "Finding events"], waiting_budget: ["warn", "Waiting for AI budget"],
   no_event: ["", "Checked: nothing we could quote"], blocked: ["bad", "Page not allowed"], failed: ["bad", "Could not check"] };
 
 export default function Feed() {
-  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [core, setCore] = useState(false); const [view, setView] = useState("accounts"); const [days, setDays] = useState(60); const [fitOnly, setFitOnly] = useState(false);
+  const [q, setQ] = useState(""); const [play, setPlay] = useState(""); const [days, setDays] = useState(60); const [fitOnly, setFitOnly] = useState(false);
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
-  const [focus, setFocus] = useState("finance");
   const [retry, setRetry] = useState(0);
   const [visible, setVisible] = useState(30);
   useEffect(() => {
     const request = new AbortController();
     setErr(null); setD(null); setVisible(30);
-    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&market=${core ? "core" : ""}&accounts_only=true&view=${view}&fit_only=${fitOnly}&focus=${focus}`, { signal: request.signal }).then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); }), q ? 250 : 0);
+    const t = setTimeout(() => api(`/api/feed?q=${encodeURIComponent(q)}&days=${days}&play=${play}&target=true&fit_only=${fitOnly}`, { signal: request.signal }).then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); }), q ? 250 : 0);
     return () => { clearTimeout(t); request.abort(); };
-  }, [q, play, core, days, view, fitOnly, focus, retry]);
+  }, [q, play, days, fitOnly, retry]);
   const groups: [string, any[]][] = [];
   d?.items.slice(0, visible).forEach((it: any) => { const k = dayKey(it.happened); const g = groups.find((x) => x[0] === k); g ? g[1].push(it) : groups.push([k, [it]]); });
   const cov = d?.coverage;
   return (
     <>
       <div className="page-head"><div className="eyebrow">What we found</div><h1>Market feed</h1></div>
-      <p className="small muted mt-0 measure">Findings show the collected text and its source. Open the source to check the original and qualify the opportunity. Unread pages are under <a href="#links-to-check">Links to check</a>.</p>
-      {view !== "public" && <label className="row small mb-3">Sector focus
-        <select value={focus} onChange={(e) => setFocus(e.target.value)}>
-          <option value="finance">Banking &amp; financial services</option>
-          <option value="other">Other sectors</option>
-          <option value="unclassified">Sector unclassified</option>
-          <option value="">All sectors</option>
-        </select>
-      </label>}
-      <Tabs label="What to show" items={[["accounts", "Your accounts"], ["market", "New companies: main markets"], ["rest", "New companies: elsewhere"], ["public", "Public sector"]].map(([k, l]) => ({ key: k, label: <>{l}{d?.view_counts ? <span className="tabn">{Number(d.view_counts[k] ?? 0).toLocaleString()}</span> : null}</> }))} value={view} onChange={setView}>
-      <p className="small muted sub-tight">{{ accounts: "Checked findings linked to accounts in the directory.", market: "Findings in the UK, DACH, Nordics and Poland whose buyers have yet to be matched to an account.", rest: "The same for the rest of Europe and the US. A second priority.", public: "Government and public bodies. Kept apart because they buy through tenders." }[view]}</p>
+      <p className="small muted mt-0 measure">Checked news about your target companies. Open a source to see the original report.</p>
       <details className="feed-filters"><summary>Filter findings</summary>
       <div className="feedbar mt-2">
         <input aria-label="Search the feed" placeholder="Search company or keyword" value={q} onChange={(e) => setQ(e.target.value)} />
         <select aria-label="Sales play" value={play} onChange={(e) => setPlay(e.target.value)}><option value="">All plays</option>{d?.plays.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         <select aria-label="Time window" value={days} onChange={(e) => setDays(Number(e.target.value))}><option value={14}>Last 2 weeks</option><option value={30}>Last 30 days</option><option value={60}>Last 60 days</option><option value={180}>Last 6 months</option></select>
-        {view === "accounts" && <label className="small row"><input type="checkbox" checked={core} onChange={(e) => setCore(e.target.checked)} /> Main markets only</label>}
         <label className="small row"><input type="checkbox" checked={fitOnly} onChange={(e) => setFitOnly(e.target.checked)} /> <span>Only likely work for us</span></label>
       </div>
       <p className="small muted mt-0">“Only likely work for us” hides findings our sales plays do not match to a service.</p>
@@ -53,7 +41,7 @@ export default function Feed() {
       <Err e={err} onRetry={() => setRetry((n) => n + 1)} />
       {!d && !err && <Skeleton rows={3} label="Loading the feed" />}
       {cov && !cov.all_monitored_healthy && <div className={`cov ${cov.no_active_monitoring ? "bad" : ""}`}><b>Source health.</b> {cov.no_active_monitoring ? "No source is switched on yet, so this feed only shows what you checked yourself or what search found. A quiet feed says nothing about the market." : `${cov.unhealthy.length} ${cov.unhealthy.length === 1 ? "source is" : "sources are"} having problems: ${cov.unhealthy.map((u: any) => u.source).join(", ")}.`} <Link to="/admin/pipeline">See what is running</Link></div>}
-      {d && d.count === 0 && <div className="empty"><b>Nothing checked in this window</b>Check a company from Today, switch sources on in Administration, or {days !== 180 ? <button onClick={() => setDays(180)}>Widen the time window</button> : "try fewer filters"}. {d.totals.unverified > 0 && `${d.totals.unverified} ${d.totals.unverified === 1 ? "item is" : "items are"} not checked yet, so ${d.totals.unverified === 1 ? "it is" : "they are"} not shown.`}</div>}
+      {d && d.count === 0 && <div className="empty"><b>No matching findings</b>Try a longer date range or check a company for news from <Link to="/accounts">Accounts</Link>.</div>}
       {(d || err) && <div className="feed-grid">
         <div>
           {groups.map(([day, items]) => (
@@ -66,9 +54,10 @@ export default function Feed() {
                   <div className="row spread start">
                     <div className="row small">
                       <Badge kind="info">{lab("event", it.type)}</Badge>
-                      {!it.organization && it.scope && <><b>{it.scope.buyer ?? "Company not named"}</b><span className="muted">{[it.scope.country, it.scope.lane === "public" ? "public body" : null].filter(Boolean).join(" · ")}</span><Badge kind="info">New company</Badge></>}
-                      {it.organization && <><b>{it.organization.name}</b><span className="muted">{[it.organization.country, ICP_LABEL[it.organization.icp]].filter(Boolean).join(" · ")}</span>
-                        {it.organization.market.fit !== "core" && <Badge kind="warn">{it.organization.market.label}</Badge>}{it.organization.in_master_list && <Badge kind="ok">On your lists</Badge>}</>}
+                      {it.organization && <>
+                        <Link to={`/accounts/${it.organization.id}`}><b>{it.organization.name}</b></Link>
+                        <span className="muted">{[countryName(it.organization.country), staffCount(it.organization.employees)].filter(Boolean).join(" · ")}</span>
+                      </>}
                     </div>
                     {it.programme && (it.organization ? <Link className="small" to={`/accounts/${it.organization.id}?event=${it.id}`}>Programme: {it.programme.title}</Link> : <span className="small">Programme: {it.programme.title}</span>)}
                   </div>
@@ -121,7 +110,6 @@ export default function Feed() {
               <div><Badge kind={LEAD[l.status]?.[0]}>{LEAD[l.status]?.[1] ?? l.status}</Badge></div></li>)}</ul></div>
         </aside>
       </div>}
-      </Tabs>
     </>
   );
 }

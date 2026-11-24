@@ -33,7 +33,7 @@ export default function Search() {
     setD(null); setErr(null);
     if (q.trim().length < 2) return;
     const request = new AbortController();
-    api(`/api/search?q=${encodeURIComponent(q)}`, { signal: request.signal })
+    api(`/api/search?target=true&q=${encodeURIComponent(q)}`, { signal: request.signal })
       .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
     return () => request.abort();
   }, [q, retry]);

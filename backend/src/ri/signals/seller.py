@@ -6,7 +6,7 @@ from typing import Any
 from ..db import Conn, qa
 
 
-def leading_signals(conn: Conn, organization_ids: list[str], *, initiative_id: str | None = None) -> dict[str, dict[str, Any]]:
+def leading_signals(conn: Conn, organization_ids: list[str], *, initiative_id: str | None = None, commercial_only: bool = False) -> dict[str, dict[str, Any]]:
     """One current signal per account, prioritising evidence of outside demand.
 
     A signal, its event and its supporting claim must all belong to the same
@@ -35,6 +35,7 @@ def leading_signals(conn: Conn, organization_ids: list[str], *, initiative_id: s
           AND (s.expires_at IS NULL OR s.expires_at>now())
           AND s.verification_status='verified' AND e.verification_status='verified'
           AND e.lifecycle_status='active' AND NOT e.is_historical_replay
+          AND (NOT %s OR e.lane <> 'public')
           AND c.status='supported' AND c.anchor_verified AND c.claim_kind IN ('quote','structured')
           AND (c.valid_to IS NULL OR c.valid_to>now())
           AND evidence.url ~* '^https?://'
@@ -44,5 +45,5 @@ def leading_signals(conn: Conn, organization_ids: list[str], *, initiative_id: s
         ORDER BY s.organization_id, s.demand_tier, s.effective_from DESC, s.strength DESC,
                  CASE src.source_tier WHEN 'S1' THEN 1 WHEN 'S2' THEN 2 WHEN 'S3' THEN 3
                                       WHEN 'S4' THEN 4 ELSE 5 END, s.id, c.id
-        """, (organization_ids, initiative_id, initiative_id))
+        """, (organization_ids, commercial_only, initiative_id, initiative_id))
     return {row.pop("organization_id"): row for row in rows}

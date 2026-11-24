@@ -5,6 +5,7 @@ import csv
 import io
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import Response
@@ -12,12 +13,14 @@ from pydantic import BaseModel, Field
 
 from ..access import Principal, org_scope_sql
 from ..audit import audit
-from ..db import qa
+from ..db import q1, qa
 from ..jobs.queue import enqueue
 from ..market import REGIONS, region_for, sector_sql
 from ..signals.seller import leading_signals
 from ..sheets.reconcile import icp_band
+from ..target_market import TARGET_REGION_ORDER, TARGET_REGIONS, target_region, target_sql
 from .auth import require
+from .search import all_like, tokens
 
 SORTS = {"score": lambda r: (-(float(r["score"] or 0)), r["name"].lower()), "name": lambda r: r["name"].lower(), "size": lambda r: (-(r["employees"] or 0), r["name"].lower()),
          "recent": lambda r: (r["last_signal_at"] is None, -(r["last_signal_at"].timestamp() if r["last_signal_at"] else 0), r["name"].lower())}
@@ -30,20 +33,22 @@ def _origin(r: dict[str, Any]) -> str:
     return "added" if (r["icp_note"] or "").startswith("Added by") else "discovered"
 
 
-def _rows(conn, p: Principal, q: str) -> list[dict[str, Any]]:
+def _rows(conn, p: Principal, q: str, scope: str = "") -> list[dict[str, Any]]:
     where, params = org_scope_sql(p, "o.id")
-    sector = sector_sql("o.segment")
+    focus = target_sql(review=scope == "review") if scope else "TRUE"
+    terms = tokens(q) or ([q.strip()] if q.strip() else [])
+    match, search_args = all_like("concat_ws(' ', o.display_name, o.canonical_domain, o.segment, o.country_code)", terms) if terms else ("TRUE", [])
     rows = qa(conn,
-        f"SELECT {sector} AS sector, o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.entity_type, "      # noqa: S608
+        f"SELECT {sector_sql('o.segment')} AS sector, o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.entity_type, o.company_ownership, "      # noqa: S608
         f"o.created_at, s.score, s.band, s.groups, s.signal_count, s.stopped, s.last_signal_at, s.top, c.status AS candidate_status, c.icp_note, "
         f"EXISTS (SELECT 1 FROM legacy_account_research r WHERE r.organization_id=o.id AND r.kind='priority_outreach') AS shortlist, "
         f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
         f"FROM organizations o LEFT JOIN account_scores s ON s.organization_id=o.id LEFT JOIN new_company_candidates c ON c.organization_id=o.id "
-        f"WHERE ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%' OR o.canonical_domain ILIKE '%%'||%s||'%%')", [p.email, *params, q, q, q])
+        f"WHERE ({where}) AND {focus} AND ({match})", [p.email, *params, *search_args])
     out = []
     for r in rows:
         icp = icp_band(r["employees"], bool(r["employees_uncertain"]), r["segment"])
-        out.append({**r, "id": str(r["id"]), "region": region_for(r["country_code"]), "icp": icp["band"], "boundary_uncertain": icp["boundary_uncertain"], "origin": _origin(r),
+        out.append({**r, "id": str(r["id"]), "region": (target_region if scope else region_for)(r["country_code"]), "icp": icp["band"], "boundary_uncertain": icp["boundary_uncertain"], "origin": _origin(r),
                     "band": r["band"] or "none", "score": float(r["score"]) if r["score"] is not None else None, "groups": list(r["groups"] or [])})
     return out
 
@@ -100,40 +105,42 @@ class ScanSelectedIn(BaseModel):
 
 def register_leads(app: FastAPI) -> None:
     register_qualify(app)
+    register_company_profile(app)
     def tx(request: Request):
         return request.app.state.db.tx()
 
-    Params = dict(q=Query("", max_length=120), region=Query("", pattern="^(|uk|dach|nordics|poland|europe|us|other|unknown)$"),
+    Params = dict(q=Query("", max_length=120), region=Query("", pattern="^(|uk|dach|nordics|poland|europe|international|us|other|unknown)$"),
                   icp=Query("", max_length=40), segment=Query("", max_length=60), band=Query("", pattern="^(|hot|warm|watch|none)$"),
                   origin=Query("", pattern="^(|list|added|discovered)$"), watched=Query(False), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False), lane=Query("", pattern="^(|public)$"), focus=Query("", pattern="^(|finance|other|unclassified)$"),
-                  qualification=Query("", pattern="^(|pending_qualification)$"), sort=Query("score", pattern="^(score|name|size|recent)$"))
+                  qualification=Query("", pattern="^(|pending_qualification)$"), sort=Query("score", pattern="^(score|name|size|recent)$"), scope=Query("", pattern="^(|target|review)$"))
 
     @app.get("/api/leads")
     def leads(request: Request, page: int = Query(1, ge=1), size: int = Query(50, ge=10, le=200), q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"],
               segment: str = Params["segment"], band: str = Params["band"], origin: str = Params["origin"], signal_days: int = Params["signal_days"],
-              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], focus: str = Params["focus"], watched: bool = Params["watched"], sort: str = Params["sort"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
+              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], watched: bool = Params["watched"], sort: str = Params["sort"], scope: str = Params["scope"], focus: str = Params["focus"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            allrows = _rows(conn, p, q)
+            allrows = _rows(conn, p, q, scope)
             rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched, lane=lane, focus=focus, qualification=qualification)
-            rows.sort(key=SORTS[sort])
+            rows.sort(key=lambda row: (TARGET_REGION_ORDER.get(row["region"], 99), SORTS[sort](row)) if scope else SORTS[sort](row))
             total = len(rows)
+            page = min(page, max(1, (total + size - 1) // size)) if scope else page
             items = rows[(page - 1) * size: page * size]
-            evidence = leading_signals(conn, [r["id"] for r in items])
+            evidence = leading_signals(conn, [r["id"] for r in items], commercial_only=bool(scope))
         for r in items:
             r["buying_signal"] = evidence.get(r["id"])
             r["last_signal_at"] = r["last_signal_at"].isoformat() if r["last_signal_at"] else None
             r["created_at"] = r["created_at"].isoformat()
             r.pop("icp_note", None)
         return {"items": items, "total": total, "page": page, "size": size, "facets": _facets(_filter(allrows, region="", icp="", segment="", band="", origin="", signal_days=0, shortlist=False, public=public, lane=lane, focus=focus)),
-                "regions": [{"key": k, "label": l} for k, l, _ in REGIONS], "origins": ORIGIN_LABEL}
+                "regions": [{"key": k, "label": l} for k, l in (TARGET_REGIONS if scope else [(k, l) for k, l, _ in REGIONS])], "origins": ORIGIN_LABEL}
 
     @app.get("/api/leads.csv")
     def leads_csv(request: Request, q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"], segment: str = Params["segment"], band: str = Params["band"],
-                  origin: str = Params["origin"], signal_days: int = Params["signal_days"], shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], focus: str = Params["focus"],
-                  sort: str = Params["sort"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
+                  origin: str = Params["origin"], signal_days: int = Params["signal_days"], shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"],
+                  sort: str = Params["sort"], scope: str = Params["scope"], watched: bool = Params["watched"], focus: str = Params["focus"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            rows = _filter(_rows(conn, p, q), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane, focus=focus, qualification=qualification)
-            rows.sort(key=SORTS[sort])
+            rows = _filter(_rows(conn, p, q, scope), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane, watched=watched, focus=focus, qualification=qualification)
+            rows.sort(key=lambda row: (TARGET_REGION_ORDER.get(row["region"], 99), SORTS[sort](row)) if scope else SORTS[sort](row))
             rows = rows[:5000]
             audit(conn, actor=p.email, operation="leads_exported", record_type="organization", record_id="export", detail={"rows": len(rows)})
         safe = lambda v: ("'" + v) if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v      # noqa: E731  spreadsheet formula injection
@@ -210,3 +217,46 @@ def register_qualify(app: FastAPI) -> None:
             conn.execute("UPDATE new_company_candidates SET status=%s, icp_note=%s WHERE organization_id=%s", (status, note, oid))
             audit(conn, actor=p.email, operation=f"candidate_{status}", record_type="organization", record_id=oid, detail={"note": body.note})
             return {"status": status}
+
+
+class CompanyProfileIn(BaseModel):
+    ownership: str = Field(pattern="^(unknown|private|listed|state_owned)$")
+    source_url: str | None = Field(default=None, max_length=1000)
+    country_code: str | None = Field(default=None, pattern="^[A-Z]{2}$")
+    segment: str | None = Field(default=None, max_length=80)
+    employees: int | None = Field(default=None, gt=0, le=2147483647)
+    employees_uncertain: bool = False
+
+
+def register_company_profile(app: FastAPI) -> None:
+    @app.put("/api/accounts/{oid}/company-profile")
+    def save_company_profile(oid: str, body: CompanyProfileIn, request: Request, p: Principal = Depends(require("research.request"))):
+        source = (body.source_url or "").strip() or None
+        if source:
+            try:
+                u = urlsplit(source)
+                valid = u.scheme in {"http", "https"} and u.hostname and not (u.username or u.password or any(c.isspace() for c in source))
+            except ValueError:
+                valid = False
+            if not valid:
+                raise HTTPException(422, "Enter a valid link to the ownership source.")
+        if body.ownership != "unknown" and not source:
+            raise HTTPException(422, "Add a source link before confirming ownership.")
+        with request.app.state.db.tx() as conn:
+            where, params = org_scope_sql(p, "o.id")
+            old = q1(conn, f"SELECT company_ownership, company_profile_source_url, entity_type, country_code, segment, employees_estimate, employees_uncertain FROM organizations o WHERE o.id=%s AND ({where}) FOR UPDATE", [oid, *params])  # noqa: S608
+            if not old:
+                raise HTTPException(404, "Company not found.")
+            if old["entity_type"] == "public_body":
+                raise HTTPException(422, "This organization is a public body.")
+            country = "GB" if body.country_code == "UK" else body.country_code
+            profile = {"company_ownership": body.ownership, "company_profile_source_url": source,
+                       "country_code": country or old["country_code"], "segment": (body.segment or "").strip() or old["segment"],
+                       "employees_estimate": body.employees or old["employees_estimate"],
+                       "employees_uncertain": body.employees_uncertain if body.employees else old["employees_uncertain"]}
+            conn.execute("UPDATE organizations SET company_ownership=%(company_ownership)s, company_profile_source_url=%(company_profile_source_url)s, "
+                         "country_code=%(country_code)s, segment=%(segment)s, employees_estimate=%(employees_estimate)s, employees_uncertain=%(employees_uncertain)s, "
+                         "employees_basis=CASE WHEN employees_estimate IS DISTINCT FROM %(employees_estimate)s THEN 'manual_review' ELSE employees_basis END, "
+                         "updated_at=now() WHERE id=%(id)s", {**profile, "id": oid})
+            audit(conn, actor=p.email, operation="company_profile_updated", record_type="organization", record_id=oid, before=old, after=profile)
+            return profile

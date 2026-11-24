@@ -2,13 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
 import { actionReason, Badge, EVIDENCE_CONFIDENCE, Coverage, Err, Evidence, Fact, accessKind, demandKind, humanize, lab, priorityKind, unknownText, verdict, Skeleton, whyShort } from "../components/ui";
-import Prospects from "./Prospects";
 import { SignalSummary } from "../components/BuyingSignal";
 
 const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_accounts", "Your accounts"], ["new_discoveries", "New companies worth a look"],
-  ["relationships", "People to get back in touch with"], ["deal_blockers", "Deals that are stuck"], ["research_review", "Research to review"], ["public_tenders", "Public tenders"]];
+  ["relationships", "People to get back in touch with"], ["deal_blockers", "Deals that are stuck"], ["research_review", "Research to review"]];
 const REASONS = ["not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"];
-const TENDER_NOTE = "Public bodies buy through formal tenders, so these follow their own rules and deadlines.";
 
 function Deadlines() {
   const [items, setItems] = useState<any[]>([]);
@@ -118,7 +116,6 @@ function Group({ g, reload }: { g: any[]; reload: () => void }) {
 
 export default function Today() {
   const [d, setD] = useState<any>(null);
-  const [focus, setFocus] = useState("finance");
   const [ov, setOv] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
   const [revision, setRevision] = useState(0);
@@ -126,18 +123,11 @@ export default function Today() {
   useEffect(() => {
     const request = new AbortController();
     setErr(null);
-    api(`/api/today?focus=${focus}`, { signal: request.signal })
+    api("/api/today?target=true", { signal: request.signal })
       .then(setD).catch((error) => { if (!request.signal.aborted) setErr(error); });
     return () => request.abort();
-  }, [focus, revision]);
-  useEffect(() => { api("/api/overview").then(setOv).catch(() => undefined); }, []);
-  const picker = <label className="row small mb-3">Sector focus
-    <select value={focus} onChange={(e) => { setD(null); setErr(null); setFocus(e.target.value); }}>
-      <option value="finance">Banking &amp; financial services</option>
-      <option value="other">Other sectors and unclassified</option>
-      <option value="public">Public tenders</option>
-    </select>
-  </label>;
+  }, [revision]);
+  useEffect(() => { api("/api/overview?target=true").then(setOv).catch(() => undefined); }, []);
   const all: any[] = d ? Object.values(d.sections).flat() : [];
   const urgent = all.filter(c => c.priority === "urgent").length;
   return (
@@ -145,26 +135,26 @@ export default function Today() {
       <header className="hero today-hero">
         <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</div>
         <h1>Today</h1>
-        <p className="sub">{err ? "Today could not load." : !d ? "Loading your opportunities." : d.count === 0 ? "No new opportunities in this view." : `${d.count} ${d.count === 1 ? "thing" : "things"} to review. Anything you dismiss stays hidden unless it changes.`}</p>
+        <p className="sub">{err ? "Today could not load." : !d ? "Loading your opportunities." : d.count === 0 ? "No new opportunities to review for your target accounts." : `${d.count} ${d.count === 1 ? "thing" : "things"} to review. Anything you dismiss stays hidden unless it changes.`}</p>
         <div className="stats">
           <div className="stat urgent"><div className="n">{!err && d ? urgent : "—"}</div><div className="l">Urgent</div></div>
           <div className="stat"><div className="n">{!err && d ? d.count : "—"}</div><div className="l">To review</div></div>
         </div>
       </header>
       <div className="page pt-5">
-        {picker}
         {err ? <div className="first-results"><Err e={err} onRetry={load} /></div> : !d ? <div className="first-results"><Skeleton rows={4} label="Loading Today" /></div> : <>
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && <Setup ov={ov} reason={d.empty_state} />}
-        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{k === "public_tenders" && <p className="small muted sec-note">{TENDER_NOTE}</p>}{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
+        {SECTIONS.map(([k, label]) => (d.sections[k]?.length ? <section key={k}><div className="section-title">{label}</div>{groups(d.sections[k]).map((g) => <Group key={g[0].hypothesis_id} g={g} reload={load} />)}</section> : null))}
         {d.hot_accounts?.length > 0 && <section><div className="section-title">Hot accounts</div><p className="small muted sec-note">Accounts with the strongest recent signals. Score adds up checked signals; different kinds count for more than repeats. It is not a probability.</p>
           <div className="card flush table-wrap" tabIndex={0} role="region" aria-label="Account · Signals · Latest"><table className="cards"><thead><tr><th>Account</th><th title="Adds up recent checked signals. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability.">Signal score</th><th>Buying signal and source</th><th>Latest</th></tr></thead><tbody>
             {d.hot_accounts.map((a: any) => <tr key={a.id}><td><Link to={`/accounts/${a.id}`}>{a.display_name}</Link><div className="small muted">{[a.country_code, a.segment].filter(Boolean).join(" · ")}</div></td>
               <td data-label="Signal score"><b>{a.score}</b> <Badge kind={a.band === "hot" ? "bad" : "warn"}>{a.band === "hot" ? "Hot" : "Warm"}</Badge></td>
               <td data-label="Buying signal and source"><SignalSummary signal={a.buying_signal} /></td><td className="small" data-label="Latest">{a.last_signal_at ? fmtDate(a.last_signal_at) : "None yet"}</td></tr>)}
           </tbody></table></div></section>}
-        {focus === "public" && <Deadlines />}
-        {focus !== "public" && <Prospects key={focus} focus={focus} />}
+        <Deadlines />
+
+        <p><Link to="/accounts?view=leads">Browse workbook leads →</Link></p>
         </>}
       </div>
     </>
@@ -173,7 +163,7 @@ export default function Today() {
 
 function Setup({ ov, reason }: { ov: any; reason?: string | null }) {
   const steps = [
-    { done: !!ov?.last_import, t: "Workbooks loaded", d: ov?.last_import ? `${ov.accounts.toLocaleString()} accounts and ${ov.contacts.toLocaleString()} contacts loaded.` : "Load both workbooks in Administration, Imports." },
+    { done: !!ov?.last_import, t: "Workbooks loaded", d: ov?.last_import ? `${ov.accounts.toLocaleString()} companies match the target criteria.` : "Load both workbooks in Administration, Imports." },
     { done: (ov?.sources_live ?? 0) > 0, t: "Sources switched on and checking for news", d: ov ? `${ov.sources_live} of ${ov.sources_total} sources are switched on. The rest still need an address or a test.` : "" },
     { done: (ov?.verified_opportunities ?? 0) > 0, t: "First opportunity", d: "Appears here once a source finds something we can check against the original page." },
   ];

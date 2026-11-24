@@ -12,7 +12,8 @@ from fastapi.responses import HTMLResponse
 
 from .. import kb
 from ..access import Principal, org_scope_sql
-from ..db import q1, qa
+from ..db import qa
+from ..target_market import target_sql
 from .auth import principal_dep, require
 
 
@@ -40,23 +41,24 @@ def register(app: FastAPI) -> None:
         return request.app.state.db.tx()
 
     @app.get("/api/search")
-    def search(request: Request, q: str = Query("", max_length=120), p: Principal = Depends(principal_dep)):
+    def search(request: Request, q: str = Query("", max_length=120), target: bool = False, p: Principal = Depends(principal_dep)):
         toks = tokens(q)
         if not toks:
             return {"query": q, "groups": [], "total": 0}
         if not (p.can("today.read") or p.can("accounts.read") or p.can("sources.read")):
             raise HTTPException(403, "no access")
         groups: list[dict[str, Any]] = []
+        focus = target_sql() if target else "TRUE"
         with tx(request) as conn:
             if p.can("accounts.read"):
                 where, params = org_scope_sql(p, "o.id")
-                nm, nmp = all_like("o.display_name", toks)
+                nm, nmp = all_like("concat_ws(' ', o.display_name, o.canonical_domain, o.segment)", toks)
                 tx_, txp = all_like("r.original::text", toks)
                 rows = qa(conn,
                     f"WITH hits AS (SELECT DISTINCT ON (r.organization_id) r.organization_id, r.original FROM legacy_account_research r WHERE {tx_} "     # noqa: S608
                     f"ORDER BY r.organization_id, (r.kind='priority_outreach') DESC) "
                     f"SELECT o.id, o.display_name, o.country_code, o.segment, h.original AS hit FROM organizations o LEFT JOIN hits h ON h.organization_id=o.id "
-                    f"WHERE ({where}) AND (h.organization_id IS NOT NULL OR ({nm})) ORDER BY (({nm})) DESC, o.in_master_list DESC, o.display_name LIMIT 25",
+                    f"WHERE ({where}) AND {focus} AND (h.organization_id IS NOT NULL OR ({nm})) ORDER BY (({nm})) DESC, o.in_master_list DESC, o.display_name LIMIT 25",
                     [*txp, *params, *nmp, *nmp])
                 items = []
                 for r in rows:
@@ -68,12 +70,13 @@ def register(app: FastAPI) -> None:
                 ev_w, ev_p = all_like("e.summary", toks)
                 ew, ep = org_scope_sql(p, "e.subject_org_id")
                 evs = qa(conn, f"SELECT e.id, e.summary, e.event_type, coalesce(e.event_at, e.pub_at) AS at, o.display_name FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "    # noqa: S608
-                              f"WHERE {ev_w} AND (e.subject_org_id IS NULL OR ({ew})) ORDER BY at DESC NULLS LAST LIMIT 10", [*ev_p, *ep])
+                              f"WHERE {ev_w} AND {focus} AND (e.subject_org_id IS NULL OR ({ew})) AND (NOT %s OR (e.lane <> 'public' AND e.verification_status = 'verified')) ORDER BY at DESC NULLS LAST LIMIT 10", [*ev_p, *ep, target])
                 groups.append({"key": "events", "label": "Verified events", "items": [{"title": e["summary"], "meta": f"{e['event_type']} · {e['display_name'] or 'unmatched'}", "snippet": "", "link": "/explorer?q=" + toks[0]} for e in evs]})
-                dw, dp = all_like("(coalesce(d.title,'') || ' ' || coalesce(d.canonical_url,''))", toks)
-                docs = qa(conn, f"SELECT d.title, d.canonical_url, d.fetched_at, s.display_name FROM source_documents d JOIN sources s USING (source_id) WHERE {dw} ORDER BY d.fetched_at DESC LIMIT 10", dp)   # noqa: S608
-                groups.append({"key": "documents", "label": "Pages the platform has read", "items": [{"title": d["title"] or d["canonical_url"], "meta": d["display_name"], "snippet": "", "url": d["canonical_url"]} for d in docs]})
-            if p.can("sources.read") or p.can("research.request"):
+                if not target:
+                    dw, dp = all_like("(coalesce(d.title,'') || ' ' || coalesce(d.canonical_url,''))", toks)
+                    docs = qa(conn, f"SELECT d.title, d.canonical_url, d.fetched_at, s.display_name FROM source_documents d JOIN sources s USING (source_id) WHERE {dw} ORDER BY d.fetched_at DESC LIMIT 10", dp)   # noqa: S608
+                    groups.append({"key": "documents", "label": "Pages the platform has read", "items": [{"title": d["title"] or d["canonical_url"], "meta": d["display_name"], "snippet": "", "url": d["canonical_url"]} for d in docs]})
+            if not target and (p.can("sources.read") or p.can("research.request")):
                 vw, vp = all_like("(coalesce(v.claimed_text,'') || ' ' || v.url)", toks)
                 vs = qa(conn, f"SELECT v.url, v.claimed_text, v.status, o.display_name FROM verification_requests v LEFT JOIN organizations o ON o.id=v.organization_id WHERE {vw} ORDER BY v.created_at DESC LIMIT 10", vp)    # noqa: S608
                 groups.append({"key": "verifications", "label": "Claims being verified", "items": [{"title": v["claimed_text"] or v["url"], "meta": f"{v['display_name'] or 'unmatched'} · {v['status']}", "snippet": "", "url": v["url"]} for v in vs]})

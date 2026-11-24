@@ -94,7 +94,7 @@ def region_for(country: str | None) -> str:
 # "banking" in a story about a vendor. Missing classifications remain visible.
 def sector_sql(segment: str, reported_role: str = "NULL") -> str:
     """SQL expression over trusted column references, not user input."""
-    finance = r"\m(banks?|banking|fintechs?|financial services|finance|payments?|insurance|insurers?|insurtech|reinsurance|mortgage\w*|lending|lenders?|credit unions?|building societ\w*|asset management|wealth management|capital markets|brokerage|leasing)\M"
+    finance = r"\m(banks?|banking|fintechs?|financial services|finance|payments?|insurance|insurers?|insurtech|reinsurance|mortgage\w*|lending|lenders?|credit unions?|building societ\w*|asset management|wealth management|capital markets|brokerage|leasing|banco|banque|sparkasse|volksbank|raiffeisen|investment management|pensions?|securities|private equity|versicherungen?|kreditinstitut(e)?|finanzdienstleistungen|ubezpieczenia|usługi finansowe)\M"
     seller = r"\m(software|vendors?|consulting|consultancy|integrators?|outsourcing|it services|digital agency)\M"
     return f"""CASE
         WHEN {segment} ~* '{seller}' THEN 'other'
