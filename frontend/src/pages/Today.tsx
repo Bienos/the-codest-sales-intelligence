@@ -1,4 +1,4 @@
-import { counted, getLanguage, number, tr } from "../locale";
+import { getLanguage, number, tr } from "../locale";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
@@ -82,7 +82,7 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
         </aside>
       </div>
       <div className="opp-foot">
-        <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? "Hide sources" : "Show sources"}</button>
+        <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? tr("Hide sources") : tr("Show sources")}</button>
         <button disabled={busy} onClick={() => decide("accepted")}>{tr("Pursue this")}</button>
         <button disabled={busy} onClick={() => decide("monitor")}>{tr("Keep watching")}</button>
         <details className="dismiss-menu"><summary>{tr("Dismiss…")}</summary>
@@ -142,15 +142,20 @@ export default function Today({ canReview, canImport }: { canReview: boolean; ca
   const all: any[] = d ? Object.values(d.sections).flat() : [];
   const urgent = all.filter(c => c.priority === "urgent").length;
   return (
-    <div className="page today-page">
-      <header className="page-head today-heading">
-        <div>
-          <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(getLanguage(), { weekday: "long", day: "numeric", month: "long" })}</div>
-          <h1>{tr("Today")}</h1>
-          {!err && d?.count > 0 && <p className="sub">{tr("{} to review.", counted(d.count, ["opportunity", "opportunities"], ["szansa", "szanse", "szans"]))}</p>}
+    <>
+      <header className="today-heading">
+        <div className="page today-heading-inner">
+          <div>
+            <div className="eyebrow">{new Date(d?.generated_at ?? Date.now()).toLocaleDateString(getLanguage(), { weekday: "long", day: "numeric", month: "long" })}</div>
+            <h1>{tr("Today")}</h1>
+          </div>
+          {!err && d?.count > 0 && <dl className="today-queue">
+            {urgent > 0 && <div className="today-urgent"><dt>{tr("Urgent")}</dt><dd>{number(urgent)}</dd></div>}
+            <div><dt>{tr("To review")}</dt><dd>{number(d.count)}</dd></div>
+          </dl>}
         </div>
-        {!err && urgent > 0 && <Badge kind="bad">{tr("Urgent: {}", number(urgent))}</Badge>}
       </header>
+      <div className="page today-page">
         {err ? <div className="first-results"><Err e={err} onRetry={load} /></div> : !d ? <div className="first-results"><Skeleton rows={4} label={tr("Loading Today")} /></div> : <>
         {d.count > 0 && <Coverage c={d.coverage} empty={d.empty_state} />}
         {d.count === 0 && (
@@ -168,9 +173,10 @@ export default function Today({ canReview, canImport }: { canReview: boolean; ca
           </tbody></table></div></section>}
         <Deadlines />
 
-        {overview && overview.accounts > 0 && <p><Link to="/accounts?view=leads">{tr("Browse workbook leads →")}</Link></p>}
+        {d.count > 0 && overview && overview.accounts > 0 && <p><Link to="/accounts?view=leads">{tr("Browse workbook leads →")}</Link></p>}
         </>}
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -195,11 +201,6 @@ function TodayEmpty({ overview, canReview, canImport }: { overview: Overview; ca
       : { to: "/accounts", label: "Open Accounts & leads" });
   return (
     <section className="card today-empty" aria-labelledby="today-empty-title">
-      <dl className="today-counts">
-        <div><dt>{tr("Companies from workbooks")}</dt><dd>{number(imported)}</dd></div>
-        <div><dt>{tr("Target accounts")}</dt><dd>{number(accounts)}</dd></div>
-        <div><dt>{tr("Ownership to check")}</dt><dd>{number(pending)}</dd></div>
-      </dl>
       <div className="today-next">
         <div>
           <h2 id="today-empty-title">{tr(title)}</h2>
@@ -207,6 +208,11 @@ function TodayEmpty({ overview, canReview, canImport }: { overview: Overview; ca
         </div>
         {action && <Link className="btn primary" to={action.to}>{tr(action.label)}</Link>}
       </div>
+      <dl className="today-counts">
+        <div><dt>{tr("Companies from workbooks")}</dt><dd>{number(imported)}</dd></div>
+        <div><dt>{tr("Target accounts")}</dt><dd>{number(accounts)}</dd></div>
+        <div className={awaitingOwnership ? "today-pending" : undefined}><dt>{tr("Ownership to check")}</dt><dd>{number(pending)}</dd></div>
+      </dl>
     </section>
   );
 }
