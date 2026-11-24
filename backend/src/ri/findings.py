@@ -102,12 +102,25 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
         sources = story_sources(conn, r["event_ids"])
         if not evidence and not sources and not r["tender"]:
             continue
+        action = qa(conn, """
+            SELECT h.id AS hypothesis_id, a.action_type, a.due_at, (a.owner_id IS NOT NULL) AS has_owner,
+                   u.display_name AS owner_name
+            FROM recommended_actions a JOIN opportunity_hypotheses h ON h.id=a.hypothesis_id
+            LEFT JOIN users u ON u.pipedrive_user_id=a.owner_id AND u.active
+            WHERE h.organization_id=%s AND h.state NOT IN ('superseded','expired','disqualified')
+            AND a.status IN ('accepted','proposed')
+            AND EXISTS (SELECT 1 FROM initiative_events ie WHERE ie.initiative_id=h.initiative_id
+                        AND ie.event_id=ANY(%s::uuid[]) AND ie.link_strength IN ('confirmed_link','probable_link')
+                        AND ie.role IN ('evidence','capacity_evidence'))
+            ORDER BY (a.status='accepted') DESC, h.score_total DESC, a.due_at NULLS LAST, a.id LIMIT 1
+        """, (r["org_id"], r["event_ids"]))
         attrs = r["attrs"] or {}
         out.append({"id": r["id"], "event_ids": sorted(r["event_ids"]), "type": r["event_type"], "summary": r["summary"],
                     "happened": r["happened"], "published": r["pub_at"], "first_seen": r["first_observed_at"],
                     "organization": {"id": r["org_id"], "name": r["display_name"], "country": r["country_code"],
                                      "region": target_region(r["country_code"]), "qualified": r["qualified"]},
                     "tender": r["tender"], "evidence": evidence, "sources": sources,
+                    "next_action": action[0] if action else None,
                     "fit": fit_for(r["rules"]), "why": attrs.get("fit"), "language": attrs.get("language"),
                     "summary_en": attrs.get("summary_en"), "summary_pl": attrs.get("summary_pl")})
     return out
@@ -138,12 +151,13 @@ def account_leads(conn: Conn, organization_id: UUID) -> list[dict]:
     return tracked
 
 
-def rfp_research(conn: Conn) -> list[dict]:
-    """New procurement links without a resolved company stay in the research queue."""
-    return qa(conn, """
+def rfp_research(conn: Conn, p: Principal) -> list[dict]:
+    """Private-RFP search hits stay in research until there is verified evidence."""
+    scope, args = org_scope_sql(p, "v.organization_id")
+    return qa(conn, f"""
         SELECT v.id, v.url, v.origin, v.claimed_text, v.status, v.updated_at
         FROM verification_requests v JOIN discovery_plans p ON v.plan_id=p.plan_id
-        WHERE p.theme='private-rfp' AND v.organization_id IS NULL AND v.origin='exa_discovery'
+        WHERE p.theme='private-rfp' AND (v.organization_id IS NULL OR ({scope})) AND v.origin='exa_discovery'
         AND v.status IN ('queued','fetching','extracting','waiting_budget','failed','blocked','no_event')
         AND v.created_at >= now() - interval '30 days' AND v.url ~* '^https?://'
         ORDER BY v.created_at DESC, v.id LIMIT 12

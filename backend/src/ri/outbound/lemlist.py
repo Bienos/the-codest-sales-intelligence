@@ -59,8 +59,20 @@ class LemlistClient:
             body["subject"] = subject
         return self._req("POST", f"/campaigns/{campaign_id}/sequences/{sequence_id}/steps", json=body)
 
+    def leads_by_email(self, email: str) -> list[dict[str, Any]]:
+        try:
+            result = self._req("GET", f"/leads/{quote(email, safe='@')}", params={"version": "v2"})
+        except LemlistError as exc:
+            if exc.status == 404:
+                return []
+            raise
+        if not isinstance(result, list) or any(not isinstance(x, dict) for x in result):
+            raise LemlistError("Unexpected Lemlist lead lookup response")
+        return result
+
     def add_lead(self, campaign_id: str, email: str, fields: dict[str, Any]) -> dict[str, Any]:
-        return self._req("POST", f"/campaigns/{campaign_id}/leads/{quote(email, safe='@')}", json=fields)
+        return self._req("POST", f"/campaigns/{campaign_id}/leads/{quote(email, safe='@')}",
+                         params={"deduplicate": "true", "updateStrategy": "fillEmptyOnly"}, json=fields)
 
     def create_hook(self, target_url: str, *, event_type: str | None = None) -> dict[str, Any]:
         return self._req("POST", "/hooks", json={"targetUrl": target_url, **({"type": event_type} if event_type else {})})

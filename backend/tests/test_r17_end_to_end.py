@@ -31,6 +31,9 @@ class FakeLemlist:
         self.calls.append(("step", subject, delay_days))
         return {}
 
+    def leads_by_email(self, email):
+        return []
+
     def add_lead(self, cid, email, fields):
         self.calls.append(("lead", email, fields.get("companyDomain")))
         return {"_id": "lea_TEST"}

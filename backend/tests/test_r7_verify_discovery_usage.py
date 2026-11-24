@@ -175,6 +175,57 @@ def test_discovery_stops_when_budget_exhausted_and_on_auth_failure(conn):
     assert conn.execute("select status from provider_usage where provider='exa'").fetchone()["status"].startswith("error:")
 
 
+
+def test_private_rfp_discovery_keeps_buyer_owned_links_in_research(conn):
+    sync_plans(conn)
+    budget.set_cap(conn, "exa", "monthly", usage.period_now(), 1, "usd")
+    buyer = conn.execute("""
+        INSERT INTO organizations(display_name, canonical_domain, country_code, segment, employees_estimate,
+              company_ownership, company_profile_source_url)
+        VALUES ('Private Insurance','buyer.invalid','GB','Insurance',1000,'private','https://buyer.invalid/about') RETURNING id
+    """).fetchone()["id"]
+    conn.execute("""INSERT INTO organizations(display_name, canonical_domain, country_code, segment, employees_estimate, company_ownership)
+                    VALUES ('Listed Bank','public.invalid','GB','Banking',9999,'listed')""")
+    pid = conn.execute("SELECT plan_id FROM discovery_plans WHERE theme='private-rfp' AND geography='UK'").fetchone()["plan_id"]
+
+    class BuyerSearch:
+        async def search(self, plan, *, num_results):
+            assert plan.include_domains == ("buyer.invalid",)
+            urls = [("https://public.invalid/notice", "Bank database RFP"),
+                    ("https://buyer.invalid.aggregator.invalid/tender", "Aggregated engineering tender"),
+                    ("https://buyer.invalid/careers", "Engineering roles"),
+                    ("https://buyer.invalid/supplier/old", "Contract award notice"),
+                    ("https://suppliers.buyer.invalid/rfp/203", "Invitation to bid for software services")]
+            return [RawItem(external_id=url, version=None, payload={"title": title, "url": url}) for url, title in urls], {"reported_cost": 0.01}
+
+    result = run_discovery(conn, BuyerSearch(), plan_ids=[pid], max_searches=1, max_new_requests=3, interval_days=7, est_cost=None)
+    assert result["rfp_results_filtered"] == 4 and result["requests_created"] == 1
+    assert conn.execute("SELECT organization_id, status FROM verification_requests").fetchone() == {"organization_id": buyer, "status": "queued"}
+    assert conn.execute("SELECT count(*) AS n FROM events").fetchone()["n"] == 0
+
+
+def test_terminal_billing_backlog_waits_for_recovery_and_is_requeued_once(conn):
+    from ri.jobs.queue import enqueue
+    from ri.scheduler import requeue_billing_failures
+
+    request_ids = []
+    for n in range(2):
+        rid = conn.execute("""INSERT INTO verification_requests(url,origin,requested_by,result,updated_at)
+                            VALUES (%s,'manual','tester','{"error_class":"provider_billing"}',now()-interval '1 hour') RETURNING id""",
+                           (f"https://buyer.invalid/notice/{n}",)).fetchone()["id"]
+        jid, _ = enqueue(conn, "verify_url", {"request_id": str(rid)})
+        conn.execute("UPDATE jobs SET status='permanent_failed' WHERE id=%s", (jid,))
+        conn.execute("UPDATE verification_requests SET job_id=%s WHERE id=%s", (jid, rid))
+        request_ids.append(rid)
+    assert requeue_billing_failures(conn, limit=1) == 0
+    usage.record(conn, provider="anthropic", operation="extract", units=1, unit="tokens")
+    assert requeue_billing_failures(conn, limit=1) == 1
+    assert requeue_billing_failures(conn, limit=1) == 1
+    assert requeue_billing_failures(conn, limit=1) == 0
+    scheduled = conn.execute("SELECT payload->>'request_id' AS id FROM jobs WHERE status='scheduled'").fetchall()
+    assert {r["id"] for r in scheduled} == {str(rid) for rid in request_ids}
+
+
 # ---------------------------------------------------------------- API
 @pytest.fixture()
 def api(conn, db_url, world):

@@ -31,6 +31,8 @@ export function Verification() {
   }, [query, revision]);
   const result = d?.query === query ? d.data : null;
   const counts = d?.data.counts;
+  const queue = d?.data.queue;
+  const documents = d?.data.documents;
   const retry = async (id: string) => {
     setRetrying(id);
     try { await post(`/api/verifications/${id}/retry`); setRevision(n => n + 1); }
@@ -40,6 +42,19 @@ export function Verification() {
   return <>
     <h2>{tr("Pages being checked")}</h2>
     <p className="small muted">{tr("Follow each source link from discovery to a verified finding. Open the details to see what was checked and why a check stopped.")}</p>
+    {queue && <div className="card" aria-label={tr("Verification queue")}>
+      <dl className="account-profile-facts">
+        <div><dt>{tr("Pages pending verification")}</dt><dd>{number(queue.pending)}</dd></div>
+        <div><dt>{tr("Oldest pending page")}</dt><dd>{queue.oldest_pending ? fmtDateTime(queue.oldest_pending) : tr("None")}</dd></div>
+        <div><dt>{tr("Last successful page verification")}</dt><dd>{queue.last_verified ? fmtDateTime(queue.last_verified) : tr("None")}</dd></div>
+        {documents && <div><dt>{tr("Collected documents awaiting extraction")}</dt><dd>{number(documents.pending)}</dd></div>}
+      </dl>
+      {documents?.oldest_pending && <p className="small muted">{tr("Oldest collected document awaiting extraction {}", fmtDateTime(documents.oldest_pending))}</p>}
+      {queue.provider_billing > 0 && <p className="coverage-warning" role="status">{tr("{} page checks were blocked by Anthropic credit.", number(queue.provider_billing))}
+        {queue.next_provider_retry && <> {tr("Next retry due {}", fmtDateTime(queue.next_provider_retry))}</>}</p>}
+      {queue.held_for_recovery > 0 && <p className="small muted">{tr("{} older checks will resume in batches after extraction succeeds.", number(queue.held_for_recovery))}</p>}
+      {queue.waiting_budget > 0 && <p className="small muted">{tr("{} pages are waiting for the configured extraction budget or worker setup.", number(queue.waiting_budget))}</p>}
+    </div>}
     <div className="verification-filters">
       <label>{tr("Status")}<select value={status} onChange={e => setStatus(e.target.value)}>
         <option value="">{tr("All statuses")}</option>

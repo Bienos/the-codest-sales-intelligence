@@ -30,6 +30,9 @@ class FakeLemlist:
         self.calls.append(("step", subject, delay_days, message))
         return {}
 
+    def leads_by_email(self, email):
+        return []
+
     def add_lead(self, cid, email, fields):
         self.calls.append(("lead", email))
         if self.fail_on_lead == email:
@@ -150,6 +153,25 @@ def test_webhook_events_update_status_dedupe_and_suppress(conn):
     enrol.record_event(conn, {"type": "emailsUnsubscribed", "campaignId": "cam_1", "leadEmail": "ok@example.invalid", "_id": "e4"})
     assert conn.execute("select suppressed from people where id=%s", (ids[0],)).fetchone()["suppressed"] is True
     assert enrol.plan_contacts(conn, org)["eligible"] == []
+
+
+
+def test_existing_workspace_lead_and_new_crm_deal_prevent_enrolment(conn):
+    org, ids, did = seed(conn)
+    r = enrol.request_enrolment(conn, did, [ids[0]], by="bdm@x", requester_crm_user=None)
+    approve(conn, r["approval_id"])
+    class Existing(FakeLemlist):
+        def leads_by_email(self, email):
+            return [{"campaign": {"id": "another"}, "status": "running"}]
+    client = Existing()
+    with pytest.raises(LemlistError, match="already enrolled"):
+        enrol.execute_enrolment(conn, r["approval_id"], client, S(outbound_enabled=True))
+    assert client.calls == []
+
+    conn.execute("insert into crm_organizations(crm_id, name, link_status, organization_id) values (90,'x','linked',%s)", (org,))
+    conn.execute("insert into crm_deals(crm_id,crm_org_id,title,status) values (91,90,'Open conversation','open')")
+    with pytest.raises(appr.ApprovalError, match="open deal"):
+        enrol.request_enrolment(conn, did, [ids[0]], by="bdm@x", requester_crm_user=None)
 
 
 def test_lemlist_client_retries_and_never_needs_a_live_key():

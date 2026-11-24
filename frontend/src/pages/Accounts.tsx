@@ -280,7 +280,8 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
   const ready = en.outbound_enabled === true && en.lemlist_configured === true;
   const unavailable = [
     [plan.needs_verification.length, tr("found but unverified")], [plan.manual_review, tr("need manual review")],
-    [plan.no_email, tr("without an email")], [plan.suppressed, tr("opted out")],
+    [plan.no_email, tr("without an email")], [plan.suppressed, tr("suppressed or opted out")],
+    [plan.already_enrolled ?? 0, tr("already enrolled")],
   ].filter(([count]) => Number(count) > 0).map(([count, reason]) => `${count} ${reason}`);
   const toggle = (id: string) => setSel((x) => x.includes(id) ? x.filter((i) => i !== id) : [...x, id]);
   const request = async () => { setErr(null); setMsg(""); try { const r = await post(`/api/campaigns/${draft.id}/enrol`, { person_ids: sel }); setMsg(tr("Approval requested for {} {}. A colleague approves it under Administration, Approvals.{}", r.contacts, r.contacts === 1 ? "contact" : "contacts", r.ownership_checked ? "" : " We could not check who owns this account because it is not linked to Pipedrive yet.")); setSel([]); load(); } catch (e) { setErr(e); } };
@@ -481,6 +482,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         </div>
         <dl className="account-profile-facts">
           <div><dt>{tr("Size")}</dt><dd>{staffCount(a.employees_estimate, a.employees_uncertain)}</dd></div>
+          {a.target_qualification && <div><dt>{tr("Target qualification")}</dt><dd>{tr(a.target_qualification === "target" ? "Confirmed target account" : a.target_qualification === "review" ? "Ownership to check" : "Outside confirmed targets")}</dd></div>}
           <div><dt>{tr("Ownership")}</dt><dd>{tr(OWNERSHIP[a.company_ownership] ?? OWNERSHIP.unknown)}{a.company_profile_source_url && <> · <a href={a.company_profile_source_url} target="_blank" rel="noreferrer noopener">{tr("View source ↗")}</a></>}</dd></div>
           <div><dt>{tr("Current signals")}</dt><dd>{number(activeSignals)}</dd></div>
           <div><dt>{tr("Monitored company pages")}</dt><dd>{number(eps.length)}</dd></div>

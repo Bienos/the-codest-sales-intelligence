@@ -101,7 +101,8 @@ def prospects_for(conn, p: Principal, *, lane: str, q: str, limit: int, focus: s
     items = [i for i in by_org.values() if lane == "all" or i["lane"] == lane]
     items.sort(key=lambda i: (TARGET_REGION_ORDER.get(i["organization"]["region"], 99) if target or workbook else 0,
                               i["lane"] != "shortlist", i["rank"] if i["rank"] is not None else 999,
-                              _PRIORITY.get(str(i["priority"] or "").lower(), 3), -(i["score"] or 0)))
+                              _PRIORITY.get(str(i["priority"] or "").lower(), 3), -(i["score"] or 0),
+                              i["organization"]["name"].casefold(), i["organization"]["id"]))
     total = len(items)
     start = min(offset, max(0, ((total - 1) // limit) * limit))
     items = items[start:start + limit]

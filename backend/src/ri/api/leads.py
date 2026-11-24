@@ -284,4 +284,6 @@ def register_company_profile(app: FastAPI) -> None:
                          "employees_basis=CASE WHEN employees_estimate IS DISTINCT FROM %(employees_estimate)s THEN 'manual_review' ELSE employees_basis END, "
                          "updated_at=now() WHERE id=%(id)s", {**profile, "id": oid})
             audit(conn, actor=p.email, operation="company_profile_updated", record_type="organization", record_id=oid, before=old, after=profile)
-            return profile
+            updated = q1(conn, f"""SELECT CASE WHEN {target_sql()} THEN 'target' WHEN {target_sql(review=True)} THEN 'review'
+                                ELSE 'other' END AS target_qualification FROM organizations o WHERE o.id=%s""", (oid,))
+            return {**profile, **(updated or {})}

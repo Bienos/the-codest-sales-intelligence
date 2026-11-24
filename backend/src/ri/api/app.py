@@ -208,7 +208,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
             focus = account_workspace_sql(research=p.can("research.request")) if target else "TRUE"
-            o = q1(conn, f"SELECT o.* FROM organizations o WHERE o.id=%s AND ({where}) AND {focus}", [oid, *params])       # noqa: S608
+            o = q1(conn, f"SELECT o.*, CASE WHEN {target_sql()} THEN 'target' WHEN {target_sql(review=True)} THEN 'review' ELSE 'other' END AS target_qualification FROM organizations o WHERE o.id=%s AND ({where}) AND {focus}", [oid, *params])       # noqa: S608
             if not o:
                 raise HTTPException(404, "not found")
             crm = q1(conn, "SELECT crm_id, owner_id, open_deals_count, synced_at FROM crm_organizations WHERE organization_id=%s AND link_status='linked'", (oid,))

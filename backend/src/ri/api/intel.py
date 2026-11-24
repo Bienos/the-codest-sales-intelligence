@@ -140,13 +140,17 @@ def register(app: FastAPI) -> None:
     @app.post("/api/verifications/{vid}/retry")
     def retry(vid: str, request: Request, p: Principal = Depends(require("research.request"))):
         with tx(request) as conn:
-            r = q1(conn, "SELECT * FROM verification_requests WHERE id=%s", (vid,))
+            r = q1(conn, "SELECT * FROM verification_requests WHERE id=%s FOR UPDATE", (vid,))
             if not r or r["status"] not in {"waiting_budget", "failed"}:
                 raise HTTPException(404, "nothing to retry")
             if r["organization_id"]:
                 where, params = org_scope_sql(p, "o.id")
                 if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [str(r["organization_id"]), *params]):      # noqa: S608
                     raise HTTPException(404, "not found")
+            live_job = q1(conn, """SELECT id FROM jobs WHERE id=%s AND status IN
+                           ('scheduled','claimed','fetching','parsing','verifying','committing','retryable_failed')""", (r["job_id"],))
+            if live_job:
+                return {"id": vid, "status": r["status"], "already_scheduled": True}
             conn.execute("UPDATE verification_requests SET status='queued', updated_at=now() WHERE id=%s", (vid,))
             jid, _ = enqueue(conn, "verify_url", {"request_id": vid}, idempotency_key=f"verify:{vid}:retry:{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}", max_attempts=3)
             conn.execute("UPDATE verification_requests SET job_id=%s WHERE id=%s", (jid, vid))
@@ -160,7 +164,22 @@ def register(app: FastAPI) -> None:
                 "FROM verification_requests v LEFT JOIN organizations o ON o.id=v.organization_id WHERE (%s='' OR v.status=%s) AND (%s='' OR v.origin=%s) ORDER BY v.created_at DESC LIMIT %s",
                 (status, status, origin, origin, limit))
             counts = {r["status"]: r["n"] for r in qa(conn, "SELECT status, count(*) AS n FROM verification_requests GROUP BY status")}
-            return {"items": [dict(r, id=str(r["id"])) for r in rows], "counts": counts}
+            queue = q1(conn, """
+                SELECT count(*) FILTER (WHERE v.status IN ('queued','fetching','extracting','waiting_budget')) AS pending,
+                       min(v.created_at) FILTER (WHERE v.status IN ('queued','fetching','extracting','waiting_budget')) AS oldest_pending,
+                       max(v.updated_at) FILTER (WHERE v.status='verified') AS last_verified,
+                       count(*) FILTER (WHERE v.status='waiting_budget') AS waiting_budget,
+                       count(*) FILTER (WHERE v.status='queued' AND (j.last_error_class='provider_billing'
+                          OR v.result->>'error_class'='provider_billing')) AS provider_billing,
+                       count(*) FILTER (WHERE v.status='queued' AND j.status='permanent_failed'
+                          AND v.result->>'error_class'='provider_billing') AS held_for_recovery,
+                       min(j.run_after) FILTER (WHERE v.status='queued' AND j.status='retryable_failed'
+                          AND j.last_error_class='provider_billing') AS next_provider_retry
+                FROM verification_requests v LEFT JOIN jobs j ON j.id=v.job_id
+            """)
+            docs = q1(conn, """SELECT count(*) AS pending, min(fetched_at) AS oldest_pending
+                                 FROM source_documents WHERE raw_meta->>'pending_extraction'='true' AND content_text IS NOT NULL""")
+            return {"items": [dict(r, id=str(r["id"])) for r in rows], "counts": counts, "queue": queue, "documents": docs}
 
     # ------------------------------------------------------------ discovery
     @app.get("/api/admin/discovery")
@@ -385,7 +404,7 @@ def register_feed(app: FastAPI) -> None:
                     raise HTTPException(404, "not found")
                 leads = account_leads(conn, organization)
             elif scope == "archive" and p.can("research.request"):
-                leads = rfp_research(conn)
+                leads = rfp_research(conn, p)
             items = findings(conn, p, scope=scope, days=365 if event else days, limit=limit, page=page, kind=kind, region=region,
                              organization_id=organization, event=event, search=q,
                              qualification="target" if scope == "today" else "all" if organization or event else qualification)

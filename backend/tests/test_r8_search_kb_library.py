@@ -39,7 +39,15 @@ def api(conn, db_url):
     db.close()
 
 
-def test_search_finds_accounts_by_sheet_text_signals_sources_and_kb(api):
+@pytest.fixture()
+def sample_kb(tmp_path, monkeypatch):
+    monkeypatch.setattr(kb, "KB_DIR", tmp_path)
+    (tmp_path / kb.DOCS["icp"]["file"]).write_text(
+        "<html><body><h1>ICP fixture</h1><p>Identify the procurement sponsor.</p></body></html>", encoding="utf-8",
+    )
+
+
+def test_search_finds_accounts_by_sheet_text_signals_sources_and_kb(api, sample_kb):
     c, h, org, _ = api
     assert c.get("/api/search?q=payments", headers=h("bdm")).status_code == 200
     d = c.get("/api/search?q=payments orchestration", headers=h("bdm")).json()
@@ -94,7 +102,7 @@ def test_library_signals_filters_and_urls_exclude_social_and_scope(api):
     assert c.get("/api/library/urls", headers=h("mkt")).status_code == 403
 
 
-def test_kb_links_are_signed_short_lived_per_document_and_sandboxed(api):
+def test_kb_links_are_signed_short_lived_per_document_and_sandboxed(api, sample_kb):
     c, h, _, url = api
     assert c.post("/api/kb/icp/link").status_code == 401
     assert c.post("/api/kb/nope/link", headers=h("bdm")).status_code == 404

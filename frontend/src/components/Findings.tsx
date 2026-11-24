@@ -16,6 +16,7 @@ type Finding = {
   sources: Source[];
   fit: { plays: Play[] };
   why?: { level: string; service: string; reason: string };
+  next_action?: { hypothesis_id: string; action_type: string; has_owner: boolean; owner_name?: string; due_at?: string } | null;
 };
 type Lead = {
   id: string; url: string; origin: string; status: string; claimed_text: string | null;
@@ -103,7 +104,7 @@ export function FindingCard({ item, onAccount = false }: { item: Finding; onAcco
     </div>
     <h3 className="fcard-t">{summary}</h3>
     {translated && <details className="small finding-details"><summary>{tr("Translated summary · view original")}</summary><p>{item.summary}</p></details>}
-    {item.tender && <p className="small"><b>{tr("Deadline")}</b> {deadline} UTC
+    {item.tender && <p className="small"><b>{tr("Tender deadline")}</b> {deadline} UTC
       <span className="muted"> · {tr("Status checked {}.", fmtDateTime(item.tender.checked_at))}</span></p>}
     {item.tender?.scope && <p className="small"><b>{tr("Scope")}</b> {item.tender.scope}</p>}
     <p className="finding-fit"><b>{tr("Why it fits The Codest")}</b><br />{reason}</p>
@@ -113,9 +114,13 @@ export function FindingCard({ item, onAccount = false }: { item: Finding; onAcco
     </div>
     <p className="small muted">{item.tender ? tr("The source confirms the notice. Supplier eligibility still needs checking.")
       : tr("The source confirms the reported event. The need for outside help still needs checking.")}</p>
-    <p className="small"><b>{tr("Next step")}</b>{" "}{item.tender ? tr("Check how to submit and whether we meet the supplier requirements.")
+    <p className="small"><b>{tr("Next step")}</b>{" "}{item.next_action ? <Link to={`/opportunities/${item.next_action.hypothesis_id}`}>{tr("Open recommended action")}</Link> : item.tender ? tr("Check how to submit and whether we meet the supplier requirements.")
       : item.organization.qualified === false ? tr("Confirm company ownership and qualify demand for outside engineering.")
       : tr("Identify the delivery owner and qualify demand for outside engineering.")}</p>
+    <dl className="account-profile-facts small">
+      <div><dt>{tr("Action owner")}</dt><dd>{item.next_action?.owner_name || tr(item.next_action?.has_owner ? "Assigned in Pipedrive" : "Unassigned")}</dd></div>
+      <div><dt>{tr("Follow-up due")}</dt><dd>{item.next_action?.due_at ? fmtDateTime(item.next_action.due_at) : tr("Not scheduled")}</dd></div>
+    </dl>
     {item.evidence.length > 0 && <details className="finding-details">
       <summary>{tr("View evidence")}</summary>
       {item.evidence.map(e => <blockquote key={e.claim_id} className="fquote">

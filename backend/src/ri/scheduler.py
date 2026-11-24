@@ -129,6 +129,27 @@ def crm_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
         return {"crm_sync_error": f"{type(exc).__name__}: {exc}"[:200]}
 
 
+
+def requeue_billing_failures(conn: Conn, limit: int = 10) -> int:
+    """Recover legacy terminal jobs only after the worker has successfully extracted again."""
+    rows = qa(conn, """
+        SELECT v.id, v.job_id
+        FROM verification_requests v JOIN jobs j ON j.id=v.job_id
+        WHERE v.status='queued' AND v.result->>'error_class'='provider_billing'
+          AND j.status='permanent_failed'
+          AND (SELECT max(at) FROM provider_usage WHERE provider='anthropic' AND operation='extract' AND status='ok')
+            > (SELECT max(updated_at) FROM verification_requests
+               WHERE status='queued' AND result->>'error_class'='provider_billing')
+        ORDER BY v.created_at, v.id LIMIT %s FOR UPDATE OF v SKIP LOCKED
+        """, (limit,))
+    for row in rows:
+        jid, _ = enqueue(conn, "verify_url", {"request_id": str(row["id"])},
+                         idempotency_key=f"verify:{row['id']}:recover:{row['job_id']}", max_attempts=3)
+        conn.execute("UPDATE verification_requests SET job_id=%s, result='{}'::jsonb, updated_at=now() WHERE id=%s",
+                     (jid, row["id"]))
+    return len(rows)
+
+
 def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     """Idempotent housekeeping. Every step runs in its own savepoint: one failing step is reported and the rest still run, so the scheduler heartbeat never goes quiet."""
     from .events.relink import relink_unmatched
@@ -178,6 +199,7 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("relinked_events", lambda: relink_unmatched(conn, 150, now)["linked"])
     step("hypotheses_built", lambda: ensure_hypotheses(conn, now))
     step("verifications_requeued", lambda: requeue_stuck_verifications(conn, now))
+    step("billing_jobs_recovered", lambda: requeue_billing_failures(conn))
     step("reevaluated", lambda: evaluate_stale(conn, now))
     step("score", lambda: recompute_scores(conn, now))
     return out

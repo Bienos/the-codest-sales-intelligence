@@ -7,6 +7,8 @@ import hmac
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
+
 from .. import approvals as appr
 from ..audit import audit
 from ..config import Settings
@@ -20,17 +22,21 @@ TRACKED = set(STATUS_FROM_EVENT) | {"emailsSendFailed"}
 RANK = {"pushed": 0, "replied": 1, "not_interested": 2, "interested": 3, "bounced": 4, "unsubscribed": 5, "failed": 0}
 
 
-def plan_contacts(conn: Conn, org_id: str) -> dict[str, Any]:
+def plan_contacts(conn: Conn, org_id: str, *, resume_draft: str | None = None) -> dict[str, Any]:
     """Who at this company can be emailed, and why not for the rest."""
     rows = qa(conn, "SELECT p.id, p.full_name, p.work_email, p.email_verification_status AS st, p.suppressed, p.erased_at, e.title, e.buyer_lane FROM employment e JOIN people p ON p.id=e.person_id "
                     "WHERE e.organization_id=%s ORDER BY p.full_name", (org_id,))
-    blocked_emails = {r["e"] for r in qa(conn, "SELECT lower(email) AS e FROM outbound_enrolments WHERE status IN ('unsubscribed','bounced')")}
-    out: dict[str, Any] = {"eligible": [], "needs_verification": [], "no_email": 0, "suppressed": 0, "manual_review": 0}
+    blocked_emails = {r["e"] for r in qa(conn, "SELECT lower(trim(email)) AS e FROM outbound_enrolments WHERE status IN ('unsubscribed','bounced')")}
+    enrolled_emails = {r["e"] for r in qa(conn, """SELECT lower(trim(email)) AS e FROM outbound_enrolments
+                      WHERE status <> 'failed' AND campaign_draft_id IS DISTINCT FROM %s::uuid""", (resume_draft,))}
+    out: dict[str, Any] = {"eligible": [], "needs_verification": [], "no_email": 0, "suppressed": 0, "manual_review": 0, "already_enrolled": 0}
     for r in rows:
         card = {"id": str(r["id"]), "name": r["full_name"], "title": r["title"], "lane": r["buyer_lane"], "email_status": r["st"]}
         email = (r["work_email"] or "").strip()
         if r["erased_at"] or r["suppressed"] or email.lower() in blocked_emails:
             out["suppressed"] += 1
+        elif email.lower() in enrolled_emails:
+            out["already_enrolled"] += 1
         elif not email or r["st"] in ("Not Found", "unknown"):
             out["no_email"] += 1
         elif r["st"] == "Verified":
@@ -44,12 +50,16 @@ def plan_contacts(conn: Conn, org_id: str) -> dict[str, Any]:
 
 def ownership_check(conn: Conn, org_id: str, requester_crm_user: int | None) -> dict[str, str] | None:
     """Returns a blocker when the account belongs to another seller or is an existing customer. Not linked to Pipedrive => cannot be checked (reported, not blocked)."""
-    crm = q1(conn, "SELECT owner_id, open_deals_count FROM crm_organizations WHERE organization_id=%s AND link_status='linked'", (org_id,))
+    crm = q1(conn, """
+        SELECT c.owner_id, c.open_deals_count,
+               EXISTS (SELECT 1 FROM crm_deals d WHERE d.crm_org_id=c.crm_id AND d.status='open') AS has_open_deal
+        FROM crm_organizations c WHERE c.organization_id=%s AND c.link_status='linked'
+    """, (org_id,))
     if not crm:
         return None
     if crm["owner_id"] and requester_crm_user != crm["owner_id"]:
         return {"code": "ownership_conflict", "detail": "This account is owned by another seller in Pipedrive: route to the owner."}
-    if (crm["open_deals_count"] or 0) > 0:
+    if crm["has_open_deal"] or (crm["open_deals_count"] or 0) > 0:
         return {"code": "open_deal", "detail": "This account already has an open deal in Pipedrive: do not run a cold sequence."}
     return None
 
@@ -91,12 +101,17 @@ def execute_enrolment(conn: Conn, approval_id: str, client: LemlistClient | None
         from ..sheets.client import ConnectorBlocked
         raise ConnectorBlocked("Lemlist is not connected")
     p = a["payload"]
-    draft = q1(conn, "SELECT organization_id FROM campaign_drafts WHERE id=%s", (p["draft_id"],))
-    if not draft:
-        raise appr.ApprovalError("the draft no longer exists")
-    # re-check at the moment of sending: anyone suppressed or unsubscribed since the approval is dropped
-    ok_ids = {c["id"] for c in plan_contacts(conn, str(draft["organization_id"]))["eligible"]}
-    contacts = [c for c in p["contacts"] if c["person_id"] in ok_ids]
+    draft = q1(conn, "SELECT organization_id, status FROM campaign_drafts WHERE id=%s", (p["draft_id"],))
+    if not draft or draft["status"] != "approved":
+        raise appr.ApprovalError("the draft is no longer approved")
+    org_id = str(draft["organization_id"])
+    requester = q1(conn, "SELECT pipedrive_user_id FROM users WHERE email=%s AND active", (a["requested_by"],))
+    blocker = ownership_check(conn, org_id, requester["pipedrive_user_id"] if requester else None)
+    if blocker:
+        raise appr.ApprovalError(blocker["detail"])
+    # Approval covers the exact address, even if the contact record changes afterwards.
+    eligible = {(c["id"], c["email"].casefold()) for c in plan_contacts(conn, org_id, resume_draft=p["draft_id"])["eligible"]}
+    contacts = [c for c in p["contacts"] if (c["person_id"], c["email"].casefold()) in eligible]
     if not contacts:
         raise appr.ApprovalError("no approved contact is still eligible")
     appr.mark_executing(conn, approval_id, hashlib.sha256(approval_id.encode()).hexdigest()[:12])
@@ -104,6 +119,19 @@ def execute_enrolment(conn: Conn, approval_id: str, client: LemlistClient | None
     prior = (a["result"] or {})
     try:
         cid = prior.get("lemlist_campaign_id")
+        skipped = 0
+        memberships = {}
+        candidates = []
+        for contact in contacts:
+            history = client.leads_by_email(contact["email"])
+            if history and (not cid or any((lead.get("campaign") or {}).get("id") != cid or lead.get("status") == "unsubscribed" for lead in history)):
+                skipped += 1
+                continue
+            if history:
+                memberships[contact["email"].lower()] = history[0]
+            candidates.append(contact)
+        if not candidates:
+            raise LemlistError("Every selected address is already enrolled or opted out in Lemlist", 409)
         if not cid:
             cid = client.create_campaign(p["campaign_name"]).get("_id")
             if not cid:
@@ -121,19 +149,30 @@ def execute_enrolment(conn: Conn, approval_id: str, client: LemlistClient | None
             conn.commit()
         done_emails = {r["e"] for r in qa(conn, "SELECT lower(email) AS e FROM outbound_enrolments WHERE campaign_draft_id=%s", (p["draft_id"],))}
         pushed = len(done_emails)
-        for c in contacts:
-            if c["email"].lower() in done_emails:
+        for c in candidates:
+            email = c["email"].lower()
+            if email in done_emails:
                 continue
             first = (c["name"] or "").split(" ")[0]
             last = " ".join((c["name"] or "").split(" ")[1:])
-            r = client.add_lead(cid, c["email"], {"firstName": first, "lastName": last, "companyName": p["company"], "companyDomain": p.get("domain") or "", "jobTitle": c.get("title") or ""})
+            r = memberships.get(email)
+            if r is None:
+                try:
+                    r = client.add_lead(cid, c["email"], {"firstName": first, "lastName": last, "companyName": p["company"], "companyDomain": p.get("domain") or "", "jobTitle": c.get("title") or ""})
+                except LemlistError as exc:
+                    if exc.status == 409 and "LEAD_ALREADY_IN_OTHER_CAMPAIGN" in str(exc):
+                        skipped += 1
+                        continue
+                    raise
             conn.execute("INSERT INTO outbound_enrolments(campaign_draft_id, organization_id, person_id, email, lemlist_campaign_id, lemlist_lead_id, approval_id) VALUES (%s,%s,%s,%s,%s,%s,%s) "
                          "ON CONFLICT (campaign_draft_id, email) DO NOTHING", (p["draft_id"], draft["organization_id"], c["person_id"], c["email"].lower(), cid, (r or {}).get("_id"), approval_id))
+            done_emails.add(email)
             pushed += 1
-        appr.mark_done(conn, approval_id, True, {"lemlist_campaign_id": cid, "leads": pushed})
+            conn.commit()
+        appr.mark_done(conn, approval_id, True, {"lemlist_campaign_id": cid, "leads": pushed, "skipped_existing": skipped})
         audit(conn, actor="system:executor", operation="lemlist_enrolment_created", record_type="campaign_draft", record_id=p["draft_id"], approval_id=approval_id, detail={"campaign": cid, "leads": pushed})
-        return {"status": "executed", "lemlist_campaign_id": cid, "leads": pushed, "note": "The campaign is in Lemlist and has not been launched. Review it there and press Launch."}
-    except (LemlistError, OSError) as exc:
+        return {"status": "executed", "lemlist_campaign_id": cid, "leads": pushed, "skipped_existing": skipped, "note": "The campaign is in Lemlist and has not been launched. Review it there and press Launch."}
+    except (LemlistError, OSError, httpx.HTTPError) as exc:
         if isinstance(exc, LemlistError) and exc.status and exc.status < 500 and exc.status != 429:
             appr.mark_done(conn, approval_id, False, {"error": str(exc)[:200]})
             conn.commit()                 # the caller turns this into an HTTP error, which would roll the failure record back
@@ -152,12 +191,15 @@ def record_event(conn: Conn, body: dict[str, Any]) -> dict[str, Any]:
     typ = str(body.get("type") or "")
     if typ and typ not in TRACKED:
         return {"recorded": False, "reason": "ignored type"}
-    email = str(body.get("leadEmail") or body.get("email") or "").lower()
+    email = str(body.get("leadEmail") or body.get("email") or "").strip().lower()
     cid = body.get("campaignId")
     if not typ or not email:
         return {"recorded": False, "reason": "no type or email"}
     key = hashlib.sha256(f"{typ}|{cid}|{email}|{body.get('_id') or body.get('createdAt') or ''}".encode()).hexdigest()
-    enrol = q1(conn, "SELECT id, status, person_id FROM outbound_enrolments WHERE lower(email)=%s AND (%s::text IS NULL OR lemlist_campaign_id=%s) ORDER BY created_at DESC LIMIT 1", (email, cid, cid))
+    matches = qa(conn, """SELECT id, status FROM outbound_enrolments WHERE lower(trim(email))=%s
+                          AND (%s::text IS NULL OR lemlist_campaign_id=%s)
+                          ORDER BY created_at DESC LIMIT 2 FOR UPDATE""", (email, cid, cid))
+    enrol = matches[0] if len(matches) == 1 else None
     row = conn.execute("INSERT INTO outbound_events(enrolment_id, kind, payload, dedupe_key) VALUES (%s,%s,%s,%s) ON CONFLICT (dedupe_key) DO NOTHING RETURNING id",
                        (enrol["id"] if enrol else None, typ, jb({k: body.get(k) for k in ("type", "campaignId", "leadEmail", "createdAt")}), key)).fetchone()
     if not row:
@@ -165,6 +207,7 @@ def record_event(conn: Conn, body: dict[str, Any]) -> dict[str, Any]:
     new = STATUS_FROM_EVENT.get(typ)
     if enrol and new and RANK[new] >= RANK[enrol["status"]]:
         conn.execute("UPDATE outbound_enrolments SET status=%s, last_event_at=now() WHERE id=%s", (new, enrol["id"]))
-    if enrol and new in ("unsubscribed", "bounced") and enrol["person_id"] and new == "unsubscribed":
-        conn.execute("UPDATE people SET suppressed=true, suppression_reason='unsubscribed through Lemlist' WHERE id=%s", (enrol["person_id"],))
+    if new == "unsubscribed" or (enrol and new == "bounced"):
+        conn.execute("UPDATE people SET suppressed=true, suppression_reason=%s WHERE lower(trim(work_email))=%s AND NOT suppressed",
+                     ("unsubscribed through Lemlist" if new == "unsubscribed" else "email bounced in Lemlist", email))
     return {"recorded": True, "status": new, "matched": bool(enrol)}
