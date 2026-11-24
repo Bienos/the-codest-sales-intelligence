@@ -126,7 +126,9 @@ class PageWatchConnector:
 
     async def health_check(self) -> HealthCheck:
         try:
-            await self.fetch(None, 1)
+            batch = await self.fetch(None, 1)
+            if not batch.items or len(batch.items[0].payload.get("text", "").strip()) < 50:
+                raise SchemaDrift("page contains too little readable text to monitor")
             return HealthCheck(True)
         except Exception as exc:  # noqa: BLE001
             return HealthCheck(False, str(exc), getattr(exc, "error_class", "transient_network"))

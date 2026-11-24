@@ -644,7 +644,7 @@ def register_scan(app: FastAPI) -> None:
             items = []
             for account in accounts:
                 oid = account["organization_id"]
-                endpoints = qa(conn, """SELECT kind, url, last_scanned_at, last_status, last_detail, docs_seen
+                endpoints = qa(conn, """SELECT kind, url, last_scanned_at, last_success_at, last_status, last_detail, docs_seen
                     FROM account_endpoints WHERE organization_id=%s ORDER BY kind, url""", (oid,))
                 recent = qa(conn, """SELECT e.id::text AS event_id, e.summary, coalesce(e.event_at,e.pub_at) AS date,
                        (SELECT min(s.demand_tier) FROM signals s WHERE s.event_id=e.id AND s.organization_id=e.subject_org_id
@@ -684,7 +684,7 @@ def register_scan(app: FastAPI) -> None:
             where, params = org_scope_sql(p, "o.id")
             if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [oid, *params]):     # noqa: S608
                 raise HTTPException(404, "not found")
-            rows = qa(conn, "SELECT kind, url, provider, board, found_at, last_scanned_at, last_status, last_detail, docs_seen FROM account_endpoints WHERE organization_id=%s ORDER BY kind, url", (oid,))
+            rows = qa(conn, "SELECT kind, url, provider, board, found_at, last_scanned_at, last_success_at, last_status, last_detail, docs_seen FROM account_endpoints WHERE organization_id=%s ORDER BY kind, url", (oid,))
             return {"items": rows}
 
 

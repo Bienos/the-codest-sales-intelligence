@@ -220,3 +220,34 @@ def test_bzp_schema_drift_and_resume_cursor():
     bad = PolishBzpConnector(httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"oops": 1}))))
     with pytest.raises(SchemaDrift):
         asyncio.run(bad.fetch(None, 10))
+
+
+def test_scan_preserves_last_success_when_a_company_source_fails(conn):
+    from datetime import datetime, timedelta, timezone
+
+    seed_registry(conn)
+    org = conn.execute("INSERT INTO organizations(display_name, canonical_domain, country_code) VALUES ('Synthetic Bank','bank.example','GB') RETURNING id").fetchone()["id"]
+    old = datetime.now(timezone.utc) - timedelta(days=1)
+    conn.execute("""INSERT INTO account_endpoints(organization_id,kind,url,last_scanned_at,last_success_at,last_status)
+                    VALUES (%s,'newsroom','https://bank.example/newsroom/',%s,%s,'ok')""", (org, old, old))
+    conn.execute("""INSERT INTO account_source_coverage(organization_id,source_family,coverage_state,last_success_at)
+                    VALUES (%s,'procurement','source_not_found',NULL)""", (org,))
+    conn.execute("""INSERT INTO account_source_coverage(organization_id,source_family,coverage_state,last_success_at)
+                    VALUES (%s,'newsroom','monitored_healthy',%s)""", (org, old))
+    conn.commit()
+    def failed(request):
+        return httpx.Response(404) if request.url.path == "/robots.txt" else httpx.Response(500)
+    run_scan(conn, str(org), client=httpx.AsyncClient(transport=httpx.MockTransport(failed)))
+    row = conn.execute("SELECT * FROM account_endpoints WHERE organization_id=%s", (org,)).fetchone()
+    assert row["last_status"] == "failed" and row["last_success_at"] == old
+    coverage = conn.execute("SELECT * FROM account_source_coverage WHERE organization_id=%s AND source_family='newsroom'", (org,)).fetchone()
+    assert coverage["coverage_state"] == "monitored_degraded" and coverage["last_success_at"] == old
+
+
+def test_page_health_rejects_a_javascript_shell():
+    from ri.sources.webwatch import PageWatchConnector
+    def shell(request):
+        return httpx.Response(404) if request.url.path == "/robots.txt" else httpx.Response(200, text="<html><body><p>Loading...</p></body></html>")
+    connector = PageWatchConnector(httpx.AsyncClient(transport=httpx.MockTransport(shell)), "https://bank.example/news", source_id="test")
+    health = asyncio.run(connector.health_check())
+    assert not health.ok and health.error_class == "schema_drift"

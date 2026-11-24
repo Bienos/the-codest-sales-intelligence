@@ -1558,5 +1558,6 @@
   "Pilot coverage by region": "Pokrycie pilotażu według regionu",
   "{} companies": "Liczba firm: {}",
   "{} without a successful source check": "Bez udanego sprawdzenia źródła: {}",
-  "Scope": "Zakres"
+  "Scope": "Zakres",
+  "Worked": "Działa"
 }

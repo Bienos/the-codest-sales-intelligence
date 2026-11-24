@@ -202,7 +202,8 @@ function ScanTop() {
             {account.endpoints.length === 0 ? <p className="small muted">{tr("No company sources configured.")}</p> :
               <ul className="tight small">{account.endpoints.map((source: any) => <li key={source.url}>
                 <a href={source.url} target="_blank" rel="noreferrer noopener">{source.kind === "procurement" ? tr("Supplier page") : humanize(source.kind)}</a>
-                {source.last_scanned_at ? <> · {source.last_status === "ok" ? tr("Checked") : tr("Check failed")} {fmtDateTime(source.last_scanned_at)} · {source.docs_seen}{" " + tr("items read")}</> : <>{" " + tr("· waiting for first check")}</>}{source.last_status !== "ok" && source.last_detail && <div className="muted">{source.last_detail}</div>}
+                {source.last_scanned_at ? <> · {source.last_status === "ok" ? tr("Checked") : tr("Check failed")} {fmtDateTime(source.last_scanned_at)} · {source.docs_seen}{" " + tr("items read")}</> : <>{" " + tr("· waiting for first check")}</>}
+                {source.last_success_at && <> · {tr("Last successful check")} {fmtDateTime(source.last_success_at)}</>}{source.last_status !== "ok" && source.last_detail && <div className="muted">{source.last_detail}</div>}
               </li>)}</ul>}
             {account.recent.map((finding: any) => <div className="mt-2" key={finding.event_id}>
               <b>{finding.summary}</b> <span className="small muted">{fmtDateTime(finding.date)}</span>

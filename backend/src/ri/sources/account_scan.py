@@ -258,13 +258,15 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                 conn.execute("""UPDATE procurement_notices SET last_status_check_at=NULL
                     WHERE buyer_org_id=%s AND official_url=%s AND source_id='corporate-ir-newsrooms'""",
                     (org_id, ep["url"]))
-        conn.execute("UPDATE account_endpoints SET last_scanned_at=%s, last_status=%s, last_detail=%s, docs_seen=%s WHERE id=%s", (now, status, detail, seen, ep["id"]))
+        conn.execute("UPDATE account_endpoints SET last_scanned_at=%s, last_success_at=CASE WHEN %s='ok' THEN %s ELSE last_success_at END, "
+                     "last_status=%s, last_detail=%s, docs_seen=%s WHERE id=%s",
+                     (now, status, now, status, detail, seen, ep["id"]))
         conn.commit()
     for fam, kinds in (("newsroom", ("feed", "newsroom")), ("jobs", ("job_board", "careers")), ("procurement", ("procurement",))):
         rows = qa(conn, "SELECT url, last_status FROM account_endpoints WHERE organization_id=%s AND kind = ANY(%s)", (org_id, list(kinds)))
         state = "source_not_found" if not rows else ("monitored_healthy" if any(r["last_status"] == "ok" for r in rows) else "monitored_degraded")
         conn.execute("INSERT INTO account_source_coverage(organization_id, source_family, coverage_state, source_ids, last_success_at, note, updated_at) VALUES (%s,%s,%s,%s,%s,%s,now()) "
-                     "ON CONFLICT (organization_id, source_family) DO UPDATE SET coverage_state=EXCLUDED.coverage_state, source_ids=EXCLUDED.source_ids, last_success_at=EXCLUDED.last_success_at, note=EXCLUDED.note, updated_at=now()",
+                     "ON CONFLICT (organization_id, source_family) DO UPDATE SET coverage_state=EXCLUDED.coverage_state, source_ids=EXCLUDED.source_ids, last_success_at=coalesce(EXCLUDED.last_success_at,account_source_coverage.last_success_at), note=EXCLUDED.note, updated_at=now()",
                      (org_id, fam, state, [r["url"] for r in rows][:5], now if state == "monitored_healthy" else None, "; ".join(notes)[:300] or None))
     conn.commit()
     out: dict[str, Any] = {"status": "ok", "endpoints": len(existing), "scanned": scanned, "documents": len(res.new_doc_ids) + len(res.changed_doc_ids), "job_changes": len(res.structured_changes), "notes": notes}
