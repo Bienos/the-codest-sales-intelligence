@@ -261,9 +261,8 @@
 .pp-per { display: grid; justify-items: end; text-align: right; color: var(--navy); }
 .pp-per b { font: 800 var(--fs-lg)/1.1 var(--font-head); }
 @media (max-width: 760px) {
-  .pp { grid-template-columns: minmax(0, 1fr) auto; }
-  .pp-bar { grid-column: 1 / -1; grid-row: 2; }
-  .pp-per { grid-column: 2; grid-row: 1; }
+  .pp { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .pp-per { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; justify-items: start; text-align: left; }
   .usage-hero { padding: 18px 16px; }
   .ruler, .daily, .purposes { padding: 16px; }
 }

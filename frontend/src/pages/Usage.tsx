@@ -104,7 +104,7 @@ function DailyChart({ d }: { d: any }) {
   const n = d.days_in_month, plotW = Math.max(w - padL - 4, 50), slot = plotW / n, bw = Math.min(Math.max(slot - 2, 2), 24);
   const y = (v: number) => padT + (H - padT - padB) * (1 - v / top);
   const x = (i: number) => padL + i * slot + (slot - bw) / 2;
-  const showLabel = (i: number) => i === 0 || (i + 1) % 7 === 1 || i === n - 1;
+  const showLabel = (i: number) => i === 0 || ((i + 1) % 7 === 1 && i < n - 3) || i === n - 1;     // 1, 8, 15, 22 and the last day, never two side by side
   const tipFor = (i: number) => {
     if (i < past.length) { const p = past[i]; return { title: dayLabel(p.day, { weekday: "short", day: "numeric", month: "short" }), rows: [[tr("Total"), usd(total(p))], [tr("AI reading"), `${usd(p.ai_usd)} · ${compact(p.ai_tokens)} ${tr("tokens")}`], [tr("Web search"), `${usd(p.exa_usd)} · ${tr("{} searches", num(p.searches))}`]], future: false }; }
     return { title: dayLabel(future[i - past.length], { weekday: "short", day: "numeric", month: "short" }), rows: [[tr("Expected"), usd(rate)]], future: true };

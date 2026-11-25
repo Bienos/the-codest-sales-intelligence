@@ -13,7 +13,7 @@ def quality_snapshot(conn: Conn) -> dict[str, Any]:
     return {
         "source_health": qa(conn, "SELECT state, count(*) n FROM source_health GROUP BY state ORDER BY state"),
         "stale_sources": q1(conn, "SELECT count(*) n FROM source_health WHERE missed_due_runs>0")["n"],  # type: ignore[index]
-        "dead_letters_unreplayed": q1(conn, "SELECT count(*) n FROM dead_letters WHERE replayed_at IS NULL")["n"],  # type: ignore[index]
+        "dead_letters_unreplayed": q1(conn, "SELECT count(*) n FROM dead_letters WHERE replayed_at IS NULL AND dismissed_at IS NULL")["n"],  # type: ignore[index]
         "alerts_sent": total_alerts, "duplicate_alert_groups": dup,
         "high_priority_without_citation": uncited,                      # must be 0 (spec 12: 100% traceability for actionable assertions)
         "open_identity_reviews": q1(conn, "SELECT count(*) n FROM identity_reviews WHERE status='open'")["n"],  # type: ignore[index]
