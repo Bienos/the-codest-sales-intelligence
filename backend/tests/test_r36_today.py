@@ -1,5 +1,7 @@
 """Today (GET /api/today/brief): who to contact today and why, most urgent first, with what is new since the last visit."""
 import json
+import sys
+import types
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -146,8 +148,10 @@ def test_new_since_the_last_visit_and_the_glance_numbers(world, conn):
     b = _brief(world)
     assert b["last_visit"] is None                          # first visit: the last 7 days
     assert abs(datetime.fromisoformat(b["since"]) - (NOW - timedelta(days=7))) < timedelta(minutes=5)
-    # news already in "Do today" is not repeated; the second, weaker Prime Insurer item is left out with its company
-    assert all(n["organization"]["name"] not in _names(b["actions"]) for n in b["new"] if n.get("organization"))
+    # news that is also on today's list says so, so the page can jump to it instead of repeating it
+    listed = {a["key"] for a in b["actions"]}
+    assert listed & {n["key"] for n in b["new"]}
+    assert all((n.get("in_list") == "today") == (n["key"] in listed) for n in b["new"])
     assert b["glance"]["targets"] == 7 and b["glance"]["with_news"] == 4
     assert b["glance"]["people_with_email"] == 1 and b["glance"]["accounts_with_email"] == 1
 
@@ -232,3 +236,107 @@ def test_nothing_urgent_points_to_the_top_of_the_lead_list(world, conn):
     b = _brief(world)
     assert b["actions"] == [] and b["queue"] == []
     assert [x["organization"]["name"] for x in b["next_up"]][:2] == ["Quiet Bank", "Old News Bank"]
+
+
+# ---------------------------------------------------------------- round 4: who to contact, progress, the week, follow-ups, best fit
+
+def staff(conn, oid, name, title, *, email=None, suppressed=False, photo=None, persona=None):
+    pid = conn.execute("insert into people(full_name, work_email, email_verification_status, suppressed, photo_url) values (%s,%s,%s,%s,%s) returning id",
+                       (name, email, "Verified" if email else "Unknown", suppressed, photo)).fetchone()["id"]
+    conn.execute("insert into employment(person_id, organization_id, title) values (%s,%s,%s)", (pid, oid, title))
+    if persona:
+        conn.execute("insert into person_sources(person_id, system, external_id, detail) values (%s,'sheets',%s,%s)",
+                     (pid, f"row-{name}", json.dumps({"persona": persona, "priority": "P1"})))
+    return str(pid)
+
+
+def test_each_item_names_who_to_contact_best_match_first(world, conn):
+    o = world["o"]
+    staff(conn, o["p1"], "Ben Ortiz", "Head of Claims IT", photo="https://media.example/ben.jpg")
+    staff(conn, o["p1"], "Dee Stop", "Head of Claims IT", email="dee@prime.example", suppressed=True)
+    staff(conn, o["tender"], "Pia Buyer", "Category Manager", persona="IT Procurement")
+    conn.commit()
+    b = _brief(world)
+    prime = next(a for a in b["actions"] if a["organization"]["name"] == "Prime Insurer")
+    # the person whose title matches the role the research suggests comes first; someone who asked not to be contacted never shows
+    assert [c["name"] for c in prime["contacts"]][0] == "Ben Ortiz"
+    assert prime["contacts"][0]["photo_url"] == "https://media.example/ben.jpg" and prime["contacts"][0]["matches"]
+    assert "Dee Stop" not in [c["name"] for c in prime["contacts"]] and len(prime["contacts"]) <= td.CONTACTS_SHOWN
+    assert {c["name"]: c["has_email"] for c in prime["contacts"]}["Ada Clarke"] is True
+    tender = b["actions"][0]
+    assert tender["contacts"][0]["name"] == "Pia Buyer"            # matched on the lead list's persona
+    # the read is audited; without the contacts permission nobody is named
+    assert conn.execute("select count(*) n from audit_events where operation='pii_read' and record_type='today_brief'").fetchone()["n"] == 1
+    assert all(a["contacts"] == [] for a in _brief(world, "analyst")["actions"])
+
+
+def test_the_list_does_not_refill_while_the_person_works_through_it(world):
+    c, h = world["c"], world["h"]
+    b = _brief(world)
+    assert b["done_today"] == []
+    n = len(b["actions"])
+    first = b["actions"][0]
+    c.post("/api/today/brief/items", headers=h("bdm"), json={"key": first["key"], "outcome": "done", "organization_id": first["organization"]["id"],
+                                                             "label": "Tender Bank", "kind": "tender", "slot": "today"})
+    b = _brief(world)
+    assert [(d["key"], d["outcome"], d["label"], d["kind"], d["slot"]) for d in b["done_today"]] == [(first["key"], "done", "Tender Bank", "tender", "today")]
+    assert len(b["actions"]) == n - 1 and first["key"] not in [a["key"] for a in b["actions"]]
+    # undo takes it back
+    c.post("/api/today/brief/items", headers=h("bdm"), json={"key": first["key"], "outcome": "undo"})
+    b = _brief(world)
+    assert b["done_today"] == [] and b["actions"][0]["key"] == first["key"]
+    # bad extra fields are refused
+    assert c.post("/api/today/brief/items", headers=h("bdm"), json={"key": first["key"], "outcome": "done", "slot": "tomorrow"}).status_code == 422
+    assert c.post("/api/today/brief/items", headers=h("bdm"), json={"key": first["key"], "outcome": "done", "label": "x" * 200}).status_code == 422
+
+
+def test_the_week_shows_deadlines_and_what_is_new(world):
+    b = _brief(world)
+    week = b["week"]
+    assert week["days"] == td.WEEK_DAYS and week["start"] == TODAY.isoformat()
+    # one deadline per company: the lead list's RFx at Tender Bank, closing in 5 days, which is also first on today's list
+    assert [(d["name"], d["days_left"], d["date"], d["in_list"]) for d in week["deadlines"]] == [("Tender Bank", 5, _day(5), "today")]
+    assert week["new"]["signal"] >= 3 and week["new"]["tender"] == 1 and week["new"]["reply"] == 0
+    assert week["new"]["signal"] + week["new"]["tender"] == len([n for n in b["new"] if n["kind"] in ("signal", "tender")])
+
+
+def test_follow_ups_for_people_who_clicked_but_did_not_answer(world, conn):
+    o = world["o"]
+    clicker = staff(conn, o["p2"], "Cleo Click", "CTO", email="cleo@second.example")
+    replied = staff(conn, o["checked"], "Rex Reply", "CTO", email="rex@kestrel.example")
+    once = staff(conn, o["quiet"], "Olly Once", "CTO", email="olly@quiet.example")
+    acts = [("f1", "emailsClicked", clicker, 1), ("f2", "emailsOpened", clicker, 2), ("f3", "emailsOpened", replied, 1), ("f4", "emailsOpened", replied, 2),
+            ("f5", "emailsReplied", replied, 1), ("f6", "emailsOpened", once, 1), ("f7", "emailsClicked", clicker, 12)]
+    for aid, kind, pid, days in acts:
+        conn.execute("insert into lemlist_activities(id, type, email, campaign_id, campaign_name, person_id, happened_at) values (%s,%s,'x@y','c1','Payments',%s,%s)",
+                     (aid, kind, pid, NOW - timedelta(days=days)))
+    conn.commit()
+    b = _brief(world)
+    follow = [a for a in b["actions"] + b["queue"] if a["kind"] == "follow_up"]
+    # only the person who clicked: the one who replied is a reply, one open is not enough
+    assert [f["person"]["name"] for f in follow] == ["Cleo Click"]
+    assert follow[0]["engagement"] == {"opens": 1, "clicks": 1} and follow[0]["title"] == "Payments"
+    assert follow[0]["key"].startswith("follow:") and follow[0]["organization"]["name"] == "Second Bank"
+    # replies come first; a reply older than the follow-up window is still a reply
+    assert b["actions"][0]["kind"] == "reply" and b["actions"][0]["person"]["name"] == "Rex Reply"
+    # follow-ups need the contacts permission
+    assert all(a["kind"] != "follow_up" for a in _brief(world, "analyst")["actions"])
+    c, h = world["c"], world["h"]
+    assert c.post("/api/today/brief/items", headers=h("bdm"), json={"key": follow[0]["key"], "outcome": "done", "kind": "follow_up"}).status_code == 200
+
+
+def test_best_fit_service_when_the_fit_engine_is_there(world, monkeypatch):
+    oid = world["o"]["p1"]
+    fake = types.ModuleType("ri.solutions")
+    fake.best_fit_many = lambda conn, ids: {i: {"key": "team_extension", "name": "Team extension", "why": "Hiring ten engineers"} for i in ids if i == oid}
+    monkeypatch.setitem(sys.modules, "ri.solutions", fake)
+    b = _brief(world)
+    prime = next(a for a in b["actions"] if a["organization"]["id"] == oid)
+    assert prime["fit"] == {"key": "team_extension", "name": "Team extension", "why": "Hiring ten engineers"}
+    assert all(a["fit"] is None for a in b["actions"] if a["organization"]["id"] != oid)
+
+    def broken(conn, ids):
+        conn.execute("select * from no_such_table")
+    fake.best_fit_many = broken
+    b = _brief(world)                       # a failing fit engine leaves the page working, without fits
+    assert b["actions"] and all(a["fit"] is None for a in b["actions"])

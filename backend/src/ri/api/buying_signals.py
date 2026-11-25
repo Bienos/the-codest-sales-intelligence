@@ -19,13 +19,23 @@ the strongest and newest first, older news of the same kind folded into ``more``
 * 3 (strong) when they asked for outside help or it is likely (an open tender, demand tier D1 or D2);
 * otherwise the strongest rule's strength (1 to 3), one step higher when two or more different kinds of signal are live at once.
 
-``kinds`` counts companies per kind of signal for the current search, region and window but before the ``rule`` filter, so the page can
-show every kind as a filter with its count. ``sort`` orders the companies: strongest first (the default), newest first, or by the lead
-list's own priority and score.
+``kinds`` counts companies per kind of signal for the current search, region and window but before the ``rule`` and ``family`` filters,
+so the page can show every kind as a filter with its count. ``family`` narrows the list to one family of signal (the letters before the
+dash: SRC buying route, CAP hiring, PRG funded project, MAN new leader, COM business event, REL relationship). ``sort`` orders the
+companies: strongest first (the default), newest first, or by the lead list's own priority and score.
+
+``pulse`` is the picture at the top of the page and does not follow the filters: across every target company the person may see, how
+many companies have a signal of each family in the last 7, 30 and 90 days, how many pieces of news arrived in each of the last 13
+weeks (rolling seven-day buckets ending now, so the last one is "this week"), and the strongest signal that is new this week (or, when
+the week is quiet, in the last 30 days).
+
+``organization.best_fit`` is the service of ours that fits the company best, from ``ri.solutions.best_fit_many`` when that module is
+present; without it the field is ``None`` and the page leaves the column out.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, Query, Request
@@ -35,6 +45,8 @@ from ..db import Conn, qa
 from ..events.classify import non_engineering_title_sql_pattern
 from ..target_market import target_region, target_sql
 from .auth import require
+
+log = logging.getLogger(__name__)
 
 # Kinds of event that start a buying conversation even before outside demand is proven (on top of every D1/D2 or strength-3 rule).
 HIGH_INTENT_RULES = (
@@ -47,7 +59,11 @@ HIGH_INTENT_RULES = (
     "REL-01", "REL-03", "REL-05", "REL-07",                           # someone who knows us moves or asks
 )
 SORTS = ("strength", "newest", "priority")
+FAMILIES = ("SRC", "CAP", "PRG", "MAN", "COM", "REL")                 # the fixed order of the families on the page
 FRESH_DAYS = 14
+PULSE_DAYS = 90
+PULSE_WINDOWS = (7, 30, 90)
+PULSE_WEEKS = 13
 _GROUP_INTENT = {"SRC": "route", "CAP": "capacity", "PRG": "programme", "MAN": "leader", "COM": "business", "REL": "relationship", "REG": "deadline"}
 _PRIORITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
 
@@ -150,7 +166,60 @@ def _companies(conn: Conn, p: Principal, ids: list[str]) -> dict[str, dict[str, 
                 AND pe.work_email IS NOT NULL AND NOT pe.suppressed WHERE em.organization_id=o.id) AS people_with_email,
                EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched
         FROM organizations o WHERE o.id = ANY(%s::uuid[]) AND ({where})""", [p.email, ids, *args])      # noqa: S608
-    return {r["id"]: {**r, "region": target_region(r["country"]), "list_score": float(r["list_score"]) if r["list_score"] is not None else None} for r in rows}
+    out = {r["id"]: {**r, "region": target_region(r["country"]), "best_fit": None,
+                     "list_score": float(r["list_score"]) if r["list_score"] is not None else None} for r in rows}
+    for oid, fit in _best_fit(conn, list(out)).items():
+        if oid in out:
+            out[oid]["best_fit"] = fit
+    return out
+
+
+def _best_fit(conn: Conn, ids: list[str]) -> dict[str, dict[str, Any]]:
+    """The service of ours that fits each company best, when the fit engine (``ri.solutions``) is available. Never fails the page."""
+    if not ids:
+        return {}
+    try:
+        from .. import solutions      # type: ignore[attr-defined]
+        fn = getattr(solutions, "best_fit_many", None)
+    except ImportError:
+        return {}
+    if fn is None:
+        return {}
+    try:
+        with conn.transaction():          # a savepoint: a failing fit query must not abort the page's transaction
+            raw = fn(conn, ids) or {}
+    except Exception:  # noqa: BLE001  (the column is optional; the list must still load)
+        log.exception("best_fit_many failed; the buying signals list is shown without it")
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for oid, fit in dict(raw).items():
+        shaped = _shape_fit(fit)
+        if shaped:
+            out[str(oid)] = shaped
+    return out
+
+
+def _shape_fit(fit: Any) -> dict[str, Any] | None:
+    """Whatever the fit engine returns for one company, as {name, reason, key}: the page needs a short service name and one line why."""
+    if fit is None:
+        return None
+    if isinstance(fit, list):
+        fit = fit[0] if fit else None
+        if fit is None:
+            return None
+    if isinstance(fit, str):
+        return {"key": None, "name": fit, "reason": None}
+    if not isinstance(fit, dict):
+        return None
+    inner = fit.get("solution") if isinstance(fit.get("solution"), dict) else fit
+    name = inner.get("short_name") or inner.get("name") or inner.get("title") or fit.get("name") or fit.get("service")
+    if not name:
+        return None
+    reason = fit.get("reason") or fit.get("why") or fit.get("summary")
+    if isinstance(reason, list):
+        reason = "; ".join(str(x) for x in reason[:2]) or None
+    return {"key": inner.get("key") or inner.get("id") or fit.get("key"), "name": str(name),
+            "reason": str(reason) if reason else None}
 
 
 def _sort_key(sort: str):
@@ -163,33 +232,25 @@ def _sort_key(sort: str):
                       _PRIORITY_RANK.get(c["organization"]["list_priority"] or "", 9), c["organization"]["name"].lower())
 
 
-def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = "", q: str = "", rule: str = "", sort: str = "strength") -> dict[str, Any]:
+def _collect(conn: Conn, p: Principal, *, days: int, region: str, q: str) -> tuple[list[dict[str, Any]], set[str], dict[str, dict[str, Any]]]:
+    """Every live high-intent signal in the window, one entry per piece of news (strongest and newest first), the companies held back
+    by a stop signal, and the names of the rules seen."""
     from ..findings import findings
-    from ..outbound.signal_campaigns import ANGLES, DEFAULT_ANGLE
 
-    now = datetime.now(timezone.utc)
-    items: list[dict[str, Any]] = []
-    seen: dict[tuple[str, str], dict[str, Any]] = {}
+    raw: list[dict[str, Any]] = []
     tender_events: set[str] = set()
-
     # Open tenders for software work at target companies (the same checks as the findings archive and Today).
     for t in findings(conn, p, scope="archive", days=days, limit=50, kind="tender", region=region, search=q, qualification="target"):
         tender_events.update(str(x) for x in t["event_ids"])
-        key = (str(t["organization"]["id"]), "SRC-01")
         ev = t["evidence"][0] if t["evidence"] else None
-        item = {"id": str(t["id"]), "rule_id": "SRC-01", "strength": 3, "demand_tier": "D1", "intent": "outside_demand",
-                "event_id": str(t["id"]), "event_type": t["type"], "summary": t["tender"].get("title") or t["summary"],
-                "summary_en": t.get("summary_en"), "summary_pl": t.get("summary_pl"), "happened": t["happened"], "fit": t.get("why"),
-                "tender": {k: t["tender"].get(k) for k in ("deadline", "url", "title", "scope", "notice_id", "checked_at")},
-                "evidence": {"quote": ev["claim"], "translation": ev.get("translation"), "url": ev["url"], "source": ev["source"],
-                             "published_at": ev["published_at"]} if ev else {"quote": None, "translation": None, "url": t["tender"]["url"],
-                                                                             "source": None, "published_at": None},
-                "organization_id": str(t["organization"]["id"]), "more": 0}
-        if key in seen:
-            seen[key]["more"] += 1
-            continue
-        seen[key] = item
-        items.append(item)
+        raw.append({"id": str(t["id"]), "rule_id": "SRC-01", "strength": 3, "demand_tier": "D1", "intent": "outside_demand",
+                    "event_id": str(t["id"]), "event_type": t["type"], "summary": t["tender"].get("title") or t["summary"],
+                    "summary_en": t.get("summary_en"), "summary_pl": t.get("summary_pl"), "happened": t["happened"], "fit": t.get("why"),
+                    "tender": {k: t["tender"].get(k) for k in ("deadline", "url", "title", "scope", "notice_id", "checked_at")},
+                    "evidence": {"quote": ev["claim"], "translation": ev.get("translation"), "url": ev["url"], "source": ev["source"],
+                                 "published_at": ev["published_at"]} if ev else {"quote": None, "translation": None, "url": t["tender"]["url"],
+                                                                                 "source": None, "published_at": None},
+                    "organization_id": str(t["organization"]["id"])})
 
     held_back: set[str] = set()
     meta: dict[str, dict[str, Any]] = {}
@@ -202,41 +263,105 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
         meta.setdefault(r["rule_id"], {"name": r["rule_name"], "group": r["rule_group"], "ordinal": r["ordinal"], "who_to_contact": r["who_to_contact"]})
         if r["event_id"] in tender_events:
             continue        # already listed as an open tender
-        key = (r["organization_id"], r["rule_id"])
-        if key in seen:
-            seen[key]["more"] += 1      # older news of the same kind at the same company: one line, with a count
-            continue
-        item = {"id": r["signal_id"], "rule_id": r["rule_id"], "strength": int(r["strength"]), "demand_tier": r["demand_tier"],
-                "intent": _intent(r["rule_id"], r["demand_tier"], int(r["strength"])),
-                "event_id": r["event_id"], "event_type": r["event_type"], "summary": r["summary"],
-                "summary_en": r["summary_en"], "summary_pl": r["summary_pl"], "happened": r["happened"], "fit": r["fit"], "tender": None,
-                "evidence": {"quote": r["excerpt"], "translation": r["translation"], "url": r["url"], "source": r["source_name"], "published_at": r["published_at"]},
-                "organization_id": r["organization_id"], "more": 0}
-        seen[key] = item
-        items.append(item)
+        raw.append({"id": r["signal_id"], "rule_id": r["rule_id"], "strength": int(r["strength"]), "demand_tier": r["demand_tier"],
+                    "intent": _intent(r["rule_id"], r["demand_tier"], int(r["strength"])),
+                    "event_id": r["event_id"], "event_type": r["event_type"], "summary": r["summary"],
+                    "summary_en": r["summary_en"], "summary_pl": r["summary_pl"], "happened": r["happened"], "fit": r["fit"], "tender": None,
+                    "evidence": {"quote": r["excerpt"], "translation": r["translation"], "url": r["url"], "source": r["source_name"], "published_at": r["published_at"]},
+                    "organization_id": r["organization_id"]})
 
-    if any(i["rule_id"] == "SRC-01" for i in items) and "SRC-01" not in meta:
+    if any(i["rule_id"] == "SRC-01" for i in raw) and "SRC-01" not in meta:
         rows = qa(conn, "SELECT id, signal, grp, ordinal, who_to_contact FROM legacy_signals WHERE id='SRC-01'")
         if rows:
             meta["SRC-01"] = {"name": rows[0]["signal"], "group": rows[0]["grp"], "ordinal": rows[0]["ordinal"], "who_to_contact": rows[0]["who_to_contact"]}
+    return raw, held_back, meta
 
-    # One entry per company, with every kind of signal it has.
-    orgs = _companies(conn, p, sorted({i["organization_id"] for i in items}))
+
+def _age(happened: Any, now: datetime) -> int | None:
+    return max(0, (now - happened).days) if isinstance(happened, datetime) else None
+
+
+def _group(raw: list[dict[str, Any]], orgs: dict[str, dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """One entry per company with one line per kind of signal; older news of the same kind at the same company is folded into ``more``."""
+    seen: dict[tuple[str, str], dict[str, Any]] = {}
     by_org: dict[str, dict[str, Any]] = {}
-    for item in items:
-        org = orgs.get(item.pop("organization_id"))
+    for r in raw:
+        org = orgs.get(r["organization_id"])
         if not org:
             continue
-        item["age_days"] = max(0, (now - item["happened"]).days) if isinstance(item["happened"], datetime) else None
+        key = (r["organization_id"], r["rule_id"])
+        if key in seen:
+            seen[key]["more"] += 1
+            continue
+        item = {k: v for k, v in r.items() if k != "organization_id"}
+        item["more"] = 0
+        item["age_days"] = _age(item["happened"], now)
+        seen[key] = item
         by_org.setdefault(org["id"], {"organization": org, "signals": []})["signals"].append(item)
     companies: list[dict[str, Any]] = []
     for c in by_org.values():
         c["signals"].sort(key=lambda s: (_rank(s), -s["strength"], -_ts(s["happened"])))
         c["strength"], c["strength_reason"] = _strength(c["signals"])
         c["kinds"] = len({s["rule_id"] for s in c["signals"]})
+        c["families"] = sorted({s["rule_id"][:3] for s in c["signals"]}, key=lambda f: FAMILIES.index(f) if f in FAMILIES else 99)
         c["latest"] = max((s["happened"] for s in c["signals"] if s["happened"]), default=None)
         c["age_days"] = min((s["age_days"] for s in c["signals"] if s["age_days"] is not None), default=None)
         companies.append(c)
+    return companies
+
+
+def _pulse(raw: list[dict[str, Any]], companies: list[dict[str, Any]], now: datetime) -> dict[str, Any]:
+    """The picture at the top: companies per family over 7, 30 and 90 days, news per week, and the strongest new signal."""
+    families = []
+    for fam in FAMILIES:
+        row: dict[str, Any] = {"family": fam}
+        for w in PULSE_WINDOWS:
+            row[f"d{w}"] = len({r["organization_id"] for r in raw if r["rule_id"][:3] == fam and (_age(r["happened"], now) or 0) < w})
+        families.append(row)
+    weeks = []
+    for i in range(PULSE_WEEKS):
+        end = now - timedelta(days=7 * (PULSE_WEEKS - 1 - i))
+        start = end - timedelta(days=7)
+        hits = [r for r in raw if isinstance(r["happened"], datetime) and start < r["happened"] <= end]
+        weeks.append({"start": start, "end": end, "news": len({r["event_id"] for r in hits}), "companies": len({r["organization_id"] for r in hits})})
+    week = [r for r in raw if isinstance(r["happened"], datetime) and r["happened"] > now - timedelta(days=7)]
+
+    def best(window: int) -> dict[str, Any] | None:
+        pool = [(c, s) for c in companies for s in c["signals"] if s["age_days"] is not None and s["age_days"] < window]
+        if not pool:
+            return None
+        c, s = min(pool, key=lambda cs: (-cs[0]["strength"], _rank(cs[1]), -cs[1]["strength"], -_ts(cs[1]["happened"]), cs[0]["organization"]["name"].lower()))
+        o = c["organization"]
+        return {"window": window, "organization": {"id": o["id"], "name": o["name"], "country": o["country"], "region": o["region"]},
+                "company_strength": c["strength"], "strength_reason": c["strength_reason"],
+                "signal": {k: s[k] for k in ("rule_id", "event_id", "summary", "summary_en", "summary_pl", "happened", "age_days", "strength", "tender")}}
+
+    return {"days": PULSE_DAYS, "windows": list(PULSE_WINDOWS), "families": families, "weeks": weeks,
+            "week": {"news": len({r["event_id"] for r in week}), "companies": len({r["organization_id"] for r in week})},
+            "companies": len({r["organization_id"] for r in raw}),
+            "top": best(7) or best(30)}
+
+
+def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = "", q: str = "", rule: str = "", sort: str = "strength",
+                   family: str = "", pulse: bool = True) -> dict[str, Any]:
+    from ..outbound.signal_campaigns import ANGLES, DEFAULT_ANGLE
+
+    now = datetime.now(timezone.utc)
+    raw, held_back, meta = _collect(conn, p, days=days, region=region, q=q)
+    # The picture at the top ignores the filters. With no search and no region it is a slice of the same rows; otherwise one more read.
+    if pulse:
+        if not region and not q.strip() and days >= PULSE_DAYS:
+            pulse_raw = [r for r in raw if (_age(r["happened"], now) or 0) < PULSE_DAYS]
+        else:
+            pulse_raw, _, pulse_meta = _collect(conn, p, days=PULSE_DAYS, region="", q="")
+            for k, v in pulse_meta.items():
+                meta.setdefault(k, v)
+    else:
+        pulse_raw = []
+
+    orgs = _companies(conn, p, sorted({i["organization_id"] for i in raw} | {i["organization_id"] for i in pulse_raw}))
+    companies = _group(raw, orgs, now)
+    by_org = {c["organization"]["id"] for c in companies}
 
     # Every kind of signal in this view, with how many companies have it: the page's filter, before the kind is picked.
     kinds: dict[str, dict[str, Any]] = {}
@@ -244,8 +369,8 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
         for s in c["signals"]:
             info = meta.get(s["rule_id"], {})
             k = kinds.setdefault(s["rule_id"], {
-                "rule_id": s["rule_id"], "name": info.get("name") or s["rule_id"], "group": info.get("group"), "strength": s["strength"],
-                "meaning": ANGLES.get(s["rule_id"], DEFAULT_ANGLE), "who_to_contact": info.get("who_to_contact"),
+                "rule_id": s["rule_id"], "name": info.get("name") or s["rule_id"], "group": info.get("group"), "family": s["rule_id"][:3],
+                "strength": s["strength"], "meaning": ANGLES.get(s["rule_id"], DEFAULT_ANGLE), "who_to_contact": info.get("who_to_contact"),
                 "ordinal": info.get("ordinal") or 999, "companies": 0, "fresh": 0, "latest": None})
             k["companies"] += 1
             k["fresh"] += 1 if s["age_days"] is not None and s["age_days"] <= FRESH_DAYS else 0
@@ -260,15 +385,23 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
         companies = [c for c in companies if any(s["rule_id"] == rule for s in c["signals"])]
         for c in companies:      # the picked kind first, the rest of the company's signals after it
             c["signals"].sort(key=lambda s: s["rule_id"] != rule)
+    if family:
+        companies = [c for c in companies if any(s["rule_id"][:3] == family for s in c["signals"])]
+        for c in companies:
+            c["signals"].sort(key=lambda s: s["rule_id"][:3] != family)
     companies.sort(key=_sort_key(sort))
     signals = [s for c in companies for s in c["signals"]]
-    return {"days": days, "sort": sort, "rule": rule, "companies": companies, "kinds": kind_list, "all": everything,
-            "totals": {"companies": len(companies), "signals": len(signals),
-                       "reachable": sum(1 for c in companies if c["organization"]["people_with_email"]),
-                       "fresh": sum(1 for c in companies if c["age_days"] is not None and c["age_days"] <= FRESH_DAYS),
-                       "strong": sum(1 for c in companies if c["strength"] >= 3),
-                       "held_back": len(held_back - set(by_org))},
-            "fresh_days": FRESH_DAYS, "high_intent_rules": list(HIGH_INTENT_RULES)}
+    out = {"days": days, "sort": sort, "rule": rule, "family": family, "companies": companies, "kinds": kind_list, "all": everything,
+           "totals": {"companies": len(companies), "signals": len(signals),
+                      "reachable": sum(1 for c in companies if c["organization"]["people_with_email"]),
+                      "fresh": sum(1 for c in companies if c["age_days"] is not None and c["age_days"] <= FRESH_DAYS),
+                      "strong": sum(1 for c in companies if c["strength"] >= 3),
+                      "held_back": len(held_back - by_org)},
+           "fresh_days": FRESH_DAYS, "high_intent_rules": list(HIGH_INTENT_RULES), "families": list(FAMILIES),
+           "best_fit": any(c["organization"].get("best_fit") for c in companies)}
+    if pulse:
+        out["pulse"] = _pulse(pulse_raw, _group(pulse_raw, orgs, now), now)
+    return out
 
 
 def register_buying_signals(app: FastAPI) -> None:
@@ -276,7 +409,9 @@ def register_buying_signals(app: FastAPI) -> None:
     def list_buying_signals(request: Request, days: int = Query(90, ge=7, le=365),
                             region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
                             q: str = Query("", max_length=120), rule: str = Query("", pattern=r"^(|[A-Z]{3}-\d{2})$"),
+                            family: str = Query("", pattern=f"^(|{'|'.join(FAMILIES)})$"),
                             sort: str = Query("strength", pattern=f"^({'|'.join(SORTS)})$"),
+                            pulse: bool = Query(True),
                             p: Principal = Depends(require("accounts.read"))):
         with request.app.state.db.tx() as conn:
-            return buying_signals(conn, p, days=days, region=region, q=q, rule=rule, sort=sort)
+            return buying_signals(conn, p, days=days, region=region, q=q, rule=rule, sort=sort, family=family, pulse=pulse)
