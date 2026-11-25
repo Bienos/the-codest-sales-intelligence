@@ -1,4 +1,4 @@
-import { number, tr } from "../locale";
+import { getLanguage, number, tr } from "../locale";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { api, fmtDateTime, post, upload } from "../api";
 import { Badge, Err, humanize, lab, Skeleton } from "../components/ui";
@@ -113,21 +113,103 @@ const pipelineStatus = (d: any): [Kind, string] => {
 
 /* ------------------------------------------------------------------ failed jobs */
 
+/** What each kind of background job does, in words. */
+export const JOB_KIND: Record<string, string> = {
+  source_run: "Reading a source", verify_url: "Checking a page", extract_document: "Reading a page with AI", assess_fit: "Writing fit reasons", tender_summaries: "Tender summaries",
+  account_scan: "Scanning a company", discovery_run: "Web search run", sheet_import_xlsx: "Workbook upload", sheet_sync: "Workbook sync", account_brief: "Company brief",
+  campaign_draft: "Email draft", account_profile: "Company research", person_profile: "Person research", people_search: "Finding people", identity_autoresolve: "Company matching",
+  sources_validate_all: "Testing sources", sources_validate_daily: "Daily source test", crm_sync: "CRM sync", lemlist_sync: "Lemlist sync", ted_awards_window: "TED award notices",
+  evaluate_event: "Scoring a finding", ted_probe: "TED check",
+};
+const kindName = (k: string) => tr(JOB_KIND[k] ?? humanize(k));
+
+/** Each cause in plain English: a title ({} is the service) and what it means. */
+const CAUSE: Record<string, [string, string]> = {
+  ai_credit: ["AI credit ran out", "The AI provider's account ran out of credit, so pages, summaries and checks could not be read. Nothing was wrong with the work itself."],
+  budget: ["Monthly budget used up", "The monthly limit for AI or web search was reached, so the work stopped as designed. A new month, or a higher limit, lets it run."],
+  fit_bug: ["Old fit-check bug", "A bug in the fit check left a database transaction broken, so the whole batch stopped. The bug is fixed; these can be retried."],
+  empty_output: ["The AI returned an empty answer", "The model answered with nothing usable, usually for a very long page or one it would not summarise. A retry usually works."],
+  timeout: ["Timeouts", "The other side did not answer in time. Usually a slow or busy site; a retry later normally works."],
+  http_400: ["{} returned 400 (bad request)", "The service rejected our request as malformed. Usually a change on their side, such as a query or field it no longer accepts."],
+  rate_limited: ["{} asked us to slow down", "Too many requests in a short time. A retry later works."],
+  server_error: ["{} had server errors", "The other side failed (an error 5xx). That is their problem, not ours; a retry later normally works."],
+  not_found: ["{}: address not found", "A page or record we asked for no longer exists (404)."],
+  blocked: ["{} refused or blocked us", "The site refused access (robots.txt, a bot check or a missing permission). Retrying will not help until access is sorted out."],
+  format: ["{} answered in an unexpected format", "The answer did not look like what the reader expects, often after a site redesign. The reader may need a fix."],
+  no_handler: ["Jobs no worker could run", "The job's type was not known to the worker or its details were incomplete."],
+  other: ["{}: {}", "A failure that does not match a known cause. The error text below says what happened."],
+};
+const STATE_KIND: Record<string, Kind> = { ongoing: "bad", quiet: "warn", resolved: "ok", handled: "" };
+const day = (v?: string | null) => (v ? new Date(v).toLocaleDateString(getLanguage() === "pl" ? "pl-PL" : "en-GB", { day: "numeric", month: "short" }) : "");
+
+function stateLine(g: any): string {
+  if (g.state === "handled") return tr("Handled: {} retried, {} dismissed.", g.retried, g.dismissed);
+  if (g.state === "ongoing") return tr("Still happening: the last failure was on {}.", fmtDateTime(g.last_at));
+  if (g.state === "quiet") return tr("Not seen since {}. The cause may be gone; nothing has proved it yet.", day(g.last_at));
+  return ({ ai_ok: tr("Cause fixed: AI calls have worked again since {}.", day(g.state_since)), new_month: tr("Cause fixed: a new month's budget is available."),
+    pages_ok: tr("Cause fixed: pages have been read fine since {}.", day(g.state_since)), job_ok: tr("Cause fixed: the same work has succeeded since {}.", day(g.state_since)) } as Record<string, string>)[g.state_basis] ?? tr("Cause fixed.");
+}
+
+function FailureGroup({ g, reload }: { g: any; reload: () => void }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null); const [msg, setMsg] = useState(""); const [confirm, setConfirm] = useState(false);
+  const [title, explain] = CAUSE[g.cause] ?? CAUSE.other;
+  const who = g.source_name ?? (g.source ? g.source : tr("The service"));
+  const heading = g.cause === "other" ? tr(title, kindName(g.kinds[0]), humanize(g.samples?.[0]?.split(":")[0] ?? "error").toLowerCase()) : tr(title, who);
+  const act = async (what: "retry" | "dismiss") => {
+    setBusy(true); setErr(null); setMsg("");
+    try {
+      const r = await post(`/api/admin/failures/${what}`, { key: g.key, note: what === "dismiss" ? tr("Marked handled in System health") : undefined });
+      setMsg(what === "dismiss" ? tr("{} marked as handled. They stay in the audit log.", r.dismissed)
+        : [r.queued && tr("{} queued to run again", r.queued), r.pages_requeued && tr("{} pages queued to be read again", r.pages_requeued), r.covered && tr("{} duplicates covered by the same retry", r.covered), r.skipped && tr("{} could not be repeated and were set aside", r.skipped)].filter(Boolean).join(" · ") + ".");
+      setConfirm(false); reload();
+    } catch (e) { setErr(e); } finally { setBusy(false); }
+  };
+  return (
+    <li className={`fl fl-${g.state}`}>
+      <div className="fl-n"><b>{number(g.state === "handled" ? g.total : g.open)}</b><span>{g.state === "handled" ? tr("jobs, handled") : g.open === 1 ? tr("job") : tr("jobs")}</span></div>
+      <div className="fl-main">
+        <h4>{heading}</h4>
+        <p className="fl-meta">{g.when}{g.kinds.length > 0 && <> · {g.kinds.map(kindName).join(", ")}</>}</p>
+        <Say k={STATE_KIND[g.state] ?? ""}>{stateLine(g)}</Say>
+        <p className="fl-explain">{tr(explain)}</p>
+        {g.items.length > 0 && <details className="fl-items"><summary>{g.open > g.items.length ? tr("Show the latest {} of {}", g.items.length, g.open) : g.open === 1 ? tr("Show the job") : tr("Show the {} jobs", g.open)}</summary>
+          <ul>{g.items.map((x: any) => <li key={x.id}><span className="fl-when">{fmtDateTime(x.created_at)}</span><span><b>{kindName(x.kind)}</b>{x.subject && <> · {x.subject}</>}<span className="fl-err">{x.error}</span></span></li>)}</ul>
+        </details>}
+        {msg && <div className="okmsg m-0" role="status">{msg}</div>}<Err e={err} />
+      </div>
+      {g.open > 0 && <div className="fl-act">
+        {!confirm ? <>
+          {g.retryable && <button className={g.state === "resolved" ? "primary" : undefined} disabled={busy} onClick={() => act("retry")}>{tr("Retry these")}</button>}
+          <button className={g.retryable ? "ghost" : undefined} disabled={busy} onClick={() => setConfirm(true)}>{tr("Dismiss")}</button>
+        </> : <>
+          <span className="small">{tr("Mark {} as handled?", g.open)}</span>
+          <button className="primary" disabled={busy} onClick={() => act("dismiss")}>{tr("Yes, dismiss")}</button><button className="ghost" disabled={busy} onClick={() => setConfirm(false)}>{tr("Cancel")}</button>
+        </>}
+      </div>}
+    </li>
+  );
+}
+
+/** Failed jobs, grouped by cause: what happened, when, whether it is still happening, and one action per group. */
 function Jobs({ d, reload }: { d: any; reload: () => void }) {
-  const [err, setErr] = useState<unknown>(null);
-  const open = d.dead_letters.filter((x: any) => !x.replayed_at).length;
+  const open = d.groups.filter((g: any) => g.open > 0);
+  const handled = d.groups.filter((g: any) => g.open === 0);
+  const fixed = open.filter((g: any) => g.state === "resolved").reduce((a: number, g: any) => a + g.open, 0);
   return <>
-    <div className="chips">{d.by_status.map((s: any) => <Badge key={s.status} kind={s.status.includes("failed") ? "bad" : ""}>{({ done: tr("Done"), queued: tr("Waiting"), running: tr("Running"), retrying: tr("Retrying"), permanent_failed: tr("Failed for good"), cancelled: tr("Cancelled") } as Record<string, string>)[s.status] ?? humanize(s.status)}: {s.n}</Badge>)}</div>
-    {d.dead_letters.length === 0 ? <Quiet>{tr("Nothing to show: no job has failed for good.")}</Quiet> : <>
-      {open === 0 && <Quiet>{tr("Every failed job has been tried again.")}</Quiet>}
-      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Jobs that failed for good")}><table><thead><tr><th>{tr("Job")}</th><th>{tr("Problem")}</th><th>{tr("Detail")}</th><th><span className="sr">{tr("Action")}</span></th></tr></thead><tbody>{d.dead_letters.map((x: any) => <tr key={x.id}><td>{x.kind}</td><td>{x.error_class}</td><td>{x.error}</td><td>{x.replayed_at ? tr("Retried") : <button onClick={() => post(`/api/admin/dead-letters/${x.id}/replay`).then(reload).catch(setErr)}>{tr("Try again")}</button>}</td></tr>)}</tbody></table></div>
-    </>}
-    <Err e={err} />
+    <div className="fl-sum">
+      <div className={d.still_happening ? "bad" : "ok"}><b>{number(d.still_happening)}</b><span>{tr("still happening")}</span></div>
+      <div className={fixed ? "ok" : ""}><b>{number(fixed)}</b><span>{tr("old, cause fixed")}</span></div>
+      <div><b>{number(d.open - d.still_happening - fixed)}</b><span>{tr("not seen lately")}</span></div>
+      {d.retrying_now > 0 && <p className="small muted m-0">{d.retrying_billing > 0 ? tr("{} more jobs will retry by themselves every hour until the AI account has credit again.", d.retrying_now) : tr("{} more jobs are waiting to retry by themselves.", d.retrying_now)}</p>}
+    </div>
+    {open.length === 0 ? <Quiet>{tr("Nothing has failed for good. Earlier failures are handled.")}</Quiet> : <ul className="fls">{open.map((g: any) => <FailureGroup key={g.key} g={g} reload={reload} />)}</ul>}
+    {handled.length > 0 && <details className="fl-handled"><summary>{tr("Handled earlier ({})", handled.length)}</summary><ul className="fls">{handled.map((g: any) => <FailureGroup key={g.key} g={g} reload={reload} />)}</ul></details>}
   </>;
 }
 const jobsStatus = (d: any): [Kind, string] => {
-  const n = d.dead_letters.filter((x: any) => !x.replayed_at).length;
-  return n ? ["bad", tr("{} failed for good", n)] : ["ok", tr("Nothing has failed")];
+  if (d.still_happening) return ["bad", tr("{} failing now", d.still_happening)];
+  if (d.open) return ["warn", tr("{} old failures to retry or dismiss", d.open)];
+  return ["ok", tr("Nothing has failed")];
 };
 
 /* ------------------------------------------------------------------ are we finding things? */
@@ -217,14 +299,14 @@ export const HEALTH_PARTS = ["pipeline", "jobs", "coverage", "quality", "precisi
 export function Health({ can, part }: { can: (p: string) => boolean; part?: string }) {
   const [tick, setTick] = useState(0);
   const pipe = useLoad("/api/admin/pipeline", can("admin.jobs"), tick);
-  const jobs = useLoad("/api/admin/jobs", can("admin.jobs"), tick);
+  const jobs = useLoad("/api/admin/failures", can("admin.jobs"), tick);
   const recall = useLoad("/api/admin/recall", can("admin.rules"), tick);
   const metrics = useLoad("/api/admin/metrics", can("admin.rules"), tick);
   const funnel = useLoad("/api/admin/funnel", can("admin.rules"), tick);
   const prec = useLoad("/api/admin/precision", can("admin.rules"), tick);
   const blocks: { key: string; show: boolean; title: string; desc: string; r: ReturnType<typeof useLoad>; status: (d: any) => [Kind, string]; body: (d: any) => ReactNode }[] = [
     { key: "pipeline", show: can("admin.jobs"), title: "Processing pipeline", desc: "What runs by itself, what waits for a person, and what is switched off.", r: pipe, status: pipelineStatus, body: (d) => <Pipeline d={d} /> },
-    { key: "jobs", show: can("admin.jobs"), title: "Failed jobs", desc: "Background jobs that failed for good, with a button to try each one again.", r: jobs, status: jobsStatus, body: (d) => <Jobs d={d} reload={jobs.reload} /> },
+    { key: "jobs", show: can("admin.jobs"), title: "Failed jobs", desc: "Background jobs that failed for good, grouped by cause, with a way to retry or dismiss each group.", r: jobs, status: jobsStatus, body: (d) => <Jobs d={d} reload={jobs.reload} /> },
     { key: "coverage", show: can("admin.rules"), title: "Are we finding things?", desc: "Findings per market and topic, sources that went quiet, and pages sellers say we missed.", r: recall, status: coverageStatus, body: (d) => <Coverage d={d} /> },
     { key: "quality", show: can("admin.rules"), title: "Health checks", desc: "Counts that should stay at zero, and how presented opportunities turned out.", r: metrics, status: qualityStatus, body: (d) => <Quality d={d} f={funnel.d} /> },
     { key: "precision", show: can("admin.rules"), title: "Which signals work", desc: "What sellers did with each signal: pursued it or dismissed it, and why.", r: prec, status: precisionStatus, body: (d) => <Precision d={d} /> },

@@ -436,7 +436,8 @@ def sources_overview(conn: Conn) -> dict[str, Any]:
             auto_on.append({"source_id": r["source_id"], "name": r["name"], "at": s.get("reviewed_at")})
         if r["state"] in ("live", "built_in", "per_account", "not_built", "deferred"):
             continue
-        groups.setdefault(r["state"], []).append({"source_id": r["source_id"], "name": r["name"], "family": r["family"], "reason": v.get("reason") or r.get("what_to_do"),
+        groups.setdefault(r["state"], []).append({"source_id": r["source_id"], "name": r["name"], "family": r["family"], "state": r["state"], "code": v.get("code"), "param": v.get("param"),
+                                                 "reason": v.get("reason") or r.get("what_to_do"),
                                                  "todo": v.get("todo"), "where": r.get("where_to_get"), "test": v.get("test"), "checked_at": v.get("at"),
                                                  "automatic": bool(v.get("eligible"))})
     last = q1(conn, "SELECT status, updated_at, result, last_error FROM jobs WHERE kind='sources_validate_daily' ORDER BY created_at DESC LIMIT 1")

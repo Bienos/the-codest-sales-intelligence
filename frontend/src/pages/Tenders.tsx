@@ -58,6 +58,7 @@ const KIND: Record<string, string> = {
   digital_commerce: "Digital commerce", enterprise_software: "Enterprise software", adtech_martech: "AdTech or MarTech",
   public_body: "Public body", social_insurance: "Social insurance", public_finance: "Public finance office", company: "Company",
 };
+const PUBLIC_BY_NAME = new Set(["central_bank", "development_bank", "financial_authority"]);     // "state-owned" would only repeat the label
 const VALUES: [string, number, string][] = [["100k", 100000, "€100k or more"], ["500k", 500000, "€500k or more"], ["1m", 1000000, "€1M or more"]];
 const WORK_TYPES: [string, string][] = [
   ["software_development", "Software development"], ["maintenance_support", "Maintenance and support"], ["data_ai", "Data and AI"],
@@ -145,12 +146,12 @@ function Due({ t }: { t: Tender }) {
   </div>;
 }
 
-/** What kind of buyer, as a tag: "Savings bank", "Central bank, state-owned", "Insurer, to be confirmed". */
+/** What kind of buyer, as a tag: "Savings bank", "Pension fund, state-owned", "Insurer, to be confirmed". */
 function SectorTag({ t }: { t: Tender }) {
   if (t.sector === "not_icp" && t.sector_sure) return null;
   const label = tr(KIND[t.sector_kind ?? ""] ?? "Company");
   return <span className={`tn-tag tn-tag-${t.sector}`} title={t.sector_sure ? undefined : tr("The buyer's sector is confirmed when the summary is written.")}>
-    {label}{t.sector_public && t.sector !== "not_icp" ? `, ${tr("state-owned")}` : ""}{t.sector_sure ? "" : `, ${tr("to be confirmed")}`}
+    {label}{t.sector_public && t.sector !== "not_icp" && !PUBLIC_BY_NAME.has(t.sector_kind ?? "") ? `, ${tr("state-owned")}` : ""}{t.sector_sure ? "" : `, ${tr("to be confirmed")}`}
   </span>;
 }
 

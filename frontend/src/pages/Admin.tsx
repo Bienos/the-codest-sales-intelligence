@@ -41,7 +41,7 @@ function sectionsFor(p: (x: string) => boolean, waiting: number): Section[] {
   return [
     { key: "overview", label: "Overview", Icon: IcoOverview, blurb: "Is everything working? Each line is one part of the platform, and opens the place where you deal with it.",
       tabs: [{ path: "/admin", label: "Overview", show: true }] },
-    { key: "review", label: "To review", Icon: IcoReview, badge: approvals ? waiting : 0, blurb: "Decisions only a person can make: requests to approve, company names to match, and pages we could not check by ourselves.",
+    { key: "review", label: "To review", Icon: IcoReview, badge: approvals ? waiting : 0, blurb: "Decisions only a person can make: requests to approve, the few company names the matcher could not decide, and pages we could not check by ourselves.",
       tabs: [{ path: "/admin/approvals", label: "Approvals", show: approvals, badge: waiting }, { path: "/admin/identity", label: "Company matches", show: p("identity.manage") }, { path: "/admin/verification", label: "Pages being checked", show: p("sources.read") }] },
     { key: "data", label: "Sources & data", Icon: IcoData, blurb: "Where our information comes from: the sources we read, your workbooks, saved web searches and internal documents.",
       tabs: [{ path: "/admin/sources", label: "Sources", show: p("sources.read") }, { path: "/admin/imports", label: "Workbooks", show: p("admin.sources") }, { path: "/admin/discovery", label: "Web search", show: p("admin.costs") }, { path: "/admin/knowledge", label: "Knowledge base", show: p("admin.sources") }] },
@@ -106,11 +106,11 @@ function Overview({ can }: { can: (p: string) => boolean }) {
   const [tick, setTick] = useState(0); const [at, setAt] = useState(timeNow());
   const approvalsOn = can("approvals.read_own") || can("approvals.read_all");
   const appr = useLoad("/api/approvals", approvalsOn, tick);
-  const ident = useLoad("/api/admin/identity-reviews", can("identity.manage"), tick);
+  const ident = useLoad("/api/admin/identity/overview", can("identity.manage"), tick);
   const ver = useLoad("/api/verifications?limit=1", can("sources.read"), tick);
   const conn = useLoad("/api/admin/connections", can("sources.read"), tick);
   const pipe = useLoad("/api/admin/pipeline", can("admin.jobs"), tick);
-  const jobs = useLoad("/api/admin/jobs", can("admin.jobs"), tick);
+  const jobs = useLoad("/api/admin/failures", can("admin.jobs"), tick);
   const imp = useLoad("/api/admin/imports", can("admin.sources"), tick);
   const metrics = useLoad("/api/admin/metrics", can("admin.rules"), tick);
   const usage = useLoad("/api/admin/usage", can("admin.costs"), tick);
@@ -127,9 +127,13 @@ function Overview({ can }: { can: (p: string) => boolean }) {
     if (approved) return { kind: "warn", fig: number(approved), unit: tr("to run"), text: plural(approved, "One approved request has not been run yet.", "{} approved requests have not been run yet.") };
     return { kind: "ok", fig: "0", unit: tr("waiting"), text: tr("Nothing is waiting for a decision.") };
   }));
-  if (can("identity.manage")) waitingForYou.push(line("identity", "Company matches", "/admin/identity", ident, (d) => d.items.length
-    ? { kind: "warn", fig: number(d.items.length), unit: tr("to match"), text: plural(d.items.length, "One company name from your workbooks could be more than one company.", "{} company names from your workbooks could be more than one company.") }
-    : { kind: "ok", fig: "0", unit: tr("to match"), text: tr("Every company name from your workbooks is matched.") }));
+  if (can("identity.manage")) waitingForYou.push(line("identity", "Company matches", "/admin/identity", ident, (d) => {
+    const c = d.counts ?? {}; const need = Number(c.needs_person ?? 0), wait = Number(c.waiting ?? 0), done = Number(c.auto_week ?? 0);
+    const tail = done ? " " + plural(done, "One was matched automatically this week.", "{} were matched automatically this week.") : "";
+    if (need) return { kind: "warn", fig: number(need), unit: tr("for you"), text: plural(need, "The matcher could not decide one company name. The evidence is ready.", "The matcher could not decide {} company names. The evidence is ready.") + tail };
+    if (wait) return { kind: "info", fig: number(wait), unit: tr("in the queue"), text: plural(wait, "One company name waits for the automatic matcher.", "{} company names wait for the automatic matcher.") + tail };
+    return { kind: "ok", fig: "0", unit: tr("for you"), text: tr("Every company name from your workbooks is matched.") + tail };
+  }));
   if (can("sources.read")) waitingForYou.push(line("verification", "Pages being checked", "/admin/verification", ver, (d) => {
     const q = d.queue ?? {}; const failed = Number(d.counts?.failed ?? 0);
     const tail = failed ? " " + plural(failed, "One page could not be checked.", "{} pages could not be checked.") : "";
@@ -143,11 +147,11 @@ function Overview({ can }: { can: (p: string) => boolean }) {
   if (can("sources.read")) dataIn.push(line("sources", "Sources", "/admin/sources", conn, (d) => {
     const items = d.items.filter((r: any) => !HIDDEN_INTEGRATION.test(`${r.source_id} ${r.name}`));
     const n = (...states: string[]) => items.filter((r: any) => states.includes(r.state)).length;
-    const live = n("live"), test = n("testing", "needs_retest"), setup = n("needs_address", "needs_credential"), blocked = n("blocked_by_site");
+    const live = n("live"), test = n("testing", "needs_retest"), setup = n("needs_address", "needs_credential", "needs_terms"), blocked = n("blocked_by_site");
     const stale = Number(metrics.d?.stale_sources ?? 0);
-    const parts = [test && plural(test, "one waits for a test", "{} wait for a test"), setup && plural(setup, "one needs an address or a key", "{} need an address or a key"), blocked && plural(blocked, "one is blocked by its site", "{} are blocked by their site")].filter(Boolean).join(", ");
+    const parts = [test && plural(test, "one waits for its daily test", "{} wait for their daily test"), setup && plural(setup, "one needs a person (an address, a key or a terms check)", "{} need a person (an address, a key or a terms check)"), blocked && plural(blocked, "one is blocked by its site", "{} are blocked by their site")].filter(Boolean).join(", ");
     const head = tr("{} of {} sources are reporting.", number(live), number(items.length)) + (stale ? " " + plural(stale, "One has stopped reporting on schedule.", "{} have stopped reporting on schedule.") : "");
-    return { kind: stale ? "bad" : test + setup ? "warn" : "ok", fig: number(live), unit: tr("of {} live", number(items.length)), text: head + (parts ? ` ${parts.charAt(0).toUpperCase()}${parts.slice(1)}.` : "") };
+    return { kind: stale ? "bad" : setup ? "warn" : "ok", fig: number(live), unit: tr("of {} live", number(items.length)), text: head + (parts ? ` ${parts.charAt(0).toUpperCase()}${parts.slice(1)}.` : "") };
   }));
   if (can("admin.sources")) dataIn.push(line("import", "Last workbook import", "/admin/imports", imp, (d) => {
     const u = d.uploads?.[0], r = d.runs?.[0];
@@ -163,8 +167,10 @@ function Overview({ can }: { can: (p: string) => boolean }) {
     return down.length ? { kind: "bad", text: tr("Not reporting: {}. Nothing new is collected until it runs again.", down.join(tr(" and "))) } : { kind: "ok", text: tr("The scheduler and the worker are running.") };
   }));
   if (can("admin.jobs")) dataIn.push(line("jobs", "Failed jobs", "/admin/health/jobs", jobs, (d) => {
-    const n = d.dead_letters.filter((x: any) => !x.replayed_at).length;
-    return n ? { kind: "bad", fig: number(n), unit: tr("failed"), text: plural(n, "One job failed for good. Open it to try again.", "{} jobs failed for good. Open them to try again.") } : { kind: "ok", fig: "0", unit: tr("failed"), text: tr("Nothing has failed for good.") };
+    const now = Number(d.still_happening ?? 0), open = Number(d.open ?? 0);
+    if (now) return { kind: "bad", fig: number(now), unit: tr("failing now"), text: plural(now, "One job is failing now. Open it to see why.", "{} jobs are failing now, grouped by cause. Open them to see why.") };
+    if (open) return { kind: "warn", fig: number(open), unit: tr("to tidy"), text: plural(open, "One old failure whose cause is gone: retry or dismiss it.", "{} old failures whose cause is gone or quiet: retry or dismiss them by group.") };
+    return { kind: "ok", fig: "0", unit: tr("failed"), text: tr("Nothing has failed for good.") };
   }));
   if (can("admin.rules")) dataIn.push(line("safety", "Safety checks", "/admin/health/quality", metrics, (d) => {
     const bad = MUST_BE_ZERO.filter((k) => Number(d[k]) > 0);
@@ -307,21 +313,152 @@ function ApprovalList({ d, reload, me }: { d: any; reload: () => void; me: Admin
     </li>; })}</ul></>;
 }
 
-const Identity = () => <Load path="/api/admin/identity-reviews">{(d, reload) => <IdentityList d={d} reload={reload} />}</Load>;
-function IdentityList({ d, reload }: { d: any; reload: () => void }) {
-  const [err, setErr] = useState<unknown>(null); const [note, setNote] = useState("");
-  const act = async (id: string, decision: string, org?: string) => { try { await post(`/api/admin/identity-reviews/${id}/resolve`, { decision, organization_id: org, note }); reload(); } catch (e) { setErr(e); } };
-  return <><p className="adm-lead">{tr("Company names from your workbooks that could match more than one company. A parent company and its subsidiary are linked, never merged. Every decision needs a reason and is logged.")}</p>
-    <Err e={err} />
-    {d.items.length === 0 ? <Quiet>{tr("Nothing to match. Every company name from your workbooks has been matched.")}</Quiet> : <>
-      <label className="adm-field"><span>{tr("Your reason, used for each decision below")}</span><input placeholder={tr("Your reason (required)")} value={note} onChange={(e) => setNote(e.target.value)} className="field-lg" /></label>
-      <ul className="adm-items">{d.items.map((r: any) => <li key={r.id} className="adm-item warn">
-        <div className="adm-item-head"><b>{r.raw_company_name}</b><Say k="warn">{r.reason === "ambiguous_match" ? tr("Could be more than one company") : humanize(r.reason)}</Say></div>
-        {r.sheet_title && <div className="small muted">{tr("from {}, row {}", r.sheet_title, r.row_number)}</div>}
-        <div className="row mt-2">{r.candidates.map((c: any) => <button key={c.id} disabled={note.length < 3} onClick={() => act(r.id, "link", c.id)}>{tr("Link to") + " "}{c.display_name} ({c.country_code ?? "?"})</button>)}
-          <button disabled={note.length < 3} onClick={() => act(r.id, "new")}>{tr("It is a new company")}</button><button disabled={note.length < 3} onClick={() => act(r.id, "reject")}>{tr("Ignore this row")}</button></div>
-      </li>)}</ul>
-    </>}</>;
+/* Company matches: the platform matches company names by itself (rules, then one web search, then a short AI check). A person only sees
+   what stays unsure, with the evidence, and can undo an automatic decision. */
+
+const hostOf = (u?: string | null) => { try { return u ? new URL(u).hostname.replace(/^www\./, "") : ""; } catch { return ""; } };
+
+/** Why the matcher decided, in words (the reason is rebuilt from the rule so it reads in the person's language). */
+function matchReason(m: any): string {
+  const org = m.org_name ?? tr("the company");
+  const site = hostOf(m.evidence_url) || m.org_domain || "";
+  switch (m.rule) {
+    case "exact_now": return tr("The name now matches {} exactly.", org);
+    case "same_website": return tr("Same website ({}) and the same name as {}.", site, org);
+    case "same_core_name": return tr("The same name as {} once legal forms such as AG, plc or Group are removed, and the country agrees.", org);
+    case "web_same_site": return tr("A web search shows its website is {}, the same as {}.", site, org);
+    case "web_known_site": return tr("A web search shows its website is {}, which {} already has.", site, org);
+    case "web_new_company": return tr("Not an account yet. A web search finds its own website, {}.", site);
+    case "web_other_site": return tr("A web search shows its own website is {}; no candidate has it.", site);
+    case "other_country_and_site": return tr("Every candidate is in another country and has another website.");
+    case "regional_bank": return tr("A regional savings or cooperative bank: the place in its name differs from every candidate.");
+    case "ai": return tr("AI check: {}", m.reason ?? "");
+    default: return m.reason ? tr(m.reason) : "";
+  }
+}
+
+/** Why a review is still with a person. */
+function unsureReason(r: any): string {
+  if (r.undone) return tr("{} undid the automatic decision, so it stays with a person.", r.undone.by);
+  const a = r.auto ?? {};
+  if (a.ai) return tr("The AI check was {}% sure, below the 85% needed to decide alone.", Math.round(Number(a.ai.confidence ?? 0) * 100));
+  if (a.rule === "none" || !a.rule) return a.reason?.startsWith("Waiting") ? tr("Waiting for the web search or the AI check (not available right now).") : tr("The rules, the web search and the AI check could not tell with confidence.");
+  return tr("Not sure enough to decide alone.");
+}
+
+function Evidence({ r }: { r: any }) {
+  const off = r.web?.official; const ai = r.auto?.ai;
+  if (!r.web && !ai) return null;
+  return (
+    <dl className="idm-ev">
+      {r.web && <div><dt>{tr("Web search")}</dt><dd>{off ? <><a href={off.url} target="_blank" rel="noreferrer noopener">{off.domain} ↗</a>{off.title && <span className="muted"> · {off.title}</span>}{off.snippet && <q>{off.snippet}</q>}</>
+        : r.web.results?.length ? <>{tr("No company website among the results.")} {r.web.results.slice(0, 2).map((x: any) => <a key={x.url} className="small" href={x.url} target="_blank" rel="noreferrer noopener"> {x.domain ?? hostOf(x.url)} ↗</a>)}</>
+        : tr("The search found nothing.")}</dd></div>}
+      {ai && <div><dt>{tr("AI check")}</dt><dd><b>{ai.decision === "link" ? tr("Probably the same company") : ai.decision === "separate" ? tr("Probably a different company") : tr("Cannot tell")}</b> <span className="muted">({tr("{}% sure", Math.round(Number(ai.confidence ?? 0) * 100))})</span><q>{ai.reason}</q></dd></div>}
+    </dl>
+  );
+}
+
+function NeedsPerson({ r, note, done }: { r: any; note: string; done: () => void }) {
+  const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const act = async (decision: string, org?: string) => { setBusy(true); setErr(null); try { await post(`/api/admin/identity-reviews/${r.id}/resolve`, { decision, organization_id: org, note }); done(); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  const suggested = r.auto?.ai?.candidate_id;
+  return (
+    <li className="adm-item warn idm">
+      <div className="idm-head">
+        <div><b className="idm-name">{r.raw_company_name}</b><span className="small muted">{[r.sheet_title && tr("{}, row {}", r.sheet_title, r.row_number), r.country, r.website].filter(Boolean).join(" · ")}</span></div>
+        <Say k="warn">{unsureReason(r)}</Say>
+      </div>
+      <Evidence r={r} />
+      <div className="idm-choices" role="group" aria-label={tr("Which company is {}?", r.raw_company_name)}>
+        {r.candidates.map((c: any) => (
+          <div key={c.id} className={`idm-cand${c.id === suggested ? " sug" : ""}`}>
+            <div><Link to={`/accounts/${c.id}`}>{c.display_name}</Link><span className="small muted">{[c.country_code, c.canonical_domain].filter(Boolean).join(" · ") || tr("No country or website on record")}</span>
+              {c.id === suggested && <span className="small idm-sug">{tr("The AI check leans to this one")}</span>}</div>
+            <button disabled={busy || note.length < 3} onClick={() => act("link", c.id)}>{tr("Same company")}</button>
+          </div>))}
+        <div className="row idm-other">
+          <button disabled={busy || note.length < 3} onClick={() => act("new")}>{tr("A different company")}</button>
+          <button className="ghost" disabled={busy || note.length < 3} onClick={() => act("reject")}>{tr("Ignore this row")}</button>
+        </div>
+      </div>
+      <Err e={err} />
+    </li>
+  );
+}
+
+function MatchedRow({ m, done, canUndo }: { m: any; done: () => void; canUndo: boolean }) {
+  const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const undo = async () => { setBusy(true); setErr(null); try { await post(`/api/admin/identity-reviews/${m.id}/undo`, {}); done(); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  return (
+    <li className={`idm-row ${m.decision}`}>
+      <div className="idm-what">
+        <b>{m.raw_company_name}</b>
+        <span>{m.decision === "link" ? tr("linked to") : tr("added as a new company")}{m.organization_id && <> <Link to={`/accounts/${m.organization_id}`}>{m.decision === "link" ? m.org_name : tr("open it")}</Link></>}</span>
+      </div>
+      <p className="idm-why">{matchReason(m)}{m.evidence_url && <> <a href={m.evidence_url} target="_blank" rel="noreferrer noopener" className="small">{tr("evidence")} ↗</a></>}</p>
+      <div className="idm-meta">
+        {m.confidence !== null && <span className="idm-conf" title={tr("How sure the matcher was")}><span className="idm-bar" aria-hidden="true"><i style={{ width: `${Math.round(m.confidence * 100)}%` }} /></span>{tr("{}% sure", Math.round(m.confidence * 100))}</span>}
+        <span className="small muted">{fmtDateTime(m.resolved_at)}</span>
+        {canUndo && <button className="ghost" disabled={busy} onClick={undo}>{tr("Undo")}</button>}
+      </div>
+      <Err e={err} />
+    </li>
+  );
+}
+
+function Identity({ isAdmin }: { isAdmin: boolean }) {
+  const [tick, setTick] = useState(0);
+  const ov = useLoad("/api/admin/identity/overview", true, tick);
+  const [note, setNote] = useState(tr("Checked the evidence shown"));
+  const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false); const [all, setAll] = useState(false);
+  const reload = () => setTick((t) => t + 1);
+  const runNow = async () => { setBusy(true); setErr(null); setMsg(""); try { const r = await post("/api/admin/identity/auto/run"); setMsg(r.queued ? tr("Matching started. It looks at up to 40 names; refresh in a few minutes.") : tr("Matching is already queued.")); reload(); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  if (ov.err) return <Err e={ov.err} onRetry={ov.reload} />;
+  if (!ov.d) return <Skeleton />;
+  const d = ov.d; const c = d.counts ?? {};
+  const last = d.last_run;
+  const recent = all ? d.recent : d.recent.slice(0, 12);
+  return (
+    <div className="idm-page">
+      <p className="adm-lead">{tr("Company names from your workbooks that could be more than one company are matched automatically: first by simple rules, then with one web search, then a short AI check. Only what stays unsure comes to you, with the evidence. A parent and its subsidiary are kept apart.")}</p>
+      <div className="idm-sum">
+        <div className="ok"><b>{number(c.auto_total ?? 0)}</b><span>{tr("matched automatically")}</span><small>{tr("{} linked to an account, {} added as companies", number(c.auto_linked ?? 0), number(c.auto_new ?? 0))}</small></div>
+        <div className={c.needs_person ? "warn" : ""}><b>{number(c.needs_person ?? 0)}</b><span>{tr("need a person")}</span><small>{c.needs_person ? tr("Listed below with the evidence") : tr("Nothing for you to do")}</small></div>
+        <div className={c.waiting ? "info" : ""}><b>{number(c.waiting ?? 0)}</b><span>{tr("waiting for the matcher")}</span><small>{tr("It runs every hour and after each import")}</small></div>
+      </div>
+      <div className="adm-action idm-run">
+        <div>
+          <b>{last ? tr("Last run {}", fmtDateTime(last.at)) : tr("Not run yet")}</b>
+          <p className="small muted m-0">{last?.result ? tr("{} names checked: {} linked, {} added as companies, {} left for a person. {} web searches, {} AI checks.", last.result.checked ?? 0, last.result.linked ?? 0, last.result.separate ?? 0, last.result.unsure ?? 0, last.result.searches ?? 0, last.result.ai_checks ?? 0) : tr("The matcher looks at up to {} names per run and never uses the last 30% of the monthly web search or AI budget.", d.per_run)}
+            {last?.result?.stopped && <> {tr(last.result.stopped)}</>}</p>
+          {(!d.can.web_search || !d.can.ai) && <p className="small m-0 mt-2"><Say k="info">{!d.can.web_search && !d.can.ai ? tr("Web search and AI are not available on the worker right now, so only the free rules run.") : !d.can.web_search ? tr("Web search is not available on the worker right now.") : tr("The AI check is not available on the worker right now.")}</Say></p>}
+        </div>
+        {isAdmin && <button className="primary" disabled={busy || d.queued} onClick={runNow}>{d.queued ? tr("Matching is queued") : tr("Match automatically now")}</button>}
+      </div>
+      {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} />
+
+      <section className="idm-sec" aria-labelledby="idm-need">
+        <h3 id="idm-need" className="adm-h4">{tr("Need a person ({})", number(d.needs_person.length))}</h3>
+        {d.needs_person.length === 0 ? <Quiet>{tr("Nothing needs you. Names the matcher could not decide will appear here with the evidence it found.")}</Quiet> : <>
+          <label className="adm-field idm-note"><span>{tr("Your reason, saved with each decision below")}</span><input value={note} onChange={(e) => setNote(e.target.value)} className="field-lg" /></label>
+          <ul className="adm-items">{d.needs_person.map((r: any) => <NeedsPerson key={r.id} r={r} note={note} done={reload} />)}</ul>
+        </>}
+      </section>
+
+      <section className="idm-sec" aria-labelledby="idm-auto">
+        <h3 id="idm-auto" className="adm-h4">{tr("Matched automatically")}</h3>
+        {d.recent.length === 0 ? <Quiet>{tr("Nothing matched automatically yet.")}</Quiet> : <>
+          <ul className="idm-list">{recent.map((m: any) => <MatchedRow key={m.id} m={m} done={reload} canUndo />)}</ul>
+          {d.recent.length > recent.length && <button className="ghost mt-2" onClick={() => setAll(true)}>{tr("Show all {}", d.recent.length)}</button>}
+        </>}
+      </section>
+
+      {d.waiting.length > 0 && <details className="idm-wait"><summary>{tr("Waiting for the matcher ({})", number(c.waiting ?? d.waiting.length))}</summary>
+        <ul className="tight small">{d.waiting.map((r: any) => <li key={r.id}><b>{r.raw_company_name}</b>{r.sheet_title && <span className="muted"> · {tr("{}, row {}", r.sheet_title, r.row_number)}</span>}{r.auto?.reason && <span className="muted"> · {unsureReason(r)}</span>}</li>)}</ul>
+      </details>}
+    </div>
+  );
 }
 
 /* ------------------------------------------------------------------ Sources & data */
@@ -417,6 +554,70 @@ function ScanTop() {
   );
 }
 
+/* Sources: tested automatically every day; public feeds and open APIs that pass switch on by themselves. The rest say exactly why not and what a
+   person needs to do. */
+
+const SRC_PARTS: { key: string; label: string; states: string[]; kind: Kind }[] = [
+  { key: "live", label: "Live", states: ["live"], kind: "ok" },
+  { key: "testing", label: "Waiting for the daily test", states: ["testing"], kind: "info" },
+  { key: "person", label: "Need a person", states: ["needs_credential", "needs_terms", "blocked_by_site", "needs_address", "needs_retest", "paused"], kind: "warn" },
+  { key: "other", label: "Run another way or not built", states: ["built_in", "per_account", "not_built", "deferred"], kind: "" },
+];
+const SRC_GROUP: Record<string, string> = { needs_credential: "Needs a key or a contract", needs_terms: "Needs a terms check", blocked_by_site: "Blocked by the site", needs_address: "Needs an address",
+  needs_retest: "Failed today's test", paused: "Paused", testing: "Waiting for the daily test" };
+
+/** The reason a source is not live, in the person's language (a few reasons carry a name: the key to add, the registry note, the status). */
+function srcReason(i: any): string {
+  const t = i.test || {};
+  if (i.code === "needs_key") return tr("Needs an API key: add {} on the worker.", i.param);
+  if (i.code === "needs_terms") return tr("Needs a person to check the reuse terms. The registry note says: “{}”.", i.param);
+  if (i.code === "marked") return tr("Marked {} by an earlier check, so it is not switched on automatically.", humanize(i.param).toLowerCase());
+  return tr(i.reason ?? "") + (t.ok === true && i.state !== "live" ? " " + tr("Today's server test passed.") : "");
+}
+
+function SourceSummary({ canEdit }: { canEdit: boolean }) {
+  const [tick, setTick] = useState(0);
+  const r = useLoad("/api/admin/sources/auto", true, tick);
+  const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
+  const run = async () => { setBusy(true); setErr(null); setMsg(""); try { const x = await post("/api/admin/sources/auto/run"); setMsg(x.queued ? tr("Testing every source now. Those that pass and need no key or terms check switch on by themselves. Refresh in a few minutes.") : tr("A test of every source is already queued.")); setTick((t) => t + 1); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  if (r.err) return <Err e={r.err} onRetry={r.reload} />;
+  if (!r.d) return <Skeleton rows={2} />;
+  const d = r.d;
+  const parts = SRC_PARTS.map((p) => ({ ...p, n: p.states.reduce((a, k) => a + Number(d.counts[k] ?? 0), 0) })).filter((p) => p.n > 0);
+  const last = d.last_run; const sw = last?.result?.switched_on ?? [];
+  return (
+    <section className="src-sum" aria-labelledby="src-sum-h">
+      <div className="src-sum-head">
+        <h3 id="src-sum-h" className="adm-h4 mt-0">{tr("{} sources", number(d.total))}</h3>
+        <p className="small muted m-0">{tr("Every source is tested from the server each day. A public feed or open API that passes, needs no key and has no terms to check switches on by itself. A source a person paused stays paused.")}</p>
+      </div>
+      <div className="seg" role="img" aria-label={parts.map((p) => `${tr(p.label)}: ${p.n}`).join(", ")}>
+        {parts.map((p) => <span key={p.key} className={`seg-p ${p.kind}`} style={{ flexGrow: p.n }} title={`${tr(p.label)}: ${p.n}`}>{p.n / d.total > 0.06 ? number(p.n) : ""}</span>)}
+      </div>
+      <ul className="seg-key">{parts.map((p) => <li key={p.key}><i className={`seg-sw ${p.kind}`} /><b>{number(p.n)}</b> {tr(p.label)}</li>)}</ul>
+      <div className="adm-action src-run">
+        <div><b>{last ? tr("Last daily test {}", fmtDateTime(last.at)) : tr("The daily test has not run yet")}</b>
+          <p className="small muted m-0">{last?.status === "completed" ? (sw.length ? tr("{} switched on by themselves in that run.", sw.length) : tr("Nothing new switched on in that run.")) : last?.error ? tr("It failed: {}", last.error) : last ? tr("Running now.") : tr("It runs once a day.")}
+            {d.auto_on.length > 0 && <> {tr("Switched on automatically so far: {}.", d.auto_on.slice(0, 6).map((x: any) => x.name).join(", ") + (d.auto_on.length > 6 ? ` ${tr("and {} more", d.auto_on.length - 6)}` : ""))}</>}</p></div>
+        {canEdit && <button className="primary" disabled={busy} onClick={run}>{tr("Test every source now")}</button>}
+      </div>
+      {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} />
+      {d.groups.filter((g: any) => g.state !== "testing").length > 0 && <div className="src-need">
+        <h4 className="adm-h4">{tr("What needs a person")}</h4>
+        {d.groups.filter((g: any) => g.state !== "testing").map((g: any) => (
+          <details key={g.state} className="src-g" open={["needs_credential", "needs_terms", "needs_address"].includes(g.state)}>
+            <summary><Say k={g.state === "blocked_by_site" ? "bad" : g.state === "paused" ? "" : "warn"}>{tr(SRC_GROUP[g.state] ?? g.label)}</Say><span className="src-g-n">{number(g.items.length)}</span></summary>
+            <ul>{g.items.map((i: any) => <li key={i.source_id}>
+              <b>{i.name}</b>
+              <span>{srcReason(i)}</span>
+              {(i.todo || i.where) && <span className="small muted">{[i.todo && tr(i.todo), i.where && i.where !== "-" && tr("Where: {}", tr(i.where))].filter(Boolean).join(" ")}</span>}
+            </li>)}</ul>
+          </details>))}
+      </div>}
+    </section>
+  );
+}
+
 function Sources({ canEdit }: { canEdit: boolean }) {
   const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false);
   const bulk = async (activate: boolean) => {
@@ -424,12 +625,15 @@ function Sources({ canEdit }: { canEdit: boolean }) {
     try { await post("/api/admin/sources/validate-all", { activate }); setMsg(activate ? tr("Testing every source now. Each one that passes is switched on. Refresh in a minute to see the result on each source.") : tr("Testing every source now. Nothing is switched on.")); } catch (e) { setErr(e); } finally { setBusy(false); }
   };
   return (<>
+    <SourceSummary canEdit={canEdit} />
     {canEdit && <div className="adm-actions">
-      <div className="adm-action">
-        <div><b>{tr("Test all sources")}</b><p className="small muted m-0">{tr("Tests each source from the server. We only read pages the site allows (robots.txt). Sources missing an address or a key are skipped and say why.")}</p></div>
-        <div className="row"><button disabled={busy} onClick={() => bulk(false)}>{tr("Test only")}</button><button className="primary" disabled={busy} onClick={() => bulk(true)}>{tr("Test, then switch on those that pass")}</button></div>
-      </div>
-      {msg && <div className="okmsg m-0" role="status">{msg}</div>}<Err e={err} />
+      <Fold title="Manual controls" desc="Test without switching anything on, or switch on everything that passes, including sources the daily test leaves for a person.">
+        <div className="adm-action">
+          <div><b>{tr("Test all sources")}</b><p className="small muted m-0">{tr("Tests each source from the server. We only read pages the site allows (robots.txt). Sources missing an address or a key are skipped and say why.")}</p></div>
+          <div className="row"><button disabled={busy} onClick={() => bulk(false)}>{tr("Test only")}</button><button disabled={busy} onClick={() => bulk(true)}>{tr("Test, then switch on those that pass")}</button></div>
+        </div>
+        {msg && <div className="okmsg mt-3" role="status">{msg}</div>}<Err e={err} />
+      </Fold>
       <Fold title="Check priority accounts for news" desc="Read company news, careers and supplier pages for your top accounts now, instead of waiting for the daily run."><ScanTop /></Fold>
     </div>}
     <Library admin render={(s, reload) => <SourceControls s={s} can={canEdit} reload={reload} />} />
@@ -607,7 +811,7 @@ export default function Admin({ me, waiting, refreshApprovals }: { me: AdminUser
         <Route index element={<Sec s={sec("overview")} bare><Overview can={p} /></Sec>} />
         <Route path="review" element={<Navigate to={first("review")} replace />} />
         <Route path="approvals" element={<Sec s={review}><Gate ok={p("approvals.read_own") || p("approvals.read_all")}><Approvals me={me} refresh={refreshApprovals} /></Gate></Sec>} />
-        <Route path="identity" element={<Sec s={review}><Gate ok={p("identity.manage")}><Identity /></Gate></Sec>} />
+        <Route path="identity" element={<Sec s={review}><Gate ok={p("identity.manage")}><Identity isAdmin={p("admin.identity")} /></Gate></Sec>} />
         <Route path="verification" element={<Sec s={review}><Gate ok={p("sources.read")}><Verification /></Gate></Sec>} />
         <Route path="data" element={<Navigate to={first("data")} replace />} />
         <Route path="sources" element={<Sec s={data}><Gate ok={p("sources.read")}><Sources canEdit={p("admin.sources")} /></Gate></Sec>} />

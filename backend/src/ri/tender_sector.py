@@ -12,7 +12,7 @@ Decided by rules first, in this order (the first that applies wins):
   5. weaker hints (finance words, a fund, CPV 66 financial services, a company without a public or utility word in its name): not sure.
 A notice the rules are not sure about is summarised, and the model's answer (summary "buyer_sector") decides its sector. A notice the rules
 are sure is not ICP is never sent to the model. The rules are pure functions of the buyer name, the linked account and the CPV codes, and
-RULES_VERSION is part of the stored basis, so changing a rule reclassifies every open notice on the next read."""
+RULES_VERSION is part of the stored basis: raise it whenever a rule changes, and every open notice is reclassified on the next read."""
 from __future__ import annotations
 
 import re
