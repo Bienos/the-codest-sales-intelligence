@@ -75,6 +75,11 @@ def register(app: FastAPI) -> None:
             raise HTTPException(404, "not found")
         return h
 
+    def person_here(conn, h: dict[str, Any], person_id: str | None) -> None:
+        """A person named on a card must work at that card's company: ids from other accounts are refused."""
+        if person_id and not q1(conn, "SELECT 1 FROM employment WHERE person_id::text=%s AND organization_id=%s", (person_id, h["organization_id"])):
+            raise HTTPException(422, "That person is not recorded at this company.")
+
     @app.get("/api/hypotheses/{hid}/playbook")
     def playbook(hid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
@@ -94,7 +99,7 @@ def register(app: FastAPI) -> None:
     @app.post("/api/hypotheses/{hid}/stakeholders")
     def add_stakeholder(hid: str, body: RoleIn, request: Request, p: Principal = Depends(require("hypothesis.review"))):
         with tx(request) as conn:
-            vis(conn, p, hid)
+            person_here(conn, vis(conn, p, hid), body.person_id)
             try:
                 return {"id": graph.add_role(conn, hid, body.role, actor=p.email, person_id=body.person_id, role_title=body.role_title, role_is_verified=body.role_is_verified,
                                              initiative_responsibility_verified=body.initiative_responsibility_verified)}
@@ -104,7 +109,7 @@ def register(app: FastAPI) -> None:
     @app.post("/api/hypotheses/{hid}/access-routes")
     def add_route(hid: str, body: RouteIn, request: Request, p: Principal = Depends(require("hypothesis.review"))):
         with tx(request) as conn:
-            vis(conn, p, hid)
+            person_here(conn, vis(conn, p, hid), body.person_id)
             try:
                 return {"id": graph.add_access_route(conn, hid, body.kind, evidence=body.evidence, actor=p.email, verified=body.verified, person_id=body.person_id, intermediary=body.intermediary)}
             except ValueError as exc:
@@ -113,7 +118,7 @@ def register(app: FastAPI) -> None:
     @app.post("/api/hypotheses/{hid}/draft")
     def make_draft(hid: str, body: DraftIn, request: Request, p: Principal = Depends(require("draft.create"))):
         with tx(request) as conn:
-            vis(conn, p, hid)
+            person_here(conn, vis(conn, p, hid), body.person_id)
             out = drafts.compose(conn, hid, actor=p.email, actor_crm_user=p.pipedrive_user_id, person_id=body.person_id, proof_asset_ids=body.proof_asset_ids)
             conn.execute("INSERT INTO product_events(user_id, event, hypothesis_id, detail) VALUES (%s,'outreach_draft_requested',%s,%s)", (p.user_id, hid, '{"status":"%s"}' % out["status"]))
             return out
@@ -133,7 +138,11 @@ def register(app: FastAPI) -> None:
     @app.post("/api/hypotheses/{hid}/outcomes")
     def outcome(hid: str, body: OutcomeIn, request: Request, p: Principal = Depends(require("hypothesis.review"))):
         with tx(request) as conn:
-            vis(conn, p, hid)
+            h = vis(conn, p, hid)
+            if body.crm_ref:
+                from ..opportunity.states import crm_ref_exists
+                if not crm_ref_exists(conn, str(h["organization_id"]), body.crm_ref):
+                    raise HTTPException(409, "The Pipedrive reference was not found for this account. Use activity:<id> or deal:<id> from Pipedrive.")
             try:
                 oid = record(conn, hid, body.kind, actor=p.email, crm_ref=body.crm_ref, detail=body.detail)
             except Exception as exc:  # noqa: BLE001

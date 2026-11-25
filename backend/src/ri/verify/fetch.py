@@ -2,19 +2,16 @@
 every redirect hop re-validated, robots.txt honoured, size cap, HTML/text only, no social-network scraping, no login or paywall bypass."""
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import ipaddress
 import json
 import re
-import socket
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from ..sources.base import NotFound, PolicyBlocked, TransientError
+from ..sources.base import PolicyBlocked, TransientError
 from ..sources.http import UA, classify
 from ..sources.webwatch import RobotsCache, extract_section
 
@@ -33,21 +30,24 @@ class Page:
 
 
 async def assert_public(url: str) -> None:
+    """Pre-flight check for a URL that came from a user, a sheet, a search result or a scraped page. The connection itself is pinned to a checked
+    address by `sources.safe.public_transport`, so a name that changes between this check and the request cannot reach an internal host."""
+    from ..sources.safe import ALLOWED_PORTS, resolve_public
     u = urlparse(url)
     host = (u.hostname or "").lower()
     if u.scheme not in {"http", "https"} or not host:
         raise PolicyBlocked("only http(s) URLs can be verified")
     if u.username or u.password:
         raise PolicyBlocked("URLs with credentials are refused")
+    try:
+        port = u.port or (443 if u.scheme == "https" else 80)
+    except ValueError as exc:
+        raise PolicyBlocked("the URL has an invalid port") from exc
+    if port not in ALLOWED_PORTS:
+        raise PolicyBlocked("only the standard web ports (80 and 443) are allowed")
     if any(host == d or host.endswith("." + d) for d in SOCIAL):
         raise PolicyBlocked("social-network pages are not fetched (terms of service); use the company's own page or a news article")
-    try:
-        infos = await asyncio.get_running_loop().getaddrinfo(host, u.port or (443 if u.scheme == "https" else 80), type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise NotFound(f"host does not resolve: {host}") from exc
-    for info in infos:
-        if not ipaddress.ip_address(info[4][0]).is_global:
-            raise PolicyBlocked("host resolves to a non-public address")
+    await resolve_public(host, port)
 
 
 _PUB = [

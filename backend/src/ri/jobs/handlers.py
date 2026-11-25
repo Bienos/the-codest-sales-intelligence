@@ -70,12 +70,11 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         except Exception:  # noqa: BLE001  (the import itself succeeded; the scheduler will keep relinking)
             conn.rollback()
             rl = {"checked": 0, "linked": 0}
-        return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
+        return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile, "relinked": rl}
 
     def sheet_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         """Reads a workbook straight from Google Sheets (service account) and imports it. Needs the workbook shared with the service account."""
         from ..config import Settings
-        from ..sheets import contracts as C
         from ..sheets.client import ConnectorBlocked, GoogleSheetsClient
         from ..sheets.importer import import_workbook
         key = job["payload"]["workbook"]

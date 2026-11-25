@@ -153,7 +153,7 @@ def register_outreach(app: FastAPI, settings: Settings) -> None:
 
     @app.get("/api/admin/integrations")
     def integrations(request: Request, p: Principal = Depends(require("admin.costs"))):
-        from .. import budget, usage
+        from .. import usage
         items = integration_status(settings)
         with tx(request) as conn:
             row = q1(conn, "SELECT cap, spent, reserved FROM provider_budgets WHERE provider='apollo' AND kind='contact_enrichment' AND period=%s", (usage.period_now(),))

@@ -222,7 +222,7 @@ class XlsxSheetsClient:
 
 
 MAX_XLSX_BYTES = 25 * 1024 * 1024
-MAX_XLSX_UNCOMPRESSED = 250 * 1024 * 1024
+MAX_XLSX_UNCOMPRESSED = 120 * 1024 * 1024        # full (not read-only) loading is needed for cell hyperlinks, and it costs several times this in memory
 
 
 def detect_workbook(data: bytes) -> str:

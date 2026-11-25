@@ -78,7 +78,12 @@ def register(app: FastAPI) -> None:
                     groups.append({"key": "documents", "label": "Pages the platform has read", "items": [{"title": d["title"] or d["canonical_url"], "meta": d["display_name"], "snippet": "", "url": d["canonical_url"]} for d in docs]})
             if not target and (p.can("sources.read") or p.can("research.request")):
                 vw, vp = all_like("(coalesce(v.claimed_text,'') || ' ' || v.url)", toks)
-                vs = qa(conn, f"SELECT v.url, v.claimed_text, v.status, o.display_name FROM verification_requests v LEFT JOIN organizations o ON o.id=v.organization_id WHERE {vw} ORDER BY v.created_at DESC LIMIT 10", vp)    # noqa: S608
+                if p.can("sources.read"):
+                    vscope, vsp = "TRUE", []
+                else:      # a seller sees claims on accounts they can see, and their own reports, never another seller's accounts
+                    sw_, sp0 = org_scope_sql(p, "o.id")
+                    vscope, vsp = f"((v.organization_id IS NOT NULL AND ({sw_})) OR (v.organization_id IS NULL AND v.requested_by=%s))", [*sp0, p.email]
+                vs = qa(conn, f"SELECT v.url, v.claimed_text, v.status, o.display_name FROM verification_requests v LEFT JOIN organizations o ON o.id=v.organization_id WHERE {vw} AND {vscope} ORDER BY v.created_at DESC LIMIT 10", [*vp, *vsp])    # noqa: S608
                 groups.append({"key": "verifications", "label": "Claims being verified", "items": [{"title": v["claimed_text"] or v["url"], "meta": f"{v['display_name'] or 'unmatched'} · {v['status']}", "snippet": "", "url": v["url"]} for v in vs]})
             sg_w, sg_p = all_like("(id || ' ' || coalesce(grp,'') || ' ' || signal || ' ' || coalesce(how_to_spot,'') || ' ' || coalesce(who_to_contact,'') || ' ' || coalesce(check_it_is_real,'') || ' ' || coalesce(window_note,''))", toks)
             sigs = qa(conn, f"SELECT id AS rule_id, grp, signal, strength, how_to_spot, who_to_contact, check_it_is_real FROM legacy_signals WHERE {sg_w} ORDER BY id LIMIT 15", sg_p)    # noqa: S608
@@ -137,14 +142,14 @@ def register(app: FastAPI) -> None:
             ok = kb.available(doc_id, conn)
         if not ok:
             raise HTTPException(404, "document not loaded")
-        return {"url": f"/kb/view/{doc_id}?t=" + kb.sign_link(request.app.state.settings.database_url, doc_id, p.user_id), "expires_in": kb.LINK_TTL_S}
+        return {"url": f"/kb/view/{doc_id}?t=" + kb.sign_link(kb.link_secret(request.app.state.settings), doc_id, p.user_id), "expires_in": kb.LINK_TTL_S}
 
     @app.get("/kb/view/{doc_id}", response_class=HTMLResponse, include_in_schema=False)
     def kb_view(doc_id: str, t: str, request: Request):
         with tx(request) as conn:
             ok = kb.available(doc_id, conn)
             doc = kb.read_doc(doc_id, conn) if ok else ""
-        if not ok or not kb.verify_link(request.app.state.settings.database_url, t, doc_id):
+        if not ok or not kb.verify_link(kb.link_secret(request.app.state.settings), t, doc_id):
             raise HTTPException(404, "not found")
         return HTMLResponse(doc, headers={"Content-Security-Policy": kb.KB_CSP, "X-Frame-Options": "SAMEORIGIN", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 

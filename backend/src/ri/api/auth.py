@@ -15,6 +15,8 @@ from ..db import q1
 
 
 SESSION_HOURS = 12
+MAX_SESSION_DAYS = 7          # a session can be renewed, but never beyond this long after the person last signed in with Google
+GOOGLE_ISSUERS = {"https://accounts.google.com", "accounts.google.com"}
 
 
 def session_key(s: Settings) -> str | None:
@@ -22,13 +24,18 @@ def session_key(s: Settings) -> str | None:
     return hmac.new(secret.encode(), b"ri-session-v1", hashlib.sha256).hexdigest() if secret else None
 
 
-def issue_session(s: Settings, email: str, hours: int = SESSION_HOURS) -> tuple[str, int]:
-    """Our own signed session, so a person is not logged out every hour when the Google ID token expires. Still checked against the users table on every request."""
+def issue_session(s: Settings, email: str, hours: int = SESSION_HOURS, auth_time: int | None = None) -> tuple[str, int]:
+    """Our own signed session, so a person is not logged out every hour when the Google ID token expires. Still checked against the users table on every request.
+    `auth_time` is when the person last proved who they are with Google; renewals carry it forward and stop after MAX_SESSION_DAYS."""
     key = session_key(s)
     if not key:
         raise HTTPException(503, "sessions are not configured: set RI_SESSION_SECRET")
-    exp = int(time.time()) + hours * 3600
-    return jwt.encode({"email": email, "typ": "session", "exp": exp}, key, algorithm="HS256"), exp
+    now = int(time.time())
+    auth_time = auth_time or now
+    if now - auth_time > MAX_SESSION_DAYS * 86400:
+        raise HTTPException(401, "please sign in again")
+    exp = min(now + hours * 3600, auth_time + MAX_SESSION_DAYS * 86400)
+    return jwt.encode({"email": email, "typ": "session", "exp": exp, "auth_time": auth_time}, key, algorithm="HS256"), exp
 
 
 class TokenVerifier:
@@ -44,7 +51,7 @@ class TokenVerifier:
             self._jwks = jwt.PyJWKClient(self.s.oidc_jwks_url)       # type: ignore[arg-type]
         return self._jwks.get_signing_key_from_jwt(token).key
 
-    def _session_email(self, token: str) -> str | None:
+    def session_claims(self, token: str) -> dict[str, Any] | None:
         key = session_key(self.s)
         if not key:
             return None
@@ -52,7 +59,16 @@ class TokenVerifier:
             claims = jwt.decode(token, key, algorithms=["HS256"], options={"require": ["exp", "email", "typ"]})
         except jwt.PyJWTError:
             return None
-        return str(claims["email"]).lower() if claims.get("typ") == "session" else None
+        if claims.get("typ") != "session":
+            return None
+        auth_time = int(claims.get("auth_time") or 0)
+        if not auth_time or time.time() - auth_time > MAX_SESSION_DAYS * 86400:      # sessions from before the cap, or past it, end here
+            return None
+        return claims
+
+    def _session_email(self, token: str) -> str | None:
+        c = self.session_claims(token)
+        return str(c["email"]).lower() if c else None
 
     def email_for(self, token: str) -> str:
         sess = self._session_email(token)
@@ -63,17 +79,23 @@ class TokenVerifier:
             return sess
         try:
             if self.s.auth_mode == "dev":
-                if self.s.env == "production" or not self.s.dev_auth_secret:
+                if not self.s.dev_auth_allowed or not self.s.dev_auth_secret:
                     raise HTTPException(401, "dev auth unavailable")
                 claims = jwt.decode(token, self.s.dev_auth_secret, algorithms=["HS256"], options={"require": ["exp", "email"]})
             else:
                 issuers = [i.strip() for i in (self.s.oidc_issuer or "").split(",") if i.strip()]
                 claims = jwt.decode(token, self._key(token), algorithms=["RS256"], audience=self.s.oidc_audience, issuer=issuers or None,
                                     options={"require": ["exp", "iss", "aud", "email"]})
-                if claims.get("email_verified") is False:
+                google = claims.get("iss") in GOOGLE_ISSUERS
+                # Google always states whether it verified the address; other providers may omit it, but must not deny it
+                if claims.get("email_verified") is False or (google and claims.get("email_verified") is not True):
                     raise HTTPException(401, "email not verified by the identity provider")
+                dom = self.s.allowed_email_domain
+                if google and dom and self.s.google_require_workspace and str(claims.get("hd") or "").lower() != dom:
+                    # only accounts managed by the company's Google Workspace; a personal Google account registered on a work address is refused
+                    raise HTTPException(403, "sign in with your company Google Workspace account")
         except jwt.PyJWTError as exc:
-            raise HTTPException(401, f"invalid token: {type(exc).__name__}") from exc
+            raise HTTPException(401, "invalid or expired sign-in, please sign in again") from exc
         email = str(claims["email"]).lower()
         dom = self.s.allowed_email_domain
         if dom and not email.endswith("@" + dom):

@@ -24,8 +24,13 @@ KB_CSP = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inl
           "sandbox allow-scripts allow-popups allow-modals allow-downloads")     # opaque origin: the document can never read the app's tokens
 
 
-def _key(database_url: str) -> str:
-    return hashlib.sha256(("kb-link:" + database_url).encode()).hexdigest()
+def link_secret(settings) -> str:
+    """Signing material for viewer links: a real secret when one is configured; the database address only as a last resort for old setups."""
+    return settings.session_secret or settings.dev_auth_secret or settings.database_url
+
+
+def _key(secret: str) -> str:
+    return hashlib.sha256(("kb-link:" + secret).encode()).hexdigest()
 
 
 def sign_link(database_url: str, doc_id: str, user_id: str, now: float | None = None) -> str:

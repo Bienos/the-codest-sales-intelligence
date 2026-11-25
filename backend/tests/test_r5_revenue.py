@@ -145,7 +145,11 @@ def test_outcomes_trace_to_crm_and_small_cohorts_are_flagged_not_concluded(world
     hid = world["hyps"]["prime_subcontract"]
     assert c.post(f"/api/hypotheses/{hid}/outcomes", json={"kind": "signed"}, headers=h("bdm")).status_code == 422                 # late-funnel needs a CRM ref
     assert c.post(f"/api/hypotheses/{hid}/outcomes", json={"kind": "discovery_held"}, headers=h("bdm")).status_code == 200
-    assert c.post(f"/api/hypotheses/{hid}/outcomes", json={"kind": "signed", "crm_ref": "deal:1"}, headers=h("bdm")).status_code == 200
+    assert c.post(f"/api/hypotheses/{hid}/outcomes", json={"kind": "signed", "crm_ref": "deal:1"}, headers=h("bdm")).status_code == 409   # no such deal in the Pipedrive mirror
+    with app_conn(world) as conn:
+        crm_org = conn.execute("select c.crm_id from crm_organizations c join opportunity_hypotheses h on h.organization_id=c.organization_id where h.id=%s", (hid,)).fetchone()["crm_id"]
+        conn.execute("insert into crm_deals(crm_id, crm_org_id, title, status) values (4242, %s, 'Prime partner programme', 'won')", (crm_org,))
+    assert c.post(f"/api/hypotheses/{hid}/outcomes", json={"kind": "signed", "crm_ref": "deal:4242"}, headers=h("bdm")).status_code == 200
     f = c.get("/api/admin/funnel", headers=h("admin")).json()
     assert f["cohorts"], f
     cohort = next(iter(f["cohorts"].values()))

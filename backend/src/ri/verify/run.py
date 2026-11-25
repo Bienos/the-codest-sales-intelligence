@@ -152,13 +152,12 @@ def run_verification(conn: Conn, request_id: str, *, fetch: Callable[[str], Page
 
 def sync_fetch(client_factory: Callable[[], Any]) -> Callable[[str], Page]:
     """Blocking wrapper for the worker thread."""
-    import httpx
-
+    from ..sources.safe import public_client
     from .fetch import fetch_page
 
     def go(url: str) -> Page:
         async def inner() -> Page:
-            async with httpx.AsyncClient(timeout=25, follow_redirects=False) as c:
+            async with public_client(25) as c:      # connects only to the address that passed the public-address check
                 return await fetch_page(c, url)
         return asyncio.run(inner())
     return go

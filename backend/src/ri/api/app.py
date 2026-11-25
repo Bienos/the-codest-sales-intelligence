@@ -29,6 +29,43 @@ CSP = ("default-src 'self'; script-src 'self' https://accounts.google.com/gsi/cl
        "img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://accounts.google.com/gsi/; frame-src 'self' https://accounts.google.com/gsi/; "
        "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 
+WEBHOOK_MAX_BYTES = 1_000_000
+JSON_MAX_BYTES = 2_000_000
+
+
+class RedactSecretsInAccessLog:
+    """logging.Filter: hides secrets that some providers can only send in the URL path (Lemlist webhooks), and signed link tokens."""
+
+    import re as _re
+    _PAT = _re.compile(r"(/webhooks/lemlist/)[^\s/?\"]+|([?&]t=)[^\s&\"]+")
+
+    def filter(self, record) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(self._PAT.sub(lambda m: (m.group(1) or m.group(2)) + "[redacted]", a) if isinstance(a, str) else a for a in record.args)
+        return True
+
+
+class RateLimiter:
+    """Fixed one-minute windows per caller, in memory (one API process). Not a security boundary on its own; it caps floods."""
+
+    def __init__(self, per_minute: int):
+        import threading
+        self.per_minute, self._lock, self._hits = per_minute, threading.Lock(), {}
+
+    def allow(self, key: str, now: float | None = None) -> bool:
+        import time
+        if self.per_minute <= 0:
+            return True
+        window = int((now or time.time()) // 60)
+        with self._lock:
+            if len(self._hits) > 10_000:
+                self._hits = {k: v for k, v in self._hits.items() if v[0] == window}
+            w, n = self._hits.get(key, (window, 0))
+            n = n + 1 if w == window else 1
+            self._hits[key] = (window, n)
+            return n <= self.per_minute
+
+
 DISMISS_REASONS = {"not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"}
 
 
@@ -73,6 +110,28 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     app.state.db = db or Database(settings.database_url)
     app.state.verifier = verifier or TokenVerifier(settings)
     app.state.writer_factory = writer_factory
+    app.state.limiter = RateLimiter(settings.api_rate_per_minute)
+
+    @app.middleware("http")
+    async def body_limit(request: Request, call_next):
+        """Webhooks and JSON calls are small; refuse oversized bodies before they are read (uploads have their own limit)."""
+        from fastapi.responses import JSONResponse
+        cl = request.headers.get("content-length")
+        path = request.url.path
+        limit = WEBHOOK_MAX_BYTES if path.startswith("/webhooks/") else None if path.startswith("/api/admin/kb/") or path == "/api/admin/import/upload" else JSON_MAX_BYTES
+        if limit and cl and cl.isdigit() and int(cl) > limit:
+            return JSONResponse({"detail": "request body too large"}, status_code=413)
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def rate_limit(request: Request, call_next):
+        """Per-caller ceiling on API calls, so one person or a leaked token cannot flood the API or burn the shared budgets. Generous for people."""
+        from fastapi.responses import JSONResponse
+        if request.url.path.startswith(("/api/", "/webhooks/")) and request.url.path not in {"/api/config"}:
+            key = (request.headers.get("authorization") or "")[-32:] or (request.client.host if request.client else "anon")
+            if not app.state.limiter.allow(key):
+                return JSONResponse({"detail": "Too many requests. Wait a minute and try again."}, status_code=429, headers={"Retry-After": "60"})
+        return await call_next(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -133,7 +192,10 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     def start_session(request: Request, p: Principal = Depends(principal_dep)):
         """Exchange a valid Google (or current session) token for a fresh 12-hour session."""
         from .auth import issue_session
-        token, exp = issue_session(request.app.state.settings, p.email)
+        presented = request.headers.get("authorization", "")[7:]
+        prior = request.app.state.verifier.session_claims(presented) if hasattr(request.app.state.verifier, "session_claims") else None
+        # renewing a session keeps the original sign-in time, so a stolen session cannot keep itself alive forever
+        token, exp = issue_session(request.app.state.settings, p.email, auth_time=int(prior["auth_time"]) if prior else None)
         return {"token": token, "expires_at": exp}
 
     @app.get("/api/me")
@@ -175,7 +237,13 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     @app.post("/api/hypotheses/{hid}/transition")
     def do_transition(hid: str, body: TransitionIn, request: Request, p: Principal = Depends(require("hypothesis.review"))):
         with tx(request) as conn:
-            visible_hyp(conn, p, hid)
+            cur = visible_hyp(conn, p, hid)
+            forward = cur["state"] in states.ORDER and body.new_state in states.ORDER and states.ORDER.index(body.new_state) > states.ORDER.index(cur["state"])
+            if forward and body.new_state in states.LATE_STATES and p.role not in {"sales_manager", "admin"}:
+                raise HTTPException(403, "A manager records proposal and contract stages.")
+            if forward and body.new_state in states.CRM_EVIDENCE_STATES and body.evidence.get("crm_ref") \
+                    and not states.crm_ref_exists(conn, str(cur["organization_id"]), body.evidence["crm_ref"]):
+                raise HTTPException(409, "The Pipedrive reference was not found for this account. Use activity:<id> or deal:<id> from Pipedrive.")
             try:
                 h = states.transition(conn, hid, body.new_state, actor=p.email, evidence=body.evidence, reason=body.reason)
             except states.TransitionError as exc:
@@ -306,9 +374,29 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                             "WHERE (%s OR requested_by=%s OR approver=%s) ORDER BY created_at DESC LIMIT 100", (p.can("approvals.read_all"), p.email, p.email))
             return {"items": [dict(r, id=str(r["id"])) for r in rows]}
 
+    def approval_in_scope(conn, p: Principal, aid: str, *, executing: bool = False) -> dict[str, Any]:
+        """A person may only decide or run an approval for accounts they can see; bulk or unknown targets need a manager or an administrator."""
+        a = q1(conn, "SELECT * FROM approvals WHERE id::text=%s", (aid,))
+        if not a:
+            raise HTTPException(404, "not found")
+        senior = p.role in {"sales_manager", "admin"}
+        if executing and not senior and p.email not in {a["requested_by"], a["approver"]}:
+            raise HTTPException(403, "Only the requester, the approver, a manager or an administrator can run this approval.")
+        orgs = appr.approval_org_ids(conn, a)
+        if orgs is None or (a["kind"] == "signal_campaign_push" and not senior):
+            if not senior:
+                raise HTTPException(403, "A manager or an administrator must decide this approval.")
+            return a
+        where, params = org_scope_sql(p, "o.id")
+        visible = {str(r["id"]) for r in qa(conn, f"SELECT o.id FROM organizations o WHERE o.id = ANY(%s::uuid[]) AND ({where})", [orgs, *params])}      # noqa: S608
+        if set(orgs) - visible:
+            raise HTTPException(404, "not found")       # same answer as a missing approval: do not reveal accounts outside scope
+        return a
+
     @app.post("/api/approvals/{aid}/decision")
     def approval_decision(aid: str, body: ApprovalDecisionIn, request: Request, p: Principal = Depends(require("approvals.decide"))):
         with tx(request) as conn:
+            approval_in_scope(conn, p, aid)
             try:
                 a = appr.decide(conn, aid, approver=p.email, approver_role=p.role, approve=body.approve)
             except appr.ApprovalError as exc:
@@ -318,7 +406,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     @app.post("/api/approvals/{aid}/execute")
     def approval_execute(aid: str, request: Request, p: Principal = Depends(require("approvals.decide"))):
         with tx(request) as conn:
-            kind = (q1(conn, "SELECT kind FROM approvals WHERE id=%s", (aid,)) or {}).get("kind")
+            kind = approval_in_scope(conn, p, aid, executing=True)["kind"]
             if kind == "sequence_enrolment":
                 from ..outbound import enrol as enrol_mod
                 from ..outbound.lemlist import LemlistClient, LemlistError
@@ -357,7 +445,12 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
             with tx(request) as conn:
                 conn.execute("INSERT INTO audit_events(actor, operation, record_type) VALUES ('webhook','auth_failed','pipedrive_webhook')")
             raise HTTPException(401, "bad credentials")
-        body = await request.json()
+        try:
+            body = await request.json()
+        except ValueError as exc:
+            raise HTTPException(400, "body is not JSON") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(400, "expected a JSON object")
         with tx(request) as conn:
             _, created = pd.receive_webhook(conn, body)
         return {"accepted": True, "duplicate": not created}          # acknowledged immediately; processed asynchronously

@@ -2,7 +2,6 @@
 Only https://thecodest.co is ever fetched, and only an image served from that site or its subdomains is accepted."""
 from __future__ import annotations
 
-import re
 import time
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse

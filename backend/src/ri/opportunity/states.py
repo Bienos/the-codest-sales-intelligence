@@ -16,6 +16,22 @@ class TransitionError(Exception):
     pass
 
 
+LATE_STATES = {"proposal_procurement", "contracted_delivery"}        # a manager or an administrator records these
+CRM_EVIDENCE_STATES = {"engaged", "buyer_need_confirmed", "proposal_procurement"}
+
+
+def crm_ref_exists(conn: Conn, org_id: str, ref: str | None) -> bool:
+    """A CRM reference must point at a record in the Pipedrive mirror for THIS account: `activity:<id>` or `deal:<id>`."""
+    kind, _, raw = (ref or "").strip().partition(":")
+    if not raw.isdigit():
+        return False
+    table = {"activity": "crm_activities", "a": "crm_activities", "deal": "crm_deals", "d": "crm_deals"}.get(kind.lower())
+    if not table:
+        return False
+    return bool(q1(conn, f"SELECT 1 FROM {table} x JOIN crm_organizations c ON c.crm_id=x.crm_org_id WHERE x.crm_id=%s AND c.organization_id=%s",      # noqa: S608
+                   (int(raw), org_id)))
+
+
 def _checklist(conn: Conn, h: dict[str, Any], target: str, evidence: dict[str, Any]) -> dict[str, bool]:
     g = h["gates"] or {}
     ok = lambda k: (g.get(k) or {}).get("status") == "pass"  # noqa: E731

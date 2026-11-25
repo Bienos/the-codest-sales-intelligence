@@ -32,6 +32,10 @@ def main(argv: list[str] | None = None) -> int:
                 return PipedriveWriter(s.pipedrive_domain, s.pipedrive_write_token)
         app = create_app(s, writer_factory=writer_factory)
         mount_frontend(app)
+        import logging
+
+        from .api.app import RedactSecretsInAccessLog
+        logging.getLogger("uvicorn.access").addFilter(RedactSecretsInAccessLog())     # the Lemlist webhook secret travels in the path
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))  # noqa: S104
         return 0
     conn = connect(s.database_url)
@@ -93,10 +97,8 @@ def main(argv: list[str] | None = None) -> int:
             conn.commit()
             print(res)
         elif a.cmd == "worker":
-            import httpx
             from .jobs.handlers import build_handlers
             from .jobs.queue import run_one
-            from .sources.registry import get as get_source
 
             from .sources.factory import build_connector
 

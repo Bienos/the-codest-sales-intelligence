@@ -30,6 +30,9 @@ def read_secret(name: str) -> str | None:
 LIST_PRICES = {"claude-haiku-5-5": (0.10, 0.50), "claude-sonnet-5-5": (2.0, 10.0), "claude-opus-5-5": (4.0, 20.0)}
 
 
+DEV_ENVS = frozenset({"development", "test"})
+
+
 @dataclass(frozen=True)
 class Settings:
     env: str = "development"  # development | staging | production
@@ -77,6 +80,8 @@ class Settings:
     discovery_max_searches_per_run: int = 16
     discovery_max_new_requests_per_run: int = 30
     allowed_email_domain: str | None = None
+    api_rate_per_minute: int = 600              # per caller; 0 switches the limiter off
+    google_require_workspace: bool = False      # true: only accounts managed by the company's Google Workspace (token `hd` = allowed domain)
     bootstrap_admin_emails: tuple[str, ...] = ()
 
     @classmethod
@@ -124,6 +129,8 @@ class Settings:
             discovery_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_MAX_NEW_REQUESTS_PER_RUN", "30")),
             exa_est_cost_per_search=float(os.environ["RI_EXA_EST_COST_PER_SEARCH"]) if os.environ.get("RI_EXA_EST_COST_PER_SEARCH") else None,
             allowed_email_domain=(os.environ.get("RI_ALLOWED_EMAIL_DOMAIN") or "").lower() or None,
+            api_rate_per_minute=int(os.environ.get("RI_API_RATE_PER_MINUTE", "600")),
+            google_require_workspace=_b("RI_GOOGLE_REQUIRE_WORKSPACE"),
             bootstrap_admin_emails=tuple(e.strip().lower() for e in os.environ.get("RI_BOOTSTRAP_ADMIN_EMAILS", "").split(",") if e.strip()),
         )
         if s.google_client_id and s.auth_mode == "oidc":      # Google Sign-In: ID tokens are RS256 JWTs signed with Google's published keys
@@ -133,9 +140,14 @@ class Settings:
         s.validate(require_auth=require_auth)
         return s
 
+    @property
+    def dev_auth_allowed(self) -> bool:
+        """Development tokens only in an environment explicitly named development or test: a typo such as "prod" fails closed."""
+        return self.env in DEV_ENVS
+
     def validate(self, require_auth: bool = True) -> None:
+        if self.auth_mode == "dev" and not self.dev_auth_allowed:
+            raise RuntimeError(f"RI_AUTH_MODE=dev is only allowed when RI_ENV is one of {sorted(DEV_ENVS)}")
         if self.env == "production":
-            if self.auth_mode == "dev":
-                raise RuntimeError("RI_AUTH_MODE=dev is forbidden in production")
             if require_auth and self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_jwks_url and self.oidc_audience):
                 raise RuntimeError("production requires RI_OIDC_ISSUER, RI_OIDC_AUDIENCE and RI_OIDC_JWKS_URL")

@@ -188,7 +188,8 @@ def verify_basic_auth(header: str | None, expected_user: str, expected_secret: s
         user, _, pwd = base64.b64decode(header[6:]).decode().partition(":")
     except Exception:  # noqa: BLE001
         return False
-    return hmac.compare_digest(user, expected_user) and hmac.compare_digest(pwd, expected_secret)
+    # bytes, not str: compare_digest raises on non-ASCII text, which an attacker could use to turn a 401 into a 500
+    return hmac.compare_digest(user.encode(), expected_user.encode()) & hmac.compare_digest(pwd.encode(), expected_secret.encode())
 
 
 def receive_webhook(conn: Conn, body: dict[str, Any]) -> tuple[str, bool]:
