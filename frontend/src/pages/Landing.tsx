@@ -76,20 +76,62 @@ function AuthCard({ onDone, notice, cfg, cfgErr }: { onDone: () => void; notice:
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** Signal field: sources drift along the brand wave lines and converge on one pink square, the single next step. */
-function SignalField({ uid = "a", target = true }: { uid?: string; target?: boolean }) {
-  const ref = useRef<SVGSVGElement>(null);
-  useEffect(() => { if (reducedMotion() && ref.current) ref.current.pauseAnimations(); }, []);
-  const paths = ["M0 90 C90 40 200 150 290 120 S350 160 372 167", "M0 170 C100 120 200 230 290 190 S350 170 372 167", "M0 250 C110 200 220 300 300 230 S355 180 372 167", "M0 320 C120 270 230 360 310 270 S360 190 372 167"];
+/* ---------- hero background: the watch grid ---------- */
+/* The same square dots as the map at the bottom of the page. A reading head sweeps across the grid; the cells it reads as
+   signals light up and fade, and one cell beside the sign-in card turns pink: the next step. Cells follow the real layout. */
+const GRID = 24, SWEEP = 12;     // px between dots and seconds per sweep: must match .dots and .wgrid-sweep in landing.css
+type Box = { l: number; t: number; r: number; b: number };
+type Hit = { x: number; y: number; next?: boolean };
+
+/** Where the head finds signals: in the open space around the copy and the card, never under the text. */
+function hitCells(w: number, h: number, card: Box, text: Box, link: Box): Hit[] {
+  if (w <= 980) return [{ x: w * 0.86, y: text.t / 2 }, { x: Math.max(link.r + 48, w * 0.72), y: (link.t + link.b) / 2 },
+    { x: w * 0.2, y: (card.b + h) / 2 }, { x: w * 0.64, y: (card.b + h) / 2 }, { x: card.r - 24, y: card.t - 20, next: true }];
+  const gl = text.r + 36, gr = card.l - 36, gx = (f: number) => gl + (gr - gl) * f, cw = card.r - card.l;
+  const out: Hit[] = [{ x: card.l + cw * 0.2, y: card.t * 0.5 }, { x: card.l + cw * 0.76, y: card.t * 0.28 },
+    { x: card.l + cw * 0.58, y: (card.b + h) / 2 }, { x: text.l / 2, y: h * 0.88 }, { x: card.l - 36, y: (card.t + card.b) / 2, next: true }];
+  if (gr - gl > 60) out.push({ x: gx(0.25), y: h * 0.15 }, { x: gx(0.7), y: h * 0.33 }, { x: gx(0.2), y: h * 0.7 }, { x: gx(0.65), y: h * 0.9 });
+  if (gr - gl > 150) { const mid = (card.t + card.b) / 2; out.push({ x: card.l - 108, y: mid - 72 }, { x: card.l - 156, y: mid + 48 }, { x: card.l - 60, y: mid + 120 }); }   // a few more near the next step
+  if (w - card.r > 60) out.push({ x: (card.r + w) / 2, y: card.t + (card.b - card.t) * 0.62 });
+  return out;
+}
+
+function WatchGrid() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cells, setCells] = useState<(Hit & { d: number })[]>([]);
+  const [live, setLive] = useState(true);
+  useEffect(() => {
+    const hero = ref.current?.parentElement; if (!hero) return;
+    const box = (sel: string): Box => {          // offsets, not client rects: the card slides in, and that must not move the cells
+      const n = hero.querySelector<HTMLElement>(sel); let l = 0, t = 0;
+      for (let e: HTMLElement | null = n; e && e !== hero; e = e.offsetParent as HTMLElement | null) { l += e.offsetLeft; t += e.offsetTop; }
+      return n ? { l, t, r: l + n.offsetWidth, b: t + n.offsetHeight } : { l: 0, t: 0, r: 0, b: 0 };
+    };
+    const snap = (v: number) => Math.round((v - GRID / 2) / GRID) * GRID + GRID / 2;
+    const place = () => {
+      const w = hero.clientWidth, h = hero.clientHeight; if (!w) return;
+      const h1 = box(".land-copy h1"), p = box(".land-copy p");
+      const text = { l: Math.min(h1.l, p.l), t: h1.t, r: Math.max(h1.r, p.r), b: p.b };
+      setCells(hitCells(w, h, box("#signin"), text, box(".land-copy-actions a")).map((c) => {
+        const x = snap(c.x);
+        return { ...c, x, y: snap(c.y), d: ((x + 0.0132 * w) / (1.22 * w) - 1) * SWEEP };   // the moment the head passes x
+      }));
+    };
+    place();
+    const ro = "ResizeObserver" in window ? new ResizeObserver(place) : null;
+    [hero, hero.querySelector(".land-copy"), hero.querySelector("#signin")].forEach((n) => n && ro?.observe(n));
+    const io = "IntersectionObserver" in window ? new IntersectionObserver((es) => setLive(es[0].isIntersecting)) : null;
+    io?.observe(hero);
+    return () => { ro?.disconnect(); io?.disconnect(); };
+  }, []);
+  const next = cells.find((c) => c.next);
   return (
-    <svg ref={ref} className="field" viewBox="0 0 600 330" preserveAspectRatio="xMidYMid slice" role="img" aria-label={tr("Signals from many sources converge on one next step")} fill="none">
-      {paths.map((d, i) => <path key={i} id={`${uid}w${i}`} d={d} stroke="#B87DFF" strokeWidth="0.9" opacity={0.6 - i * 0.07} />)}
-      {paths.map((_, i) => [0, 1, 2].map((k) => (
-        <circle key={`${i}-${k}`} r={k === 0 ? 3.2 : 2.4} fill={k === 0 ? "#fff" : "#B87DFF"}>
-          <animateMotion dur={`${8 + i * 1.4 + k * 2.1}s`} begin={`${-k * 2.9 - i}s`} repeatCount="indefinite"><mpath href={`#${uid}w${i}`} /></animateMotion>
-        </circle>)))}
-      {target && <g transform="translate(372 150)"><rect x="5" y="5" width="34" height="34" fill="none" stroke="#F2096E" strokeWidth="1.6" transform="scale(.6)" /><rect width="20" height="20" fill="#F2096E" transform="translate(0 0)" /></g>}
-    </svg>
+    <div className="wgrid" ref={ref} aria-hidden="true" data-live={live}
+      style={{ ["--at" as any]: `${-(SWEEP + (next?.d ?? -SWEEP / 2)).toFixed(2)}s`, ["--nx" as any]: `${next?.x ?? 0}px`, ["--ny" as any]: `${next?.y ?? 0}px` }}>
+      {next && <div className="wgrid-glow" />}
+      <div className="wgrid-sweep" />
+      {cells.map((c, i) => <i key={i} className={`wgrid-hit${c.next ? " wgrid-next" : ""}`} style={{ left: c.x, top: c.y, ["--d" as any]: `${c.d.toFixed(2)}s` }} />)}
+    </div>
   );
 }
 
@@ -296,7 +338,7 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
 
       <section className="land-hero" ref={hero} onPointerMove={onMove}>
         <div className="dots" aria-hidden="true" /><div className="dots lit" aria-hidden="true" />
-        <SignalField target={false} />
+        <WatchGrid />
         <div className="land-hero-in">
           <div className="land-copy">
             <div className="eyebrow">{tr("Revenue intelligence")}</div>
