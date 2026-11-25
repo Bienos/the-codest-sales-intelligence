@@ -367,7 +367,7 @@ function Precision({ d }: { d: any }) {
       <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("What sellers did with each signal")}><table className="cards adm-t"><thead><tr><th>{tr("Signal")}</th><th className="num">{tr("Seen")}</th><th className="num">{tr("Followed up")}</th><th className="num">{tr("Dismissed")}</th><th className="num">{tr("Dismissed share")}</th><th>{tr("Main reason for dismissing")}</th><th><span className="sr">{tr("Flag")}</span></th></tr></thead><tbody>
         {d.rules.map((r: any) => <tr key={r.rule_id}><td data-label={tr("Signal")} className="wide">{nm(r.rule_id)}</td><td data-label={tr("Seen")} className="num">{number(r.fired)}</td><td data-label={tr("Followed up")} className="num">{number(r.accepted)}</td><td data-label={tr("Dismissed")} className="num">{number(r.dismissed)}</td>
           <td data-label={tr("Dismissed share")} className="num">{r.dismissal_rate === null ? "—" : `${Math.round(r.dismissal_rate * 100)}%`}<div className="small muted">{r.enough_data ? tr("likely range {} to {}%", Math.round(r.interval_95[0] * 100), Math.round(r.interval_95[1] * 100)) : tr("Too few decisions to judge")}</div></td>
-          <td data-label={tr("Main reason for dismissing")} className="small">{r.top_dismiss_reason ? lab("dismiss", r.top_dismiss_reason) : "—"}</td><td>{r.flag && <Badge kind="bad">{tr("Look at this")}</Badge>}</td></tr>)}</tbody></table></div>}
+          <td data-label={tr("Main reason for dismissing")} className="small full">{r.top_dismiss_reason ? lab("dismiss", r.top_dismiss_reason) : "—"}</td><td>{r.flag && <Badge kind="bad">{tr("Look at this")}</Badge>}</td></tr>)}</tbody></table></div>}
     <h4 className="adm-h4">{tr("Outreach results")}</h4>
     {Object.keys(d.outreach).length === 0 ? <Quiet>{tr("Nobody added to a sequence yet.")}</Quiet> : <div className="chips">{Object.entries(d.outreach).map(([k, n]) => <Badge key={k}>{humanize(k)}: {n as number}</Badge>)}</div>}
     {d.caveats.length > 0 && <ul className="tight small muted">{d.caveats.map((c: string, i: number) => <li key={i}>{c}</li>)}</ul>}
@@ -396,7 +396,7 @@ export function Health({ can, part }: { can: (p: string) => boolean; part?: stri
     { key: "pipeline", show: can("admin.jobs"), title: "Processing pipeline", desc: "What runs by itself, what waits for a person, and what is switched off.", r: pipe, status: pipelineStatus, body: (d) => <Pipeline d={d} /> },
     { key: "jobs", show: can("admin.jobs"), title: "Failed jobs", desc: "Background jobs that failed for good, grouped by cause, with a way to retry or dismiss each group.", r: jobs, status: jobsStatus, body: (d) => <Jobs d={d} reload={jobs.reload} /> },
     { key: "coverage", show: can("admin.rules"), title: "Are we finding things?", desc: "Findings per market and topic, sources that went quiet, and pages sellers say we missed.", r: recall, status: coverageStatus, body: (d) => <Coverage d={d} /> },
-    { key: "quality", show: can("admin.rules"), title: "Health checks", desc: "Counts that should stay at zero, and how presented opportunities turned out.", r: metrics, status: qualityStatus, body: (d) => <Quality d={d} f={funnel.d} /> },
+    { key: "quality", show: can("admin.rules"), title: "Safety checks", desc: "Counts that should stay at zero, and how presented opportunities turned out.", r: metrics, status: qualityStatus, body: (d) => <Quality d={d} f={funnel.d} /> },
     { key: "precision", show: can("admin.rules"), title: "Which signals work", desc: "What sellers did with each signal: pursued it or dismissed it, and why.", r: prec, status: precisionStatus, body: (d) => <Precision d={d} /> },
   ];
   const shown = blocks.filter((b) => b.show);
@@ -463,7 +463,7 @@ export function JobHistory() {
                 <td data-label={tr("Status")} className="nowrap"><Say k={gk}>{tr(gl)}</Say>{j.group === "retrying" && j.run_after && <div className="small muted">{tr("next try {}", when(j.run_after))}</div>}</td>
                 <td data-label={tr("Took")} className="num">{took(j.duration_s)}</td>
                 <td data-label={tr("Tries")} className="num">{j.group === "retrying" || j.group === "failed" ? tr("{} of {}", number(j.attempts), number(j.max_attempts)) : j.attempts > 0 ? number(j.attempts) : "—"}</td>
-                <td data-label={tr("What happened")} className="small">{j.error ? <><b>{j.cause ? CAUSE_TITLE(j.cause, j.subject) : tr("Error")}</b><span className="fl-err">{j.error}</span></> : j.result?.length ? resultLine(j.result) : <span className="muted">—</span>}</td>
+                <td data-label={tr("What happened")} className="small full">{j.error ? <><b>{j.cause ? CAUSE_TITLE(j.cause, j.subject) : tr("Error")}</b><span className="fl-err">{j.error}</span></> : j.result?.length ? resultLine(j.result) : <span className="muted">—</span>}</td>
               </tr>;
             })}</tbody>
           </table>
@@ -515,7 +515,7 @@ export function SourceChecks() {
                 <td data-label={tr("Took")} className="num">{took(x.duration_s)}</td>
                 <td data-label={tr("New")} className="num">{number(x.items_new)}</td>
                 <td data-label={tr("Changed")} className="num">{number(x.items_changed)}</td>
-                <td data-label={tr("Error")} className="small">{x.error ? <span className="fl-err">{x.error}</span> : <span className="muted">—</span>}</td>
+                <td data-label={tr("Error")} className="small full">{x.error ? <span className="fl-err">{x.error}</span> : <span className="muted">—</span>}</td>
               </tr>;
             })}</tbody>
           </table>

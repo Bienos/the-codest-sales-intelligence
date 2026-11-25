@@ -2,14 +2,14 @@
 the market's own institutions; "other sectors"; "all tenders" really is everything), each with a live count, and compact filters (region and
 country, value, closing within, new or changed, fit, kind of work) whose counts leave out their own filter. Search also takes CPV codes."""
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from test_r3_opportunity import env  # noqa: F401  (fixture)
 from test_r4_api import world  # noqa: F401  (fixture)
 
 from ri import tender_sector as sec
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 def notice(conn, nid, buyer, *, days=20, country="DEU", cpv=("72000000",), detail=None, summary=None, published_days=10, status="open"):

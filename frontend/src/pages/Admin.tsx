@@ -751,12 +751,12 @@ function ImportHistory({ tick }: { tick: number }) {
           const [k, l] = IMPORT_STATUS[u.status] ?? ["", humanize(u.status)];
           return <tr key={u.id}>
             <td data-label={tr("When")} className="nowrap">{when(u.at)}</td>
-            <td data-label={tr("How")} className="wide">{u.how === "upload" ? <><b>{u.name}</b><div className="small muted">{tr("Uploaded by {}", u.by ?? tr("someone"))}</div></> : <b>{tr("Google Sheets sync")}</b>}</td>
+            <td data-label={tr("How")} className="wide">{u.how === "upload" ? <><b>{u.name}</b><div className="small muted">{tr("Uploaded by {}", u.by ?? tr("someone"))}</div></> : <b>{tr("Synced (Google Sheets or the server)")}</b>}</td>
             <td data-label={tr("Workbook")}>{u.workbook ? tr("Workbook {}", u.workbook) : "—"}</td>
             <td data-label={tr("Result")}><Say k={k}>{tr(l)}</Say>{u.error && <div className="small">{u.error}</div>}</td>
             <td data-label={tr("New rows")} className="num">{number(u.new)}</td>
             <td data-label={tr("Rows read")} className="num">{number(u.rows)}</td>
-            <td data-label={tr("Tabs")} className="small">{known.length === 0 ? <span className="muted">—</span> : <details><summary>{plural(known.length, "One tab read", "{} tabs read")}</summary>
+            <td data-label={tr("Tabs")} className="small full">{known.length === 0 ? <span className="muted">—</span> : <details><summary>{plural(known.length, "One tab read", "{} tabs read")}</summary>
               <ul className="tight">{known.map(([name, v]) => <li key={name}><b>{name}</b>: {TAB_STATUS[v.status] ? tr(TAB_STATUS[v.status]) : humanize(v.status)}{v.rows !== undefined ? ` · ${tr("{} new of {} rows", number(v.new ?? 0), number(v.rows - (v.blank ?? 0)))}` : ""}</li>)}</ul>
               {other > 0 && <p className="muted m-0">{tr("{} other tabs not imported (archives and filtered views)", number(other))}</p>}</details>}</td>
           </tr>; })}</tbody></table></div>}
@@ -793,6 +793,7 @@ function BudgetDetails() {
                 <td data-label={tr("Counted in")}>{tr(UNIT[b.unit] ?? humanize(b.unit))}</td>
               </tr>; })}</tbody></table>
         </div>}
+      {!rows.some((b: any) => b.provider === "apollo" && b.period === new Date().toISOString().slice(0, 7)) && <p className="small"><Say k="">{tr("Apollo contact credits: no limit is set for this month, so no email address can be revealed.")}</Say> <Link to="/admin/integrations">{tr("Set the limit in Connected services")}</Link></p>}
     </section>;
   }}</Load>;
 }
@@ -803,7 +804,7 @@ function ApolloCap({ r }: { r: any }) {
   const [v, setV] = useState(String(r.cap ?? 0)); const [msg, setMsg] = useState(""); const [err, setErr] = useState<unknown>(null);
   const save = async () => { setErr(null); try { await post("/api/admin/integrations/apollo/cap", { credits: Number(v) }); setMsg(tr("Saved for this month.")); } catch (e) { setErr(e); } };
   return <div><span className="k">{tr("Credits this month")}</span>
-    <div className="row"><input aria-label={tr("Monthly credit cap")} type="number" min={0} value={v} onChange={(e) => setV(e.target.value)} className="field-sm" /><button onClick={save}>{tr("Set cap")}</button><span className="small muted">{tr("Spent") + " "}{r.spent ?? 0}{tr(". Price per reveal:") + " "}{r.credits_per_reveal ?? tr("not set (RI_APOLLO_CREDITS_PER_REVEAL)")}{tr(". At zero, no reveal can run.")}</span></div>
+    <div className="row"><input aria-label={tr("Apollo credits allowed this month")} type="number" min={0} value={v} onChange={(e) => setV(e.target.value)} className="field-sm" /><button onClick={save}>{tr("Set the limit")}</button><span className="small muted">{tr("{} credits used this month.", number(Number(r.spent ?? 0)))} {r.credits_per_reveal ? tr("One reveal costs {} credits.", r.credits_per_reveal) : tr("The price of one reveal is not set on the server yet, so no reveal can be approved.")} {tr("At zero, no reveal can run. Apollo never spends beyond this limit.")}</span></div>
     {msg && <div className="okmsg" role="status">{msg}</div>}<Err e={err} /></div>;
 }
 
@@ -938,7 +939,7 @@ function Audit() {
             <td data-label={tr("Who")}>{actorName(a.actor)}</td>
             <td data-label={tr("What they did")}><b>{opName(a.operation)}</b></td>
             <td data-label={tr("About")} className="wide">{name ? (link ? <Link to={link}>{name}</Link> : <span>{name}</span>) : link ? <Link to={link}>{tr("Open the {}", what.toLowerCase())}</Link> : null}<div className="small muted">{what}</div></td>
-            <td data-label={tr("Detail")} className="small">{detailLine(a.detail) || <span className="muted">—</span>}</td>
+            <td data-label={tr("Detail")} className="small full">{detailLine(a.detail) || <span className="muted">—</span>}</td>
             <td data-label={tr("Approval")} className="nowrap">{a.approval_id ? <Link to={`/admin/approvals#approval-${a.approval_id}`}>{tr("Approved")}</Link> : <span className="muted" aria-label={tr("Not needed")}>—</span>}</td>
           </tr>; })}</tbody></table></div>
       <Pager total={d.total} offset={off} limit={LIMIT} onPage={(o) => setF({ page: String(o) })} label="Audit log" />

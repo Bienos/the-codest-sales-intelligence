@@ -521,6 +521,7 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
   useEffect(() => {
     if (!pill) return;
     const panel = document.getElementById(`tn-pop-${pill}`);
+    if (panel && panel.getBoundingClientRect().right > document.documentElement.clientWidth - 8) panel.classList.add("is-right");     // near the right edge: open leftwards
     (panel?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? panel?.querySelector<HTMLElement>("button, input"))?.focus();
     const away = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest(`[data-pill="${pill}"]`)) setPill(null); };
     const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { document.getElementById(`tn-pill-${pill}`)?.focus(); setPill(null); } };

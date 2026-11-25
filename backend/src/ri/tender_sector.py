@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 RULES_VERSION = 2
@@ -355,7 +355,7 @@ def arrange(items: list[dict[str, Any]], *, view: str = "icp", region: str = "co
     choice would show: every count leaves out its own filter and applies all the others (choosing a region also clears the country).
     Returns the shown notices (ICP groups in order, banks first; `sort` within each group, then soonest deadline), the counts and the facets."""
     from .tenders import CORE_REGIONS, FIT_RANK, in_region
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     shown_groups = set(FINANCE_GROUPS) if view == "icp" else set(GROUPS) if view == "all" else {view}
     allowed_fit = {"strong": {"strong"}, "possible": {"strong", "possible"}}.get(fit)
     fresh = now - timedelta(days=NEW_DAYS)
@@ -427,7 +427,7 @@ def arrange(items: list[dict[str, Any]], *, view: str = "icp", region: str = "co
 
     def key(i: dict[str, Any]) -> tuple:
         level = ((i.get("summary") or {}).get("fit") or {}).get("level")
-        published = i.get("published") or datetime.min.replace(tzinfo=timezone.utc)
+        published = i.get("published") or datetime.min.replace(tzinfo=UTC)
         primary = {"fit": FIT_RANK.get(level or "", 4), "value": -i["value_eur"] if i.get("value_eur") is not None else 1,
                    "newest": -published.timestamp()}.get(sort, 0)
         return (GROUP_RANK[i["group"]], primary, i["deadline"], i["id"])

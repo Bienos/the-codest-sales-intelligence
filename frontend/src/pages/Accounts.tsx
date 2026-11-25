@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, fmtDate, post } from "../api";
 import { CHECKING, ListLeadLine } from "./Prospects";
-import { REGIONS, countryName, staffCount } from "./targetMarket";
+import { REGIONS, countryName } from "./targetMarket";
 import { Badge, Err, Skeleton, groupName, safeHref } from "../components/ui";
 import { CompanyAvatar, ListRank, ago } from "../components/Findings";
 import { signalName } from "../components/Signals";
@@ -62,8 +62,8 @@ const SORTS: [string, string][] = [["score", "Strongest signals"], ["priority", 
 const TOGGLES: [string, string, string, string][] = [
   ["email", "has_email", "true", "With email"],
   ["signal", "has_signal", "true", "Checked signal"],
-  ["recent", "signal_days", "30", "Signal in the last 30 days"],
-  ["hot", "band", "hot", "Hot accounts"],
+  ["recent", "signal_days", "30", "New in 30 days"],
+  ["hot", "band", "hot", "Hot"],
   ["watched", "watched", "true", "Watching"],
   ["shortlist", "shortlist", "true", "Shortlist"],
 ];
@@ -71,7 +71,7 @@ const ORIGIN: Record<string, string> = { added: "Added by the team", discovered:
 const PRIORITY = /^P[123]$/;
 const MISSING: Record<string, string> = { ownership: "Owner", employees: "Headcount", country: "Country", sector: "Sector", website: "Website" };
 const WHY_NOT: Record<string, string> = {
-  list_out_of_scope: "Your lead list marks it out of scope",
+  list_out_of_scope: "Lead list: out of scope",
   state_owned: "State-owned",
   not_finance: "Not financial services",
   too_small: "500 staff or fewer",
@@ -362,27 +362,30 @@ function CompanyDirectory({ view, research, params, update }: {
 function SignalCell({ r, research, onChanged }: { r: any; research: boolean; onChanged: () => void }) {
   const s = r.buying_signal;
   if (r.stopped) return <><p className="acc-sig-k"><Badge kind="warn">{tr("On hold")}</Badge></p>
-    <p className="acc-sig-t">{tr("A reason to stop or wait was found. Open the company before contacting them.")}</p></>;
+    <p className="acc-sig-t acc-sig-2">{tr("A reason to stop or wait was found. Open the company before contacting them.")}</p></>;
   if (s) {
     const href = safeHref(s.source_url);
     return <>
-      <p className="acc-sig-k"><i className="acc-mk on" aria-hidden="true" /><b className="acc-sig-h">{signalName(s.rule_id ?? "", s.label)}</b>
-        <span className="acc-sig-meta">
-          <span className="acc-sig-when">{ago(s.happened_at ?? s.published_at)}</span>
-          {href && <a href={href} target="_blank" rel="noreferrer noopener" aria-label={tr("Original source for {}", r.name)}>{tr("Source")} ↗</a>}
-          <span className="acc-state ok">{tr("Checked")}</span>
-        </span></p>
+      <p className="acc-sig-k"><i className="acc-mk on" aria-hidden="true" /><b className="acc-sig-h">{signalName(s.rule_id ?? "", s.label)}</b></p>
       <p className="acc-sig-t" title={s.summary}><span className="sr">{tr("Checked signal:")} </span>{s.summary}</p>
+      <p className="acc-sig-meta">
+        <span className="acc-state ok">{tr("Checked")}</span>
+        <span className="acc-sig-when">{ago(s.happened_at ?? s.published_at)}</span>
+        {href && <a href={href} target="_blank" rel="noreferrer noopener" aria-label={tr("Original source for {}", r.name)}>{tr("Source")} ↗</a>}
+      </p>
     </>;
   }
   if (r.signal_count > 0) return <>
-    <p className="acc-sig-k"><i className="acc-mk on" aria-hidden="true" /><b className="acc-sig-h">{counted(r.signal_count, ["checked signal", "checked signals"], ["sprawdzony sygnał", "sprawdzone sygnały", "sprawdzonych sygnałów"])}</b>
-      {r.last_signal_at && <span className="acc-sig-meta"><span className="acc-sig-when">{fmtDate(r.last_signal_at)}</span></span>}</p>
+    <p className="acc-sig-k"><i className="acc-mk on" aria-hidden="true" /><b className="acc-sig-h">{counted(r.signal_count, ["checked signal", "checked signals"], ["sprawdzony sygnał", "sprawdzone sygnały", "sprawdzonych sygnałów"])}</b></p>
     {r.groups.length > 0 && <p className="acc-sig-t">{r.groups.map(groupName).join(", ")}</p>}
+    {r.last_signal_at && <p className="acc-sig-meta"><span className="acc-sig-when">{tr("Latest {}", fmtDate(r.last_signal_at))}</span></p>}
   </>;
   if (r.list_lead) return <ListLeadLine lead={r.list_lead} orgId={r.id} orgName={r.name} canCheck={research} onChecked={onChanged} />;
   return <p className="acc-sig-k acc-quiet"><i className="acc-mk off" aria-hidden="true" />{tr("No signal yet")}</p>;
 }
+
+/** Headcount, short enough for one line of the row. */
+const staff = (n: number, estimate?: boolean) => estimate ? tr("About {} staff", number(n)) : tr("{} staff", number(n));
 
 /** What a company being filled in still lacks, and where Exa is with it. */
 function MissingCell({ r }: { r: any }) {
@@ -411,7 +414,7 @@ function AccountRow({ r, view, research, selectable, selected, full, onSelect, o
   onSelect: () => void; onWatch: () => void; onDecide: (decision: "qualify" | "reject") => void; onChanged: () => void;
 }) {
   const to = `/accounts/${r.id}${view === "filling" && research ? "?profile=1" : ""}`;
-  const facts = [r.segment, countryName(r.country_code), r.employees != null ? staffCount(r.employees, r.employees_uncertain) : null].filter(Boolean);
+  const facts = [r.segment, countryName(r.country_code), r.employees != null ? staff(r.employees, r.employees_uncertain) : null].filter(Boolean);
   return <li className={`acc-row${selected ? " is-sel" : ""}`}>
     {selectable && <label className="acc-pick"><input type="checkbox" aria-label={tr("Select {} for a news check", r.name)} checked={selected} disabled={full} onChange={onSelect} /></label>}
     <span className="acc-av"><CompanyAvatar name={r.name} /></span>

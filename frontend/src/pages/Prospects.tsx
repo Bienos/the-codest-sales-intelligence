@@ -44,16 +44,17 @@ export function ListLeadLine({ lead, orgId, orgName, canCheck, onChecked }: {
     <p className="acc-sig-k">
       <i className={`acc-mk${lead.check === "verified" ? " on" : ""}`} aria-hidden="true" />
       <b className="acc-sig-h" title={headline ?? undefined}>{headline ?? tr("From your lead list")}</b>
-      <span className="acc-sig-meta">
-        {when && <span className="acc-sig-when">{when}</span>}
-        {href && <a href={href} target="_blank" rel="noreferrer noopener" aria-label={tr("Original source for {}", orgName)}
-          onClick={() => trackSourceOpened({ organization_id: orgId, where: "prospect" })}>{tr("Source")} ↗</a>}
-        {state ? <span className={`acc-state ${state[0]}`} title={tr(state[2])}>{tr(state[1])}<span className="sr"> {tr(state[2])}</span></span>
-          : canCheck && href ? <button type="button" className="linkish" disabled={busy} onClick={check} title={tr("Read the source and confirm the claim")}
-              aria-label={tr("Check the source for {}", orgName)}>{busy ? tr("Queuing…") : tr("Check it")}</button> : null}
-        {failed && <span className="acc-state bad" role="alert">{tr("Not queued")}</span>}
-      </span>
     </p>
     {lead.signal && <p className="acc-sig-t" title={lead.signal}><span className="sr">{tr("From your lead list:")} </span>{lead.signal}</p>}
+    <p className="acc-sig-meta">
+      <span className="acc-sig-from">{tr("Lead list")}</span>
+      {when && <span className="acc-sig-when">{when}</span>}
+      {href && <a href={href} target="_blank" rel="noreferrer noopener" aria-label={tr("Original source for {}", orgName)}
+        onClick={() => trackSourceOpened({ organization_id: orgId, where: "prospect" })}>{tr("Source")} ↗</a>}
+      {state ? <span className={`acc-state ${state[0]}`} title={tr(state[2])}>{tr(state[1])}<span className="sr"> {tr(state[2])}</span></span>
+        : canCheck && href ? <button type="button" className="linkish" disabled={busy} onClick={check} title={tr("Read the source and confirm the claim")}
+            aria-label={tr("Check the source for {}", orgName)}>{busy ? tr("Queuing…") : tr("Check it")}</button> : null}
+      {failed && <span className="acc-state bad" role="alert">{tr("Not queued")}</span>}
+    </p>
   </>;
 }

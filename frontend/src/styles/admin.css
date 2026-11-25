@@ -423,6 +423,9 @@
 .svc::before { content: ""; width: 10px; height: 10px; background: #3D44B8; }
 .svc.exa::before { background: var(--purple); }
 @media (max-width: 640px) {
+  table.cards.adm-t tr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-auto-flow: row dense; column-gap: 14px; align-items: start; }
+  table.cards.adm-t td { grid-column: auto; }
+  table.cards.adm-t td.wide, table.cards.adm-t td.full { grid-column: 1 / -1; }
   .adm-t td.num { text-align: left; white-space: normal; }
   .adm-t td.wide { min-width: 0; }
   .fbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; }

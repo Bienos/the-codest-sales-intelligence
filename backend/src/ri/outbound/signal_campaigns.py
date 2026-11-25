@@ -259,9 +259,10 @@ def request_push(conn: Conn, campaign_id: str, p: Principal, settings: Settings)
     if not payload["members"]:
         raise CampaignError("Nobody is included. Add contacts with email addresses to the accounts first.")
     orgs = len({m["organization_id"] for m in payload["members"]})
+    names = [r["signal"] for r in qa(conn, "SELECT signal FROM legacy_signals WHERE id = ANY(%s) ORDER BY ordinal", (list(c["rule_ids"]),))] or list(c["rule_ids"])
     a = appr.request(conn, kind=KIND, target_system=SYSTEM, target_id=campaign_id, operation=OP, payload=payload, requested_by=p.email,
                      justification=f"Create the Lemlist campaign '{c['name']}' for {len(payload['members'])} contact(s) at {orgs} account(s), each with a buying signal "
-                                   f"({', '.join(c['rule_ids'])}). It is created in Lemlist but not launched.",
+                                   f"({', '.join(names)}). It is created in Lemlist but not launched.",
                      idempotency_key=f"signal-campaign:{campaign_id}:{appr.payload_hash(payload)[:16]}", ttl_hours=settings.approval_ttl_hours)
     conn.execute("UPDATE signal_campaigns SET status='pending_approval', approval_id=%s, updated_at=now() WHERE id=%s", (a["id"], campaign_id))
     audit(conn, actor=p.email, operation="signal_campaign_push_requested", record_type="signal_campaign", record_id=campaign_id, approval_id=str(a["id"]),

@@ -2,11 +2,12 @@
 Nothing here calls Lemlist: pushes go through the fake client, activity is written the way the hourly sync writes it."""
 import json
 
+from test_r14_outbound import FakeLemlist
+from test_r23_people_campaigns import market, settings  # noqa: F401  (pytest fixture)
+
 from ri.db import q1
 from ri.outbound import signal_campaigns as sc
 from ri.people import apply_lemlist_activity
-from test_r14_outbound import FakeLemlist
-from test_r23_people_campaigns import market, settings  # noqa: F401  (pytest fixture)
 
 
 def activity(conn, aid, typ, email, campaign="cam_1"):

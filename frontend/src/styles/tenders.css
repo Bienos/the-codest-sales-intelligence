@@ -54,7 +54,7 @@
   color: var(--navy); font: 600 var(--fs-sm)/1.2 var(--font-body); letter-spacing: 0; text-transform: none; white-space: nowrap; }
 .tn-pill > button:hover { background: var(--tint-1); }
 .tn-pill-k { color: var(--muted); font-weight: 600; }
-.tn-pill-v { font-weight: 700; max-width: 22ch; overflow: hidden; text-overflow: ellipsis; }
+.tn-pill-v { font-weight: 700; max-width: 26ch; overflow: hidden; text-overflow: ellipsis; }
 .tn-pill.is-on > button { background: var(--navy); color: var(--white); }
 .tn-pill.is-on .tn-pill-k { color: var(--on-navy-muted); }
 .tn-pill.is-open > button { box-shadow: 3px 3px 0 var(--purple); }
@@ -62,7 +62,7 @@
 .tn-pop { position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; width: 300px; max-width: calc(100vw - 32px); display: grid; gap: var(--space-2);
   padding: var(--space-3); background: var(--white); border: 2px solid var(--navy); box-shadow: 6px 6px 0 rgba(13, 18, 76, .14); }
 .tn-pop.is-wide { width: 440px; }
-.tn-arrange .tn-pop { left: auto; right: 0; }
+.tn-arrange .tn-pop, .tn-pop.is-right { left: auto; right: 0; }
 .tn-pop-h { margin: var(--space-1) 0 0; font: 800 var(--fs-label)/1.2 var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .tn-pop-h:first-child { margin-top: 0; }
 .tn-pop-note { margin: 0; font-size: var(--fs-xs); color: var(--muted); }

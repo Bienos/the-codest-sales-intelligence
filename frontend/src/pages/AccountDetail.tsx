@@ -34,7 +34,7 @@ export function usePoll(active: boolean, fn: () => void, ms = 5000) {
 /** Research costs money, so the button explains itself when it cannot run. */
 export function ResearchSetup({ setup }: { setup?: any }) {
   if (!setup || setup.ready) return null;
-  return <p className="ac-setup m-0">{tr("Research with Exa is not set up in this environment. An administrator adds {} to the API and the worker.", (setup.missing ?? []).join(", "))}</p>;
+  return <p className="ac-setup m-0" title={(setup.missing ?? []).join(", ") || undefined}>{tr("Research is not switched on yet: an administrator can turn it on.")}</p>;
 }
 
 /* ------------------------------------------------------------------ identity: monograms, avatars, icons */
@@ -742,7 +742,7 @@ function FindPeople({ orgId, company, onAdded }: { orgId: string; company: strin
       </div>
       {s.can_run && <button type="button" className={found.length ? "" : "primary"} disabled={Boolean(busy) || s.running || !s.setup.ready} onClick={run}>{last ? tr("Search again") : tr("Find decision makers")}</button>}
     </div>
-    {!s.setup.ready && <p className="ac-setup mt-2 mb-0">{tr("Finding people with Exa is not set up in this environment. An administrator adds EXA_API_KEY and RI_EXA_MONTHLY_CAP_USD to the API and the worker.")}</p>}
+    {!s.setup.ready && <p className="ac-setup mt-2 mb-0">{tr("Finding people with Exa is not switched on yet: an administrator can turn it on.")}</p>}
     {s.running && <div className="fp-run" role="status"><span className="ac-pulse" />{tr("Searching five parts of the buying group. About half a minute.")}</div>}
     {last?.status === "failed" && !s.running && <div className="rs-fail-inline" role="alert"><Ic.alert /><div><b>{tr("The search did not finish.")}</b> {tr(failReason(last.error))}
       {last.error && <details className="rs-why"><summary>{tr("Error details for administrators")}</summary><code>{last.error}</code></details>}</div></div>}
@@ -963,8 +963,8 @@ function Activity({ d, eps, sub, setSub, params, sigNames }: any) {
     </div>}
     {sub === "signals" && <>
       {d.initiatives.length > 0 && <><h3>{tr("Programmes")}</h3>{d.initiatives.map((i: any) => <div key={i.id} className="card"><b>{plainTitle(i.title)}</b> <Badge>{humanize(i.stage)}</Badge> {!i.budget_verified && <Badge kind="warn">{tr("Budget not confirmed")}</Badge>}
-        <p className="small">{tr("Technology:") + " "}{i.technology_tags.join(", ") || tr("Not known")}. {tr("Last big news {}, next milestone {}.", fmtDate(i.last_material_event_at), fmtDate(i.next_milestone_at))}</p>
-        {i.research_gaps.length > 0 && <><span className="small"><b>{tr("Still to find out")}</b></span><ul className="tight small">{i.research_gaps.map((g: string, k: number) => <li key={k}>{g}</li>)}</ul></>}</div>)}</>}
+        <p className="small">{tr("Technology:") + " "}{i.technology_tags.join(", ") || tr("Not known")}. {i.next_milestone_at ? tr("Last big news {}, next milestone {}.", fmtDate(i.last_material_event_at), fmtDate(i.next_milestone_at)) : tr("Last big news {}.", fmtDate(i.last_material_event_at))}</p>
+        {i.research_gaps.length > 0 && <><span className="small"><b>{tr("Still to find out")}</b></span><ul className="tight small">{i.research_gaps.map((g: string, k: number) => <li key={k}>{String(g).replace(/\s*\([a-z_]+=[^)]*\)/gi, "")}</li>)}</ul></>}</div>)}</>}
       <div className="row gap-2 mb-2 ac-filters">
         <label>{tr("Status") + " "}<select value={signalStatus} onChange={(e) => setSignalStatus(e.target.value)}><option value="all">{tr("All signals")}</option><option value="active">{tr("Current")}</option><option value="historical">{tr("Historical")}</option></select></label>
         <label>{tr("Order") + " "}<select value={signalOrder} onChange={(e) => setSignalOrder(e.target.value)}><option value="newest">{tr("Newest first")}</option><option value="oldest">{tr("Oldest first")}</option></select></label>
@@ -1121,7 +1121,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           {canPeople && <button type="button" className="glance" onClick={() => goto("people")}>
             {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 4).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" />)}{live.length > 4 && <span className="mono mono-sm more">+{live.length - 4}</span>}</span>
               : <span className="glance-ic" aria-hidden="true"><Ic.people /></span>}
-            <span><b>{peopleCount ? tr("{} people", number(peopleCount)) : tr("No people yet")}</b><small>{peopleCount ? tr("{} decision makers", deciders) : tr("Find decision makers with Exa")}</small></span></button>}
+            <span><b>{peopleCount === 1 ? tr("1 person") : peopleCount ? tr("{} people", number(peopleCount)) : tr("No people yet")}</b>
+              <small>{!peopleCount ? tr("Find decision makers with Exa") : deciders === 1 ? tr("1 decision maker") : tr("{} decision makers", deciders)}</small></span></button>}
           <button type="button" className="glance" onClick={() => jump(Object.keys(lp).length ? "sec-list" : "sec-fit")}>
             <span className="glance-ic" aria-hidden="true">{a.list_priority ? <b className={`glance-p ${String(a.list_priority).toLowerCase()}`}>{a.list_priority}</b> : <Ic.list />}</span>
             <span><b>{a.list_priority || a.list_score != null ? [a.list_score != null ? tr("Score {}", a.list_score) : null, a.list_eligibility].filter(Boolean).join(" · ") || tr("On your lead list") : tr("Not on your lead list")}</b>
