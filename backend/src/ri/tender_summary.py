@@ -344,9 +344,12 @@ def prompt_item(r: dict[str, Any], detail: dict[str, Any] | None) -> dict[str, A
         item["description"] = _clip(r["scope"], 2000)
     if r.get("value_if_reported") is not None:
         item["value"] = float(r["value_if_reported"])
-    for k in ("title_original", "description", "lots", "lot_count", "value", "currency", "duration", "nature", "selection"):
-        if detail and detail.get(k) and k not in item:
+    for k in ("title_original", "description", "lots", "lot_count", "value", "currency", "value_basis", "duration", "nature", "selection", "framework",
+              "languages", "place", "award", "renewals", "recurring", "start", "end", "legal_type"):
+        if detail and detail.get(k) not in (None, "", [], {}) and k not in item:
             item[k] = detail[k]
+    if detail and detail.get("procedure"):
+        item["procedure"] = detail["procedure"]
     return item
 
 
@@ -417,6 +420,56 @@ def clean_summary(g: dict[str, Any]) -> dict[str, Any] | None:
         t2 = _lines(g.get(key), k, 160)
         if t2:
             out[key] = t2
+    out.update(clean_facts(g))
+    out["v"] = SUMMARY_VERSION
+    return out
+
+
+_SECTOR_ALIASES = {"banking": "bank", "savings_bank": "bank", "cooperative_bank": "bank", "building_society": "bank", "central_or_development_bank": "development_bank",
+                   "insurer": "insurance", "reinsurance": "insurance", "payment": "payments", "exchange": "capital_markets", "market_infrastructure": "capital_markets",
+                   "pension": "pension_fund", "pensions": "pension_fund", "asset_manager": "asset_management", "regulator": "financial_authority",
+                   "supervisor": "financial_authority", "public": "public_sector", "public_body": "public_sector", "government": "public_sector",
+                   "fintech": "financial_software", "software": "enterprise_software", "e_commerce": "digital_commerce", "ecommerce": "digital_commerce"}
+
+
+def _int(v: Any, lo: int, hi: int) -> int | None:
+    if isinstance(v, bool):
+        return None
+    try:
+        x = int(round(float(v)))
+    except (TypeError, ValueError):
+        return None
+    return x if lo <= x <= hi else None
+
+
+def clean_facts(g: dict[str, Any]) -> dict[str, Any]:
+    """Who the buyer is and the facts that decide a bid, as the model gave them; anything out of range or not in the fixed sets is left out."""
+    out: dict[str, Any] = {}
+    sector = re.sub(r"[\s&/-]+", "_", str(g.get("buyer_sector") or "").strip().lower())
+    sector = sector if sector in MODEL_SECTORS else _SECTOR_ALIASES.get(sector, "")
+    if sector:
+        out["buyer_sector"] = sector
+    for key in ("buyer_note", "buyer_note_pl"):
+        t = _line(g.get(key), 80)
+        if t:
+            out[key] = t
+    for key, lo, hi in (("lots", 1, 500), ("contract_months", 1, 240), ("price_weight", 0, 100)):
+        x = _int(g.get(key), lo, hi)
+        if x is not None:
+            out[key] = x
+    for key in ("framework", "renewal"):
+        if isinstance(g.get(key), bool):
+            out[key] = g[key]
+    langs = [str(x).strip().lower() for x in (g.get("languages") if isinstance(g.get("languages"), list) else [])]
+    langs = list(dict.fromkeys(x for x in langs if re.fullmatch(r"[a-z]{2}", x)))[:6]
+    if langs:
+        out["languages"] = langs
+    on_site = str(g.get("on_site") or "").strip().lower()
+    if on_site in ("required", "partly", "remote"):
+        out["on_site"] = on_site
+    incumbent = _line(g.get("incumbent"), 120)
+    if incumbent and incumbent.lower() not in ("null", "none", "unknown", "n/a"):
+        out["incumbent"] = incumbent
     return out
 
 
@@ -505,13 +558,15 @@ def summarise(conn: Conn, call: Call, run: Callable[[Any], Any], *, cap: int = R
     """Summarise up to `cap` waiting notices, `batch` per call, committing after each batch. Stops cleanly when the budget runs short."""
     from .sources.base import BudgetExceeded
     out: dict[str, Any] = {"summarised": 0, "skipped": 0, "batches": 0, "calls": 0, "tokens": 0, "ted_details": 0, "ted_detail_errors": 0}
+    out["classified"] = classify_open(conn)          # only ICP notices (and unclear ones) are due: their sector must be known first
+    conn.commit()
     attempted: list[str] = []
     while len(attempted) < cap:
         rows = pending(conn, min(batch, cap - len(attempted)), exclude=attempted)
         if not rows:
             break
         details: dict[str, dict[str, Any]] = {}
-        ted = {r["notice_id"]: str(r["id"]) for r in rows if r["source_id"] == "procurement-ted" and not (r["source_detail"] or {}).get("from")}
+        ted = {r["notice_id"]: str(r["id"]) for r in rows if r["source_id"] == "procurement-ted" and (r["source_detail"] or {}).get("v", 1) != DETAIL_VERSION}
         if fetch_ted and ted:
             try:
                 got = fetch_ted(list(ted))
@@ -546,6 +601,7 @@ def summarise(conn: Conn, call: Call, run: Callable[[Any], Any], *, cap: int = R
             out[k] += res.get(k, 0)
         if res.get("model"):
             out["model"] = res["model"]
+    out["reclassified"] = classify_open(conn)        # the model's buyer_sector decides the notices the rules could not tell
     out["waiting"] = count_pending(conn)
     conn.commit()
     return out

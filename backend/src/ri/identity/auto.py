@@ -79,7 +79,7 @@ def _related(a: str, b: str) -> bool:
     """The same company in other words: the names differ only by 'Bank' (Nordea / Nordea Bank), or by a typo. Extra words such as a country
     or a business line ('Bupa Insurance UK') point to a subsidiary, which is a different company: that is left to the web search and the AI."""
     ta, tb = _tokens(a), _tokens(b)
-    if not ta or not tb:
+    if not ta or not tb or _regional_pair(a, b):
         return False
     return (bool(ta & tb) and (ta ^ tb) <= _SAME_ENTITY_EXTRA) or fuzz.ratio(core_name(a), core_name(b)) >= 92
 
