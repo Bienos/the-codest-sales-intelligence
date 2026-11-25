@@ -30,6 +30,14 @@ const VIEW_LINE: Record<View, string> = {
   other: "On your lead list or in your workbooks, but outside what you sell to. The reason is on each row.",
 };
 
+/** The target profile in plain words: what each fact is for. */
+const RULES: [string, string][] = [
+  ["In financial services", "Banks, insurers, payments, lending, wealth and fintech companies. Companies that sell software to them are not targets."],
+  ["Big enough", "More than 500 staff in Europe, or more than 2,000 elsewhere."],
+  ["Not owned by the state", "Privately held, listed and mutual companies are fine. State-owned companies and public bodies buy through public tenders instead: you find those on Open tenders."],
+  ["Your lead list comes first", "A company your lead list marks eligible is always a target account. For the others, each fact needs a web page that says so, and Exa finds it."],
+];
+
 function AddCompany({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [params] = useSearchParams();
@@ -274,6 +282,12 @@ function CompanyDirectory({ view, research, params, update }: {
         </button>)}
       </div>
       <p className="acc-viewline">{tr(VIEW_LINE[view])}</p>
+      <details className="acc-how">
+        <summary>{tr("What makes a target account?")}</summary>
+        <dl className="acc-how-body">
+          {RULES.map(([title, text]) => <div key={title}><dt>{tr(title)}</dt><dd>{tr(text)}</dd></div>)}
+        </dl>
+      </details>
       {view === "filling" && <FillInNote />}
 
       <div className="acc-tools-panel" role="search" aria-label={tr("Filter companies")}>

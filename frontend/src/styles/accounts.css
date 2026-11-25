@@ -23,7 +23,22 @@
 .acc-tile[aria-pressed="true"] .acc-tile-sub { color: var(--on-navy-muted); }
 .acc-tile.is-filling .acc-tile-n::before { content: ""; display: inline-block; inline-size: 8px; block-size: 8px; margin-right: 8px; vertical-align: 6px; border: 1.5px dashed var(--purple); }
 .acc-tile.is-other:not([aria-pressed="true"]) .acc-tile-n { color: var(--muted); }
-.acc-viewline { margin: 0 0 14px; max-width: 92ch; font-size: var(--fs-md); line-height: 1.5; color: var(--body); }
+.acc-viewline { margin: 0; max-width: 92ch; font-size: var(--fs-md); line-height: 1.5; color: var(--body); }
+
+/* what makes a target account: one click away, four plain rules */
+.acc-how { margin: 4px 0 16px; max-width: 100ch; }
+.acc-how > summary { display: inline-flex; align-items: center; gap: 6px; margin: 0; font: 600 var(--fs-sm)/1.4 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--navy);
+  text-decoration: underline; text-decoration-color: var(--pink); text-underline-offset: .25em; list-style: none; cursor: pointer; }
+.acc-how > summary::-webkit-details-marker { display: none; }
+.acc-how > summary::after { content: ""; inline-size: 6px; block-size: 6px; border: solid var(--navy); border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); }
+.acc-how[open] > summary::after { transform: translateY(1px) rotate(-135deg); }
+.acc-how > summary:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+.acc-how-body { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 10px 0 0; background: var(--white); border: 1px solid var(--line); }
+.acc-how-body > div { padding: 12px 14px; border-left: 1px solid var(--line); }
+.acc-how-body > div:first-child { border-left: 0; }
+.acc-how-body dt { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font: 800 var(--fs-sm)/1.25 var(--font-head); color: var(--navy); }
+.acc-how-body dt::before { content: ""; flex: none; inline-size: 8px; block-size: 8px; background: var(--pink); }
+.acc-how-body dd { margin: 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--body); }
 
 /* how Exa is getting on: a calm strip, with a bar for how much of the queue it has looked at */
 .acc-fill { display: grid; grid-template-columns: auto minmax(0, 1fr) 160px; align-items: center; gap: 8px 14px; margin: -4px 0 16px; padding: 10px 14px;
@@ -183,6 +198,9 @@
   .acc-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .acc-bar .acc-q { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
   .acc-bar > .acc-q + .acc-ctl { border-left: 0; }
+  .acc-how-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .acc-how-body > div:nth-child(3) { border-left: 0; }
+  .acc-how-body > div:nth-child(n+3) { border-top: 1px solid var(--line); }
   .acc-tile { padding: 12px 14px; column-gap: 12px; }
   .acc-tile-n { font-size: 26px; }
 }
@@ -202,6 +220,10 @@
   .acc-chips { padding: 10px; gap: 6px; }
   .acc-chips-l { inline-size: 100%; margin: 4px 0 0; }
   .acc-seg button, .acc-chip { min-block-size: 40px; }
+  .acc-how-body { grid-template-columns: minmax(0, 1fr); }
+  .acc-how-body > div { border-left: 0; border-top: 1px solid var(--line); }
+  .acc-how-body > div:first-child { border-top: 0; }
+  .acc-facts { white-space: normal; }
   .acc-head { display: none; }
   .acc-row, .acc-list.no-pick .acc-row, .acc-list.is-filling .acc-row, .acc-list.is-other .acc-row { row-gap: 10px; column-gap: 12px; min-block-size: 0; padding: 14px 12px; }
   .acc-row { grid-template-columns: 22px 40px minmax(0, 1fr) 44px; grid-template-areas: "pick av id end" ". sig sig sig" ". nums nums nums"; }
