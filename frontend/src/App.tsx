@@ -3,7 +3,8 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "reac
 import { ApiError, api, clearToken } from "./api";
 import { LanguageSwitcher, tr, useLanguage } from "./locale";
 import Today from "./pages/Today";
-import { Accounts, Account } from "./pages/Accounts";
+import { Accounts } from "./pages/Accounts";
+import { Account } from "./pages/AccountDetail";
 import Opportunity from "./pages/Opportunity";
 import Admin from "./pages/Admin";
 import Guide from "./pages/Guide";
