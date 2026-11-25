@@ -25,6 +25,7 @@ class ImportResult:
     tabs: dict[str, dict[str, Any]] = field(default_factory=dict)
     reconcile: dict[str, Any] = field(default_factory=dict)
     error: str | None = None
+    layout: str = "v1"
 
 
 def normalise_headers(raw: list[str]) -> list[str]:
@@ -82,7 +83,9 @@ def import_workbook(conn: Conn, client: SheetsClient, workbook: str, *, actor: s
         return res
 
     drift = False
-    for ct in C.contracts_for(workbook):
+    layout = C.detect_layout(workbook, list(tabs))
+    res.layout = layout
+    for ct in C.contracts_for(workbook, layout):
         tab = tabs.get(ct.title)
         if tab is None:
             _snapshot(conn, run_id, wb, None, ct, [], "missing", {"reason": "tab not found"}, 0)
@@ -100,18 +103,18 @@ def import_workbook(conn: Conn, client: SheetsClient, workbook: str, *, actor: s
         conn.commit()
         res.tabs[ct.title] = stats
         drift = drift or stats["status"] == "drift"
-    known = {ct.title for ct in C.contracts_for(workbook)}
+    known = {ct.title for ct in C.contracts_for(workbook, layout)}
     for t in tabs:
         if t not in known:
             res.tabs[t] = {"status": "unknown_tab"}   # surfaced to admins; never auto-imported
 
     if reconcile:
-        rc = reconcile_run(conn, run_id, workbook)
+        rc = reconcile_run(conn, run_id, workbook, layout)
         res.reconcile = rc.as_dict()
     failed = any(v.get("status") == "failed" for v in res.tabs.values())
     res.status = "failed" if failed else ("paused_schema_drift" if drift else "completed")
     conn.execute("UPDATE import_runs SET status=%s, finished_at=now(), stats=%s WHERE id=%s",
-                 (res.status, jb({"tabs": res.tabs, "reconcile": res.reconcile}), run_id))
+                 (res.status, jb({"tabs": res.tabs, "reconcile": res.reconcile, "layout": layout}), run_id))
     audit(conn, actor=actor, operation="sheet_import", record_type="import_run", record_id=run_id, after={"status": res.status})
     conn.commit()
     return res

@@ -221,6 +221,68 @@ class XlsxSheetsClient:
         return out
 
 
+class XlsxValuesClient(XlsxSheetsClient):
+    """Streaming, values-only reader for layouts whose tabs need no cell hyperlinks. Only the tabs in `keep` are held in memory
+    (as plain values); the others are listed by title only, which is all the importer needs to report them as not imported.
+    Full loading of a 30-tab export took ~450 MB, too close to a 512 MB worker; this keeps it to the tabs that are imported."""
+
+    def __init__(self, workbook_id: str, source: Any, keep: set[str]):
+        import datetime as _dt
+
+        import openpyxl
+
+        self._wb_id = workbook_id
+        self._dt = _dt
+        self._rows: dict[str, list[list[str]]] = {}
+        self._titles: list[str] = []
+        wb = openpyxl.load_workbook(source, read_only=True, data_only=True)
+        try:
+            for ws in wb.worksheets:
+                self._titles.append(ws.title)
+                if ws.title in keep:
+                    rows = [[self._text(v) for v in r] for r in ws.iter_rows(values_only=True)]
+                    while rows and not any(rows[-1]):
+                        rows.pop()           # exports often carry empty tails
+                    self._rows[ws.title] = rows
+        finally:
+            wb.close()
+
+    def get_tabs(self, workbook_id: str) -> list[TabInfo]:
+        if workbook_id != self._wb_id:
+            raise ConnectorBlocked("xlsx snapshot does not contain that workbook")
+        out = []
+        for title in self._titles:
+            rows = self._rows.get(title, [])
+            out.append(TabInfo(f"xlsx:{title}", title, len(rows), max((len(r) for r in rows), default=0), 1))
+        return out
+
+    def get_values(self, workbook_id, title, first_row, last_row, last_col):
+        if workbook_id != self._wb_id:
+            raise ConnectorBlocked("xlsx snapshot does not contain that workbook")
+        rows = self._rows.get(title, [])[first_row - 1:last_row]
+        return [(r + [""] * last_col)[:last_col] for r in rows]
+
+    def get_hyperlinks(self, workbook_id, title, col_index, first_row, last_row):
+        return {}
+
+
+def xlsx_client(workbook_key: str, workbook_id: str, data: bytes) -> XlsxSheetsClient:
+    """Pick the reader for an uploaded export: the streaming one when the detected layout reads no cell hyperlinks."""
+    import io
+
+    import openpyxl
+
+    from . import contracts as C
+
+    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
+    names = list(wb.sheetnames)
+    wb.close()
+    cts = C.contracts_for(workbook_key, C.detect_layout(workbook_key, names))
+    if any(ct.hyperlink_cols for ct in cts):
+        return XlsxSheetsClient(workbook_id, io.BytesIO(data))
+    return XlsxValuesClient(workbook_id, io.BytesIO(data), {ct.title for ct in cts})
+
+
 MAX_XLSX_BYTES = 25 * 1024 * 1024
 MAX_XLSX_UNCOMPRESSED = 120 * 1024 * 1024        # full (not read-only) loading is needed for cell hyperlinks, and it costs several times this in memory
 
@@ -247,7 +309,7 @@ def detect_workbook(data: bytes) -> str:
     wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True)
     names = set(wb.sheetnames)
     wb.close()
-    if {"MASTER ACCOUNTS", "BUYING SIGNAL LOG"} <= names:
+    if {"MASTER ACCOUNTS", "BUYING SIGNAL LOG"} <= names or {"MASTER ACCOUNTS", "MASTER CONTACTS", "MASTER BUYING SIGNALS"} <= names:
         return "A"
     if {"Accounts", "Priority Outreach"} <= names:
         return "B"

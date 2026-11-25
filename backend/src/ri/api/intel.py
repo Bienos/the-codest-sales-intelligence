@@ -18,6 +18,7 @@ from ..jobs.queue import enqueue
 from ..target_market import account_workspace_sql, target_sql
 from .auth import principal_dep, require
 
+RUN_WAITING = ("scheduled", "claimed", "fetching", "parsing", "verifying", "committing")     # a job that has not finished yet
 URL_KEYS = ("Primary source URL", "Primary Source URL", "Secondary Source URL", "Source URL", "Source link", "Signal Source URL", "Supplier evidence URL", "Existing source URL", "Second Signal Source URL", "Third Signal Source URL", "Matched Signal Source URL", "Evidence URL")
 
 
@@ -413,19 +414,51 @@ def register_feed(app: FastAPI) -> None:
                     "coverage": coverage_health(conn, p)}
 
     @app.get("/api/tenders")
-    def tenders(request: Request, q: str = Query("", max_length=120), region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
+    def tenders(request: Request, q: str = Query("", max_length=120), region: str = Query("", pattern="^(|core|uk|dach|nordics|poland|europe|international)$"),
                 buyer: str = Query("", pattern="^(|finance|public)$"), min_days: int = Query(3, ge=0, le=60), page: int = Query(1, ge=1, le=200), limit: int = Query(30, ge=1, le=100),
                 p: Principal = Depends(principal_dep)):
-        """Open tenders for software work from every official source, whoever the buyer is (public bodies included), soonest deadline first."""
-        from ..tenders import open_tenders
+        """Open tenders for software work from every official source, whoever the buyer is (public bodies included), soonest deadline first.
+        `region=core` keeps our markets (UK, DACH, Nordics, Poland); no region means every region."""
+        from ..tenders import TENDER_SOURCES, open_tenders
         if not (p.can("today.read") or p.can("explorer.read")):
             raise HTTPException(403, "missing permission today.read")
         with tx(request) as conn:
             out = open_tenders(conn, p, q=q, region=region, buyer=buyer, min_days=min_days, limit=limit, offset=(page - 1) * limit)
             sources = qa(conn, "SELECT s.source_id, s.display_name, s.status, h.last_success_at FROM sources s LEFT JOIN source_health h USING (source_id) "
                                "WHERE s.source_family='procurement' AND s.collection_method='official_api' AND s.source_id = ANY(%s) ORDER BY s.display_name",
-                         (["procurement-ted", "procurement-uk-fts", "procurement-uk-contracts-finder", "procurement-ezamowienia"],))
-        return {**out, "page": page, "sources": sources}
+                         (list(TENDER_SOURCES),))
+            # a check asked for in the last half hour that has not finished yet (an older one is not shown: no worker may be picking it up)
+            refreshing = q1(conn, "SELECT 1 FROM jobs WHERE kind='source_run' AND status = ANY(%s) AND payload->>'source_id' = ANY(%s) "
+                                  "AND created_at > now() - interval '30 minutes' LIMIT 1", (list(RUN_WAITING), list(TENDER_SOURCES))) is not None
+        last = max((s["last_success_at"] for s in sources if s["last_success_at"]), default=None)
+        return {**out, "page": page, "sources": sources, "last_updated": last, "refreshing": refreshing}
+
+    @app.post("/api/tenders/refresh")
+    def refresh_tenders(request: Request, p: Principal = Depends(require("admin.sources"))):
+        """Check the switched-on tender sources now instead of waiting for the daily run. A source whose check is already waiting or
+        running is not queued again, and repeated clicks within the same five minutes queue nothing new."""
+        from ..scheduler import SCHEDULED_STATUSES
+        from ..tenders import TENDER_SOURCES
+        now = datetime.now(timezone.utc)
+        window = f"{now:%Y%m%d%H}{now.minute // 5:02d}"
+        with tx(request) as conn:
+            active = [r["source_id"] for r in qa(conn, "SELECT source_id FROM sources WHERE source_id = ANY(%s) AND status = ANY(%s) ORDER BY source_id",
+                                                 (list(TENDER_SOURCES), list(SCHEDULED_STATUSES)))]
+            waiting = {r["source_id"] for r in qa(conn, "SELECT DISTINCT payload->>'source_id' AS source_id FROM jobs WHERE kind='source_run' AND status = ANY(%s) "
+                                                        "AND payload->>'source_id' = ANY(%s)", (list(RUN_WAITING), active))}
+            queued, jobs = [], []
+            for sid in active:
+                if sid in waiting:
+                    continue
+                jid, created = enqueue(conn, "source_run", {"source_id": sid}, idempotency_key=f"source_run:{sid}:manual:{window}", correlation_id=f"tenders-refresh-{window}")
+                if created:
+                    queued.append(sid)
+                    jobs.append(jid)
+                else:
+                    waiting.add(sid)
+            audit(conn, actor=p.email, operation="tenders_refresh_requested", record_type="source_family", record_id="procurement",
+                  detail={"queued": queued, "already_waiting": sorted(waiting), "job_ids": jobs})
+        return {"queued": queued, "already_waiting": sorted(waiting), "not_switched_on": [s for s in TENDER_SOURCES if s not in active]}
 
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),

@@ -33,6 +33,7 @@ class SheetContract:
     person: str | None = None         # header with a person's name (contact tabs)
     hyperlink_cols: tuple[str, ...] = field(default_factory=tuple)
     order: int = 0                    # processing order: org-creating tabs first
+    layout: str = "v1"                # workbook layout this tab belongs to (a workbook is imported with one layout)
 
     @property
     def header_hash(self) -> str:
@@ -139,5 +140,46 @@ CONTRACTS: list[SheetContract] = [
 ]
 
 
-def contracts_for(workbook: str) -> list[SheetContract]:
-    return sorted([c for c in CONTRACTS if c.workbook == workbook], key=lambda c: c.order)
+# Workbook A was rebuilt on 24-25 Nov 2026 as the "Leads Master List": one MASTER ACCOUNTS / MASTER CONTACTS /
+# MASTER BUYING SIGNALS set joined by Account ID, with the old tabs kept as "ARCHIVE — ..." (never imported).
+# The per-region and per-persona contact tabs are filtered views of MASTER CONTACTS, so they are not imported either.
+CONTRACTS += [
+    _c("A", "MASTER ACCOUNTS", "master_account_v2", tuple([
+        "Account ID", "Company", "Region", "Country", "Industry", "Employees", "ICP Segment", "Website", "Account Priority",
+        "Opportunity Score", "Strongest Buying Signal", "Signal Date", "Signal Strength", "Buying Stage", "Potential Opportunity",
+        "The Codest Service Fit", "Procurement Route", "Contacts", "Signals", "Last Researched", "Next Action", "Research Status",
+        "Headcount Evidence", "Eligibility", "Source Row", "Procurement Contacts", "Engineering Contacts", "Latest Linked Event",
+        "Coverage Gap"]),
+       company="Company", identity=("Account ID",), country="Country", website="Website", segment="Industry",
+       employees="Employees", creates_orgs=True, order=10, layout="v2"),
+    _c("A", "MASTER CONTACTS", "master_contact", tuple([
+        "Contact ID", "Full Name", "Job Title", "Company", "Account ID", "Region", "Country (account)", "Industry",
+        "Persona Category", "Seniority", "Buying Committee Role", "LinkedIn URL", "Work Email", "Email Verification Status",
+        "Contact Priority", "Company Priority", "Relevant Buying Signal", "Suggested Outreach Angle", "Authority Notes",
+        "Last Verified", "Verification Source", "Contact Research Status", "Eligibility", "Signal Strength", "Procurement Route",
+        "Account Next Action"]),
+       company="Company", identity=("Contact ID",), country="Country (account)", person="Full Name", order=40, layout="v2"),
+    _c("A", "MASTER BUYING SIGNALS", "master_signal", tuple([
+        "Signal ID", "Company", "Account ID", "Region", "Country", "Signal Category", "Verified Event", "Event Date",
+        "Publication Date", "Source URL", "Secondary Source", "Signal Strength", "Evidence Confidence", "Commercial Implication",
+        "Relevant Buyer Persona", "Recommended Action", "Existing Score", "Last Verified", "Status", "Evidence Type",
+        "Service Fit", "Source Notes", "Original Source"]),
+       company="Company", identity=("Signal ID",), country="Country", order=50, layout="v2"),
+]
+
+# A workbook is read with the newest layout whose marker tabs are all present.
+LAYOUT_MARKERS: dict[str, list[tuple[str, frozenset[str]]]] = {
+    "A": [("v2", frozenset({"MASTER ACCOUNTS", "MASTER CONTACTS", "MASTER BUYING SIGNALS"}))],
+}
+
+
+def detect_layout(workbook: str, tab_titles: set[str] | list[str]) -> str:
+    titles = set(tab_titles)
+    for layout, markers in LAYOUT_MARKERS.get(workbook, []):
+        if markers <= titles:
+            return layout
+    return "v1"
+
+
+def contracts_for(workbook: str, layout: str = "v1") -> list[SheetContract]:
+    return sorted([c for c in CONTRACTS if c.workbook == workbook and c.layout == layout], key=lambda c: c.order)

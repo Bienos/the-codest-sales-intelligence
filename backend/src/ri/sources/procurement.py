@@ -23,6 +23,7 @@ from .util import excerpt, first_text, parse_dt, sha, tz_of, utcnow
 TED_URL = "https://api.ted.europa.eu/v3/notices/search"
 FTS_URL = "https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages"
 FTS_TAGS = {"tender", "tenderUpdate", "tenderAmendment", "tenderCancellation", "award", "awardUpdate"}
+TED_NOTICE_PAGE = re.compile(r"^https://ted\.europa\.eu/[a-z]{2}/notice/")
 TED_FIELDS = ["publication-number", "notice-title", "buyer-name", "buyer-country", "notice-type", "publication-date",
               "deadline-receipt-tender-date-lot", "classification-cpv", "procedure-type", "links"]
 
@@ -40,6 +41,11 @@ def derive_status(now: datetime, *, kind: str, deadline: datetime | None, amende
     if kind == "contract_notice":
         return "amended" if amended else "open"
     return "unknown"
+
+
+def ted_english_url(url: str | None) -> str | None:
+    """TED shows the same notice page in every EU language: always keep the English one (the tender list switches it to Polish for Polish users)."""
+    return TED_NOTICE_PAGE.sub("https://ted.europa.eu/en/notice/", url) if url else url
 
 
 def _ted_kind(notice_type: str | None) -> str:
@@ -96,7 +102,7 @@ class TedConnector:
         kind = _ted_kind(first_text(n.get("notice-type")))
         pub = parse_dt(first_text(n.get("publication-date")))
         links = n.get("links") or {}
-        url = first_text(links.get("html") if isinstance(links, dict) else None) or f"https://ted.europa.eu/en/notice/-/detail/{item.external_id}"
+        url = ted_english_url(first_text(links.get("html") if isinstance(links, dict) else None)) or f"https://ted.europa.eu/en/notice/-/detail/{item.external_id}"
         status = derive_status(self.now(), kind=kind, deadline=deadline)
         title = first_text(n.get("notice-title"))
         rec = {"notice_id": item.external_id, "buyer_name": first_text(n.get("buyer-name")), "title": title,

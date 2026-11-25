@@ -39,11 +39,9 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         raise RequiresApproval("this job class requires an approval record")
 
     def sheet_import_xlsx(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
-        import io
-
         from ..db import q1
         from ..sheets import contracts as C
-        from ..sheets.client import XlsxSheetsClient
+        from ..sheets.client import xlsx_client
         from ..sheets.importer import import_workbook
         up = q1(conn, "SELECT * FROM import_uploads WHERE id=%s", (job["payload"]["upload_id"],))
         if not up or up["content"] is None:
@@ -53,7 +51,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         conn.execute("UPDATE jobs SET lease_expires_at = now() + interval '2 hours' WHERE id=%s", (job["id"],))
         conn.commit()
         try:
-            client = XlsxSheetsClient(C.WORKBOOK_IDS[up["workbook_key"]], io.BytesIO(bytes(up["content"])))
+            client = xlsx_client(up["workbook_key"], C.WORKBOOK_IDS[up["workbook_key"]], bytes(up["content"]))
             res = import_workbook(conn, client, up["workbook_key"], actor=f"upload:{up['uploaded_by']}")
         except Exception as exc:   # noqa: BLE001
             conn.rollback()

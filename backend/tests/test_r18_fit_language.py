@@ -65,6 +65,26 @@ def test_old_findings_get_a_reason_in_cheap_batches_and_unknown_ids_are_ignored(
     assert fit.pending(conn) == []
 
 
+def test_one_finding_the_model_will_not_answer_no_longer_blocks_the_rest(conn):
+    from ri.events import fit
+    ids = [str(conn.execute("insert into events(event_key, event_type, summary, extraction_model_version, verification_status, proven, lane, market_tier, pub_at) "
+                            "values (%s,'funding_announced',%s,'t','verified',true,'private','core', now()) returning id", (f"g{i}", f"Fintech {i} raised money.")).fetchone()["id"])
+           for i in range(3)]
+    bad = ids[1]
+
+    async def call(system, user):
+        items = json.loads(user)["items"]
+        if any(it["id"] == bad for it in items):
+            raise ValueError("empty model output (stop_reason: refusal)")
+        return json.dumps({"items": [{"id": it["id"], "level": "possible", "service": "staff_augmentation", "reason": "Growth money often means hiring."}
+                                     for it in items]}), 10, 10, "fake"
+    r = fit.assess(conn, call, lambda c: asyncio.run(c))
+    assert r["assessed"] == 2 and r["skipped"] == 1
+    attrs = {str(x["id"]): x["attrs"] for x in conn.execute("select id, attrs from events")}
+    assert "fit_skipped" in attrs[bad] and all("fit" in attrs[i] for i in ids if i != bad)
+    assert fit.pending(conn) == []                      # the skipped finding is not picked up again
+
+
 def test_searches_cover_each_service_and_run_in_local_languages():
     from ri.discovery.plans import build_plans
     plans = build_plans()

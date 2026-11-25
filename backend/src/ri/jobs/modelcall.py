@@ -30,7 +30,7 @@ def make_call(conn: Conn, st: Settings, *, org_id: str | None, operation: str, k
                                                             json={"model": model, "max_tokens": max_tokens, "system": system, "messages": [{"role": "user", "content": user}]})
                 text = "".join(x.get("text", "") for x in data.get("content", []) if x.get("type") == "text")
                 if not text.strip():
-                    raise ValueError("empty model output")
+                    raise ValueError(f"empty model output (stop_reason: {data.get('stop_reason')})")
                 u = data.get("usage") or {}
                 tin, tout = int(u.get("input_tokens", 0)), int(u.get("output_tokens", 0))
                 pin, pout = LIST_PRICES.get(model, (st.anthropic_price_in_per_mtok, st.anthropic_price_out_per_mtok))

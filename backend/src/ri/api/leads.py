@@ -22,7 +22,9 @@ from ..target_market import TARGET_REGION_ORDER, TARGET_REGIONS, target_region, 
 from .auth import require
 from .search import all_like, tokens
 
-SORTS = {"score": lambda r: (-(float(r["score"] or 0)), r["name"].lower()), "name": lambda r: r["name"].lower(), "size": lambda r: (-(r["employees"] or 0), r["name"].lower()),
+_LIST_RANK = {"P1": 0, "P2": 1, "P3": 2}
+# Verified signals first; among equals (and while nothing is verified yet) the lead list's own priority and score decide.
+SORTS = {"score": lambda r: (-(float(r["score"] or 0)), _LIST_RANK.get(r["list_priority"] or "", 9), -(float(r["list_score"] or 0)), r["name"].lower()), "name": lambda r: r["name"].lower(), "size": lambda r: (-(r["employees"] or 0), r["name"].lower()),
          "recent": lambda r: (r["last_signal_at"] is None, -(r["last_signal_at"].timestamp() if r["last_signal_at"] else 0), r["name"].lower())}
 ORIGIN_LABEL = {"list": "Your lists", "added": "Added by a person", "discovered": "Found by the platform"}
 
@@ -41,6 +43,12 @@ def _rows(conn, p: Principal, q: str, scope: str = "") -> list[dict[str, Any]]:
     rows = qa(conn,
         f"SELECT {sector_sql('o.segment')} AS sector, o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.entity_type, o.company_ownership, "      # noqa: S608
         f"o.created_at, s.score, s.band, s.groups, s.signal_count, s.stopped, s.last_signal_at, s.top, c.status AS candidate_status, c.icp_note, "
+        f"o.list_priority, o.list_score, o.list_eligibility, "
+        f"(SELECT nullif(coalesce(r.original->>'Strongest Buying Signal', r.original->>'Verified Buying Signal'), '') FROM legacy_account_research r "
+        f"WHERE r.organization_id=o.id AND r.kind='master_account' ORDER BY r.observed_at DESC LIMIT 1) AS list_signal, "
+        f"(SELECT count(DISTINCT e.person_id) FROM employment e JOIN people pe ON pe.id=e.person_id AND pe.erased_at IS NULL WHERE e.organization_id=o.id) AS people, "
+        f"(SELECT count(DISTINCT e.person_id) FROM employment e JOIN people pe ON pe.id=e.person_id AND pe.erased_at IS NULL AND pe.work_email IS NOT NULL AND NOT pe.suppressed "
+        f"WHERE e.organization_id=o.id) AS people_with_email, "
         f"EXISTS (SELECT 1 FROM legacy_account_research r WHERE r.organization_id=o.id AND r.kind='priority_outreach') AS shortlist, "
         f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
         f"FROM organizations o LEFT JOIN account_scores s ON s.organization_id=o.id LEFT JOIN new_company_candidates c ON c.organization_id=o.id "
@@ -49,7 +57,8 @@ def _rows(conn, p: Principal, q: str, scope: str = "") -> list[dict[str, Any]]:
     for r in rows:
         icp = icp_band(r["employees"], bool(r["employees_uncertain"]), r["segment"])
         out.append({**r, "id": str(r["id"]), "region": (target_region if scope else region_for)(r["country_code"]), "icp": icp["band"], "boundary_uncertain": icp["boundary_uncertain"], "origin": _origin(r),
-                    "band": r["band"] or "none", "score": float(r["score"]) if r["score"] is not None else None, "groups": list(r["groups"] or [])})
+                    "band": r["band"] or "none", "score": float(r["score"]) if r["score"] is not None else None, "groups": list(r["groups"] or []),
+                    "list_score": float(r["list_score"]) if r["list_score"] is not None else None})
     return out
 
 

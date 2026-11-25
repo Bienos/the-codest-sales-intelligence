@@ -16,6 +16,9 @@ from .market import alpha2, region_for
 RELEVANT_CPV = r"^72(0|2)"
 # These two collectors already keep only software notices when they read the feed.
 SOFTWARE_ONLY_SOURCES = ("procurement-uk-fts", "procurement-uk-contracts-finder")
+# "Our markets": where The Codest sells. The tender list starts here; every other region stays one click away.
+CORE_REGIONS = ("uk", "dach", "nordics", "poland")
+TENDER_SOURCES = ("procurement-ted", "procurement-uk-fts", "procurement-uk-contracts-finder", "procurement-ezamowienia")
 SOURCE_LABEL = {"procurement-ted": "EU tenders (TED)", "procurement-uk-fts": "UK Find a Tender", "procurement-uk-contracts-finder": "UK Contracts Finder",
                 "procurement-ezamowienia": "Poland e-Zamówienia"}
 _FINANCE_BUYER = r"\m(bank\w*|banco|banque|sparkasse|kasa|insur\w*|versicher\w*|ubezpiecz\w*|pension\w*|payment\w*|financ\w*|fintech|clearing|exchange|börse|giełd\w*)\M"
@@ -29,8 +32,19 @@ def split_title(title: str | None) -> tuple[str, str | None]:
     return (title or "").strip(), None
 
 
+def in_region(reg: str, region: str) -> bool:
+    if not region:
+        return True
+    if region == "core":
+        return reg in CORE_REGIONS
+    if region == "international":
+        return reg not in (*CORE_REGIONS, "europe")
+    return reg == region
+
+
 def open_tenders(conn: Conn, p: Principal, *, q: str = "", region: str = "", buyer: str = "", min_days: int = 3, limit: int = 50, offset: int = 0) -> dict[str, Any]:
-    """`min_days`: leave out tenders closing sooner than this (too late to prepare a bid); they are still counted."""
+    """`region`: "" for every region, "core" for our markets (UK, DACH, Nordics, Poland), or one region key.
+    `min_days`: leave out tenders closing sooner than this (too late to prepare a bid); they are still counted."""
     from .api.search import all_like, tokens
     where, params = org_scope_sql(p, "o.id")
     toks = tokens(q)
@@ -50,18 +64,18 @@ def open_tenders(conn: Conn, p: Principal, *, q: str = "", region: str = "", buy
           AND ({match})
         ORDER BY n.deadline_at, n.id""", [_FINANCE_BUYER, _FINANCE_BUYER, *params, list(SOFTWARE_ONLY_SOURCES), RELEVANT_CPV, *margs])      # noqa: S608
     now = datetime.now(timezone.utc)
-    items, too_late = [], 0
+    items, too_late, elsewhere = [], 0, 0
     for r in rows:
         country = alpha2(r["country"])
         reg = region_for(country)
-        if region == "international" and reg in ("uk", "dach", "nordics", "poland", "europe"):
-            continue
-        if region and region != "international" and reg != region:
-            continue
         kind = "finance" if r["finance_buyer"] else "public"
         if buyer and kind != buyer:
             continue
         days_left = max(0, int((r["deadline_at"] - now).total_seconds() // 86400))
+        if not in_region(reg, region):
+            if days_left >= min_days:                  # open in another region: counted, so the list can say how many more there are
+                elsewhere += 1
+            continue
         if days_left < min_days:
             too_late += 1
             continue
@@ -76,5 +90,5 @@ def open_tenders(conn: Conn, p: Principal, *, q: str = "", region: str = "", buy
                       "published": r["published_at"], "checked_at": checked,
                       "check_is_old": bool(checked and (now - checked).total_seconds() > 3 * 86400)})
     counts = {"total": len(items), "finance": sum(1 for i in items if i["buyer_kind"] == "finance"),
-              "closing_this_week": sum(1 for i in items if i["days_left"] <= 7), "closing_too_soon": too_late}
+              "closing_this_week": sum(1 for i in items if i["days_left"] <= 7), "closing_too_soon": too_late, "other_regions": elsewhere}
     return {"items": items[offset: offset + limit], "counts": counts, "has_more": offset + limit < len(items)}

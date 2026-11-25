@@ -32,6 +32,7 @@ def pending(conn: Conn, limit: int = BATCH) -> list[dict[str, Any]]:
         SELECT e.id, e.event_type, e.subject_name_raw, e.summary, e.market_country, e.attrs ? 'fit' AS has_fit
         FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id
         WHERE e.proven AND NOT e.is_historical_replay AND coalesce(e.event_at,e.pub_at,e.first_observed_at) > now()-interval '90 days'
+          AND NOT (e.attrs ? 'fit_skipped')
           AND (
             (NOT (e.attrs ? 'fit') AND
               ((e.lane='private' AND e.event_type NOT LIKE 'procurement%%')
@@ -49,8 +50,29 @@ def assess(conn: Conn, call: Callable[[str, str], Awaitable[tuple[str, int, int,
     rows = pending(conn, limit)
     if not rows:
         return {"assessed": 0}
+    return _assess_rows(conn, call, run, rows)
+
+
+def _assess_rows(conn: Conn, call: Callable[[str, str], Awaitable[tuple[str, int, int, str]]], run: Callable[[Any], Any],
+                 rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """An empty answer for a batch used to fail the job, and the next job picked the very same batch, so one finding the model
+    would not answer blocked every finding behind it. Now the batch is retried one finding at a time and a finding that still gets
+    no answer is marked and skipped."""
     items = [{"id": str(r["id"]), "type": r["event_type"], "organisation": r["subject_name_raw"], "country": r["market_country"], "summary": r["summary"]} for r in rows]
-    text, tin, tout, model = run(call(SYSTEM, json.dumps({"items": items}, ensure_ascii=False)))
+    try:
+        text, tin, tout, model = run(call(SYSTEM, json.dumps({"items": items}, ensure_ascii=False)))
+    except ValueError as exc:
+        if not str(exc).startswith("empty model output"):
+            raise
+        if len(rows) == 1:
+            conn.execute("UPDATE events SET attrs = attrs || %s WHERE id=%s", (jb({"fit_skipped": str(exc)[:200]}), items[0]["id"]))
+            return {"assessed": 0, "batch": 1, "skipped": 1}
+        out: dict[str, Any] = {"assessed": 0, "batch": len(rows), "skipped": 0}
+        for r in rows:
+            one = _assess_rows(conn, call, run, [r])
+            out["assessed"] += one["assessed"]
+            out["skipped"] += one.get("skipped", 0)
+        return out
     m = re.search(r"\{.*\}", text, re.S)
     got = json.loads(m.group(0)).get("items", []) if m else []
     known = {str(r["id"]): r["has_fit"] for r in rows}

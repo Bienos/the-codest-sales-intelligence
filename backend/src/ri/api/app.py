@@ -2,6 +2,7 @@
 ever *proposals*; execution goes through the approval executor (separate function, separate credential)."""
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -102,6 +103,11 @@ class IdentityResolveIn(BaseModel):
     decision: str = Field(pattern="^(link|new|reject)$")
     organization_id: str | None = None
     note: str = Field(min_length=3)
+
+
+LIST_PROFILE_KEYS = ("Account ID", "Region", "Industry", "ICP Segment", "Account Priority", "Opportunity Score", "Strongest Buying Signal",
+                     "Signal Date", "Signal Strength", "Buying Stage", "Potential Opportunity", "The Codest Service Fit", "Procurement Route",
+                     "Next Action", "Research Status", "Coverage Gap", "Eligibility", "Last Researched", "Primary Source URL")
 
 
 def create_app(settings: Settings, *, db: Database | None = None, verifier: TokenVerifier | None = None, writer_factory=None) -> FastAPI:
@@ -276,6 +282,10 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
 
     @app.get("/api/accounts/{oid}")
     def account(oid: str, request: Request, target: bool = False, p: Principal = Depends(require("accounts.read"))):
+        try:
+            uuid.UUID(oid)
+        except ValueError:
+            raise HTTPException(404, "not found") from None
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
             focus = account_workspace_sql(research=p.can("research.request")) if target else "TRUE"
@@ -286,6 +296,14 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
             hyps = qa(conn, "SELECT h.* FROM opportunity_hypotheses h WHERE h.organization_id=%s AND h.state NOT IN ('superseded') AND (NOT %s OR h.route_type <> 'procurement') ORDER BY h.score_total DESC", (oid, target))
             inits = qa(conn, "SELECT id, title, title_is_official, stage, programme_domain, technology_tags, research_gaps, budget_verified, last_material_event_at, next_milestone_at FROM initiatives WHERE owner_org_id=%s AND status='active'", (oid,))
             sources = qa(conn, "SELECT sheet_title, source_file_id, row_number FROM account_source_links WHERE organization_id=%s", (oid,))
+            # what the lead list itself says about the account (unverified, labelled as such on screen)
+            lp = q1(conn, "SELECT original FROM legacy_account_research WHERE organization_id=%s AND kind='master_account' ORDER BY observed_at DESC LIMIT 1", (oid,))
+            list_profile = {k: v for k, v in (lp["original"] if lp else {}).items() if k in LIST_PROFILE_KEYS and str(v or "").strip()}
+            list_signals = [{"event": r["original"].get("Verified event"), "date": r["original"].get("Event date"), "category": r["original"].get("Signal type"),
+                             "source_url": r["original"].get("Source URL") if str(r["original"].get("Source URL") or "").lower().startswith(("http://", "https://")) else None,
+                             "confidence": r["original"].get("Evidence confidence"), "implication": r["original"].get("Potential engineering relevance")}
+                            for r in qa(conn, "SELECT original FROM legacy_account_research WHERE organization_id=%s AND kind='buying_signal_log' "
+                                              "ORDER BY original->>'Event date' DESC NULLS LAST, observed_at DESC LIMIT 8", (oid,))]
             signals = qa(conn, f"SELECT {STORY_KEY_SQL} AS story_key, s.rule_id, s.demand_tier, s.strength, CASE WHEN s.status='active' AND (s.expires_at IS NULL OR s.expires_at>now()) AND e.lifecycle_status='active' THEN 'active' ELSE 'historical' END AS status, s.effective_from, s.expires_at, e.id::text AS event_id, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verified_at, s.evidence_claim_ids FROM signals s JOIN events e ON e.id=s.event_id AND e.subject_org_id=s.organization_id WHERE s.organization_id=%s AND (NOT %s OR e.lane <> 'public') ORDER BY s.effective_from DESC", (oid, target))
             for signal in signals:
                 signal["evidence"] = evidence_for(conn, list(signal.pop("evidence_claim_ids") or []))
@@ -303,7 +321,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                 names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals WHERE id = ANY(%s)", ([t["rule_id"] for t in score["top"]],))}
                 score["top"] = [{**t, "name": names.get(t["rule_id"])} for t in score["top"]]      # sellers see what the signal means, not just its code
             now = datetime.now(timezone.utc)
-            return {"account": dict(o, id=str(o["id"])), "buying_signal": leading_signals(conn, [oid], commercial_only=target).get(oid), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
+            return {"account": dict(o, id=str(o["id"])), "list_profile": list_profile, "list_signals": list_signals, "buying_signal": leading_signals(conn, [oid], commercial_only=target).get(oid), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
                     "opportunities": [card(conn, h, now) for h in hyps], "initiatives": [dict(i, id=str(i["id"])) for i in inits], "signals": signals, "suppliers": suppliers,
                     "routes": routes, "buyers": buyers, "coverage": coverage, "source_coverage_note": "Only source families listed above are monitored; missing families mean visibility unknown, not 'no activity'."}
 

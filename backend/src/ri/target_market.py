@@ -21,14 +21,21 @@ def commercial_sql(alias: str = "o") -> str:
 
 
 def target_sql(alias: str = "o", *, review: bool = False) -> str:
+    """Companies on the current lead list follow the list's own Eligibility column ("Eligible" are targets, "Review" wait for a
+    check, "Out of scope" are neither). Companies not on the list (found by research or added by hand) must be privately held with
+    a source, in financial services, and over 500 staff in Europe or 2,000 elsewhere."""
     ownership = f"{alias}.company_ownership = 'unknown'" if review else (
         f"{alias}.company_ownership = 'private' AND {alias}.company_profile_source_url IS NOT NULL"
     )
-    return (
-        f"({ownership} AND {commercial_sql(alias)} "
+    by_rules = (
+        f"{alias}.list_eligibility IS NULL AND {ownership} "
         f"AND ({sector_sql(alias + '.segment')}) = 'finance' "
         f"AND {alias}.country_code ~ '^[A-Z][A-Z]$' AND {alias}.country_code NOT IN ('XX','ZZ','EU') "
-        f"AND {alias}.employees_estimate > CASE WHEN {alias}.country_code IN ({_EUROPE}) THEN 500 ELSE 2000 END "
+        f"AND {alias}.employees_estimate > CASE WHEN {alias}.country_code IN ({_EUROPE}) THEN 500 ELSE 2000 END"
+    )
+    by_list = f"coalesce({alias}.list_eligibility, '') = '{'Review' if review else 'Eligible'}'"     # never NULL: callers read it as a flag
+    return (
+        f"((({by_rules}) OR ({by_list})) AND {commercial_sql(alias)} "
         f"AND NOT EXISTS (SELECT 1 FROM new_company_candidates nc "
         f"WHERE nc.organization_id={alias}.id AND nc.status='rejected'))"
     )

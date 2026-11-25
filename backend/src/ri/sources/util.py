@@ -15,7 +15,9 @@ def sha(*parts: Any) -> str:
 
 
 def first_text(v: Any, prefer: tuple[str, ...] = ("eng", "en")) -> str | None:
-    """TED returns multilingual maps / lists; dig out one human string deterministically."""
+    """TED returns multilingual maps / lists; dig out one human string deterministically.
+
+    Language keys are matched whatever their case: TED's `links.html` uses "ENG", "BUL"..., its `notice-title` uses "eng", "swe"..."""
     if v is None:
         return None
     if isinstance(v, str):
@@ -29,9 +31,14 @@ def first_text(v: Any, prefer: tuple[str, ...] = ("eng", "en")) -> str | None:
                 return t
         return None
     if isinstance(v, dict):
+        folded: dict[str, Any] = {}
+        for k in v:
+            folded.setdefault(str(k).lower(), k)
         for k in prefer:
             if k in v:
                 return first_text(v[k], prefer)
+            if k.lower() in folded:
+                return first_text(v[folded[k.lower()]], prefer)
         for x in v.values():
             t = first_text(x, prefer)
             if t:

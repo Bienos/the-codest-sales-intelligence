@@ -13,7 +13,7 @@ _COUNTRIES = {
     "sweden": "SE", "norway": "NO", "denmark": "DK", "finland": "FI", "iceland": "IS", "ireland": "IE",
     "netherlands": "NL", "the netherlands": "NL", "france": "FR", "spain": "ES", "italy": "IT", "belgium": "BE",
     "luxembourg": "LU", "united states": "US", "usa": "US", "canada": "CA", "estonia": "EE", "latvia": "LV",
-    "lithuania": "LT", "czech republic": "CZ", "czechia": "CZ", "portugal": "PT", "singapore": "SG",
+    "lithuania": "LT", "greece": "GR", "cyprus": "CY", "czech republic": "CZ", "czechia": "CZ", "portugal": "PT", "singapore": "SG",
     "hong kong": "HK", "australia": "AU", "india": "IN", "turkey": "TR", "malta": "MT", "liechtenstein": "LI",
 }
 
