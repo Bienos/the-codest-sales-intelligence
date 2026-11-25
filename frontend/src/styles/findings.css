@@ -23,10 +23,10 @@
 .fd-head { margin: 10px 0 8px; font: 600 var(--fs-lg)/1.35 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--navy); max-width: 68ch; }
 .fd-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 10px; }
 .fd-kind { display: inline-flex; align-items: center; padding: 4px 8px; border: 1px solid var(--line); background: var(--white); color: var(--navy); font: 600 var(--fs-xs)/1.2 var(--font-body); }
-.fd-kind.tender { border-color: var(--pink-solid); color: var(--pink-solid); }
+.fd-kind.is-tender { border-color: var(--pink-solid); color: var(--pink-solid); }
 .fd-top > .fd-kind { align-self: center; }
 .fd-orig { font-size: var(--fs-sm); margin: 0 0 8px; }
-.fd-orig summary, .fd-more summary { cursor: pointer; color: var(--navy); font-weight: 600; }
+.fd-orig summary, .fd-more summary { cursor: pointer; margin: 0; font: 600 var(--fs-sm)/1.4 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--navy); }
 .fd-deadline { margin: 0 0 10px; font-size: var(--fs-sm); display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .fd-scope { flex-basis: 100%; }
 .fd-why { background: var(--tint-1); padding: 9px 12px; margin: 0 0 10px; font-size: var(--fs-md); }
@@ -60,11 +60,11 @@
 .fd-intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: end; margin-bottom: 18px; }
 .fd-intro h1 { font-size: clamp(26px, 3vw, 36px); line-height: 1.05; }
 .fd-explain { margin: 10px 0 0; max-width: 66ch; color: var(--body); }
-.fd-legend { display: grid; gap: 6px; margin: 0; padding: 10px 14px; background: var(--white); border: 1px solid var(--line); font-size: var(--fs-sm); color: var(--navy); }
+.fd-legend { display: grid; gap: 6px; margin: 0 0 4px; font-size: var(--fs-sm); color: var(--navy); }
 .fd-legend span { display: inline-flex; align-items: center; gap: 8px; }
 .fd-legend i { inline-size: 4px; block-size: 16px; background: var(--purple); }
-.fd-legend i.tender { background: var(--pink-solid); }
-.fd-filters { display: grid; grid-template-columns: minmax(220px, 2.2fr) repeat(5, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin: 0 0 14px; padding: 12px 14px; background: var(--white); border: 1px solid var(--line); }
+.fd-legend i.is-tender { background: var(--pink-solid); }
+.fd-filters { display: grid; grid-template-columns: minmax(200px, 1.3fr) repeat(5, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin: 0 0 14px; padding: 12px 14px; background: var(--white); border: 1px solid var(--line); }
 .fd-filters > label, .fd-field { display: grid; gap: 4px; min-width: 0; font: 600 var(--fs-sm)/1.2 var(--font-body); color: var(--navy); }
 .fd-field label { font: inherit; color: inherit; }
 .fd-filters select, .fd-filters input { inline-size: 100%; min-block-size: 42px; font-size: var(--fs-md); }

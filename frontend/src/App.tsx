@@ -14,7 +14,9 @@ import Feed from "./pages/Feed";
 import LibraryHub from "./pages/LibraryHub";
 import Knowledge from "./pages/Knowledge";
 import People from "./pages/People";
+import Person from "./pages/Person";
 import Tenders from "./pages/Tenders";
+import BuyingSignals, { IconSignals } from "./pages/BuyingSignals";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
 import { Err, Skeleton, lab, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, Brand } from "./components/ui";
 
@@ -78,6 +80,7 @@ export default function App() {
           <LanguageSwitcher />
           <span className="nav-group">{tr("Work")}</span>
           {can("today.read") && link("/today", tr("Today"), IconToday)}
+          {can("accounts.read") && link("/signals", tr("Buying signals"), IconSignals)}
           {can("accounts.read") && link("/accounts", tr("Accounts & leads"), IconAccounts)}
           {can("contacts.read") && link("/people", tr("People"), IconPeople)}
           {can("draft.create") && link("/campaigns", tr("Campaigns"), IconCampaign)}
@@ -96,8 +99,10 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to={can("today.read") ? "/today" : "/admin"} replace />} />
           <Route path="/today" element={<Today canReview={can("research.request")} canCampaign={can("draft.create")} />} />
+          <Route path="/signals" element={<BuyingSignals canCampaign={can("draft.create")} canPeople={can("contacts.read")} />} />
           <Route path="/tenders" element={<div className="page"><Tenders canRefresh={can("admin.sources")} /></div>} />
           <Route path="/people" element={<div className="page"><People /></div>} />
+          <Route path="/people/:id" element={<div className="page"><Person key={loc.pathname} /></div>} />
           <Route path="/campaigns" element={<div className="page"><CampaignList /></div>} />
           <Route path="/campaigns/new" element={<div className="page"><NewCampaign /></div>} />
           <Route path="/campaigns/:id" element={<div className="page"><CampaignDetail key={loc.pathname} canDecide={can("approvals.decide")} /></div>} />

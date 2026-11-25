@@ -1,0 +1,30 @@
+/* Person page: the company page's masthead and sheet (account.css), plus what is particular to a person:
+   the "open with" talking points, roles as a short career line, and the outreach log. */
+
+.ps-role { margin: 6px 0 0; color: var(--on-navy); font-size: var(--fs-lg); }
+.ps-role a { color: var(--white); }
+.ps-warn { margin: 12px 0 0; padding: 8px 12px; background: var(--tint-3); color: var(--navy); border-left: 4px solid var(--pink); font-size: var(--fs-sm); max-width: 72ch; }
+
+/* talking points: the reason to open this page before a call */
+.ps-open { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.ps-open li { position: relative; padding: 12px 14px 12px 16px; background: var(--tint-1); border-left: 4px solid var(--pink); }
+.ps-open li > b { display: block; color: var(--navy); font-size: var(--fs-base); line-height: 1.45; }
+.ps-open li > span { display: block; margin: 4px 0; font-size: var(--fs-sm); }
+
+/* roles: current first, then the earlier ones */
+.ps-roles { list-style: none; margin: 0; padding: 0; }
+.ps-roles li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 14px; padding: 8px 0; border-top: 1px solid var(--line); }
+.ps-roles li:first-child { border-top: 0; padding-top: 0; }
+.ps-roles .when { font: 800 var(--fs-xs)/1.6 var(--font-head); color: var(--muted); white-space: nowrap; }
+
+.ps-kind { display: inline-block; margin-right: 6px; padding: 0 6px; font: 600 var(--fs-xs)/1.6 var(--font-body); color: var(--navy); border: 1px solid var(--purple); }
+.ps-log { list-style: none; margin: 0; padding: 0; font-size: var(--fs-sm); }
+.ps-log li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 7px 0; border-top: 1px solid var(--line); }
+.ps-log li:first-child { border-top: 0; }
+.ps-log .when { color: var(--muted); white-space: nowrap; }
+.ps-angle { margin: 0 0 10px; padding: 10px 12px; background: var(--tint-2); color: var(--navy); font-size: var(--fs-sm); line-height: 1.5; }
+
+@media (max-width: 700px) {
+  .ps-role { font-size: var(--fs-base); }
+  .ps-roles li, .ps-log li { grid-template-columns: minmax(0, 1fr); }
+}

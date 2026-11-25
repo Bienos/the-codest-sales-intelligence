@@ -10,7 +10,7 @@ type Tab = "overview" | "source" | "plan" | "ledger";
 
 function Daily({ rows, provider, unit }: { rows: any[]; provider: string; unit: string }) {
   const days = rows.filter((r) => r.provider === provider);
-  if (!days.length) return <p className="small muted mb-0">{tr("Nothing used this month yet.")}</p>;
+  if (!days.length) return null;  // the line above already says nothing was used
   const max = Math.max(...days.map((d) => Number(d.units)), 1);
   const first = days[0].day;
   const last = days[days.length - 1].day;

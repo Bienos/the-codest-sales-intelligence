@@ -38,7 +38,7 @@ export function Fold({ title, desc, status, open = false, id, children }: { titl
     <details ref={ref} id={id} className={`fold ${status?.[0] ?? ""}`} onToggle={(e) => setO((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>
         <span className="fold-main"><span className="fold-t">{tr(title)}</span>{desc && <span className="fold-d">{tr(desc)}</span>}</span>
-        <span className="fold-s">{status ? <Say k={status[0]}>{status[1]}</Say> : <span className="muted small">{tr("Checking")}</span>}</span>
+        {status !== undefined && <span className="fold-s">{status ? <Say k={status[0]}>{status[1]}</Say> : <span className="muted small">{tr("Checking")}</span>}</span>}
       </summary>
       {o && <div className="fold-body">{children}</div>}
     </details>
@@ -80,12 +80,12 @@ export function Pipeline({ d }: { d: any }) {
   return (
     <>
       {d.next_steps.length > 0 && <div className="adm-next"><h4 className="adm-h4">{tr("What to do next")}</h4><ol className="tight m-0">{d.next_steps.map((n: string, i: number) => <li key={i}>{tr(n)}</li>)}</ol></div>}
-      <ol className="stages" aria-label={tr("Pipeline stages")}>
+      <ol className="adm-stages" aria-label={tr("Pipeline stages")}>
         {visibleStages(d).map((s: any) => {
           const [kind, label] = STATE[s.state] ?? ["", s.state];
           return (
-            <li key={s.key} className={`stage ${kind}`}>
-              <div className="stage-head"><b>{tr(s.label)}</b><span className="stage-tags"><Badge>{({ automatic: tr("Runs by itself"), manual: tr("A person does this"), off: tr("Switched off") } as Record<string, string>)[s.mode] ?? humanize(s.mode)}</Badge><Say k={kind}>{tr(label)}</Say></span></div>
+            <li key={s.key} className={`adm-stage ${kind}`}>
+              <div className="adm-stage-head"><b>{tr(s.label)}</b><span className="adm-stage-tags">{s.mode !== "off" && <Badge>{({ automatic: tr("Runs by itself"), manual: tr("A person does this"), off: tr("Switched off") } as Record<string, string>)[s.mode] ?? humanize(s.mode)}</Badge>}<Say k={kind}>{tr(label)}</Say></span></div>
               <p className="small m-0">{tr(s.note)}</p>
               {s.last && <div className="small muted">{tr("Last activity") + " "}{fmtDateTime(s.last)}</div>}
               {s.detail?.length > 0 && <ul className="tight small">{s.detail.map((f: any, k: number) => <li key={k}><b>{f.display_name}</b>: {f.error_class === "server_error" ? tr("the site returned an error") : humanize(f.error_class).toLowerCase()} {f.consecutive_failures}{" " + tr("times in a row")}</li>)}</ul>}

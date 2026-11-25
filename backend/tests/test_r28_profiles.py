@@ -118,7 +118,7 @@ def test_company_profile_keeps_only_statements_tied_to_returned_pages():
     assert [r["headline"] for r in out["recent"]] == ["Instant payouts launched"] and out["recent"][0]["source_url"] == "https://news.example/kestrel-sepa"
     assert [v["name"] for v in out["vendors"]] == ["Mambu"]                       # the page never names Thought Machine, whatever the quote
     assert [h["angle"] for h in out["how_we_help"]] == ["Delivery team for the payouts rollout"]
-    assert dropped == 9
+    assert dropped == 7
 
 
 def test_person_profile_drops_contact_details_and_unquoted_activity():
@@ -179,7 +179,7 @@ def test_company_research_job_searches_writes_a_cited_profile_and_records_cost(c
     assert all(c["contents"]["text"]["maxCharacters"] <= 2200 for c in calls) and "startPublishedDate" in calls[1]
     assert [s["id"] for s in row["sources"]] == ["W1", "W2"] and "text" not in row["sources"][0]      # page text is not stored
     assert row["content"]["vendors"][0]["name"] == "Mambu" and row["content"]["partial"] is False
-    assert "UNTRUSTED" not in prompts[0] and "<page id=\"W1\"" in prompts[0]
+    assert "<page id=\"W1\"" in prompts[0] and "Our records (R)" in prompts[0]
     used = qa(conn, "select cost_usd, cost_basis, operation from provider_usage where provider='exa'")
     assert len(used) == 4 and all(u["cost_basis"] == "reported" and u["operation"] == "account_profile" for u in used)
     b = q1(conn, "select spent, reserved from provider_budgets where provider='exa'")

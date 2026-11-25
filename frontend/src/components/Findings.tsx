@@ -74,6 +74,21 @@ export function CompanyAvatar({ name, small = false }: { name: string; small?: b
   return <span className={`co-av co-av-${h % 4}${small ? " sm" : ""}`} aria-hidden="true">{letters}</span>;
 }
 
+/** Lead-list priority and score: P1 to P3 as a code, the 0 to 100 score as ten squares. */
+export function ListRank({ priority, score }: { priority?: string | null; score?: number | null }) {
+  const p = priority && /^P[123]$/.test(priority) ? priority : null;
+  if (!p && score == null) return <span className="acc-none">{tr("Not ranked")}</span>;
+  const filled = score == null ? 0 : Math.round(Math.max(0, Math.min(100, score)) / 10);
+  return <span className="acc-rankbox">
+    <span className="acc-rank-top">
+      {p ? <span className={`acc-p acc-${p.toLowerCase()}`} title={tr("Lead list priority {}", p)}>{p}</span> : <span />}
+      {score != null && <span className="acc-score">{number(Math.round(score))}</span>}
+    </span>
+    {score != null && <span className="acc-cells" role="img" aria-label={tr("List score {} of 100", number(Math.round(score)))}>
+      {Array.from({ length: 10 }, (_, i) => <i key={i} className={i < filled ? "on" : ""} />)}</span>}
+  </span>;
+}
+
 let permissionCache: { token: string | null; perms: Promise<string[]> } | null = null;
 /** The signed-in person's permissions, fetched once per session, for pages rendered without them (Today, the findings archive). */
 export function useCan(): (permission: string) => boolean | undefined {
@@ -172,7 +187,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
     </header>
     <h3 className="fd-head" id={`finding-${item.id}-h`}>{summary}</h3>
     <div className="fd-tags">
-      {!onAccount && <span className={`fd-kind${item.tender ? " tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span>}
+      {!onAccount && (item.tender || signals.length === 0) && <span className={`fd-kind${item.tender ? " is-tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span>}
       {signals.map(sig => <SignalTag key={sig.rule_id} s={sig} />)}
       {org.qualified === false && <Badge kind="warn">{tr("Ownership to check")}</Badge>}
     </div>
@@ -192,7 +207,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
       <p className="fd-src">
         <span className="fd-checked">{item.tender ? tr("Confirmed by the official notice") : tr("Checked against the original page")}</span>
         {source?.source && <span>{source.source}</span>}
-        {published && <span>{tr("published {}", fmtDate(published))}</span>}
+        {published && fmtDate(published) !== fmtDate(item.happened) && <span>{tr("published {}", fmtDate(published))}</span>}
         {href && <a href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>{tr("Open source")} ↗</a>}
       </p>
       {extra > 0 && <details className="fd-more">

@@ -47,7 +47,7 @@ function Findings() {
       </div>
       <p className="fd-legend" aria-label={tr("Colour key")}>
         <span><i aria-hidden="true" />{tr("Buying signal")}</span>
-        <span><i className="tender" aria-hidden="true" />{tr("Open RFP or tender")}</span>
+        <span><i className="is-tender" aria-hidden="true" />{tr("Open RFP or tender")}</span>
       </p>
     </div>
     {event && <p><Link to="/feed">{tr("Show all findings")}</Link></p>}
@@ -75,7 +75,7 @@ function Findings() {
       </label>
       <label>{tr("Companies")}
         <select value={params.get("qualification") ?? "all"} onChange={e => update("qualification", e.target.value)}>
-          <option value="all">{tr("Targets and ownership to check")}</option><option value="target">{tr("Confirmed target accounts")}</option><option value="review">{tr("Ownership to check")}</option>
+          <option value="all">{tr("All companies")}</option><option value="target">{tr("Confirmed target accounts")}</option><option value="review">{tr("Ownership to check")}</option>
         </select>
       </label>
       <label>{tr("When")}

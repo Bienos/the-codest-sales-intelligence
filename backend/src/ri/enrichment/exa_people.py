@@ -12,7 +12,7 @@ import re
 from typing import Any
 
 from ..db import Conn, q1, qa
-from ..people import ensure_person, record_source
+from ..people import record_source
 from ..research.exa_search import ExaSearcher, ExaStopped, text_contents
 from ..sources.base import BudgetExceeded
 
@@ -118,8 +118,7 @@ def find_people(conn: Conn, org_id: str, search_id: str, *, searcher: ExaSearche
                 if exc.error_class != "schema_drift" or not use_category:
                     raise
                 use_category = False                    # Exa did not accept the category: same search restricted to linkedin.com instead
-                body.pop("category", None)
-                body["includeDomains"] = ["linkedin.com"]
+                body = {**{k: v for k, v in body.items() if k != "category"}, "includeDomains": ["linkedin.com"]}
                 results = searcher.search(persona, body, text_cap=600)
         except BudgetExceeded:
             if searcher.calls == 0:
@@ -160,26 +159,23 @@ def find_people(conn: Conn, org_id: str, search_id: str, *, searcher: ExaSearche
 
 
 def add_candidate(conn: Conn, cid: str, *, by: str) -> dict[str, Any]:
-    """Creates (or finds) the person at the account with source 'exa'; fills a missing LinkedIn address; never invents an email."""
+    """Creates (or finds, by LinkedIn address or by name at the account) the person with source 'exa'. Fills a missing LinkedIn address;
+    never invents an email. The role stays 'not confirmed' until someone checks it."""
     c = q1(conn, "SELECT * FROM people_candidates WHERE id=%s", (cid,))
     if not c:
         raise LookupError("candidate not found")
     if c["status"] == "added" and c["person_id"]:
         return {"person_id": str(c["person_id"]), "created": False}
     org_id = str(c["organization_id"])
-    by_url, _ = known_people(conn, org_id)
-    pid = by_url.get(c["linkedin_url"])
-    created = False
-    if pid:
-        record_source(conn, pid, "exa", c["linkedin_url"], {"persona": c["persona"], "added_by": by})
-    else:
-        before = q1(conn, "SELECT count(*) AS n FROM people")["n"]          # type: ignore[index]
-        pid = ensure_person(conn, name=c["name"], email=None, org_id=org_id, title=c["title"], email_status="unknown", system="exa",
-                            external_id=c["linkedin_url"], detail={"persona": c["persona"], "seniority": c["seniority"], "added_by": by})
-        created = q1(conn, "SELECT count(*) AS n FROM people")["n"] > before      # type: ignore[index]
+    by_url, by_name = known_people(conn, org_id)
+    pid = by_url.get(c["linkedin_url"]) or by_name.get(re.sub(r"\s+", " ", c["name"]).strip().casefold())
+    created = not pid
     if not pid:
-        raise LookupError("the person could not be placed at this account")
-    conn.execute("UPDATE people SET linkedin_url=%s WHERE id=%s AND linkedin_url IS NULL", (c["linkedin_url"], pid))
-    conn.execute("UPDATE employment SET evidence_url=coalesce(evidence_url, %s) WHERE person_id=%s AND organization_id=%s", (c["linkedin_url"], pid, org_id))
+        pid = str(conn.execute("INSERT INTO people(full_name, linkedin_url) VALUES (%s,%s) RETURNING id", (c["name"], c["linkedin_url"])).fetchone()["id"])     # type: ignore[index]
+        conn.execute("INSERT INTO employment(person_id, organization_id, title, verification_status, evidence_url) VALUES (%s,%s,%s,'unverified',%s)",
+                     (pid, org_id, c["title"], c["linkedin_url"]))
+    else:
+        conn.execute("UPDATE people SET linkedin_url=%s WHERE id=%s AND linkedin_url IS NULL", (c["linkedin_url"], pid))
+    record_source(conn, pid, "exa", c["linkedin_url"], {"persona": c["persona"], "seniority": c["seniority"], "added_by": by})
     conn.execute("UPDATE people_candidates SET status='added', person_id=%s, decided_by=%s, updated_at=now() WHERE id=%s", (pid, by, cid))
     return {"person_id": pid, "created": created}

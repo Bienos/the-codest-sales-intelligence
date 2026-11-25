@@ -105,7 +105,7 @@ export default function People() {
       <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("People")}><table className="cards people-table"><thead><tr>
         <th>{tr("Person")}</th><th>{tr("Company")}</th><th>{tr("Buying signal")}</th><th>{tr("Came from")}</th><th>{tr("Email")}</th><th>{tr("Outreach")}</th></tr></thead><tbody>
         {data.items.map((p) => <tr key={p.id} className={p.suppressed ? "muted-row" : ""}>
-          <td><b>{p.name}</b><div className="small muted">{p.title || tr("Role not recorded")}</div>{p.suppressed && <Badge kind="bad">{tr("Do not contact")}</Badge>}</td>
+          <td><b><Link to={`/people/${p.id}`}>{p.name}</Link></b><div className="small muted">{p.title || tr("Role not recorded")}</div>{p.suppressed && <Badge kind="bad">{tr("Do not contact")}</Badge>}</td>
           <td data-label={tr("Company")}><Link to={`/accounts/${p.company.id}`}>{p.company.name}</Link>
             <div className="small muted">{[p.company.country, p.company.segment].filter(Boolean).join(" · ")}</div></td>
           <td data-label={tr("Buying signal")}>{p.signal ? <><SignalTag s={{ rule_id: p.signal.rule_id, name: p.signal.name, strength: 0 }} />
