@@ -164,6 +164,7 @@ export default function Library({ render, query, setQuery, admin = false }: { re
                     {!s.validation.ok && s.validation.detail && <div className="small">{s.validation.detail}</div>}
                   </> : <span className="muted">{tr("No test on record")}</span>],
                   ["Last attempt", s.last_attempt_at && fmtDateTime(s.last_attempt_at)],
+                  ["Countries", s.countries?.length ? s.countries.join(", ") : null],
                   ["Feeds signals", s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill" title={r}>{signals[r] ?? r}</span>) : <span className="muted">{tr("None yet")}</span>],
                   ["So far", <>{tr("{} pages read, {} findings", number(s.documents), number(s.events))}{Number(s.cost_usd_month) > 0 && <span className="small muted"> · ${Number(s.cost_usd_month).toFixed(3)}{" " + tr("this month")}</span>}</>],
                   ["Last 30 days", tr("{} verified findings with current buying signals", number(s.recent_buying_findings ?? 0))],

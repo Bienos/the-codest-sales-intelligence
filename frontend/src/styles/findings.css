@@ -64,7 +64,7 @@
 .fd-legend span { display: inline-flex; align-items: center; gap: 8px; }
 .fd-legend i { inline-size: 4px; block-size: 16px; background: var(--purple); }
 .fd-legend i.is-tender { background: var(--pink-solid); }
-.fd-filters { display: grid; grid-template-columns: minmax(200px, 1.3fr) repeat(5, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin: 0 0 14px; padding: 12px 14px; background: var(--white); border: 1px solid var(--line); }
+.fd-filters { display: grid; grid-template-columns: minmax(240px, 1.4fr) repeat(5, minmax(0, 1fr)); gap: 10px 12px; align-items: end; margin: 0 0 14px; padding: 12px 14px; background: var(--white); border: 1px solid var(--line); }
 .fd-filters > label, .fd-field { display: grid; gap: 4px; min-width: 0; font: 600 var(--fs-sm)/1.2 var(--font-body); color: var(--navy); }
 .fd-field label { font: inherit; color: inherit; }
 .fd-filters select, .fd-filters input { inline-size: 100%; min-block-size: 42px; font-size: var(--fs-md); }

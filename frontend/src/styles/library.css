@@ -30,7 +30,7 @@
 .lgroup:not([open]) > summary::after { transform: rotate(-45deg); margin-top: 0; }
 .lgroup-n { font: 700 var(--fs-xs)/1 var(--font-body); letter-spacing: 0; padding: 4px 7px; background: var(--white); border: 1px solid var(--line); color: var(--navy); }
 .lgroup-note { margin: 0 0 var(--space-3); font-size: var(--fs-sm); color: var(--muted); max-width: 90ch; }
-.ldomains { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 4px; }
+.ldomains { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .ldomains .chip { padding: 4px 9px; min-height: 0; }
 
 /* columns are shared by the heading line and every row */
@@ -51,7 +51,7 @@
 .lrow-t { font: 600 var(--fs-base)/1.3 var(--font-body); color: var(--navy); overflow-wrap: anywhere; }
 .lrow-sub { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lrow-kind, .lrow-extra { min-width: 0; overflow-wrap: anywhere; }
-.lrow-addr { overflow-wrap: anywhere; color: var(--muted); }
+.lrow-addr { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .lrow-lab { display: none; }
 .lrow .strength i { width: 10px; height: 10px; }
 
@@ -75,6 +75,7 @@
   .lrow-status { order: 1; } .lrow-kind { order: 2; } .lrow-extra { order: 3; flex: 1 1 100%; }
   .lrow-status:empty, .lrow-kind:empty { display: none; }
   .lrow-lab { display: inline; color: var(--muted); }
+  .lrow-addr { display: inline; white-space: normal; overflow-wrap: anywhere; }
   .lrow-body { padding: var(--space-3) 14px var(--space-4); }
 }
 @media (max-width: 640px) {

@@ -94,6 +94,14 @@ type Line = { key: string; title: string; to: string; kind: Kind; text: string; 
 const plural = (n: number, one: string, many: string) => tr(n === 1 ? one : many, number(n));
 const timeNow = () => new Date().toLocaleTimeString(getLanguage() === "pl" ? "pl-PL" : "en-GB", { hour: "2-digit", minute: "2-digit" });
 
+/** One line of the overview: what it is, how it is doing in a sentence, the number that matters, and a way in. */
+const Row = ({ l }: { l: Line }) => (
+  <li><Link to={l.to} className={`ov-row ${l.kind}`}>
+    <span className="ov-row-main"><span className="ov-row-t">{tr(l.title)}</span><Say k={l.kind}>{l.text}</Say></span>
+    <span className="ov-fig">{l.fig !== undefined && <><b>{l.fig}</b>{l.unit && <small>{l.unit}</small>}</>}</span>
+  </Link></li>
+);
+
 function Overview({ can }: { can: (p: string) => boolean }) {
   const [tick, setTick] = useState(0); const [at, setAt] = useState(timeNow());
   const approvalsOn = can("approvals.read_own") || can("approvals.read_all");
@@ -185,24 +193,17 @@ function Overview({ can }: { can: (p: string) => boolean }) {
   const verdictKind: Kind = loading ? "" : attention.length ? (lines.some((l) => l.kind === "bad") ? "bad" : "warn") : "ok";
   const verdict = loading ? tr("Checking everything") : attention.length === 0 ? tr("Everything is running") : attention.length === 1 ? tr("One thing needs you") : tr("{} things need you", number(attention.length));
   const refresh = () => { setTick((t) => t + 1); setAt(timeNow()); };
-
-  const Row = ({ l }: { l: Line }) => (
-    <li><Link to={l.to} className={`ov-row ${l.kind}`}>
-      <span className="ov-row-main"><span className="ov-row-t">{tr(l.title)}</span><Say k={l.kind}>{l.text}</Say></span>
-      <span className="ov-fig">{l.fig !== undefined && <><b>{l.fig}</b>{l.unit && <small>{l.unit}</small>}</>}</span>
-    </Link></li>
-  );
   return (
     <div className="ov">
       <div className={`ov-verdict ${verdictKind}`} role="status">
         <span className="ov-mark" aria-hidden="true" />
         <div className="ov-verdict-main">
           <p className="ov-say">{verdict}</p>
-          <p className="ov-sub">{loading ? tr("Asking each part of the platform how it is doing.") : attention.length ? tr("Start with: {}.", attention.map((a) => tr(a)).join(", ")) : tr("Nothing is waiting for you and nothing has failed.")}</p>
+          <p className="ov-sub">{loading ? tr("Asking each part of the platform how it is doing.") : attention.length ? tr("Start with: {}.", attention.map((a) => tr(a)).join(", ")) : tr("Nothing needs you right now.")}</p>
         </div>
         <div className="ov-when"><span>{tr("Checked at {}", at)}</span><button type="button" className="ghost" onClick={refresh}>{tr("Check again")}</button></div>
       </div>
-      <div className="ov-grid">
+      <div className={`ov-grid${can("admin.costs") ? "" : " solo"}`}>
         <div className="ov-col">
           {waitingForYou.length > 0 && <section><h3 className="ov-h">{tr("Waiting for you")}</h3><ul className="ov-list">{waitingForYou.map((l) => <Row key={l.key} l={l} />)}</ul></section>}
           {dataIn.length > 0 && <section><h3 className="ov-h">{tr("Data coming in")}</h3><ul className="ov-list">{dataIn.map((l) => <Row key={l.key} l={l} />)}</ul></section>}

@@ -183,3 +183,4 @@
   .adm-form { grid-template-columns: minmax(0, 1fr); }
   .adm-panel { padding: 16px; }
 }
+.ov-grid.solo { grid-template-columns: minmax(0, 1fr); max-width: 900px; }

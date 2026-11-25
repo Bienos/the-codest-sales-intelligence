@@ -182,7 +182,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
         <CompanyAvatar name={org.name} />
         <span className="fd-co-text"><span className="fd-co-name">{org.name}</span><span className="fd-co-meta">{countryName(org.country)}</span></span>
       </Link>}
-      {onAccount && <span className="fd-kind">{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span>}
+      {onAccount && (item.tender || signals.length === 0 ? <span className={`fd-kind${item.tender ? " is-tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span> : <span />)}
       <span className="fd-when"><time dateTime={item.happened}>{fmtDate(item.happened)}</time><span>{ago(item.happened)}</span></span>
     </header>
     <h3 className="fd-head" id={`finding-${item.id}-h`}>{summary}</h3>
@@ -217,7 +217,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
           <cite>{safeHref(e.url) ? <a href={safeHref(e.url)} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a> : e.source}</cite>
         </blockquote>)}
         <ul className="fd-links">{item.sources.filter(s => !item.evidence.some(e => e.url === s.url)).map(s => <li key={s.url}>
-          {safeHref(s.url) ? <a href={safeHref(s.url)} target="_blank" rel="noreferrer noopener">{s.source || new URL(s.url).hostname} ↗</a> : s.source}
+          {safeHref(s.url) ? <a href={safeHref(s.url)} target="_blank" rel="noreferrer noopener">{s.source || new URL(safeHref(s.url)!).hostname} ↗</a> : s.source}
           {s.published_at && <span className="muted"> {fmtDate(s.published_at)}</span>}</li>)}</ul>
       </details>}
     </div>

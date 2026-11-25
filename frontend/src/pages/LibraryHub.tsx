@@ -87,7 +87,7 @@ function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
             </LRow>))}
         </LGroup>))}
       <LGroup title="Links in your workbooks" count={d.items.length} open={false} cols={["Account and link", "Workbook column", "", "Website"]}
-        note={<>{tr("LinkedIn links are left out on purpose. Open the original and read it before you act.")}{d.domains.length > 0 && <span className="ldomains">{" " + tr("Cited most:") + " "}{d.domains.map((x: any) => <button key={x.domain} type="button" className="chip" onClick={() => setQ(x.domain)}>{x.domain} <b>{x.count}</b></button>)}</span>}</>}>
+        note={<>{tr("LinkedIn links are left out on purpose. Open the original and read it before you act.")}{d.domains.length > 0 && <span className="ldomains">{tr("Cited most:")}{d.domains.map((x: any) => <button key={x.domain} type="button" className="chip" onClick={() => setQ(x.domain)}>{x.domain} <b>{x.count}</b></button>)}</span>}</>}>
         {d.items.length === 0 && <LEmpty>{tr("No workbook links match.")}</LEmpty>}
         {d.items.map((u: any) => (
           <LRow key={u.url} name={u.organization ?? u.domain} sub={shortUrl(u.url, 60)} kind={u.field} extraLabel="Website" extra={u.domain}>

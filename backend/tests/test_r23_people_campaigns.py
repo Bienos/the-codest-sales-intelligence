@@ -192,7 +192,8 @@ def test_signal_campaign_needs_a_manager_then_pushes_to_lemlist_once(conn, marke
     out = sc.execute_push(conn, aid, fake, settings(outbound_enabled=True))
     conn.commit()
     assert out["leads"] == 2 and out["dropped_since_approval"] == 1          # Ada and Hal; Ben opted out after approval
-    assert fake.add_lead_fields[0]["firstName"] == "Ada" and "Series B" in fake.add_lead_fields[0]["signalHook"]
+    by_name = {f["firstName"]: f for f in fake.add_lead_fields}          # push order across companies is by company id, so look people up by name
+    assert set(by_name) == {"Ada", "Hal"} and "Series B" in by_name["Ada"]["signalHook"]
     assert [x[1] for x in fake.calls if x[0] == "step"][0] == "A question about {{companyName}}"
     with pytest.raises(appr.ApprovalError):
         sc.execute_push(conn, aid, FakeLemlist(), settings(outbound_enabled=True))                                       # single use

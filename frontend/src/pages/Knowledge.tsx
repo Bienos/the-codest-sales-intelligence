@@ -41,7 +41,7 @@ export default function Knowledge() {
         </div>
       </header>
       {meta && <p className="kb-blurb small muted">{meta.blurb} <a href={meta.source} target="_blank" rel="noreferrer noopener">{tr("Original document")}</a>{" · " + tr("an administrator refreshes this copy when the original changes")}</p>}
-      {missing ? <div className="page"><div className="empty"><b>{tr("This document is not loaded yet")}</b>{tr("An administrator can upload it in Administration, Knowledge.")}</div></div>
+      {missing ? <div className="page"><div className="empty"><b>{tr("This document is not loaded yet")}</b>{tr("An administrator can upload it in Administration, Sources & data, Knowledge base.")}</div></div>
         : src ? <iframe className="kb-frame2" title={meta?.title ?? tr("Knowledge base")} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" />
         : <div className="page"><Skeleton rows={4} /></div>}
       <div className="page"><Err e={err} onRetry={load} /></div>

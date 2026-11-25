@@ -11,7 +11,10 @@ import "../styles/account.css";
 
 /* ------------------------------------------------------------------ shared helpers (also used by the person page) */
 export const host = (u?: string | null) => { try { return new URL(String(u)).hostname.replace(/^www\./, ""); } catch { return ""; } };
-export const initials = (name: string) => name.split(/[\s-]+/).filter((w) => /^\p{L}/u.test(w)).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+export const initials = (name: string) => {
+  const words = name.split(/[\s-]+/).filter((w) => /^\p{L}/u.test(w));
+  return (words.length === 1 ? words[0].slice(0, 2) : words.slice(0, 2).map((w) => w[0]).join("")).toUpperCase() || "?";
+};
 /** A research date: a full day, a month (YYYY-MM) or a year. */
 export function fmtDay(d?: string | null): string {
   if (!d) return tr("Date unknown");
@@ -191,6 +194,7 @@ export function ResearchPanel({ r, canRun, start, busy, err }: { r: any; canRun:
   if (!r) return null;
   const p = r.profile;
   const last = r.latest;
+  if (!p && !r.running && last?.status !== "failed") return null;          // nothing to report: the empty overview already explains research
   return <section className="ac-panel" aria-labelledby="research-h">
     <h2 id="research-h">{tr("Research with Exa")}</h2>
     <div className="ac-research">
@@ -239,12 +243,12 @@ function Overview({ d, research, rel, orgId, me, canRun, startResearch, research
   return <div className="ac-grid">
     <div className="ac-sheet">
       {c ? <>
-        {(c.about || c.products?.length > 0) && <Sec title="About" id="sec-about">
+        {(c.about || c.products?.length > 0) && <Sec title="What they do" id="sec-about">
           {c.about && <p className="ac-lead">{c.about.text} {c.about.sources.map((s: any, i: number) => <Cite key={i} c={s} />)}</p>}
           {c.products?.length > 0 && <div className="ac-tags mt-2" aria-label={tr("Products and services")}>{c.products.map((p: any, i: number) => <span key={i} className="ac-tag" title={p.detail ?? undefined}>{p.name}</span>)}</div>}
           {c.footprint?.markets && <p className="small mt-2"><b>{tr("Markets")}:</b> {c.footprint.markets.value} <Cite c={c.footprint.markets} /></p>}
         </Sec>}
-      </> : <section className="ac-sec"><h2>{tr("About")}</h2><div>
+      </> : <section className="ac-sec"><h2>{tr("What they do")}</h2><div>
         {research?.running ? <div className="ac-research"><div className="busy" role="status"><span className="ac-pulse" />{tr("Researching with Exa. The overview fills in when it is done, in about a minute.")}</div></div> : <>
           <p>{tr("No research yet. Research with Exa reads the company's website, its news from the last 12 months, partner and vendor announcements and hiring pages, then writes this overview with a link to the page behind every statement.")}</p>
           <p className="small">{tr("About four searches, a few US cents, taken from the monthly Exa budget.")}</p>
@@ -340,16 +344,18 @@ function FindPeople({ orgId, onAdded }: { orgId: string; onAdded: () => void }) 
 function PersonCard({ p }: { p: any }) {
   const ll = p.lead_list ?? {};
   const prio = ll.priority;
+  const useful = (v?: string | null) => (v && !/^other\s*\/\s*review$/i.test(v) ? v : null);
+  const seniority = useful(p.seniority), persona = useful(p.persona);
   return <li className={`ac-pcard${prio === "P1" ? " p1" : ""}${p.suppressed ? " off" : ""}`}>
     <div className="ac-pcard-head">
       <span className="ac-mono sm dark" aria-hidden="true">{initials(p.name)}</span>
       <div><Link className="name" to={`/people/${p.id}`}>{p.name}</Link><span className="title">{p.title || tr("Role not recorded")}</span></div>
     </div>
-    {(prio || p.seniority || p.persona || ll.committee_role) && <div className="ac-tags">
+    {(prio || seniority || persona || ll.committee_role) && <div className="ac-tags">
       {prio && <span className={`ac-tag ${prio.toLowerCase()}`} title={tr("Contact priority on your lead list")}>{prio}</span>}
-      {p.seniority && <span className="ac-tag">{tr(p.seniority)}</span>}
+      {seniority && <span className="ac-tag">{tr(seniority)}</span>}
       {ll.committee_role && <span className="ac-tag">{tr(ll.committee_role)}</span>}
-      {!ll.committee_role && p.persona && <span className="ac-tag">{tr(p.persona)}</span>}
+      {!ll.committee_role && persona && <span className="ac-tag">{tr(persona)}</span>}
     </div>}
     {ll.angle && <p className="ac-angle">{ll.angle}</p>}
     <div className="ac-status">
