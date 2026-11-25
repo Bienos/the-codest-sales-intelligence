@@ -116,7 +116,7 @@ function mapDots() {
 /** Made-up signals, one per market; positions are map cells, `at` is where the card sits (`sm` on phones). The last one becomes the next step. */
 const PINGS: { m: string; x: number; y: number; at: string; sm?: string; kind: string; who: string }[] = [
   { m: "u", x: 15.9, y: 45.5, at: "b", kind: "New technology leader", who: "Example Insurance plc, London" },
-  { m: "n", x: 33.5, y: 25.1, at: "l", kind: "Funding round", who: "Example Pay AS, Oslo" },
+  { m: "n", x: 26.6, y: 23.5, at: "l", kind: "Funding round", who: "Example Pay AS, Bergen" },
   { m: "p", x: 49.8, y: 43.9, at: "r", sm: "t", kind: "Hiring several engineers", who: "Example Fintech S.A., Warsaw" },
   { m: "d", x: 43.2, y: 55.1, at: "r", sm: "b", kind: "Core banking replacement", who: "Example Bank AG, Vienna" },
 ];
