@@ -398,3 +398,19 @@ def test_parse_json_survives_the_usual_small_model_slips():
     assert parse_json('{"a": "line one\nline two"}')["a"] == "line one line two"
     assert parse_json('Here you go:\n```json\n{"a": "x"}\n```\nNote: done {ok}') == {"a": "x"}
     assert parse_json('{"a": "plain \\"escaped\\" quote", "b": 1, "c": true}')["b"] == 1
+
+
+def test_research_is_ready_when_the_worker_has_the_keys(conn):
+    """Production, 25 Nov 2026: the keys were on the worker but not the web app, so the research buttons stayed disabled."""
+    from types import SimpleNamespace
+
+    from ri.heartbeat import beat
+    from ri.research.exa_search import configured
+    web = SimpleNamespace(exa_api_key=None, exa_monthly_cap_usd=0, anthropic_api_key=None)
+    assert configured(web, conn)["ready"] is False
+    beat(conn, "worker-interactive", {"jobs_since_start": 0, "can": {"exa": True, "ai": True}})
+    assert configured(web, conn)["ready"] is True and configured(web, conn)["exa"] is True
+    beat(conn, "worker-interactive", {"jobs_since_start": 0, "can": {"exa": False, "ai": True}})
+    assert configured(web, conn)["missing"] == ["EXA_API_KEY", "RI_EXA_MONTHLY_CAP_USD"]
+    conn.execute("update system_heartbeats set at = now() - interval '1 hour' where component='worker-interactive'")
+    assert configured(SimpleNamespace(exa_api_key=None, exa_monthly_cap_usd=0, anthropic_api_key="k"), conn)["ready"] is False      # a stale beat counts for nothing

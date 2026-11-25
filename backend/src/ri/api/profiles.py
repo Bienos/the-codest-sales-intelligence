@@ -73,8 +73,8 @@ def _quota(conn, p: Principal) -> None:
         raise HTTPException(429, f"Daily research limit reached ({DAILY_RESEARCH_LIMIT} per person). It resets 24 hours after the first one.")
 
 
-def _setup(request: Request) -> dict[str, Any]:
-    return configured(request.app.state.settings)
+def _setup(request: Request, conn: Any = None) -> dict[str, Any]:
+    return configured(request.app.state.settings, conn)
 
 
 def _run_row(r: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -223,14 +223,14 @@ def register_profiles(app: FastAPI) -> None:
     def company_research(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             o = _visible_org(conn, p, oid)
-            return {**_research_state(conn, "account_profiles", "organization_id", str(o["id"]), _setup(request)), "can_run": p.can("research.request")}
+            return {**_research_state(conn, "account_profiles", "organization_id", str(o["id"]), _setup(request, conn)), "can_run": p.can("research.request")}
 
     @app.post("/api/accounts/{oid}/research")
     def start_company_research(oid: str, request: Request, p: Principal = Depends(require("research.request"))):
         with tx(request) as conn:
             o = _visible_org(conn, p, oid)
             return _start_research(conn, p, table="account_profiles", col="organization_id", rid=str(o["id"]), org_id=str(o["id"]), kind="account_profile",
-                                   op="exa_company_research", record_type="organization", setup=_setup(request))
+                                   op="exa_company_research", record_type="organization", setup=_setup(request, conn))
 
     # ------------------------------------------------------------------ people at the account
     @app.get("/api/accounts/{oid}/people")
@@ -251,20 +251,19 @@ def register_profiles(app: FastAPI) -> None:
                              "WHERE organization_id=%s AND status IN ('found','already_known','added') ORDER BY (status='found') DESC, company_match, created_at DESC LIMIT 60", (o["id"],))
             if items:
                 audit(conn, actor=p.email, operation="pii_read", record_type="people_candidates", record_id=str(o["id"]), detail={"count": len(items)})
-            st = request.app.state.settings
+            ready = _setup(request, conn)["exa"]
             return {"search": _run_row(s), "running": bool(s and s["status"] in ("queued", "running")), "items": [_run_row(i) for i in items],
-                    "setup": {"ready": bool(st.exa_api_key and st.exa_monthly_cap_usd > 0),
-                              "note": None if st.exa_api_key and st.exa_monthly_cap_usd > 0 else "Finding people with Exa is not set up in this environment. It needs EXA_API_KEY and RI_EXA_MONTHLY_CAP_USD."},
+                    "setup": {"ready": ready,
+                              "note": None if ready else "Finding people with Exa is not set up in this environment. It needs EXA_API_KEY and RI_EXA_MONTHLY_CAP_USD on the worker."},
                     "can_run": p.can("research.request")}
 
     @app.post("/api/accounts/{oid}/people-search")
     def start_people_search(oid: str, request: Request, p: Principal = Depends(require("research.request"))):
         if not p.can("contacts.read"):
             raise HTTPException(403, "missing permission contacts.read")
-        st = request.app.state.settings
-        if not (st.exa_api_key and st.exa_monthly_cap_usd > 0):
-            raise HTTPException(409, "Finding people with Exa is not set up in this environment. It needs EXA_API_KEY and RI_EXA_MONTHLY_CAP_USD.")
         with tx(request) as conn:
+            if not _setup(request, conn)["exa"]:
+                raise HTTPException(409, "Finding people with Exa is not set up in this environment. It needs EXA_API_KEY and RI_EXA_MONTHLY_CAP_USD on the worker.")
             o = _visible_org(conn, p, oid)
             if q1(conn, "SELECT 1 FROM people_searches WHERE organization_id=%s AND status IN ('queued','running') AND created_at > now() - interval '15 minutes'", (o["id"],)):
                 raise HTTPException(409, "A search for this company is already running.")
@@ -323,7 +322,7 @@ def register_profiles(app: FastAPI) -> None:
                              "FROM outbound_enrolments oe LEFT JOIN signal_campaigns sc ON sc.id=oe.signal_campaign_id WHERE oe.person_id=%s ORDER BY oe.created_at DESC", (pid,))
             members = qa(conn, "SELECT sc.id, sc.name, sc.status, m.included, m.exclusion, m.status AS member_status FROM signal_campaign_members m "
                                "JOIN signal_campaigns sc ON sc.id=m.campaign_id WHERE m.person_id=%s ORDER BY sc.created_at DESC LIMIT 20", (pid,))
-            research = _research_state(conn, "person_profiles", "person_id", pid, _setup(request))
+            research = _research_state(conn, "person_profiles", "person_id", pid, _setup(request, conn))
             eng = engagement([*(e["status"] for e in enrol), *(ACTIVITY_STATUS.get(a["type"]) for a in activity)])
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=pid, detail={"view": "profile"})
             return {
@@ -348,7 +347,7 @@ def register_profiles(app: FastAPI) -> None:
         with tx(request) as conn:
             v = _visible_person(conn, p, pid)
             return _start_research(conn, p, table="person_profiles", col="person_id", rid=str(v["id"]), org_id=str(v["organization_id"]), kind="person_profile",
-                                   op="exa_person_research", record_type="person", setup=_setup(request))
+                                   op="exa_person_research", record_type="person", setup=_setup(request, conn))
 
     # ------------------------------------------------------------------ relationship and owner
     @app.get("/api/accounts/{oid}/relationship")

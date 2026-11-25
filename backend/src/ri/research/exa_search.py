@@ -136,10 +136,21 @@ def source_list(src: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     return [{"id": k, "url": v["url"], "title": v.get("title"), "published": v.get("published"), "purpose": v.get("purpose")} for k, v in src.items()]
 
 
-def configured(st: Any) -> dict[str, Any]:
-    exa = bool(getattr(st, "exa_api_key", None))
-    cap = float(getattr(st, "exa_monthly_cap_usd", 0) or 0)
-    ai = bool(getattr(st, "anthropic_api_key", None))
+def worker_can(conn: Any) -> dict[str, bool]:
+    """What the worker that runs research reported in its last heartbeat (the keys live on the worker, not necessarily on the web app)."""
+    if conn is None:
+        return {}
+    row = conn.execute("SELECT detail FROM system_heartbeats WHERE component='worker-interactive' AND at > now() - interval '15 minutes'").fetchone()
+    can = (row or {}).get("detail", {}).get("can") if row else None
+    return can if isinstance(can, dict) else {}
+
+
+def configured(st: Any, conn: Any = None) -> dict[str, Any]:
+    """Research is ready when this process has the keys, or when the worker that runs research says it has them."""
+    can = worker_can(conn)
+    exa = bool(getattr(st, "exa_api_key", None)) or bool(can.get("exa"))
+    cap = float(getattr(st, "exa_monthly_cap_usd", 0) or 0) or (1.0 if can.get("exa") else 0.0)
+    ai = bool(getattr(st, "anthropic_api_key", None)) or bool(can.get("ai"))
     missing = [x for x, ok in (("EXA_API_KEY", exa), ("RI_EXA_MONTHLY_CAP_USD", cap > 0), ("ANTHROPIC_API_KEY", ai)) if not ok]
     return {"exa": exa and cap > 0, "ai": ai, "ready": not missing, "missing": missing,
             "note": None if not missing else "Research with Exa is not set up in this environment. It needs " + ", ".join(missing) + " on the API and the worker."}

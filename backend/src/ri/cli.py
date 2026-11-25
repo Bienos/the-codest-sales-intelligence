@@ -159,7 +159,9 @@ def main(argv: list[str] | None = None) -> int:
                         continue
                     done += r is not None
                     if time.time() - last_beat > 60:
-                        beat(own_conn, "worker" if name == "background" else f"worker-{name}", {"jobs_since_start": done})
+                        beat(own_conn, "worker" if name == "background" else f"worker-{name}", {"jobs_since_start": done,
+                             # what this worker can do: the web app enables research buttons from this, since the keys live here
+                             "can": {"exa": bool(s.exa_api_key and s.exa_monthly_cap_usd > 0), "ai": bool(s.anthropic_api_key)}})
                         own_conn.commit()
                         last_beat = time.time()
                     if r is None:
