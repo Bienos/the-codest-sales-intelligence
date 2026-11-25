@@ -63,7 +63,7 @@ export function SignalBoard({ days = 30, target = false, active, onPick, canCamp
             <span className="sigtile-m">{tr(s.what_it_means)}</span>
           </button>
           <div className="sigtile-foot small">
-            <span className="muted">{tr("{} with a verified contact", number(s.reachable_accounts))}</span>
+            <span className="muted">{tr("{} with an email contact", number(s.reachable_accounts))}</span>
             {canCampaign && s.reachable_accounts > 0 && <Link to={`/campaigns/new?rules=${s.rule_id}`}>{tr("Start a campaign")} →</Link>}
           </div>
         </div>)}

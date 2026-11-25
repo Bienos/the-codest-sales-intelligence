@@ -65,7 +65,7 @@ def register_campaigns(app: FastAPI, settings: Settings) -> None:
     def options(request: Request, days: int = Query(90, ge=7, le=365), target: bool = False, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             return {"items": sc.signal_options(conn, p, days, target=target), "days": days,
-                    "note": "Counts are accounts you can see with the signal live and verified in this window. Reachable means at least one contact has a verified email."}
+                    "note": "Counts are accounts you can see with the signal live and verified in this window. Reachable means at least one contact has an email address (verified or not)."}
 
     @app.get("/api/signal-campaigns")
     def list_campaigns(request: Request, p: Principal = Depends(require("draft.create"))):

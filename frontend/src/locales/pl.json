@@ -2037,5 +2037,10 @@
   "failed": "błąd",
   "new": "nowe",
   "rows": "wierszy",
-  "{} other tabs not imported (archives and filtered views)": "Nie zaimportowano {} innych zakładek (archiwa i widoki filtrowane)"
+  "{} other tabs not imported (archives and filtered views)": "Nie zaimportowano {} innych zakładek (archiwa i widoki filtrowane)",
+  "{} with an email contact": "{} z kontaktem e-mail",
+  "Up to five people per company with an email address, verified ones first. Anyone who opted out or bounced is left out, with the reason shown.": "Do pięciu osób w firmie z adresem e-mail, najpierw zweryfikowane. Osoby wypisane lub z odbitym adresem są pomijane, z podaniem powodu.",
+  "{} more companies have no email contact": "Jeszcze {} firm nie ma kontaktu e-mail",
+  "{} companies, {} with an email contact": "{} firm, {} z kontaktem e-mail",
+  "None of these companies has a contact with an email address. Open a company and add people first.": "Żadna z tych firm nie ma kontaktu z adresem e-mail. Otwórz firmę i najpierw dodaj osoby."
 }

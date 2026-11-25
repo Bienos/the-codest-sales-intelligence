@@ -150,9 +150,10 @@ def test_audience_is_built_from_live_signals_and_explains_every_exclusion(conn, 
     rows = conn.execute("select m.included, m.exclusion, o.display_name, pe.full_name from signal_campaign_members m join organizations o on o.id=m.organization_id "
                         "left join people pe on pe.id=m.person_id where m.campaign_id=%s", (cid,)).fetchall()
     included = {r["full_name"] for r in rows if r["included"]}
-    assert included == {"Ada Clarke", "Ben Weber", "Dan Nowak"}              # technology leaders first; HR manager and the opted-out CIO left out
+    # technology leaders first; HR manager and the opted-out CIO left out; an unverified address is used too (owner's decision, 25 Nov 2026)
+    assert included == {"Ada Clarke", "Ben Weber", "Dan Nowak", "Hal Sousa"}
     reasons = {r["display_name"]: r["exclusion"] for r in rows if not r["included"]}
-    assert "open deal" in reasons["Fenwick"] and "No contact with a verified email" in reasons["Quiet Bank"]
+    assert "open deal" in reasons["Fenwick"] and "Quiet Bank" not in reasons
     assert stats["accounts"] == 4 and "Harbour Ltd" not in reasons and "Old News" not in reasons
     review = sc.review_campaign(conn, cid)
     assert review["passed"], review
@@ -175,7 +176,7 @@ def test_signal_campaign_needs_a_manager_then_pushes_to_lemlist_once(conn, marke
     assert c.put(f"/api/signal-campaigns/{cid}/steps", json={"steps": ok}, headers=h("bdm")).json()["review"]["passed"]
     req = c.post(f"/api/signal-campaigns/{cid}/request-approval", headers=h("bdm")).json()
     aid = req["approval_id"]
-    assert req["members"] == 2 and req["accounts"] == 1
+    assert req["members"] == 3 and req["accounts"] == 2          # Kestrel (Ada, Ben) and Quiet Bank (Hal, unverified address)
     assert c.post(f"/api/approvals/{aid}/decision", json={"approve": True}, headers=h("bdm2")).status_code == 403          # sellers cannot approve a bulk campaign
     assert c.post(f"/api/approvals/{aid}/decision", json={"approve": True}, headers=h("mgr")).status_code == 200
     assert c.get(f"/api/signal-campaigns/{cid}", headers=h("bdm")).json()["campaign"]["status"] == "approved"
@@ -190,7 +191,7 @@ def test_signal_campaign_needs_a_manager_then_pushes_to_lemlist_once(conn, marke
     fake.add_lead = lambda cid_, email, fields: (fake.add_lead_fields.append(fields), orig(cid_, email, fields))[1]
     out = sc.execute_push(conn, aid, fake, settings(outbound_enabled=True))
     conn.commit()
-    assert out["leads"] == 1 and out["dropped_since_approval"] == 1
+    assert out["leads"] == 2 and out["dropped_since_approval"] == 1          # Ada and Hal; Ben opted out after approval
     assert fake.add_lead_fields[0]["firstName"] == "Ada" and "Series B" in fake.add_lead_fields[0]["signalHook"]
     assert [x[1] for x in fake.calls if x[0] == "step"][0] == "A question about {{companyName}}"
     with pytest.raises(appr.ApprovalError):

@@ -63,20 +63,23 @@ def approve(conn, aid):
     conn.commit()
 
 
-def test_only_verified_unsuppressed_emails_are_eligible(conn):
+def test_any_held_unsuppressed_email_is_eligible_verified_first(conn):
+    """Owner's decision (25 Nov 2026): unverified addresses are used too; verified ones come first."""
     org, ids, _ = seed(conn)
     conn.execute("insert into people(full_name, work_email, email_verification_status, suppressed) values ('Sup Person','s@example.invalid','Verified',true) returning id")
     sid = str(conn.execute("select id from people where full_name='Sup Person'").fetchone()["id"])
     conn.execute("insert into employment(person_id, organization_id, title) values (%s,%s,'CIO')", (sid, org))
+    review = str(conn.execute("insert into people(full_name, work_email, email_verification_status) values ('Rev Person','r@example.invalid','Needs Manual Review') returning id").fetchone()["id"])
+    conn.execute("insert into employment(person_id, organization_id, title) values (%s,%s,'CIO')", (review, org))
     plan = enrol.plan_contacts(conn, org)
-    assert [c["email"] for c in plan["eligible"]] == ["ok@example.invalid"]
-    assert len(plan["needs_verification"]) == 1 and plan["no_email"] == 1 and plan["suppressed"] == 1
+    assert [(c["email"], c["verified"]) for c in plan["eligible"]] == [("ok@example.invalid", True), ("u@example.invalid", False)]
+    assert len(plan["needs_verification"]) == 1 and plan["no_email"] == 1 and plan["suppressed"] == 1 and plan["manual_review"] == 1
 
 
-def test_a_request_needs_a_verified_contact_and_an_approved_draft(conn):
+def test_a_request_needs_a_contact_with_an_address_and_an_approved_draft(conn):
     org, ids, did = seed(conn)
     with pytest.raises(appr.ApprovalError):
-        enrol.request_enrolment(conn, did, [ids[1]], by="bdm@x", requester_crm_user=None)          # unverified only
+        enrol.request_enrolment(conn, did, [ids[2]], by="bdm@x", requester_crm_user=None)          # no address
     conn.execute("update campaign_drafts set status='draft' where id=%s", (did,))
     with pytest.raises(appr.ApprovalError):
         enrol.request_enrolment(conn, did, [ids[0]], by="bdm@x", requester_crm_user=None)
@@ -152,7 +155,7 @@ def test_webhook_events_update_status_dedupe_and_suppress(conn):
     assert conn.execute("select status from outbound_enrolments").fetchone()["status"] == "interested"          # a later weaker event never downgrades
     enrol.record_event(conn, {"type": "emailsUnsubscribed", "campaignId": "cam_1", "leadEmail": "ok@example.invalid", "_id": "e4"})
     assert conn.execute("select suppressed from people where id=%s", (ids[0],)).fetchone()["suppressed"] is True
-    assert enrol.plan_contacts(conn, org)["eligible"] == []
+    assert [c["email"] for c in enrol.plan_contacts(conn, org)["eligible"]] == ["u@example.invalid"]          # the opted-out person is gone
 
 
 
@@ -213,7 +216,7 @@ def test_endpoints_status_webhook_and_deal_proposal(conn, db_url):
         assert c.post("/api/admin/integrations/lemlist/test", headers=admin).json()["ok"] is False
         assert c.get("/api/admin/integrations", headers=bdm).status_code == 403
         plan = c.get(f"/api/accounts/{org}/contacts-plan", headers=bdm).json()
-        assert len(plan["eligible"]) == 1
+        assert [e["verified"] for e in plan["eligible"]] == [True, False]          # verified first, unverified usable too
         r = c.post(f"/api/campaigns/{did}/enrol", headers=bdm, json={"person_ids": [ids[0]]})
         assert r.status_code == 200 and r.json()["ownership_checked"] is True
         aid = r.json()["approval_id"]

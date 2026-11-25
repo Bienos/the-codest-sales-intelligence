@@ -1,5 +1,6 @@
 """From an approved draft to a Lemlist campaign, under a two-person approval. The campaign is created in Lemlist with its leads but NOT launched:
-launching stays a human click in Lemlist. No email address is ever guessed; only verified addresses from the sheets, minus anyone suppressed or already unsubscribed."""
+launching stays a human click in Lemlist. No email address is ever guessed; any address we hold (verified ones first; unverified ones are sent too,
+by the owner's decision of 25 Nov 2026, and a bounce suppresses the address everywhere), minus anyone suppressed, unsubscribed or bounced."""
 from __future__ import annotations
 
 import hashlib
@@ -16,6 +17,10 @@ from ..db import Conn, jb, q1, qa
 from .lemlist import LemlistClient, LemlistError
 
 KIND, SYSTEM, OP = "sequence_enrolment", "lemlist", "enrol"
+NO_EMAIL_STATUSES = ("Not Found", "unknown", "Missing")
+# SQL twin of plan_contacts' rule, for counts: someone we could write to (any address we hold that isn't marked missing or for review)
+USABLE_EMAIL_SQL = ("({p}.work_email LIKE '%%@%%' AND {p}.erased_at IS NULL AND NOT {p}.suppressed "
+                    "AND coalesce({p}.email_verification_status, '') NOT IN ('Not Found', 'unknown', 'Missing', 'Needs Manual Review'))")
 STATUS_FROM_EVENT = {"emailsReplied": "replied", "emailsBounced": "bounced", "emailsUnsubscribed": "unsubscribed", "interested": "interested", "notInterested": "not_interested",
                      "emailsInterested": "interested", "emailsNotInterested": "not_interested"}
 TRACKED = set(STATUS_FROM_EVENT) | {"emailsSendFailed"}
@@ -37,14 +42,15 @@ def plan_contacts(conn: Conn, org_id: str, *, resume_draft: str | None = None) -
             out["suppressed"] += 1
         elif email.lower() in enrolled_emails:
             out["already_enrolled"] += 1
-        elif not email or r["st"] in ("Not Found", "unknown"):
+        elif not email or "@" not in email or r["st"] in NO_EMAIL_STATUSES:
             out["no_email"] += 1
-        elif r["st"] == "Verified":
-            out["eligible"].append({**card, "email": email})
         elif r["st"] == "Needs Manual Review":
             out["manual_review"] += 1
         else:
-            out["needs_verification"].append(card)       # found but unverified: needs a verification step (costs a credit) before it can be used
+            out["eligible"].append({**card, "email": email, "verified": r["st"] == "Verified"})
+            if r["st"] != "Verified":
+                out["needs_verification"].append(card)   # usable, but not checked: Lemlist's own checks and the bounce feedback apply
+    out["eligible"].sort(key=lambda c: (not c["verified"], c["name"] or ""))
     return out
 
 
@@ -76,7 +82,7 @@ def request_enrolment(conn: Conn, draft_id: str, person_ids: list[str], *, by: s
     plan = plan_contacts(conn, str(d["organization_id"]))
     chosen = [c for c in plan["eligible"] if c["id"] in set(person_ids)]
     if not chosen:
-        raise appr.ApprovalError("none of the selected contacts has a verified email that can be used")
+        raise appr.ApprovalError("none of the selected contacts has an email address that can be used")
     steps, prev = [], 0
     for s in d["steps"]:
         steps.append({"subject": s["subject"], "body": s["body"], "delay_days": max(int(s.get("day") or 0) - prev, 0)})
@@ -84,7 +90,7 @@ def request_enrolment(conn: Conn, draft_id: str, person_ids: list[str], *, by: s
     payload = {"draft_id": draft_id, "campaign_name": f"RI {d['display_name']} {datetime.now(timezone.utc):%Y-%m-%d}", "company": d["display_name"], "domain": d["canonical_domain"],
                "contacts": [{"person_id": c["id"], "email": c["email"], "name": c["name"], "title": c["title"]} for c in chosen], "steps": steps}
     a = appr.request(conn, kind=KIND, target_system=SYSTEM, target_id=draft_id, operation=OP, payload=payload, requested_by=by,
-                     justification=f"Enrol {len(chosen)} verified contact(s) at {d['display_name']} in a {len(steps)}-email sequence. The campaign is created in Lemlist but not launched.",
+                     justification=f"Enrol {len(chosen)} contact(s) at {d['display_name']} in a {len(steps)}-email sequence. The campaign is created in Lemlist but not launched.",
                      idempotency_key=f"enrol:{draft_id}:{hashlib.sha256(','.join(sorted(c['id'] for c in chosen)).encode()).hexdigest()[:16]}")
     return {"approval_id": str(a["id"]), "status": a["status"], "contacts": len(chosen), "ownership_checked": bool(q1(conn, "SELECT 1 FROM crm_organizations WHERE organization_id=%s AND link_status='linked'", (str(d["organization_id"]),)))}
 

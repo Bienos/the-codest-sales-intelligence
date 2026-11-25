@@ -1,7 +1,7 @@
 """Campaigns built from buying signals.
 
 A seller picks one or more signals (for example "new funding round" or "hiring engineers for one platform"). The platform finds every account in the
-seller's scope with that signal live and verified, picks the right people there (verified email, not suppressed, not owned by another seller, no open
+seller's scope with that signal live and verified, picks the right people there (an email address, verified ones first, not suppressed, not owned by another seller, no open
 deal), and writes each lead's opening line from that account's own evidence. The sequence is checked against the brand rules for every lead.
 Nothing is sent from here: pushing to Lemlist needs a manager's approval and the outbound switch, and launching stays a click in Lemlist.
 """
@@ -20,7 +20,7 @@ from ..audit import audit
 from ..config import Settings
 from ..db import Conn, jb, q1, qa
 from .brand_check import PLACEHOLDERS, review_sequence
-from .enrol import ownership_check, plan_contacts
+from .enrol import USABLE_EMAIL_SQL, ownership_check, plan_contacts
 from .lemlist import LemlistClient, LemlistError
 
 KIND, SYSTEM, OP = "signal_campaign_push", "lemlist", "create_campaign_with_leads"
@@ -110,7 +110,7 @@ def signal_options(conn: Conn, p: Principal, days: int = 90, *, target: bool = F
         SELECT s.rule_id, count(DISTINCT s.organization_id) AS accounts, max(coalesce(e.event_at, e.pub_at, s.effective_from)) AS latest,
                count(DISTINCT s.organization_id) FILTER (WHERE EXISTS (
                    SELECT 1 FROM employment em JOIN people pe ON pe.id=em.person_id WHERE em.organization_id=s.organization_id
-                   AND pe.erased_at IS NULL AND NOT pe.suppressed AND pe.email_verification_status='Verified')) AS reachable
+                   AND {USABLE_EMAIL_SQL.format(p='pe')})) AS reachable
         FROM signals s JOIN events e ON e.id=s.event_id AND e.subject_org_id=s.organization_id JOIN organizations o ON o.id=s.organization_id
         WHERE s.status='active' AND s.verification_status='verified' AND (s.expires_at IS NULL OR s.expires_at>now())
           AND e.verification_status='verified' AND e.lifecycle_status='active' AND NOT e.is_historical_replay
@@ -183,12 +183,12 @@ def build_audience(conn: Conn, campaign_id: str, p: Principal) -> dict[str, int]
             blocker = ownership_check(conn, org, p.pipedrive_user_id)
             reason = blocker["detail"] if blocker else None
         plan = plan_contacts(conn, org)
-        people = sorted(plan["eligible"], key=lambda x: (_rank(x["title"], a["rule_id"]), x["name"]))[:per_account] if not reason else []
+        people = sorted(plan["eligible"], key=lambda x: (_rank(x["title"], a["rule_id"]), not x.get("verified"), x["name"]))[:per_account] if not reason else []
         if not people:
             if not reason:
-                bits = [f"{len(plan['needs_verification'])} need an email check" if plan["needs_verification"] else "",
+                bits = [f"{plan['manual_review']} need a manual check" if plan["manual_review"] else "",
                         f"{plan['suppressed']} opted out" if plan["suppressed"] else "", f"{plan['already_enrolled']} already in a sequence" if plan["already_enrolled"] else ""]
-                reason = "No contact with a verified email" + (f" ({', '.join(b for b in bits if b)})" if any(bits) else "") + ". Find decision makers on the account first."
+                reason = "No contact with an email address" + (f" ({', '.join(b for b in bits if b)})" if any(bits) else "") + ". Find decision makers on the account first."
             conn.execute("INSERT INTO signal_campaign_members(campaign_id, organization_id, included, exclusion, signal) VALUES (%s,%s,false,%s,%s)",
                          (campaign_id, org, reason, jb(signal)))
             stats["excluded_accounts"] += 1
@@ -257,10 +257,10 @@ def request_push(conn: Conn, campaign_id: str, p: Principal, settings: Settings)
         raise CampaignError("The copy does not pass the brand review yet. Fix the template or leave out the leads with issues.")
     payload = _payload(conn, c)
     if not payload["members"]:
-        raise CampaignError("Nobody is included. Add contacts with verified emails to the accounts first.")
+        raise CampaignError("Nobody is included. Add contacts with email addresses to the accounts first.")
     orgs = len({m["organization_id"] for m in payload["members"]})
     a = appr.request(conn, kind=KIND, target_system=SYSTEM, target_id=campaign_id, operation=OP, payload=payload, requested_by=p.email,
-                     justification=f"Create the Lemlist campaign '{c['name']}' for {len(payload['members'])} verified contact(s) at {orgs} account(s), each with a buying signal "
+                     justification=f"Create the Lemlist campaign '{c['name']}' for {len(payload['members'])} contact(s) at {orgs} account(s), each with a buying signal "
                                    f"({', '.join(c['rule_ids'])}). It is created in Lemlist but not launched.",
                      idempotency_key=f"signal-campaign:{campaign_id}:{appr.payload_hash(payload)[:16]}", ttl_hours=settings.approval_ttl_hours)
     conn.execute("UPDATE signal_campaigns SET status='pending_approval', approval_id=%s, updated_at=now() WHERE id=%s", (a["id"], campaign_id))
