@@ -40,7 +40,7 @@ def _budget_msg(exc: BudgetExceeded) -> str:
 
 
 def _run_research(conn: Conn, job: dict[str, Any], *, table: str, kind: str, research: Callable[..., dict[str, Any]], subject_col: str,
-                  post_factory=None, call_factory=None) -> dict[str, Any]:
+                  schema: dict[str, Any] | None = None, post_factory=None, call_factory=None) -> dict[str, Any]:
     from ..ingest.pipeline import _run
     from ..jobs.modelcall import make_call
     from ..jobs.queue import JobError
@@ -61,7 +61,8 @@ def _run_research(conn: Conn, job: dict[str, Any], *, table: str, kind: str, res
     searcher = ExaSearcher(conn, post=(post_factory or (lambda: exa_post(st.exa_api_key)))(), operation=kind, ref_type=kind, ref_id=rid, org_id=org_id,
                            log_query=kind != "person_profile")
     call = (call_factory or (lambda: make_call(conn, st, org_id=org_id, operation=kind, key_prefix=f"{kind}:{rid}",
-                                               models=[st.anthropic_research_model, st.anthropic_model], max_tokens=3500)))()
+                                               models=[st.anthropic_research_model, st.anthropic_model], max_tokens=8000,
+                                               schema=schema)))()
     try:
         r = research(conn, str(row[subject_col]), searcher=searcher, call=call, run=_run)
     except BudgetExceeded as exc:
@@ -92,13 +93,15 @@ def _cost(conn: Conn, table: str, rid: str, searcher: ExaSearcher) -> None:
 
 
 def account_profile(conn: Conn, job: dict[str, Any], **kw: Any) -> dict[str, Any]:
-    from .company_profile import research_company
-    return _run_research(conn, job, table="account_profiles", kind="account_profile", research=research_company, subject_col="organization_id", **kw)
+    from .company_profile import SCHEMA, research_company
+    return _run_research(conn, job, table="account_profiles", kind="account_profile", research=research_company, subject_col="organization_id",
+                         schema=SCHEMA, **kw)
 
 
 def person_profile(conn: Conn, job: dict[str, Any], **kw: Any) -> dict[str, Any]:
-    from .person_profile import research_person
-    return _run_research(conn, job, table="person_profiles", kind="person_profile", research=research_person, subject_col="person_id", **kw)
+    from .person_profile import SCHEMA, research_person
+    return _run_research(conn, job, table="person_profiles", kind="person_profile", research=research_person, subject_col="person_id",
+                         schema=SCHEMA, **kw)
 
 
 def people_search(conn: Conn, job: dict[str, Any], *, post_factory=None) -> dict[str, Any]:

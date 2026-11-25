@@ -15,7 +15,7 @@ from typing import Any, Awaitable, Callable
 
 from ..db import Conn, q1
 from ..sources.base import BudgetExceeded
-from .company_profile import CODEST, Verifier, _date, _s, ask_json
+from .company_profile import CODEST, IDS, STR, Verifier, _date, _s, arr, ask_json, obj
 from .exa_search import ExaSearcher, ExaStopped, number_sources, since, source_list, text_contents
 
 Call = Callable[[str, str], Awaitable[tuple[str, int, int, str]]]
@@ -33,7 +33,7 @@ RULES
 - Use only the pages. Never add facts from memory. Every item names its page in "source" (a page id such as "W2").
 - "quote" is an EXACT excerpt (12 to 250 characters) copied from that page. REQUIRED for recent_activity; optional elsewhere. Never edit a quote.
 - summary: one or two sentences on who this person is professionally (current job, what they are known for), from the pages.
-- previous_roles: their career before the current role, newest first. "from" and "to" are four-digit years from the page (null when the page
+- previous_roles: their career before the current role, newest first. "from" and "to" are four-digit years from the page ("" when the page
   gives none). Never guess a year.
 - recent_activity: the last 2 years, newest first. "date" is YYYY-MM-DD or YYYY-MM from the page. kind is one of: {", ".join(sorted(KINDS))}.
 - talking_points: 2 or 3 specific openers The Codest could use, each tied to cited pages. Respectful, no flattery, no invented numbers.
@@ -41,12 +41,26 @@ RULES
 Return ONLY JSON:
 {{"identity":{{"confident":true,"note":".."}},
  "summary":{{"text":"..","sources":["W1"]}},
- "current_role":{{"title":"..","remit":"one or two sentences: what they are responsible for","since":"YYYY or null","source":"W1"}},
+ "current_role":{{"title":"..","remit":"one or two sentences: what they are responsible for","since":"YYYY or empty","source":"W1"}},
  "previous_roles":[{{"title":"..","company":"..","from":"2018","to":"2022","source":"W1"}}],
  "focus_areas":[{{"label":"e.g. payments modernisation","source":"W2"}}],
  "recent_activity":[{{"date":"2026-05-12","kind":"talk","title":"..","detail":"one sentence","source":"W3","quote":".."}}],
  "talking_points":[{{"point":"..","why":"one sentence","sources":["W3"]}}],
  "open_questions":[".."]}}"""
+
+
+_ROLE = obj(title=STR, company=STR, **{"from": STR, "to": STR}, source=STR)
+# Structured-output shape: always valid JSON. Unknown years and optional quotes are "" (read as missing below).
+SCHEMA = obj(
+    identity=obj(confident={"type": "boolean"}, note=STR),
+    summary=obj(text=STR, sources=IDS),
+    current_role=obj(title=STR, remit=STR, since=STR, source=STR),
+    previous_roles=arr(_ROLE),
+    focus_areas=arr(obj(label=STR, source=STR)),
+    recent_activity=arr(obj(date=STR, kind={"type": "string", "enum": sorted(KINDS)}, title=STR, detail=STR, source=STR, quote=STR)),
+    talking_points=arr(obj(point=STR, why=STR, sources=IDS)),
+    open_questions=arr(STR),
+)
 
 
 def _no_contact(*vals: Any) -> bool:

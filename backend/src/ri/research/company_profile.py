@@ -55,6 +55,34 @@ Return ONLY valid JSON. Inside strings never use a raw double quote: write a sin
 
 FIT = {"good", "neutral", "bad"}
 SERVICES = {"team_extension", "delivery_team", "ai_data", "qa"}
+
+
+def obj(**props: Any) -> dict[str, Any]:
+    """A strict JSON-schema object: every field required, nothing extra (what structured output needs)."""
+    return {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
+
+
+STR: dict[str, Any] = {"type": "string"}
+IDS: dict[str, Any] = {"type": "array", "items": STR}
+
+
+def arr(item: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "array", "items": item}
+
+
+_FACT = obj(value=STR, source=STR)
+# The answer's shape, sent as structured output so the reply is always valid JSON. Quotes may be "" where they are optional;
+# the verifier below still decides what is kept.
+SCHEMA = obj(
+    about=obj(text=STR, sources=IDS),
+    products=arr(obj(name=STR, detail=STR, source=STR)),
+    footprint=obj(hq=_FACT, markets=_FACT, size=_FACT),
+    icp_points=arr(obj(label=STR, value=STR, fit={"type": "string", "enum": sorted(FIT)}, source=STR)),
+    recent=arr(obj(date=STR, headline=STR, detail=STR, source=STR, quote=STR)),
+    vendors=arr(obj(name=STR, role=STR, source=STR, quote=STR)),
+    how_we_help=arr(obj(angle=STR, why=STR, service={"type": "string", "enum": sorted(SERVICES)}, sources=IDS)),
+    open_questions=arr(STR),
+)
 MAX = {"products": 6, "icp_points": 8, "recent": 8, "vendors": 10, "how_we_help": 3, "open_questions": 5}
 TEXT_CAP = 2200
 
@@ -78,6 +106,10 @@ def repair_json(s: str) -> str:
     i, n, in_str = 0, len(s), False
     while i < n:
         c = s[i]
+        if not in_str and c == "\\":
+            out.append(" ")                 # an escape between values (a literal \n written between list items) means nothing there
+            i += 2
+            continue
         if not in_str:
             out.append(c)
             in_str = c == '"'

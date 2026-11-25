@@ -487,3 +487,60 @@ def test_every_email_counts_and_the_pages_connect(conn, env):
     assert d["company"]["id"] == oid and d["company"]["employees"] == 1800 and d["company"]["signal"] is None
     assert {x["name"] for x in d["colleagues"]} == {"Ada Clarke", "Eve Lund"} and all(set(x) == {"id", "name", "title", "committee", "has_email", "seniority", "suppressed"} for x in d["colleagues"])
     assert nomail in {x["id"] for x in d["colleagues"]}
+
+
+def test_research_answers_are_asked_for_as_structured_json(conn, monkeypatch):
+    """The Ebury failure: long answers full of copied excerpts came back as broken JSON. The research call now sends the profile's
+    schema as structured output; a model that refuses the schema gets one plain retry; a cut-off answer is said plainly."""
+    import asyncio
+
+    from ri import budget, usage
+    from ri.config import Settings
+    from ri.jobs import modelcall
+    from ri.research import company_profile, person_profile
+    from ri.sources import http as http_mod
+    from ri.sources.base import SchemaDrift
+    budget.set_cap(conn, "anthropic", "monthly", usage.period_now(), 1_000_000, "tokens")
+    conn.commit()
+    sent: list[dict] = []
+    replies: list = []
+
+    async def fake(client, method, url, **kw):
+        sent.append(kw["json"])
+        r = replies.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(http_mod, "request_json", fake)
+    st = Settings.from_env(require_auth=False)
+    ok = {"content": [{"type": "text", "text": '{"about": {"text": "x", "sources": []}}'}], "stop_reason": "end_turn", "usage": {"input_tokens": 10, "output_tokens": 5}}
+    call = modelcall.make_call(conn, st, org_id=None, operation="account_profile", key_prefix="t", models=["m1"], schema=company_profile.SCHEMA)
+    replies.append(ok)
+    text, *_ = asyncio.run(call("sys", "user"))
+    assert company_profile.parse_json(text)["about"]["text"] == "x"
+    assert sent[-1]["output_config"]["format"] == {"type": "json_schema", "schema": company_profile.SCHEMA}
+    # every object in both schemas is strict: all fields required, nothing extra
+    def strict(s):
+        if s.get("type") == "object":
+            assert s["additionalProperties"] is False and set(s["required"]) == set(s["properties"])
+            for v in s["properties"].values():
+                strict(v)
+        if s.get("type") == "array":
+            strict(s["items"])
+    strict(company_profile.SCHEMA)
+    strict(person_profile.SCHEMA)
+    # a model that will not take the schema answers once without it
+    replies.extend([SchemaDrift("unexpected status 400: output_config not supported", status=400), ok])
+    asyncio.run(call("sys", "user"))
+    assert "output_config" in sent[-2] and "output_config" not in sent[-1]
+    # a cut-off answer is named, and its reservation released
+    replies.append({**ok, "stop_reason": "max_tokens"})
+    with pytest.raises(ValueError, match="cut off"):
+        asyncio.run(call("sys", "user"))
+
+
+def test_stray_escapes_between_items_are_ignored():
+    from ri.research.company_profile import parse_json
+    bad = '{"recent":[{"quote":"A Ebury lançou (SEPA Instant)"},\\n{"quote":"Ebury Bank listed"}]}'
+    assert [x["quote"] for x in parse_json(bad)["recent"]] == ["A Ebury lançou (SEPA Instant)", "Ebury Bank listed"]
