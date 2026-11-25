@@ -246,8 +246,8 @@ function Nothing({ data, filtered, watched, q, days, clear, longer, canAdmin }: 
   const off = data.coverage.no_active_monitoring || data.coverage.monitored_sources === 0;
   if (watched && !data.watchlist) return <div className="fx-empty">
     <b>{tr("Your watchlist is empty")}</b>
-    <p>{tr("Star a company here or in Accounts & leads to follow it. Its news then shows when this switch is on.")}</p>
-    <p className="fx-empty-acts"><button type="button" onClick={clear}>{tr("Show all findings")}</button><Link to="/accounts">{tr("Go to Accounts & leads")}</Link></p>
+    <p>{tr("Star a company here or in Accounts to follow it. Its news then shows when this switch is on.")}</p>
+    <p className="fx-empty-acts"><button type="button" onClick={clear}>{tr("Show all findings")}</button><Link to="/accounts">{tr("Go to Accounts")}</Link></p>
   </div>;
   if (filtered && !(off && !q)) return <div className="fx-empty">
     <b>{tr("Nothing matches these filters")}</b>

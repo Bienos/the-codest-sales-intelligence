@@ -127,7 +127,7 @@ const STEPS: Step[] = [
   { verb: "Research the company", art: ArtResearch,
     line: "Pick a company and one click asks Exa to research it: what it does, its recent news, its suppliers, its engineering jobs and the people who decide.",
     chips: ["Company profile", "Recent news", "Who decides", "Person profiles", "Every line links to its page"],
-    to: "/accounts", perm: "accounts.read", page: "Accounts & leads", note: "open any company to see its profile and people." },
+    to: "/accounts", perm: "accounts.read", page: "Accounts", note: "open any company to see its profile and people." },
   { verb: "Reach out", art: ArtReach,
     line: "Pick a buying signal and the app prepares a campaign: the right people at each company, with every email opening on that company's own news.",
     chips: ["Right people picked", "A personal first line", "A manager approves", "Waits in Lemlist until you launch"],
@@ -176,7 +176,7 @@ const DAY: Moment[] = [
   { h: 9, m: 15, title: "Find a reason", line: "Pick one company with a clear reason to talk now: a buying signal or an open tender.",
     links: [["/signals", "accounts.read", "Buying signals", IconSignal], ["/tenders", "today.read", "Open tenders", IconTender]] },
   { h: 10, m: 0, title: "Prepare", line: "Open the company page. Read the research, see who decides, and research a person with Exa if you need more.",
-    links: [["/accounts", "accounts.read", "Accounts & leads", IconAccounts], ["/people", "contacts.read", "People", IconPeople]] },
+    links: [["/accounts", "accounts.read", "Accounts", IconAccounts], ["/people", "contacts.read", "People", IconPeople]] },
   { h: 11, m: 30, title: "Reach out", line: "Start a campaign from the signal. Once a manager approves it, you launch it in Lemlist.",
     links: [["/campaigns", "draft.create", "Campaigns", IconCampaign]] },
 ];

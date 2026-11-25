@@ -81,7 +81,7 @@ export default function Person() {
   return <>
     <header className="ac-hero ps-hero" data-mark={initials(p.name)}>
       <nav className="ac-crumb" aria-label={tr("Breadcrumb")}>
-        {co ? <><Link to="/accounts">{tr("Accounts & leads")}</Link><span aria-hidden="true">/</span><Link to={`/accounts/${co.id}`}>{co.name}</Link><span aria-hidden="true">/</span>
+        {co ? <><Link to="/accounts">{tr("Accounts")}</Link><span aria-hidden="true">/</span><Link to={`/accounts/${co.id}`}>{co.name}</Link><span aria-hidden="true">/</span>
           <Link to={`/accounts/${co.id}?tab=people`}>{tr("People")}</Link></> : <Link to="/people">{tr("People")}</Link>}
         <span aria-hidden="true">/</span><span aria-current="page">{p.name}</span>
       </nav>

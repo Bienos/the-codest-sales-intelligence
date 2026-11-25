@@ -122,7 +122,10 @@
 .acc-tag { flex: none; padding: 3px 6px; background: var(--tint-2); border: 1px solid var(--line); font: 600 var(--fs-xs)/1 var(--font-body); color: var(--navy); white-space: nowrap; }
 .acc-facts, .acc-domain { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); line-height: 1.4; }
 .acc-facts { color: var(--body); }
-.acc-facts > span + span::before { content: "·"; margin: 0 7px; color: var(--off); font-weight: 800; }
+/* facts separated by thin rules; on a phone a rule that would start a wrapped line falls outside the box and is clipped */
+.acc-facts > span { position: relative; margin-right: 15px; }
+.acc-facts > span:last-child { margin-right: 0; }
+.acc-facts > span + span::before { content: ""; position: absolute; left: -8px; top: .3em; bottom: .3em; inline-size: 1px; background: var(--off); }
 .acc-domain { color: var(--muted); }
 
 /* shared with Buying signals (company facts separated by thin rules) */
@@ -223,7 +226,7 @@
   .acc-how-body { grid-template-columns: minmax(0, 1fr); }
   .acc-how-body > div { border-left: 0; border-top: 1px solid var(--line); }
   .acc-how-body > div:first-child { border-top: 0; }
-  .acc-facts { white-space: normal; }
+  .acc-facts { display: flex; flex-wrap: wrap; white-space: normal; }
   .acc-facts > span { white-space: nowrap; }
   .acc-head { display: none; }
   .acc-row, .acc-list.no-pick .acc-row, .acc-list.is-filling .acc-row, .acc-list.is-other .acc-row { row-gap: 10px; column-gap: 12px; min-block-size: 0; padding: 14px 12px; }

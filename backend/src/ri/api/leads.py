@@ -122,6 +122,7 @@ def _list_leads(conn, ids: list[str], can_contacts: bool) -> dict[str, dict[str,
         if oid in out:
             continue
         it = prospect_item(r, r["kind"], can_contacts, today)
+        it["signal"] = it["signal"] or (r["original"] or {}).get("Strongest Buying Signal")      # the older list layout's column
         if it["signal"] or it["source_url"]:
             out[oid] = {k: it[k] for k in ("signal", "signal_type", "signal_date", "source_url", "why", "lane", "age_days")}
     urls = [v["source_url"] for v in out.values() if v["source_url"]]

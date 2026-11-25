@@ -81,7 +81,7 @@ export default function App() {
           <span className="nav-group">{tr("Work")}</span>
           {can("today.read") && link("/today", tr("Today"), IconToday)}
           {can("accounts.read") && link("/signals", tr("Buying signals"), IconSignals)}
-          {can("accounts.read") && link("/accounts", tr("Accounts & leads"), IconAccounts)}
+          {can("accounts.read") && link("/accounts", tr("Accounts"), IconAccounts)}
           {can("contacts.read") && link("/people", tr("People"), IconPeople)}
           {can("draft.create") && link("/campaigns", tr("Campaigns"), IconCampaign)}
           {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}

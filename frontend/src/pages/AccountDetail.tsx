@@ -205,7 +205,7 @@ function recordFit(a: any, lp: Record<string, string>): any[] {
     out.push({ label: "Size", value: staffCount(a.employees_estimate, a.employees_uncertain), fit: a.employees_estimate > min ? "good" : a.employees_estimate < 150 ? "bad" : "neutral", source: "R" });
   }
   const own = a.company_ownership;
-  if (own && own !== "unknown") out.push({ label: "Ownership", value: tr(OWNERSHIP[own] ?? own), fit: own === "state_owned" ? "bad" : own === "private" ? "good" : "neutral", source: "R" });
+  if (own && own !== "unknown") out.push({ label: "Ownership", value: tr(OWNERSHIP[own] ?? own), fit: own === "state_owned" ? "bad" : "good", source: "R" });
   if (a.list_eligibility) out.push({ label: "Lead list", value: a.list_eligibility, fit: a.list_eligibility === "Eligible" ? "good" : a.list_eligibility === "Review" ? "neutral" : "bad", source: "R" });
   return out;
 }
@@ -261,7 +261,7 @@ function FitList({ points, fromRecords }: { points: any[]; fromRecords: boolean 
   </>;
 }
 
-const OWNERSHIP: Record<string, string> = { private: "Privately held", listed: "Publicly listed", state_owned: "State-owned", unknown: "Ownership unconfirmed" };
+const OWNERSHIP: Record<string, string> = { private: "Privately held", listed: "Publicly listed", state_owned: "State-owned", mutual_or_cooperative: "Mutual or cooperative", unknown: "Ownership unconfirmed" };
 
 function CompanyProfile({ account, onSave }: { account: any; onSave: (profile: any) => void }) {
   const [form, setForm] = useState({
@@ -1056,7 +1056,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     if (d && tab === "activity" && sub === "signals" && event) document.getElementById(`event-${event}`)?.scrollIntoView({ block: "center" });
   }, [d, tab, sub, params]);
   if (!d || d.account.id !== id) return <>
-    <p className="small mt-0"><Link to="/accounts">{tr("Accounts & leads")}</Link></p><h1 className="title-sm">{tr("Company")}</h1>
+    <p className="small mt-0"><Link to="/accounts">{tr("Accounts")}</Link></p><h1 className="title-sm">{tr("Company")}</h1>
     {err ? <Err e={err} onRetry={reloadPage} /> : <Skeleton rows={4} label={tr("Loading the company")} />}
   </>;
   const a = d.account;
@@ -1094,7 +1094,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   return (
     <>
       <header className="ac-hero" data-mark={initials(a.display_name)}>
-        <nav className="ac-crumb" aria-label={tr("Breadcrumb")}><Link to="/accounts">{tr("Accounts & leads")}</Link><span aria-hidden="true">/</span><span aria-current="page">{a.display_name}</span></nav>
+        <nav className="ac-crumb" aria-label={tr("Breadcrumb")}><Link to="/accounts">{tr("Accounts")}</Link><span aria-hidden="true">/</span><span aria-current="page">{a.display_name}</span></nav>
         <div className="ac-id">
           <Monogram name={a.display_name} size="lg" framed />
           <div className="ac-name">
