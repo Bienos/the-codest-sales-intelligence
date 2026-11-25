@@ -38,7 +38,7 @@ export function Pipeline() {
       {d.funnel && <Funnel f={d.funnel} accounts={d.accounts} candidates={d.candidates} />}
       <div className="pipe-grid">
         <ol className="pipe" aria-label={tr("Pipeline stages")}>
-          {d.stages.map((s: any, i: number) => {
+          {d.stages.filter((s: any) => s.key !== "pipedrive").map((s: any, i: number) => {
             const [kind, label] = STATE[s.state] ?? ["", s.state];
             return (
               <li key={s.key} className={`pipe-step ${s.state}`}>

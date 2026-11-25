@@ -93,6 +93,76 @@ function SignalField({ uid = "a", target = true }: { uid?: string; target?: bool
   );
 }
 
+/* ---------- closing map: example signals light up the markets we sell into, and one becomes the next step ---------- */
+/* Square-dot Europe, one dot per cell, from Natural Earth (public domain), run-length encoded row by row.
+   _ sea, o other land, u UK, d DACH, n Nordics, p Poland. */
+const MAP_COLS = 64, MAP_ROWS = 66;
+const MAP_RLE = "39_11n14o/40_12n12o/38_14n11o/36_n_14n4o/38_14n6o/37_16n6o/37_17n5o3_2o/36_18n6o2_2o/36_11n_6n6o/36_10n3_6n9o/35_10n5_5n9o/36_9n4_7n8o/34_12n2_8n8o/33_12n3_10n6o/33_12n2_11n6o/31_n2_9n3_12n6o/31_12n3_11n7o/29_13n4_11n7o/27_15n4_10n8o/27_15n5_9n8o/27_14n6_8n9o/27_15n5_6n6_5o/26_16n6_4n4_8o/26_17n2_o_n8_8o/26_18n7_13o/26_18n6_14o/9_u2_3u11_18n5_o_13o/8_u3_2u13_5n2_8n7_o_13o/8_2u_2u14_4n3_8n10_12o/9_u_5u12_2n4_8n10_12o/10_6u19_7n2_n4_2o_12o/10_5u17_n2_7n2_n3_16o/10_4u16_3n3_6n6_16o/6_o4_4u16_2n3_5n7_16o/5_2o2u2_4u15_4n2_5n8_15o/3_o_4u_5u15_3n2_n_2n10_15o/2_5o2u3_3u15_3n_2n_2n10_15o/2_6o4_4u14_2n_n13_17o/2_6o5_4u14_d2_n8_2p2_6p11o/2_6o4_5u13_3d3_2d3_12p11o/_6o3_7u14_3d_4d15p10o/5o_o3_7u9_o_d_9d15p10o/9_10u6_3o11d14p11o/8_11u5_4o11d15p10o/10_9u4_5o12d14p10o/9_9u5_4o13d14p10o/8_10u4_4o14d15p9o/9_u9_7o14d15p9o/18_8o13d2o14p9o/18_8o11d6o11p10o/12_o3_10o10d11o7p10o/7_o_o2_14o10d11opop3op10o/7_19o11d27o/7_22o9d3od22o/9_19o16d20o/10_18o17d19o/11_17o15d21o/11_16o17d20o/12_14o17d21o/12_13o8d4o4d23o/12_14o5d33o/12_52o/11_25o2_26o/o10_25o3_25o/4o7_25o5_23o/8o2_19o_6o6_22o";
+let mapPaths: Record<string, string> | null = null;
+function mapDots() {
+  if (mapPaths) return mapPaths;
+  const parts: Record<string, string[]> = {};
+  MAP_RLE.split("/").forEach((row, y) => {
+    const re = /(\d*)(\D)/g; let m: RegExpExecArray | null; let x = 0;
+    while ((m = re.exec(row))) {
+      const n = Number(m[1] || 1), k = m[2];
+      if (k !== "_") for (let i = 0; i < n; i++) (parts[k] = parts[k] || []).push(`M${x + i + 0.27} ${y + 0.27}h.46v.46h-.46z`);
+      x += n;
+    }
+  });
+  mapPaths = Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, v.join("")]));
+  return mapPaths;
+}
+/** Made-up signals, one per market; positions are map cells, `at` is where the card sits (`sm` on phones). The last one becomes the next step. */
+const PINGS: { m: string; x: number; y: number; at: string; sm?: string; kind: string; who: string }[] = [
+  { m: "u", x: 15.9, y: 45.5, at: "b", kind: "New technology leader", who: "Example Insurance plc, London" },
+  { m: "n", x: 33.5, y: 25.1, at: "l", kind: "Funding round", who: "Example Pay AS, Oslo" },
+  { m: "p", x: 49.8, y: 43.9, at: "r", sm: "t", kind: "Hiring several engineers", who: "Example Fintech S.A., Warsaw" },
+  { m: "d", x: 43.2, y: 55.1, at: "r", sm: "b", kind: "Core banking replacement", who: "Example Bank AG, Vienna" },
+];
+const MAP_DONE = PINGS.length + 1;                          // every signal in, the last one resolved
+const MAP_WAIT = [700, 1200, 1200, 1200, 1500, 6500, 700];  // per step; the last step fades out before the loop restarts
+
+function SignalMap() {
+  const ref = useRef<HTMLDivElement>(null);
+  const still = reducedMotion();
+  const [step, setStep] = useState(still ? MAP_DONE : 0);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current; if (!el || !("IntersectionObserver" in window)) { setVisible(true); return; }
+    const io = new IntersectionObserver((es) => setVisible(es[0].isIntersecting), { threshold: 0.3 });
+    io.observe(el); return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (still || !visible) return;
+    const t = setTimeout(() => setStep((s) => (s + 1) % MAP_WAIT.length), MAP_WAIT[step]);
+    return () => clearTimeout(t);
+  }, [step, visible, still]);
+  const dots = mapDots(), out = step > MAP_DONE;
+  return (
+    <div className={`smap${out ? " smap-out" : ""}`} ref={ref} data-live={visible && !still} role="img"
+      aria-label={tr("Map of Europe with example signals in the UK, DACH, the Nordics and Poland. One of them, a core banking replacement, becomes the next step.")}>
+      <svg viewBox={`0 0 ${MAP_COLS} ${MAP_ROWS}`} aria-hidden="true">
+        <path className="smap-land" d={dots.o} />
+        {PINGS.map((p, i) => <path key={p.m} className={`smap-mk${step > i && !out ? " smap-lit" : ""}`} d={dots[p.m]} />)}
+      </svg>
+      <span className="smap-tag" aria-hidden="true">{tr("Example data, not real")}</span>
+      {PINGS.map((p, i) => {
+        const last = i === PINGS.length - 1;
+        return (
+          <div key={p.m} aria-hidden="true" style={{ left: `${(p.x / MAP_COLS) * 100}%`, top: `${(p.y / MAP_ROWS) * 100}%` }}
+            className={`smap-ping smap-${p.at}${p.sm ? ` smap-sm-${p.sm}` : ""}${last ? " smap-last" : ""}${step > i ? " smap-on" : ""}${step >= MAP_DONE ? (last ? " smap-pick" : " smap-dim") : ""}`}>
+            <i className="smap-pm" />
+            <div className="smap-card"><b>{tr(p.kind)}</b><span>{tr(p.who)}</span>
+              {last && <div className="smap-next"><small>{tr("Next step")}</small>{tr("Ask who will staff the migration")}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const WATCHING = ["tenders", "regulators", "company newsrooms", "job boards", "trade media", "your account lists"];
 
 /** One word at a time: what the platform is watching. Static when motion is reduced. */
@@ -278,10 +348,13 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
       </section>
 
       <section className="land-cta" aria-labelledby="cta">
-        <SignalField uid="b" target={false} />
-        <div className="land-wrap">
-          <h2 id="cta">{tr("Ready for your next step?")}</h2>
-          <a className="btn-pink" href="#signin">{tr("Sign in")}</a>
+        <div className="land-wrap land-cta-in">
+          <div className="land-cta-copy">
+            <h2 id="cta">{tr("Ready for your next step?")}</h2>
+            <p>{tr("Buying signals from banks, insurers and payment companies in the UK, DACH, the Nordics and Poland. Each one is checked against its original page.")}</p>
+            <a className="btn-pink" href="#signin">{tr("Sign in")}</a>
+          </div>
+          <SignalMap />
         </div>
       </section>
 

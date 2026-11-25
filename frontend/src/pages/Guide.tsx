@@ -12,8 +12,8 @@ const STATIONS = [
   { k: "Signal", title: "We match a buying signal", what: "A checked fact can switch on a signal: a funding round, a payments scheme change, a new technology leader. Each signal says in plain words why it tends to mean engineering work.",
     see: "Today opens with the signals that are live right now.", to: "/today", cta: "Open Today", perm: "today.read" },
   { k: "Company", title: "We tie it to the right company", what: "Coverage of the same news counts once. Ownership, size and sector are checked, so Today only shows privately owned financial companies. Tenders from any buyer have their own page.",
-    see: "An account shows its score, its signals and who owns it in Pipedrive.", to: "/accounts", cta: "Open accounts", perm: "accounts.read" },
-  { k: "People", title: "We find who to write to", what: "Contacts from your workbooks, Apollo and Pipedrive sit in one list. Only people with a verified email are offered, and never anyone who opted out or belongs to another seller.",
+    see: "An account shows its score, its signals and the sources behind them.", to: "/accounts", cta: "Open accounts", perm: "accounts.read" },
+  { k: "People", title: "We find who to write to", what: "Contacts from your workbooks, Apollo and Lemlist sit in one list. Only people with a verified email are offered, and never anyone who opted out.",
     see: "People shows where each contact came from and what happened in outreach.", to: "/people", cta: "Open people", perm: "contacts.read" },
   { k: "Campaign", title: "A person approves, then it goes to Lemlist", what: "Pick a signal and the platform builds the audience and writes each opening line from that company's own news. A manager approves the exact list and copy. It lands in Lemlist unlaunched.",
     see: "Campaigns shows every step, and replies come back here.", to: "/campaigns", cta: "Open campaigns", perm: "draft.create" },
@@ -43,7 +43,7 @@ const WORDS: [string, string][] = [
   ["Finding", "One dated fact we checked against the original page, for example “Bank X chose vendor Y on 10 November”."],
   ["Signal", "A pattern that suggests a company may need outside engineering help, such as a vendor being chosen or an engineering team being hired."],
   ["Programme", "A real project at a company, such as a core platform replacement. Many findings can belong to one."],
-  ["Opportunity", "A specific piece of work we think we could win at an account, through one route in. Not the same as a Pipedrive deal."],
+  ["Opportunity", "A specific piece of work we think we could win at an account, through one route in."],
   ["Check", "One of seven questions about an opportunity. Each is confirmed, not known yet, or blocked."],
   ["Checked", "We read the original page and found the quote. Anything from your workbooks alone is marked not checked."],
   ["Signal score", "How strong an account’s recent signals are. Different kinds count for more than repeats. Hot is 9 or more, warm 4 or more. It is not a probability."],
@@ -110,7 +110,7 @@ export default function Guide({ can = () => true }: { can?: (permission: string)
         <h2 id="rules-h" className="gh">{tr("What it will not do")}</h2>
         <div className="grules-row">
           {[["It will not guess", "A source that fails to load shows as degraded coverage. A quiet screen does not mean nothing happened."],
-            ["It will not send", "Drafts only. A second person approves any campaign or Pipedrive change, and the exact change is shown first."],
+            ["It will not send", "Drafts only. A second person approves any campaign, and the exact change is shown first."],
             ["It will not hide the limits", "Scores are provisional weights, not win probabilities. Missing facts are listed, not filled in."]].map(([t, d]) =>
             <div key={t} className="grules-i"><h3>{tr(t)}</h3><p>{tr(d)}</p></div>)}
         </div>

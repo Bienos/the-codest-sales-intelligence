@@ -68,7 +68,7 @@ export function Accounts({ me }: { me: { permissions: string[] } }) {
   return (
     <>
       <div className="page-head directory-heading">
-        <div><h1>{tr("Accounts & leads")}</h1><p className="sub">{view === "leads" ? tr("Find buying signals from the workbooks and open the companies they belong to.") : tr("Privately held banks and financial services companies. Over 500 employees in Europe and the UK, or over 2,000 elsewhere.")}</p></div>
+        <div><h1>{tr("Accounts & leads")}</h1><p className="sub">{view === "leads" ? tr("Find buying signals from the workbooks and open the companies they belong to.") : view === "review" ? tr("Companies your lead list marks for review, and companies found by research whose ownership is not confirmed yet.") : tr("Every company your lead list marks as eligible, plus privately held financial companies found by research.")}</p></div>
         {research && view !== "leads" && <button className="primary" onClick={() => update({ add: adding ? "" : "1" })}>{adding ? tr("Cancel") : tr("Add a company")}</button>}
       </div>
       {adding && research && view !== "leads" && <AddCompany onClose={() => update({ add: "", name: "" })} />}
@@ -196,21 +196,26 @@ function CompanyDirectory({ q, region, research, review, clearSearch }: { q: str
         {!region && <h2>{tr(title)}</h2>}
         <div className="card table-wrap flush" tabIndex={0} role="region" aria-label={tr("{} company directory", tr(title))}>
           <table className="directory-table"><thead><tr>
-            <th>{tr("Company")}</th><th>{tr("Headquarters")}</th><th>{tr("Size")}</th><th>{review ? tr("Ownership") : tr("Buying signal and source")}</th><th>{review ? tr("Profile") : tr("Actions")}</th>
+            <th>{tr("Company")}</th><th>{tr("Headquarters")}</th><th>{tr("Size")}</th><th>{tr("People")}</th><th>{review ? tr("Ownership") : tr("Buying signal and source")}</th><th>{review ? tr("Profile") : tr("Actions")}</th>
           </tr></thead><tbody>
             {items.map((r: any) => <tr key={r.id}>
               <td className="directory-company"><Link to={`/accounts/${r.id}${review ? "?profile=1" : ""}`}>{r.name}</Link>
+                {(r.list_priority || r.list_score != null) && <span className="small">{r.list_priority && /^P\d$/.test(r.list_priority) && <Badge kind={r.list_priority === "P1" ? "bad" : r.list_priority === "P2" ? "warn" : ""}>{tr("Priority {}", r.list_priority)}</Badge>}
+                  {r.list_score != null && <span className="muted"> {tr("List score {}", number(r.list_score))}</span>}</span>}
                 <span className="small muted">{[r.segment, r.canonical_domain].filter(Boolean).join(" · ")}</span>
                 <span className="small muted">{r.shortlist ? tr("On your shortlist") : tr(ORIGIN[r.origin] ?? "")}</span>
               </td>
               <td data-label={tr("Headquarters")}>{countryName(r.country_code)}</td>
               <td data-label={tr("Size")}>{staffCount(r.employees, r.employees_uncertain)}</td>
+              <td data-label={tr("People")}>{r.people ? <Link to={`/accounts/${r.id}`}>{counted(r.people, ["person", "people"], ["osoba", "osoby", "osób"])}</Link> : <span className="small muted">{tr("None yet")}</span>}
+                {r.people > 0 && <span className="small muted block">{tr("{} with email", number(r.people_with_email))}</span>}</td>
               <td data-label={review ? tr("Ownership") : tr("Buying signal and source")}>
                 {!review && r.buying_signal && <SignalSummary signal={r.buying_signal} />}
                 {review ? tr("To check") : r.stopped ? <Badge kind="warn">{tr("On hold")}</Badge> : !r.buying_signal && r.signal_count > 0 ?
                   <><Badge kind={BAND[r.band]?.[0]}>{tr(BAND[r.band]?.[1] ?? "Activity")}</Badge> <span className="small">{counted(r.signal_count, ["checked signal", "checked signals"], ["sprawdzony sygnał", "sprawdzone sygnały", "sprawdzonych sygnałów"])}</span>
                     <span className="small muted">{[r.groups.map(groupName).join(", "), r.last_signal_at && fmtDate(r.last_signal_at)].filter(Boolean).join(" · ")}</span></> :
-                  !r.buying_signal && <span className="small muted">{tr("No checked signals yet")}</span>}
+                  !r.buying_signal && (r.list_signal ? <span className="small"><span className="muted">{tr("From your list, not checked yet:")}</span> {r.list_signal}</span>
+                    : <span className="small muted">{tr("No checked signals yet")}</span>)}
               </td>
               <td data-label={review ? tr("Profile") : tr("Actions")}>
                 {review ? <Link to={`/accounts/${r.id}?profile=1`}>{tr("Check ownership")}</Link> : <>
@@ -285,7 +290,7 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
     [plan.already_enrolled ?? 0, tr("already enrolled")],
   ].filter(([count]) => Number(count) > 0).map(([count, reason]) => `${count} ${reason}`);
   const toggle = (id: string) => setSel((x) => x.includes(id) ? x.filter((i) => i !== id) : [...x, id]);
-  const request = async () => { setErr(null); setMsg(""); try { const r = await post(`/api/campaigns/${draft.id}/enrol`, { person_ids: sel }); setMsg(tr("Approval requested for {} {}. A colleague approves it under Administration, Approvals.{}", r.contacts, r.contacts === 1 ? "contact" : "contacts", r.ownership_checked ? "" : " We could not check who owns this account because it is not linked to Pipedrive yet.")); setSel([]); load(); } catch (e) { setErr(e); } };
+  const request = async () => { setErr(null); setMsg(""); try { const r = await post(`/api/campaigns/${draft.id}/enrol`, { person_ids: sel }); setMsg(tr("Approval requested for {} {}. A colleague approves it under Administration, Approvals.", r.contacts, r.contacts === 1 ? "contact" : "contacts")); setSel([]); load(); } catch (e) { setErr(e); } };
   return (
     <div className="card mt-3">
       <div className="row spread"><b>{tr("Prepare a Lemlist campaign")}</b>{typeof en.lemlist_configured === "boolean" && <Badge kind={ready ? "ok" : "warn"}>{ready ? tr("Ready for approval") : tr("Lemlist setup required")}</Badge>}</div>
@@ -308,7 +313,7 @@ function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; can
   const copy = async (k: string, t: string) => { try { await navigator.clipboard.writeText(t); setCopied(k); setTimeout(() => setCopied(""), 1500); } catch { /* clipboard unavailable */ } };
   return (
     <div className="card">
-      <p className="small muted mt-0">{tr("Three emails written from facts we have checked about this company, and tested against The Codest's brand rules. These are drafts: nothing is sent from here.") + " "}{!camps.ownership_checked && camps.note}</p>
+      <p className="small muted mt-0">{tr("Three emails written from facts we have checked about this company, and tested against The Codest's brand rules. These are drafts: nothing is sent from here.")}</p>
       {canDraft && <div className="row mb-3">
         <label className="small">{tr("Who is it for?")}<select id="camp-role" value={role} onChange={(e) => setRole(e.target.value)} className="ml-2"><option value="">{tr("Technology or delivery leader")}</option><option value="CTO">CTO</option><option value="Head of Engineering">{tr("Head of Engineering")}</option><option value="Head of Payments">{tr("Head of Payments")}</option><option value="Head of Delivery or PMO">{tr("Head of Delivery or PMO")}</option><option value="Procurement lead">{tr("Procurement lead")}</option></select></label>
         <button className="primary" disabled={busy} onClick={() => make(role)}>{tr("Write outreach sequence")}</button></div>}
@@ -486,8 +491,6 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           {a.target_qualification && <div><dt>{tr("Target qualification")}</dt><dd>{tr(a.target_qualification === "target" ? "Confirmed target account" : a.target_qualification === "review" ? "Ownership to check" : "Outside confirmed targets")}</dd></div>}
           <div><dt>{tr("Ownership")}</dt><dd>{tr(OWNERSHIP[a.company_ownership] ?? OWNERSHIP.unknown)}{a.company_profile_source_url && <> · <a href={a.company_profile_source_url} target="_blank" rel="noreferrer noopener">{tr("View source ↗")}</a></>}</dd></div>
           <div><dt>{tr("Current signals")}</dt><dd>{number(activeSignals)}</dd></div>
-          <div><dt>{tr("Owner in Pipedrive")}</dt><dd>{!d.crm ? tr("Not linked to Pipedrive") : !d.crm.owner_id ? tr("No owner yet") : d.crm.owner_id === (me as any).pipedrive_user_id ? tr("You") : tr("Another seller")}
-            {d.crm?.open_deals_count > 0 && <> · {tr("{} open deal(s)", d.crm.open_deals_count)}</>}</dd></div>
           {me.permissions.includes("contacts.read") && (() => { const ok = d.buyers.filter((b: any) => b.email_status === "Verified" && !b.suppressed).length;
             return <div><dt>{tr("People to contact")}</dt><dd><button type="button" className="linkish" onClick={() => setTab("People")}>{tr("{} of {} with a verified email", number(ok), number(d.buyers.length))}</button></dd></div>; })()}
           <div><dt>{tr("Monitored company pages")}</dt><dd>{number(eps.length)}</dd></div>
@@ -562,9 +565,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Suppliers table")}><table><thead><tr><th>{tr("Supplier")}</th><th>{tr("Role")}</th><th>{tr("What they do here")}</th><th>{tr("Relationship")}</th><th>{tr("Exclusive?")}</th></tr></thead><tbody>{d.suppliers.map((x: any, i: number) => <tr key={i}><td>{x.supplier_name}</td><td>{humanize(x.supplier_role)}</td><td>{blank(x.scope_text)}</td><td>{humanize(x.relation)}</td><td>{blank(x.exclusivity)}</td></tr>)}
           {d.suppliers.length === 0 && <tr><td colSpan={5} className="muted">{tr("No suppliers recorded yet.")}</td></tr>}</tbody></table>
           <p className="small muted">{tr("A named supplier does not prove they have exclusive rights or cover everything. This is for this legal entity only.")}</p></div>
-        <H>Pipedrive</H>
-        <div className="card"><p className="mt-0">{d.crm ? <>{tr("Linked to Pipedrive organisation") + " "}{d.crm.crm_id}{tr(", with") + " "}{d.crm.open_deals_count ?? tr("an unknown number of")}{" " + tr("open") + " "}{d.crm.open_deals_count === 1 ? "deal" : "deals"}{tr(". Pipedrive data last copied") + " "}{fmtDateTime(d.crm.synced_at)}{tr(". Pipedrive is the source of truth for owner and deal stage.")}</> : tr("Not linked to Pipedrive. We cannot check who owns this account, so outreach and Pipedrive requests are switched off for it.")}</p>
-          {d.source_rows.length > 0 && <><span className="eyebrow">{tr("Where it appears in your workbooks")}</span><ul className="tight small">{d.source_rows.map((r: any, i: number) => <li key={i}>{r.sheet_title}{tr(", row") + " "}{r.row_number}</li>)}</ul></>}</div>
+        {d.source_rows?.length > 0 && <><H>{tr("Your workbooks")}</H>
+          <div className="card"><span className="eyebrow">{tr("Where it appears in your workbooks")}</span><ul className="tight small mb-0">{d.source_rows.map((r: any, i: number) => <li key={i}>{r.sheet_title}{tr(", row") + " "}{r.row_number}</li>)}</ul></div></>}
         <H>{tr("Where we look for news")}</H>
         <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Coverage table")}><p className="small mt-0">{tr(d.source_coverage_note)}</p><table><thead><tr><th>{tr("Kind of source")}</th><th>{tr("State")}</th><th>{tr("Last successful check")}</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{humanize(c.source_family)}</td><td>{humanize(c.coverage_state)}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
           {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">{tr("We have not checked this account's sources yet. That means we cannot see, not that nothing is happening.")}</td></tr>}</tbody></table>

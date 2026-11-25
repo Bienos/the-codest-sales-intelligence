@@ -19,7 +19,9 @@ function Hit({ it }: { it: any }) {
       {it.snippet && <div className="small hit-snip">{it.snippet}</div>}
     </>
   );
-  return <li className="hit">{it.link ? <Link to={it.link}>{body}</Link> : it.url ? <a href={it.url} target="_blank" rel="noreferrer noopener">{body} ↗</a> : body}</li>;
+  // the research explorer is no longer offered; finding hits open the searchable findings list instead
+  const link = typeof it.link === "string" ? it.link.replace(/^\/explorer(?=[?#]|$)/, "/feed") : it.link;
+  return <li className="hit">{link ? <Link to={link}>{body}</Link> : it.url ? <a href={it.url} target="_blank" rel="noreferrer noopener">{body} ↗</a> : body}</li>;
 }
 
 export default function Search() {

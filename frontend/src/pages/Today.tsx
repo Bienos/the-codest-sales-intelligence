@@ -12,17 +12,6 @@ const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_account
   ["relationships", "People to get back in touch with"], ["deal_blockers", "Deals that are stuck"], ["research_review", "Research to review"]];
 const REASONS = ["not_relevant", "wrong_entity", "stale", "duplicate", "no_external_demand", "not_commercially_relevant", "owned_elsewhere", "other"];
 
-function Deadlines() {
-  const [items, setItems] = useState<any[]>([]);
-  useEffect(() => { api("/api/deadlines").then((r) => setItems(r.items.filter((x: any) => x.days_left <= 240).slice(0, 6))).catch(() => setItems([])); }, []);
-  if (!items.length) return null;
-  return <section><div className="section-title">{tr("Regulation deadlines")}</div><p className="small muted sec-note">{tr("Each date was checked against an official page and approved by a second person. Buyers facing a hard deadline tend to need extra delivery capacity.")}</p>
-    <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("Deadline · Regulation · Who it applies to")}><table className="cards"><thead><tr><th>{tr("Deadline")}</th><th>{tr("Regulation")}</th><th>{tr("Who it applies to")}</th><th>{tr("Date")}</th></tr></thead><tbody>
-      {items.map((x) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a></td><td data-label={tr("Regulation")} className="small">{x.regime}</td><td data-label={tr("Who it applies to")} className="small">{x.applies_to ?? tr("Not specified")}</td>
-        <td data-label={tr("Date")}><b>{fmtDate(x.deadline_date)}</b> <span className="small muted">{tr("in") + " "}{x.days_left}{" " + tr("days")}</span></td></tr>)}
-    </tbody></table></div></section>;
-}
-
 function Card({ c, reload, compact = false }: { c: any; reload: () => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -46,7 +35,6 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
         <div className="row start">
           <Badge kind={priorityKind(c.priority)}>{lab("priority", c.priority)}</Badge>
           <Badge kind={c.account.in_master_list ? "ok" : "info"}>{c.account.in_master_list ? tr("On your lists") : tr("New company")}</Badge>
-          {!c.account.ownership_verified && <Badge kind="warn">{tr("No owner in Pipedrive")}</Badge>}
         </div>
       </div>
       <div className="opp-grid">
@@ -77,7 +65,7 @@ function Card({ c, reload, compact = false }: { c: any; reload: () => void; comp
           <div className="eyebrow m-0">{tr("Next action")}</div>
           {a ? <>
             <div className="atype">{lab("action", a.action_type)}</div>
-            <dl><dt>{tr("Goal")}</dt><dd>{a.objective}</dd>{a.target_role && <><dt>{tr("Who to look for")}</dt><dd>{a.target_role}</dd></>}<dt>{tr("Owner")}</dt><dd>{a.owner_name ?? (a.owner_id ? tr("Assigned in Pipedrive") : tr("Unassigned"))}</dd><dt>{tr("Due")}</dt><dd>{a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</dd></dl>
+            <dl><dt>{tr("Goal")}</dt><dd>{a.objective}</dd>{a.target_role && <><dt>{tr("Who to look for")}</dt><dd>{a.target_role}</dd></>}<dt>{tr("Owner")}</dt><dd>{a.owner_name ?? (a.owner_id ? tr("Assigned") : tr("Unassigned"))}</dd><dt>{tr("Due")}</dt><dd>{a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</dd></dl>
             <div className="why"><b>{tr("Why:")}</b> {actionReason(a)}</div>
             {a.approval_required && <div className="small muted">{tr("A colleague must approve before anything is sent or changed.")}</div>}
           </> : <span className="muted small">{tr("Nothing to do right now.")}</span>}
@@ -210,7 +198,6 @@ export default function Today({ canReview, canCampaign = false }: { canReview: b
               <td data-label={tr("Buying signal and source")}><SignalSummary signal={a.buying_signal} /></td><td className="small" data-label={tr("Latest")}>{a.last_signal_at ? fmtDate(a.last_signal_at) : tr("None yet")}</td></tr>)}
           </tbody></table></div></section>}
         </details>}
-        <Deadlines />
       </div>
     </>
   );

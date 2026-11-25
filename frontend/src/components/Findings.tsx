@@ -122,7 +122,7 @@ export function FindingCard({ item, onAccount = false }: { item: Finding; onAcco
     <p className="small"><b>{tr("Next step")}</b>{" "}{item.next_action ? <Link to={`/opportunities/${item.next_action.hypothesis_id}`}>{tr("Open recommended action")}</Link> : item.tender ? tr("Check how to submit and whether we meet the supplier requirements.")
       : item.organization.qualified === false ? tr("Confirm company ownership and qualify demand for outside engineering.")
       : tr("Identify the delivery owner and qualify demand for outside engineering.")}
-      {item.next_action && <span className="muted"> · {tr("Owner")}: {item.next_action.owner_name || tr(item.next_action.has_owner ? "Assigned in Pipedrive" : "Unassigned")}
+      {item.next_action && <span className="muted"> · {tr("Owner")}: {item.next_action.owner_name || tr(item.next_action.has_owner ? "Assigned" : "Unassigned")}
         {item.next_action.due_at && <> · {tr("due {}", fmtDateTime(item.next_action.due_at))}</>}</span>}</p>
     {item.evidence.length > 0 && <details className="finding-details">
       <summary>{tr("View evidence")}</summary>

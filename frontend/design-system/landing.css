@@ -122,10 +122,50 @@
 .land-col h3 { font-size: 18px; margin: 28px 0 8px; max-width: 14ch; }
 
 /* ---------- closing call ---------- */
-.land-cta { position: relative; overflow: hidden; background: var(--tint-1); padding: 110px 0 120px; text-align: center; }
-.land-cta .land-wrap { position: relative; z-index: 2; display: grid; justify-items: center; gap: 30px; }
-.land-cta h2 { font-size: clamp(32px, 5vw, 60px); line-height: 1.02; max-width: 16ch; }
-.land-cta .field { opacity: .55; -webkit-mask-image: none; mask-image: none; }
+/* Navy like the hero, so the page opens and closes on the same ground. The map is the one moving thing here. */
+.land-cta { position: relative; overflow: hidden; background: radial-gradient(ellipse 55% 75% at 76% 50%, #2A2969 0, transparent 70%), var(--navy); color: var(--on-navy); padding: 72px 0; }
+.land-cta :focus-visible { outline-color: var(--white); }
+.land-cta-in { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: clamp(32px, 5vw, 72px); align-items: center; }
+.land-cta h2 { color: var(--white); font-size: clamp(34px, 4.4vw, 58px); line-height: 1.02; letter-spacing: -.01em; max-width: 14ch; text-wrap: balance; margin: 0 0 22px; }
+.land-cta-copy p { color: var(--on-navy); font-size: 18px; line-height: 1.55; max-width: 38ch; margin: 0 0 34px; }
+.land-cta .btn-pink { box-shadow: 5px 5px 0 -2px var(--navy), 5px 5px 0 0 var(--pink); }
+.land-cta .btn-pink:hover { box-shadow: 3px 3px 0 -2px var(--navy), 3px 3px 0 0 var(--pink-hover); }
+
+/* the map: square dots (the brand's square), markets in purple, everything else barely there */
+.smap { position: relative; width: 100%; max-width: 600px; justify-self: end; }
+.smap svg { display: block; width: 100%; height: auto; -webkit-mask-image: radial-gradient(ellipse 64% 60% at 52% 50%, #000 72%, transparent 100%); mask-image: radial-gradient(ellipse 64% 60% at 52% 50%, #000 72%, transparent 100%); }
+.smap-land { fill: var(--on-navy); opacity: .17; }
+.smap-mk { fill: var(--purple); opacity: .5; transition: opacity .7s; }
+.smap-mk.smap-lit { opacity: 1; }
+.smap-tag { position: absolute; left: 0; top: 4%; font: 400 12px/1.3 var(--font-body); color: var(--on-navy-muted); border: 1px solid var(--navy-line-strong); padding: 4px 8px; }
+.smap-ping { position: absolute; width: 0; height: 0; z-index: 1; }
+.smap-ping.smap-pick { z-index: 2; }
+.smap-pm { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; background: var(--white); transform: scale(0); transition: transform .35s cubic-bezier(.2, .7, .2, 1.4), background .4s; }
+.smap-pm::after { content: ""; position: absolute; inset: -1px; border: 1.5px solid var(--purple); opacity: 0; }
+.smap-ping.smap-on .smap-pm { transform: none; }
+.smap-ping.smap-on .smap-pm::after { animation: smapPing 1.5s ease-out; }
+.smap-ping.smap-pick .smap-pm { background: var(--pink); }
+.smap-ping.smap-pick .smap-pm::after { border-color: var(--pink); animation: smapPing 2.4s ease-out infinite; }
+.smap[data-live="false"] .smap-pm::after { animation-play-state: paused; }
+@keyframes smapPing { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(4.5); } }
+.smap-card { position: absolute; display: grid; gap: 2px; width: max-content; max-width: 220px; padding: 8px 12px 9px; background: var(--navy); border: 1px solid var(--navy-line-strong); border-left: 3px solid var(--purple); opacity: 0; transition: opacity .45s, transform .45s cubic-bezier(.2, .7, .2, 1), border-color .4s; }
+.smap-card b { font: 600 13px/1.25 var(--font-body); color: var(--white); }
+.smap-card > span { font: 400 12px/1.3 var(--font-body); color: var(--on-navy-muted); }
+.smap-card::before { content: ""; position: absolute; background: var(--purple); }
+.smap-r .smap-card { left: 18px; top: 0; transform: translate(-8px, -50%); } .smap-r .smap-card::before { right: 100%; top: 50%; width: 14px; height: 1px; margin-right: 3px; }
+.smap-l .smap-card { right: 18px; top: 0; transform: translate(8px, -50%); } .smap-l .smap-card::before { left: calc(100% + 1px); top: 50%; width: 14px; height: 1px; }
+.smap-b .smap-card { top: 18px; left: 0; transform: translate(-50%, -8px); } .smap-b .smap-card::before { bottom: calc(100% + 1px); left: 50%; width: 1px; height: 14px; }
+.smap-t .smap-card { bottom: 18px; left: 0; transform: translate(-50%, 8px); } .smap-t .smap-card::before { top: calc(100% + 1px); left: 50%; width: 1px; height: 14px; }
+.smap-ping.smap-on .smap-card { opacity: 1; }
+.smap-r.smap-on .smap-card, .smap-l.smap-on .smap-card { transform: translate(0, -50%); } .smap-b.smap-on .smap-card, .smap-t.smap-on .smap-card { transform: translate(-50%, 0); }
+.smap-card > b, .smap-card > span { transition: opacity .45s; }
+.smap-ping.smap-dim .smap-card { border-left-color: var(--navy-line-strong); } .smap-ping.smap-dim .smap-card > * { opacity: .55; }
+.smap-ping.smap-pick .smap-card { border-left-color: var(--pink); } .smap-ping.smap-pick .smap-card::before { background: var(--pink); }
+/* the next step comes out of the signal it answers */
+.smap-next { position: absolute; top: calc(100% + 1px); left: -3px; right: -1px; padding: 9px 12px 11px; background: var(--pink-solid); color: var(--white); font: 600 13px/1.3 var(--font-body); box-shadow: 5px 5px 0 -2px var(--navy), 5px 5px 0 0 var(--pink); clip-path: inset(0 -8px 100% 0); transition: clip-path .6s .3s cubic-bezier(.2, .7, .2, 1); }
+.smap-next small { display: block; font: 800 11px/1.2 var(--font-head); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 3px; color: #FFD3E6; }
+.smap-ping.smap-pick .smap-next { clip-path: inset(0 -8px -8px 0); }
+.smap.smap-out .smap-card { opacity: 0; } .smap.smap-out .smap-pm { transform: scale(0); }
 .btn-pink { display: inline-flex; align-items: center; justify-content: center; min-height: 54px; padding: 0 38px; background: var(--pink-solid); color: #fff; text-decoration: none; font: 800 14px var(--font-head); letter-spacing: .1em; text-transform: uppercase; box-shadow: 5px 5px 0 -2px var(--tint-1), 5px 5px 0 0 var(--pink); transition: transform .15s, box-shadow .15s; }
 .btn-pink:hover { color: #fff; background: var(--pink-hover); transform: translate(2px, 2px); box-shadow: 3px 3px 0 -2px var(--tint-1), 3px 3px 0 0 var(--pink-hover); }
 .land-foot { background: var(--white); padding: 28px 0; color: var(--muted); border-top: 1px solid var(--line); }
@@ -135,6 +175,13 @@
 [data-reveal] { opacity: 1; transform: none; }
 
 /* ---------- small screens ---------- */
+@media (max-width: 1200px) {     /* narrower map: some cards move above or below their city so they stay on the map */
+  .smap-sm-t .smap-card { left: 0; right: auto; top: auto; bottom: 18px; transform: translate(-50%, 8px); }
+  .smap-sm-b .smap-card { left: 0; right: auto; top: 18px; bottom: auto; transform: translate(-50%, -8px); }
+  .smap-sm-t.smap-on .smap-card, .smap-sm-b.smap-on .smap-card { transform: translate(-50%, 0); }
+  .smap-sm-t .smap-card::before { left: 50%; right: auto; top: calc(100% + 1px); bottom: auto; width: 1px; height: 14px; margin: 0; }
+  .smap-sm-b .smap-card::before { left: 50%; right: auto; bottom: calc(100% + 1px); top: auto; width: 1px; height: 14px; margin: 0; }
+}
 @media (max-width: 980px) {
   .land-jump { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; background: var(--pink-solid); color: #fff; text-decoration: none; font: 800 12px var(--font-head); letter-spacing: .1em; text-transform: uppercase; box-shadow: 3px 3px 0 -1px var(--white), 3px 3px 0 0 var(--pink); }
   .land-hero { min-height: 0; padding-bottom: 96px; } .land-hero-in, .land-split { grid-template-columns: 1fr; gap: 36px; } .field { opacity: .4; }
@@ -144,13 +191,19 @@
   .demo-steps li { flex: none; width: 160px; } .demo-steps button.on small { display: none; }
   .demo-d { display: block; margin: 0; color: var(--navy); font-weight: 600; }
   .stage { min-height: 0; }
+  .land-cta-in { grid-template-columns: 1fr; gap: 40px; } .smap { justify-self: center; }
 }
 @media (max-width: 620px) {
   .land-sec { padding: 64px 0; } .land-copy p { font-size: 17px; } .scroll-cue { display: none; } .land-hero { padding-bottom: 56px; }
   .tl { padding-left: 52px; } .tl::before, .tl::after { left: 15px; } .tl li { grid-template-columns: 1fr; gap: 0; } .tl li::before { left: -46px; } .tl-n { font-size: 34px; }
   .gates { grid-template-columns: repeat(7, 1fr); } .gt { font-size: 11px; padding: 10px 0; }
   .facts-c { grid-template-columns: repeat(3, 1fr); } .fact-c b { font-size: 34px; }
-  .sig { max-height: 230px; } .land-cta { padding: 72px 0 80px; }
+  .sig { max-height: 230px; } .land-cta { padding: 64px 0 56px; }
+  .land-cta-copy p { font-size: 17px; margin-bottom: 30px; }
+  .smap { width: calc(100% + 36px); max-width: none; margin: 0 -18px; } .smap-tag { left: 18px; }
+  .smap-card { max-width: 170px; padding: 6px 9px 7px; } .smap-card b { font-size: 12px; } .smap-card > span { display: none; font-size: 11px; } .smap-last .smap-card > span { display: block; }
+  .smap-next { font-size: 12px; padding: 7px 9px 9px; } .smap-next small { font-size: 10px; }
+  .smap-tag { font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .land { scroll-behavior: auto; }
@@ -161,4 +214,7 @@
   [data-reveal], .tl li, .sig, .gates, .next, .tick, .stamp, .gt, .sig-q mark::before, .land-col { transition: none !important; }
   [data-reveal] { opacity: 1; transform: none; }
   .demo-steps button.on::after { width: 100%; }
+  .smap-mk, .smap-pm, .smap-card, .smap-next { transition: none !important; }
+  .smap-pm::after { animation: none !important; }
+  .smap-ping.smap-pick .smap-pm::after { opacity: .55; transform: scale(2.6); }
 }

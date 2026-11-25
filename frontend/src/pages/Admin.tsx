@@ -59,14 +59,17 @@ function ApolloCap({ r }: { r: any }) {
     {msg && <div className="okmsg" role="status">{tr(msg)}</div>}<Err e={err} /></div>;
 }
 
+/** Pipedrive is not connected and is hidden from the interface for now; the API still lists it. */
+const HIDDEN_INTEGRATION = /pipedrive/i;
+
 function Integrations() {
   const [res, setRes] = useState<Record<string, { ok: boolean; detail: string }>>({}); const [busy, setBusy] = useState("");
   const test = async (k: string) => { setBusy(k); try { const r = await post(`/api/admin/integrations/${k}/test`); setRes((x) => ({ ...x, [k]: r })); } catch (e) { setRes((x) => ({ ...x, [k]: { ok: false, detail: e instanceof Error ? e.message : tr("Test failed") } })); } finally { setBusy(""); } };
   return (
     <Load path="/api/admin/integrations">{(d) => (<>
-      <p className="sub mb-4">{tr("The accounts we connect to for outreach, Pipedrive and contact data. Keys are stored on the server and never shown here. A passing test only proves the key works. Sending and Pipedrive changes also need their switch turned on and a colleague's approval.")}</p>
+      <p className="sub mb-4">{tr("The accounts we connect to for outreach and contact data. Keys are stored on the server and never shown here. A passing test only proves the key works. Sending also needs its switch turned on and a colleague's approval.")}</p>
       <div className="conn-list">
-        {d.items.map((r: any) => <article key={r.key} className={`conn ${r.configured ? "live" : "needs_credential"}`}>
+        {d.items.filter((r: any) => !HIDDEN_INTEGRATION.test(`${r.key} ${r.name}`)).map((r: any) => <article key={r.key} className={`conn ${r.configured ? "live" : "needs_credential"}`}>
           <div className="conn-head"><div><div className="conn-name">{r.name}</div><div className="conn-meta">{r.what}</div></div>
             <div className="row"><Badge kind={r.configured ? "ok" : "warn"}>{r.configured ? tr("Connected") : tr("Not connected")}</Badge>{r.switch && <Badge kind={r.switch_on ? "ok" : ""}>{r.switch_on ? tr("Switched on") : tr("Switched off")}</Badge>}</div></div>
           {r.blocked_reason && <div className="err mt-2 mb-2" role="alert">{r.blocked_reason}</div>}
@@ -77,32 +80,6 @@ function Integrations() {
         </article>)}
       </div></>)}</Load>
   );
-}
-
-function DeadlinesAdmin() {
-  const empty = { title: "", regime: "", deadline_date: "", applies_to: "", region: "", source_url: "", source_quote: "" };
-  const [f, setF] = useState(empty); const [err, setErr] = useState<unknown>(null); const [msg, setMsg] = useState("");
-  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
-  return <Load path="/api/deadlines?all=true">{(d, reload) => {
-    const add = async () => { setErr(null); setMsg(""); try { await post("/api/deadlines", { ...f, applies_to: f.applies_to || null, region: f.region || null }); setF(empty); setMsg("Proposed. A colleague has to approve it before sellers see it."); reload(); } catch (e) { setErr(e); } };
-    const act = async (id: string, decision: string) => { setErr(null); try { await post(`/api/deadlines/${id}/decision`, { decision }); reload(); } catch (e) { setErr(e); } };
-    return (<>
-      <p className="sub">{tr("A date only shows for sellers once it has an official link, the sentence that states it, and a colleague's approval. Nothing is guessed.")}</p>
-      <div className="card"><b>{tr("Propose a deadline")}</b>
-        <div className="grid2 mt-2">
-          <label className="small">{tr("Title")}<input value={f.title} onChange={set("title")} /></label><label className="small">{tr("Regulation")}<input value={f.regime} onChange={set("regime")} placeholder={tr("e.g. DORA")} /></label>
-          <label className="small">{tr("Date")}<input type="date" value={f.deadline_date} onChange={set("deadline_date")} /></label><label className="small">{tr("Applies to")}<input value={f.applies_to} onChange={set("applies_to")} placeholder={tr("e.g. banks in the EU")} /></label>
-          <label className="small">Region<input value={f.region} onChange={set("region")} placeholder={tr("EU, UK, DACH…")} /></label><label className="small">{tr("Official page (https)")}<input value={f.source_url} onChange={set("source_url")} /></label>
-        </div>
-        <label className="small">{tr("The sentence on that page that states the date")}<textarea rows={2} value={f.source_quote} onChange={set("source_quote")} className="w-full" /></label>
-        <button className="primary" disabled={!f.title || !f.regime || !f.deadline_date || !f.source_url || f.source_quote.length < 15} onClick={add}>{tr("Propose")}</button>
-        {msg && <div className="okmsg mt-2" role="status">{tr(msg)}</div>}<Err e={err} /></div>
-      <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Deadline · Date · Quote from the official page")}><table><thead><tr><th>{tr("Deadline")}</th><th>{tr("Date")}</th><th>{tr("Quote from the official page")}</th><th>{tr("Status")}</th><th /></tr></thead><tbody>
-        {d.items.map((x: any) => <tr key={x.id}><td><a href={x.source_url} target="_blank" rel="noreferrer noopener">{x.title}</a><div className="small muted">{x.regime}{" " + tr("· proposed by") + " "}{x.proposed_by}</div></td><td>{x.deadline_date}</td><td className="small">“{x.source_quote}”</td>
-          <td><Badge kind={x.status === "approved" ? "ok" : x.status === "proposed" ? "warn" : ""}>{x.status === "proposed" ? tr("Waiting for a second approver") : humanize(x.status)}</Badge></td>
-          <td>{x.status === "proposed" && <div className="row"><button className="primary" onClick={() => act(x.id, "approve")}>{tr("Approve")}</button><button onClick={() => act(x.id, "reject")}>{tr("Reject")}</button></div>}{x.status === "approved" && <button onClick={() => act(x.id, "retire")}>{tr("Retire")}</button>}</td></tr>)}
-        {d.items.length === 0 && <tr><td colSpan={5} className="muted">{tr("No deadlines yet.")}</td></tr>}</tbody></table></div></>);
-  }}</Load>;
 }
 
 const Coverage = () => <Load path="/api/admin/recall">{(d) => (<>
@@ -133,12 +110,14 @@ function Connections() {
   const [filter, setFilter] = useState("");
   return (
     <Load path="/api/admin/connections">{(d) => {
-      const rows = d.items.filter((r: any) => !filter || r.state === filter);
+      const items = d.items.filter((r: any) => !HIDDEN_INTEGRATION.test(`${r.source_id} ${r.name}`));
+      const counts = Object.keys(d.counts).map((k) => [k, items.filter((r: any) => r.state === k).length] as [string, number]).filter(([, n]) => n > 0);
+      const rows = items.filter((r: any) => !filter || r.state === filter);
       return (<>
         <p className="sub mb-4">{tr("Every place we read from, what state it is in, what it needs to be switched on, and where to get that. “Runs per account” means it is found for each account when you press “Check for news” on that account.")}</p>
         <div className="chips" role="group" aria-label={tr("Filter by state")}>
-          <button className="chip" aria-pressed={!filter} onClick={() => setFilter("")}>{tr("All")}<b>{d.items.length}</b></button>
-          {Object.entries(d.counts).map(([k, n]) => <button key={k} className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{tr(d.labels[k])}<b>{n as number}</b></button>)}
+          <button className="chip" aria-pressed={!filter} onClick={() => setFilter("")}>{tr("All")}<b>{items.length}</b></button>
+          {counts.map(([k, n]) => <button key={k} className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{tr(d.labels[k])}<b>{n}</b></button>)}
         </div>
         <div className="conn-list">
           {rows.map((r: any) => <article key={r.source_id} className={`conn ${r.state}`}>
@@ -293,7 +272,7 @@ function ApprovalList({ d, reload, me }: { d: any; reload: () => void; me: Admin
     finally { setBusy(false); }
   };
   const canDecide = me.permissions.includes("approvals.decide");
-  return <><Err e={err} />{msg && <div className="okmsg" role="status">{tr(msg)}</div>}{d.items.length === 0 && <div className="empty"><b>{tr("Nothing waiting")}</b>{tr("Requests for Pipedrive changes, signal campaigns, outreach and email reveals will appear here.")}</div>}
+  return <><Err e={err} />{msg && <div className="okmsg" role="status">{tr(msg)}</div>}{d.items.length === 0 && <div className="empty"><b>{tr("Nothing waiting")}</b>{tr("Requests for signal campaigns, outreach and email reveals will appear here.")}</div>}
     {d.items.map((a: any) => <div id={`approval-${a.id}`} key={a.id} className="card"><div className="row spread"><b>{lab("approval", a.operation === "create_activity" ? "crm_activity" : a.kind)}{a.payload?.subject ? `: ${a.payload.subject}` : ""}</b><Badge kind={a.status === "approved" ? "ok" : a.status === "pending" ? "warn" : a.status === "executed" ? "info" : ""}>{({ pending: tr("Waiting for approval"), approved: tr("Approved, not run yet"), executed: tr("Done"), rejected: tr("Rejected"), expired: tr("Expired") } as Record<string, string>)[a.status] ?? humanize(a.status)}</Badge></div>
       <div className="small">{tr("For") + " "}{a.target_system === "pipedrive" ? "Pipedrive" : humanize(a.target_system)}{" " + tr("· requested by") + " "}{a.requested_by}{" " + tr("· expires") + " "}{fmtDateTime(a.expires_at)}</div>
       {a.kind === "signal_campaign_push" ? <CampaignPayload p={a.payload ?? {}} /> : <PayloadDetails payload={a.payload ?? {}} />}
@@ -323,9 +302,6 @@ function BudgetDetails() {
   </>}</Load>;
 }
 
-const Rules = () => <Load path="/api/admin/rules">{(d) => <><div className="row">{d.summary.map((s: any) => <Badge key={s.status} kind={s.status === "active" ? "ok" : ""}>{humanize(s.status)}: {s.n}</Badge>)}</div><div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("ID · Signal (original wording) · Strength")}><table><thead><tr><th>ID</th><th>{tr("Signal (original wording)")}</th><th>{tr("Strength")}</th><th>{tr("Stays relevant (days)")}</th><th>{tr("Version")}</th><th>{tr("Status")}</th></tr></thead><tbody>
-  {d.items.map((r: any) => <tr key={r.id}><td>{r.id}</td><td>{r.signal}</td><td>{r.strength}</td><td>{r.fresh_for_days}</td><td>{r.version}</td><td><Badge kind={r.status === "active" ? "ok" : ""}>{r.status === "active" ? tr("On") : tr("Not yet on")}</Badge></td></tr>)}</tbody></table></div></>}</Load>;
-
 function Audit() {
   const [limit, setLimit] = useState(100);
   return <Load path={`/api/admin/audit?limit=${limit}`}>{(d) => <>
@@ -351,7 +327,7 @@ const QUALITY_LABELS: Record<string, [string, string]> = {
   high_priority_without_citation: ["High priority without a source", "High-priority cards with no cited source. Should be zero."],
   open_identity_reviews: ["Company matches to review", "Companies we couldn't match with confidence. See Identity review."],
   unverified_events: ["Findings not checked yet", "Findings waiting to be checked against the original page."],
-  unauthorised_writes_detected: ["Unapproved changes detected", "Writes to Pipedrive or outreach without an approval. Should be zero."],
+  unauthorised_writes_detected: ["Unapproved changes detected", "Outreach or other outside changes made without an approval. Should be zero."],
   pending_approvals: ["Approvals waiting", "Requests waiting for a second person. See Approvals."],
 };
 const Quality = () => <Load path="/api/admin/metrics">{(d) => <><p className="sub mb-4">{tr("Health checks on the platform itself. Anything marked \"should be zero\" and isn't is worth a look.")}</p>
@@ -417,7 +393,7 @@ function Users() {
     <>
       <div className="card">
         <div className="eyebrow">{tr("Add a person")}</div>
-        <p className="small muted mt-0">{tr("They sign in with Google using this address")}{d?.domain ? ` (only @${d.domain} is accepted)` : ""}{tr(". Sellers see accounts with no Pipedrive owner, plus their own and any shared with them.")}</p>
+        <p className="small muted mt-0">{tr("They sign in with Google using this address")}{d?.domain ? ` (only @${d.domain} is accepted)` : ""}.</p>
         <div className="row">
           <input aria-label={tr("Work email")} placeholder="name@thecodest.co" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} className="field-md" />
           <input aria-label={tr("Display name")} placeholder={tr("Display name")} value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} />
@@ -445,8 +421,8 @@ function SubNav({ me, waiting }: { me: AdminUser; waiting: number }) {
   const groups: [string, (React.ReactNode)[]][] = [
     [tr("Needs a person"), [L(p("approvals.read_own") || p("approvals.read_all"), "/admin/approvals", tr("Approvals"), false, waiting), L(p("identity.manage"), "/admin/identity", tr("Company matches")), L(p("sources.read"), "/admin/verification", tr("Pages being checked"))]],
     [tr("Monitoring health"), [L(p("admin.jobs"), "/admin/pipeline", tr("Processing pipeline")), L(p("admin.jobs"), "/admin/jobs", tr("Failed jobs")), L(p("admin.costs"), "/admin/usage", tr("Usage and cost")), L(p("admin.rules"), "/admin/coverage", tr("Are we finding things?")), L(p("admin.rules"), "/admin/quality", tr("Health checks"))]],
-    [tr("Sources and imports"), [L(p("sources.read"), "/admin", tr("Sources"), true), L(p("sources.read"), "/admin/connections", tr("Where we read from")), L(p("admin.sources"), "/admin/imports", tr("Workbooks")), L(p("admin.costs"), "/admin/discovery", tr("Web search")), L(p("admin.rules"), "/admin/deadlines", tr("Regulation deadlines")), L(p("admin.sources"), "/admin/knowledge", tr("Knowledge base"))]],
-    [tr("Signals"), [L(p("admin.rules"), "/admin/rules", tr("Signal list")), L(p("admin.rules"), "/admin/precision", tr("Which signals work"))]],
+    [tr("Sources and imports"), [L(p("sources.read"), "/admin", tr("Sources"), true), L(p("sources.read"), "/admin/connections", tr("Where we read from")), L(p("admin.sources"), "/admin/imports", tr("Workbooks")), L(p("admin.costs"), "/admin/discovery", tr("Web search")), L(p("admin.sources"), "/admin/knowledge", tr("Knowledge base"))]],
+    [tr("Signals"), [L(p("admin.rules"), "/admin/precision", tr("Which signals work"))]],
     [tr("Access and integrations"), [L(p("admin.users"), "/admin/users", tr("People")), L(p("admin.costs"), "/admin/integrations", tr("Connected services")), L(p("audit.read"), "/admin/audit", tr("Audit log"))]],
   ];
   return <div><button type="button" className="admin-nav-toggle" aria-expanded={expanded} aria-controls="admin-sections" onClick={() => setExpanded(!expanded)}>{tr("Administration sections")}</button><nav id="admin-sections" className={`subnav${expanded ? " expanded" : ""}`} aria-label={tr("Administration sections")}>{groups.map(([g, items]) => items.some(Boolean) ? <div key={g} className="subnav-g"><div className="subnav-h">{tr(String(g))}</div>{items}</div> : null)}</nav></div>;
@@ -466,7 +442,7 @@ export default function Admin({ me, waiting, refreshApprovals }: { me: AdminUser
         <SubNav me={me} waiting={waiting} />
         <div className="admin-main">
           <Routes><Route index element={<Sources canEdit={p("admin.sources")} />} /><Route path="pipeline" element={<Pipeline />} /><Route path="connections" element={<Connections />} /><Route path="integrations" element={<Integrations />} /><Route path="knowledge" element={<KnowledgeAdmin />} /><Route path="imports" element={<Imports />} /><Route path="users" element={<Users />} /><Route path="identity" element={<Identity />} /><Route path="approvals" element={<Approvals me={me} refresh={refreshApprovals} />} /><Route path="jobs" element={<Jobs />} /><Route path="costs" element={<Navigate to="/admin/usage" replace />} /><Route path="usage" element={<><Usage /><details className="card mt-4"><summary>{tr("All provider budgets")}</summary><BudgetDetails /></details></>} /><Route path="discovery" element={<Discovery />} /><Route path="verification" element={<Verification />} />
-            <Route path="rules" element={<Rules />} /><Route path="precision" element={<Precision />} /><Route path="coverage" element={<Coverage />} /><Route path="deadlines" element={<DeadlinesAdmin />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
+            <Route path="rules" element={<Navigate to="/library?tab=signals" replace />} /><Route path="precision" element={<Precision />} /><Route path="coverage" element={<Coverage />} /><Route path="deadlines" element={<Navigate to="/admin" replace />} /><Route path="quality" element={<Quality />} /><Route path="audit" element={<Audit />} /></Routes>
         </div>
       </div>
     </>

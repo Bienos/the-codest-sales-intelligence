@@ -16,7 +16,7 @@ const STEPS = ["Pick signals", "Check the people", "Check the copy", "Manager ap
 function HowItWorks() {
   return <ol className="flow-mini" aria-label={tr("How a signal campaign works")}>
     {[["Pick signals", "For example a funding round or a payments programme. Every company you can see with that signal live and verified is included."],
-      ["Check the people", "Up to five people per company with a verified email. Anyone opted out, owned by another seller or at a company with an open deal is left out, with the reason shown."],
+      ["Check the people", "Up to five people per company with a verified email. Anyone who opted out is left out, with the reason shown."],
       ["Check the copy", "Each email opens with that company's own verified news. Every lead's copy is checked against the brand rules."],
       ["Manager approves", "A manager approves the exact list and copy. Nothing changes after approval without a new one."],
       ["Push to Lemlist", "The campaign is created in Lemlist with its leads, but not launched. You press Launch in Lemlist. Replies and opt-outs come back here."]].map(([t, d], i) =>
@@ -174,7 +174,7 @@ export function CampaignDetail({ canDecide }: { canDecide: boolean }) {
         <span className="small muted">{tr("{} people at {} companies", included.length, new Set(included.map((m: any) => m.organization_id)).size)}</span></div>
       <div className="sigtags mt-2">{c.rule_ids.map((r: string) => <SignalTag key={r} s={{ rule_id: r, name: r, strength: 0 }} />)}
         <span className="small muted">{tr("seen in the last {} days", c.filters?.days ?? 90)}{c.filters?.region ? ` · ${tr(REGIONS.find(([k]) => k === c.filters.region)?.[1] ?? c.filters.region)}` : ""}</span></div>
-      {included.length + leftOut.length === 0 ? <Empty title="Nobody can be included yet">{tr("None of these companies has a contact with a verified email. Open a company and use Find decision makers, or connect Pipedrive.")}</Empty> :
+      {included.length + leftOut.length === 0 ? <Empty title="Nobody can be included yet">{tr("None of these companies has a contact with a verified email. Open a company and use Find decision makers.")}</Empty> :
         <div className="table-wrap mt-3" tabIndex={0} role="region" aria-label={tr("Audience")}><table className="cards audience"><thead><tr><th>{tr("Include")}</th><th>{tr("Person")}</th><th>{tr("Company and signal")}</th><th>{tr("Opening line")}</th><th>{tr("Status")}</th></tr></thead><tbody>
           {[...included, ...leftOut].map((m: any) => <tr key={m.id} className={m.included ? "" : "muted-row"}>
             <td><input type="checkbox" aria-label={tr("Include {}", m.name)} checked={m.included} disabled={!d.can_edit || busy} onChange={(e) => act(() => api(`/api/signal-campaigns/${id}/members/${m.id}`, { method: "PATCH", body: JSON.stringify({ included: e.target.checked }) }))} /></td>

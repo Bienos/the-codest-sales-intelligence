@@ -17,7 +17,9 @@ type Result = { items: Person[]; total: number; page: number; size: number; coun
 type SyncState = Record<string, { configured: boolean; how: string; last_sync?: string | null; last_change_seen?: string | null; last_run?: { status: string; at: string; error?: string } | null }> & { can_sync: boolean };
 
 const ENG_KIND: Record<string, string> = { interested: "ok", replied: "ok", not_interested: "warn", bounced: "bad", unsubscribed: "bad", opened: "info", clicked: "info", sent: "info", pushed: "info" };
-const FILTERS = ["q", "source", "email", "engagement", "region", "signal", "rule", "owner", "sort", "suppressed"] as const;
+/** Pipedrive is not connected and is hidden from the interface for now; the API still reports it. */
+const HIDDEN_SOURCES = ["pipedrive"];
+const FILTERS = ["q", "source", "email", "engagement", "region", "signal", "rule", "sort", "suppressed"] as const;
 
 function SyncBar() {
   const [s, setS] = useState<SyncState | null>(null);
@@ -37,11 +39,11 @@ function SyncBar() {
       <div className="row spread"><b>{label}</b><Badge kind={x.configured ? "ok" : "warn"}>{x.configured ? tr("Connected") : tr("Not connected")}</Badge></div>
       <div className="small muted">{x.configured ? (last ? tr("Last sync {}", fmtDate(last)) : tr("Not synced yet")) : tr(x.how)}</div>
       {x.last_run?.status === "permanent_failed" && <div className="small">{tr("Last sync failed. An administrator can see why in Administration, Pipeline.")}</div>}
-      {s.can_sync && x.configured && (key === "pipedrive" || key === "lemlist") && <button type="button" className="mt-1" onClick={() => sync(key)}>{tr("Sync now")}</button>}
+      {s.can_sync && x.configured && key === "lemlist" && <button type="button" className="mt-1" onClick={() => sync(key)}>{tr("Sync now")}</button>}
     </div>;
   };
-  return <section aria-label={tr("Where people come from")}>
-    <div className="syncbar">{tile("sheets", "Workbooks")}{tile("apollo", "Apollo")}{tile("pipedrive", "Pipedrive")}{tile("lemlist", "Lemlist")}</div>
+  return <section className="mb-4" aria-label={tr("Where people come from")}>
+    <div className="syncbar">{tile("sheets", "Workbooks")}{tile("apollo", "Apollo")}{tile("lemlist", "Lemlist")}</div>
     {msg && <div className="okmsg" role="status">{msg}</div>}
   </section>;
 }
@@ -65,7 +67,7 @@ export default function People() {
   const c = data?.counts;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.size)) : 1;
   return <>
-    <PageHeader eyebrow="Contacts" title="People" sub="Everyone you can reach, from your workbooks, Apollo, Pipedrive and Lemlist, in one list with their company's current buying signal. Email addresses stay hidden; they are only used through an approved campaign."
+    <PageHeader eyebrow="Contacts" title="People" sub="Everyone you can reach, from your workbooks, Apollo and Lemlist, in one list with their company's current buying signal. Email addresses stay hidden; they are only used through an approved campaign."
       right={<Link className="btn primary" to="/campaigns/new">{tr("New signal campaign")}</Link>} />
     <SyncBar />
     {c && <div className="today-summary mt-4" aria-label={tr("Overview")}>
@@ -83,7 +85,7 @@ export default function People() {
         {Object.keys(SHORT).map((id) => <option key={id} value={id}>{signalName(id)}</option>)}
       </select>
       <select aria-label={tr("Came from")} value={params.get("source") ?? ""} onChange={(e) => set("source", e.target.value)}>
-        <option value="">{tr("Any source")}</option>{data && Object.entries(data.sources).map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
+        <option value="">{tr("Any source")}</option>{data && Object.entries(data.sources).filter(([k]) => !HIDDEN_SOURCES.includes(k)).map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
       </select>
       <select aria-label={tr("Email")} value={params.get("email") ?? ""} onChange={(e) => set("email", e.target.value)}>
         <option value="">{tr("Any email status")}</option><option value="verified">{tr("Verified email")}</option><option value="unverified">{tr("Email not verified")}</option><option value="none">{tr("No email")}</option>
@@ -94,26 +96,21 @@ export default function People() {
       <select aria-label={tr("Region")} value={params.get("region") ?? ""} onChange={(e) => set("region", e.target.value)}>
         <option value="">{tr("All regions")}</option>{REGIONS.filter(([id]) => id !== "international").map(([id, label]) => <option key={id} value={id}>{tr(label)}</option>)}
       </select>
-      <select aria-label={tr("Owner")} value={params.get("owner") ?? ""} onChange={(e) => set("owner", e.target.value)}>
-        <option value="">{tr("Any owner")}</option><option value="mine">{tr("My accounts in Pipedrive")}</option><option value="unowned">{tr("No owner in Pipedrive")}</option>
-      </select>
       <select aria-label={tr("Sort")} value={params.get("sort") ?? "signal"} onChange={(e) => set("sort", e.target.value === "signal" ? "" : e.target.value)}>
         <option value="signal">{tr("Strongest signal first")}</option><option value="activity">{tr("Latest outreach activity")}</option><option value="company">{tr("Company")}</option><option value="name">{tr("Name")}</option>
       </select>
     </form>
-    {err ? <Err e={err} /> : !data ? <Skeleton rows={6} label={tr("Loading people")} /> : data.items.length === 0 ? <Empty title="Nobody matches these filters">{tr("Clear a filter, or import contacts: upload the workbooks, connect Pipedrive or Lemlist, or use Find decision makers on an account.")}</Empty> : <>
+    {err ? <Err e={err} /> : !data ? <Skeleton rows={6} label={tr("Loading people")} /> : data.items.length === 0 ? <Empty title="Nobody matches these filters">{tr("Clear a filter, or import contacts: upload the workbooks, connect Lemlist, or use Find decision makers on an account.")}</Empty> : <>
       <p className="small muted">{tr("{} people", number(data.total))}{params.toString() && <> · <a href="/people" onClick={(e) => { e.preventDefault(); setSearch(""); setParams(new URLSearchParams()); }}>{tr("Clear filters")}</a></>}</p>
       <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("People")}><table className="cards people-table"><thead><tr>
         <th>{tr("Person")}</th><th>{tr("Company")}</th><th>{tr("Buying signal")}</th><th>{tr("Came from")}</th><th>{tr("Email")}</th><th>{tr("Outreach")}</th></tr></thead><tbody>
         {data.items.map((p) => <tr key={p.id} className={p.suppressed ? "muted-row" : ""}>
           <td><b>{p.name}</b><div className="small muted">{p.title || tr("Role not recorded")}</div>{p.suppressed && <Badge kind="bad">{tr("Do not contact")}</Badge>}</td>
           <td data-label={tr("Company")}><Link to={`/accounts/${p.company.id}`}>{p.company.name}</Link>
-            <div className="small muted">{[p.company.country, p.company.segment].filter(Boolean).join(" · ")}</div>
-            <div className="small">{p.owner.mine ? <Badge kind="ok">{tr("Your account")}</Badge> : p.owner.crm_owner_id ? <Badge kind="warn">{tr("Owned by another seller")}</Badge> : <Badge>{tr("No owner in Pipedrive")}</Badge>}
-              {p.owner.open_deals > 0 && <Badge kind="info">{tr("Open deal")}</Badge>}</div></td>
+            <div className="small muted">{[p.company.country, p.company.segment].filter(Boolean).join(" · ")}</div></td>
           <td data-label={tr("Buying signal")}>{p.signal ? <><SignalTag s={{ rule_id: p.signal.rule_id, name: p.signal.name, strength: 0 }} />
             <div className="small mt-1 sig-sum" title={p.signal.summary}>{p.signal.summary}</div><div className="small muted">{p.signal.date ? fmtDate(p.signal.date) : ""}</div></> : <span className="small muted">{tr("No live signal")}</span>}</td>
-          <td data-label={tr("Came from")}><div className="srcbadges">{p.sources.length ? p.sources.map((s) => <span key={s} className={`srcbadge src-${s}`}>{tr(data.sources[s] ?? s)}</span>) : <span className="small muted">{tr("Unknown")}</span>}</div></td>
+          <td data-label={tr("Came from")}><div className="srcbadges">{(() => { const shown = p.sources.filter((s) => !HIDDEN_SOURCES.includes(s)); return shown.length ? shown.map((s) => <span key={s} className={`srcbadge src-${s}`}>{tr(data.sources[s] ?? s)}</span>) : <span className="small muted">{tr("Unknown")}</span>; })()}</div></td>
           <td data-label={tr("Email")}>{p.email === "verified" ? <Badge kind="ok">{tr("Verified")}</Badge> : p.email === "unverified" ? <Badge kind="warn">{tr("Needs a check")}</Badge> : <Badge>{tr("None")}</Badge>}</td>
           <td data-label={tr("Outreach")}><Badge kind={ENG_KIND[p.engagement ?? ""] ?? ""}>{tr(p.engagement_label)}</Badge>
             {p.last_activity_at && <div className="small muted">{fmtDate(p.last_activity_at)}</div>}

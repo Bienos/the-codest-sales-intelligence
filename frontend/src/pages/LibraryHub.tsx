@@ -48,6 +48,9 @@ function Signals({ q }: { q: string }) {
   );
 }
 
+/** A web address without its scheme, shortened for a table cell; the full address stays in the link and its tooltip. */
+const shortUrl = (url: string, max = 90) => { const t = url.replace(/^https?:\/\//, ""); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
+
 function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   useEffect(() => { const t = setTimeout(() => api(`/api/library/urls?q=${encodeURIComponent(q)}&limit=80`).then(setD).catch(setErr), q ? 250 : 0); return () => clearTimeout(t); }, [q]);
@@ -56,10 +59,10 @@ function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   return (
     <>
       <div className="section-title mt-0">{tr("Pages and feeds we watch")}</div>
-      <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Source · Tier · Status")}><table><thead><tr><th>{tr("Source")}</th><th>{tr("Tier")}</th><th>{tr("Status")}</th><th>{tr("Address")}</th></tr></thead><tbody>
+      <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("Source · Tier · Status")}><table className="cards feeds-table"><thead><tr><th>{tr("Source")}</th><th>{tr("Tier")}</th><th>{tr("Status")}</th><th>{tr("Address")}</th></tr></thead><tbody>
         {d.feeds.filter((f: any) => !q || `${f.display_name} ${f.url}`.toLowerCase().includes(q.toLowerCase())).map((f: any) => (
-          <tr key={f.source_id}><td>{f.display_name}<div className="small muted">{humanize(f.collection_method)}</div></td><td>{f.source_tier}</td><td><Badge kind={f.status === "active" ? "ok" : "warn"}>{f.status === "active" ? tr("Live") : tr("Not set up yet")}</Badge></td>
-            <td className="small"><a href={f.url} target="_blank" rel="noreferrer noopener">{f.url.replace(/^https?:\/\//, "").slice(0, 70)} ↗</a>{f.basis && <div className="muted">{f.basis}</div>}</td></tr>))}
+          <tr key={f.source_id}><td className="feeds-name"><b>{f.display_name}</b><div className="small muted">{humanize(f.collection_method)}</div></td><td data-label={tr("Tier")} className="feeds-tier">{f.source_tier}</td><td data-label={tr("Status")} className="feeds-status"><Badge kind={f.status === "active" ? "ok" : "warn"}>{f.status === "active" ? tr("Live") : tr("Not set up yet")}</Badge></td>
+            <td data-label={tr("Address")} className="small feeds-addr"><a href={f.url} target="_blank" rel="noreferrer noopener" title={f.url}>{shortUrl(f.url)} ↗</a>{f.basis && <div className="muted">{f.basis}</div>}</td></tr>))}
       </tbody></table></div>
       <div className="section-title">{tr("Websites your workbooks cite most")}</div>
       <div className="chips">{d.domains.map((x: any) => <button key={x.domain} className="chip" onClick={() => setQ(x.domain)}>{x.domain} <b>{x.count}</b></button>)}</div>

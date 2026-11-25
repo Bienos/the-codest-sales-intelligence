@@ -5,7 +5,6 @@ import { LanguageSwitcher, tr, useLanguage } from "./locale";
 import Today from "./pages/Today";
 import { Accounts, Account } from "./pages/Accounts";
 import Opportunity from "./pages/Opportunity";
-import Explorer from "./pages/Explorer";
 import Admin from "./pages/Admin";
 import Guide from "./pages/Guide";
 import Landing, { Notice } from "./pages/Landing";
@@ -16,7 +15,7 @@ import Knowledge from "./pages/Knowledge";
 import People from "./pages/People";
 import Tenders from "./pages/Tenders";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
-import { Err, Skeleton, lab, IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, Brand } from "./components/ui";
+import { Err, Skeleton, lab, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 
@@ -84,7 +83,6 @@ export default function App() {
           {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}
           {(can("today.read") || can("explorer.read")) && link("/tenders", tr("Open tenders"), IconTender)}
           <span className="nav-group">{tr("Look up")}</span>
-          {can("explorer.read") && link("/explorer", tr("Research explorer"), IconExplorer)}
           {link("/library", tr("Library"), IconLibrary)}
           {link("/knowledge", tr("Knowledge base"), IconKnowledge)}
           {link("/guide", tr("How it works"), IconGuide)}
@@ -97,7 +95,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Navigate to={can("today.read") ? "/today" : "/admin"} replace />} />
           <Route path="/today" element={<Today canReview={can("research.request")} canCampaign={can("draft.create")} />} />
-          <Route path="/tenders" element={<div className="page"><Tenders /></div>} />
+          <Route path="/tenders" element={<div className="page"><Tenders canRefresh={can("admin.sources")} /></div>} />
           <Route path="/people" element={<div className="page"><People /></div>} />
           <Route path="/campaigns" element={<div className="page"><CampaignList /></div>} />
           <Route path="/campaigns/new" element={<div className="page"><NewCampaign /></div>} />
@@ -111,7 +109,7 @@ export default function App() {
           <Route path="/accounts" element={<div className="page"><Accounts me={me} /></div>} />
           <Route path="/accounts/:id" element={<div className="page"><Account key={loc.pathname} me={me} /></div>} />
           <Route path="/opportunities/:id" element={<div className="page"><Opportunity key={loc.pathname} me={me} /></div>} />
-          <Route path="/explorer" element={<div className="page"><Explorer /></div>} />
+          <Route path="/explorer" element={<Navigate to="/accounts" replace />} />
           <Route path="/admin/*" element={<div className="page"><Admin me={me} waiting={waiting} refreshApprovals={refreshApprovals} /></div>} />
         </Routes>
       </main>

@@ -12,8 +12,6 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
   const [err, setErr] = useState<unknown>(null);
   const [msg, setMsg] = useState("");
   const [draft, setDraft] = useState<any>(null);
-  const [crmForm, setCrm] = useState({ subject: "", justification: "" });
-  const [proposal, setProposal] = useState<any>(null);
   const load = () => { Promise.all([api(`/api/hypotheses/${id}`), api(`/api/hypotheses/${id}/playbook`)]).then(([a, b]) => { setD(a); setPb(b); }).catch(setErr); };
   useEffect(load, [id]);
   if (!d || !pb) return <><PageHeader title={tr("Opportunity")} />{err ? <Err e={err} onRetry={() => { setErr(null); load(); }} /> : <Skeleton label={tr("Loading opportunity")} />}</>;
@@ -36,7 +34,7 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
       <div className={`verdict ${verdict(d).kind} mt-2`}><span className="k">{tr("Our read")}</span>{verdict(d).text}</div>
           <div className="action">
             <div className="eyebrow mb-2">{tr("Next action")}</div>
-            {a ? <><div className="atype">{lab("action", a.action_type)}</div><div><b className="k">{tr("Goal")}</b> {a.objective}</div>{a.target_role && <div><b className="k">{tr("Who to look for")}</b> {a.target_role}</div>}<div><b className="k">{tr("Owner")}</b> {a.owner_name ?? (a.owner_id ? tr("Assigned in Pipedrive") : tr("Unassigned"))}</div><div><b className="k">{tr("When")}</b> {a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</div>
+            {a ? <><div className="atype">{lab("action", a.action_type)}</div><div><b className="k">{tr("Goal")}</b> {a.objective}</div>{a.target_role && <div><b className="k">{tr("Who to look for")}</b> {a.target_role}</div>}<div><b className="k">{tr("Owner")}</b> {a.owner_name ?? (a.owner_id ? tr("Assigned") : tr("Unassigned"))}</div><div><b className="k">{tr("When")}</b> {a.due_at ? fmtDateTime(a.due_at) : a.trigger_condition}</div>
               <div><b className="k">{tr("Good result")}</b> {a.expected_outcome}</div><div><b className="k">{tr("Stop when")}</b> {a.stop_condition}</div><div className="small muted mt-2">{actionReason(a)}</div></> : <span className="muted">{tr("Nothing to do right now.")}</span>}
           </div>
       <h2 className="section-title mt-2">{tr("Seven qualification checks")}</h2>
@@ -63,10 +61,6 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
           <h2 className="section-title">{tr("Questions to ask")}</h2>
           <div className="card"><ul className="tight">{pb.discovery_questions.map((q: any, i: number) => <li key={i}><Badge>{({ G1: tr("Account fit"), G2: tr("Real programme"), G3: tr("Engineering fit"), G4: tr("Outside demand"), G5: tr("Supplier access"), G6: tr("Buyer path"), G7: tr("Delivery"), play: tr("Sales play") } as Record<string, string>)[q.gate] ?? q.gate}</Badge> {q.question}</li>)}</ul></div>
 
-          <h2 className="section-title">{tr("Pipedrive deal")}</h2>
-          <div className="card">{pb.deal.has_open_deal ? <><p className="mt-0"><b>{pb.deal.deal.title}</b>{tr(". Stage") + " "}{pb.deal.deal.stage}{tr(", last updated") + " "}{pb.deal.deal.age_days_since_update ?? tr("an unknown number of")}{" " + tr("days ago") + " "}{pb.deal.aging_flag && <Badge kind="warn">{tr("going stale")}</Badge>}</p>
-            {pb.deal.stage_vs_evidence_gap && <p className="small"><Badge kind="warn">{tr("Stage looks ahead of the evidence")}</Badge> {pb.deal.stage_vs_evidence_gap}</p>}<p className="small"><b>{tr("Suggested next step:")}</b> {pb.deal.next_step_guidance.description}{tr(". You will know it worked when:") + " "}{pb.deal.next_step_guidance.verify_success}.</p></> : <p className="muted m-0">{tr("There is no open Pipedrive deal for this opportunity.")}</p>}</div>
-
           <h2 className="section-title">{tr("How this was scored")}</h2>
           <details className="card"><summary>{tr("Show the score breakdown and history")}</summary>
             <h3>{tr("Score breakdown")}</h3><p className="small muted">{tr("Six parts add up to the opportunity score out of 100. Scoring version") + " "}{d.why_this_recommendation.scoring_rule_version}.</p><div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Part · Points · Why")}><table><thead><tr><th>{tr("Part")}</th><th>{tr("Points")}</th><th>{tr("Why")}</th></tr></thead><tbody>{Object.entries(d.score_breakdown).map(([k, v]: any) => <tr key={k}><td>{({ icp: tr("Company fit"), engineering_relevance: tr("Relevance to our engineering"), external_demand: tr("Outside demand"), access: tr("Way in"), timing: "Timing", relationship_delivery: tr("Relationship and delivery") } as Record<string, string>)[k] ?? humanize(k)}</td><td>{v.points}/{v.max}</td><td>{v.why}</td></tr>)}</tbody></table></div>
@@ -81,16 +75,6 @@ export default function Opportunity({ me }: { me: { permissions: string[] } }) {
             {can("draft.create") && <button onClick={() => run(async () => setDraft(await post(`/api/hypotheses/${id}/draft`, {})), "Draft written below")}>{tr("Write a draft")}</button>}
             {draft && (draft.status === "blocked" ? <div className="err" role="alert"><b>{tr("We could not write this draft")}</b><ul className="tight">{draft.blocked_reasons.map((b: any, i: number) => <li key={i}>{humanize(b.code)}: {b.detail}</li>)}</ul></div>
               : <div className="mt-3"><p className="mt-0 mb-2"><b>{draft.subject}</b></p><pre className="plain-pre">{draft.body}</pre><p className="small muted">{draft.note}</p></div>)}
-          </div>
-          <div className="card m-0">
-            <div className="eyebrow">{tr("Add a Pipedrive activity")}</div>
-            <p className="small mt-0 mb-3">{tr("A colleague has to approve it before anything reaches Pipedrive.")}</p>
-            {can("crm.propose") ? <>
-              <label className="small" htmlFor="crm-subject">{tr("What is the activity for?")}</label><input id="crm-subject" placeholder={tr("A specific purpose, not 'follow up'")} value={crmForm.subject} onChange={(e) => setCrm({ ...crmForm, subject: e.target.value })} className="w-full mb-2" />
-              <label className="small" htmlFor="crm-why">{tr("Why now?")}</label><input id="crm-why" placeholder={tr("One sentence")} value={crmForm.justification} onChange={(e) => setCrm({ ...crmForm, justification: e.target.value })} className="w-full mb-3" />
-              <button className="primary" disabled={crmForm.subject.length < 3 || crmForm.justification.length < 3} onClick={() => run(async () => setProposal(await post("/api/crm/propose-activity", { hypothesis_id: id, ...crmForm })), "Sent for approval. A colleague will see it under Administration, Approvals.")}>{tr("Ask for approval")}</button>
-              {proposal && <div className="action mt-4"><b>{tr("Waiting for approval")}</b><div className="small mt-2 mb-2">{Object.entries(proposal.diff.payload ?? {}).map(([k, v]: any) => <div key={k}><b>{humanize(k)}:</b> {String(v)}</div>)}</div><div className="small muted">{tr("Someone other than you must approve it by") + " "}{fmtDateTime(proposal.expires_at)}.</div></div>}</> : <p className="muted small">{tr("Your role cannot add Pipedrive activities.")}</p>}
-            <p className="mt-4 mb-0"><Link to="/admin/approvals" className="small">{tr("See what is waiting for approval")}</Link></p>
           </div>
         </aside>
       </div>

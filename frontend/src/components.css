@@ -243,3 +243,49 @@ table.audience td { white-space: normal; overflow-wrap: anywhere; }
   .gpath-node { margin-left: -24px; }
 }
 @media (prefers-reduced-motion: reduce) { .gpath-node { transition: none; } }
+
+/* ---------- library: compact source list (one row per source, like the signal list) ---------- */
+.dotlabel { display: inline-flex; align-items: center; gap: 7px; font: 600 var(--fs-sm)/1.3 var(--font-body); color: var(--navy); white-space: nowrap; }
+.dotlabel::before { content: ""; width: 8px; height: 8px; flex: none; background: var(--navy); opacity: .35; }
+.dotlabel.ok::before { background: var(--dot-ok); opacity: 1; } .dotlabel.warn::before { background: var(--dot-warn); opacity: 1; }
+.dotlabel.bad::before { background: var(--dot-bad); opacity: 1; } .dotlabel.info::before { background: var(--dot-info); opacity: 1; }
+.srcgroup > summary { list-style: none; cursor: pointer; margin: 26px 0 10px; }
+.srcgroup > summary::-webkit-details-marker { display: none; }
+.srcgroup > summary::after { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--navy); border-bottom: 2px solid var(--navy); transform: rotate(45deg); margin: -4px 0 0 2px; flex: none; }
+.srcgroup:not([open]) > summary::after { transform: rotate(-45deg); margin-top: 0; }
+.srcgroup-n { font: 700 var(--fs-xs)/1 var(--font-body); letter-spacing: 0; padding: 4px 7px; background: var(--white); border: 1px solid var(--line); color: var(--navy); }
+.srclist-head, .srcrow > summary { display: grid; grid-template-columns: minmax(0, 2.4fr) minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1.2fr); gap: 12px; align-items: center; }
+.srclist-head { padding: 0 17px 6px 21px; font: 800 var(--fs-label) var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.srcrow { contain-intrinsic-block-size: auto 64px; }
+.srcrow > summary { padding: 10px 0; margin: 0; }
+.srcrow[open] > summary { border-bottom: 1px solid var(--line); }
+.srcrow-name { display: grid; gap: 2px; min-width: 0; }
+.srcrow-name .small { font-weight: 400; }
+.srcrow-t { font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
+.srcrow-kind, .srcrow-last { color: var(--body); font-weight: 400; }
+.srcrow-lab { display: none; }
+.srcrow .lib-facts { margin-top: 12px; }
+.srcrow-setup { padding-bottom: var(--space-4); }
+@media (max-width: 760px) {
+  .srclist-head { display: none; }
+  .srcrow > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; }
+  .srcrow-name { flex: 1 1 100%; order: 0; }
+  .srcrow > summary .dotlabel { order: 1; } .srcrow-kind { order: 2; }
+  .srcrow-last { order: 3; flex: 1 1 100%; } .srcrow-lab { display: inline; }
+}
+@media (max-width: 640px) {
+  .srcrow .lib-facts.wide { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .srcrow .lib-facts dd { margin-bottom: 8px; }
+}
+
+/* ---------- library: pages and feeds table. Names keep whole words; only the address cell breaks long URLs and notes ---------- */
+.feeds-table td { overflow-wrap: normal; }
+.feeds-table th:first-child { width: 30%; }
+.feeds-table td.feeds-name { min-width: 13rem; }
+.feeds-table td.feeds-tier, .feeds-table td.feeds-status, .feeds-table td .badge { white-space: nowrap; }
+.feeds-table td.feeds-addr { white-space: normal; overflow-wrap: anywhere; }
+.feeds-table td.feeds-addr .muted { margin-top: 2px; }
+@media (max-width: 640px) {
+  .feeds-table td.feeds-name { min-width: 0; }
+  table.cards.feeds-table td.feeds-tier, table.cards.feeds-table td.feeds-status { grid-column: auto; margin-right: var(--space-4); }
+}
