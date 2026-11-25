@@ -56,8 +56,15 @@ def person_by_email(conn: Conn, emails: Iterable[str]) -> str | None:
 
 def ensure_person(conn: Conn, *, name: str, email: str | None, org_id: str | None, title: str | None, email_status: str, system: str,
                   external_id: str, detail: dict[str, Any] | None = None) -> str | None:
-    """Find the person by email, else create them when they can be placed at an account. Never overwrites a verified address."""
+    """Find the person by email, then by name at the same account (a workbook often has the person without an address, and
+    Lemlist or Pipedrive bring the address later), else create them when they can be placed at an account. Never overwrites a
+    verified address, and never joins two people whose addresses differ."""
     pid = person_by_email(conn, [email] if email else [])
+    if not pid and org_id and name.strip():
+        same = q1(conn, "SELECT p.id FROM people p JOIN employment e ON e.person_id=p.id WHERE e.organization_id=%s AND p.erased_at IS NULL "
+                        "AND lower(regexp_replace(p.full_name, '\\s+', ' ', 'g')) = lower(regexp_replace(%s, '\\s+', ' ', 'g')) "
+                        "AND (p.work_email IS NULL OR lower(p.work_email) = lower(%s)) ORDER BY p.created_at LIMIT 1", (org_id, name.strip(), email or ""))
+        pid = str(same["id"]) if same else None
     if not pid and not org_id:
         return None
     if not pid:

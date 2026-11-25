@@ -119,3 +119,22 @@ def test_list_eligibility_decides_target_accounts(conn):
         f"select o.list_account_id from organizations o where {target_sql('o', review=review)}")}  # noqa: S608
     # no ownership source needed for listed accounts; "Out of scope" is neither a target nor waiting for review
     assert q(False) == {"A00001"} and q(True) == {"A00002"}
+
+
+def test_a_synced_address_joins_the_person_already_at_the_account(conn):
+    """Lemlist/Pipedrive used to create a second record for someone a workbook already had without an address."""
+    from ri.people import ensure_person
+    oid = str(conn.execute("insert into organizations(display_name, country_code) values ('Synthetic Bank', 'GB') returning id").fetchone()["id"])
+    old = str(conn.execute("insert into people(full_name) values ('Dana  Example') returning id").fetchone()["id"])
+    conn.execute("insert into employment(person_id, organization_id, title) values (%s,%s,'CTO')", (old, oid))
+    other = str(conn.execute("insert into people(full_name, work_email) values ('Eve Example', 'eve@one.example.invalid') returning id").fetchone()["id"])
+    conn.execute("insert into employment(person_id, organization_id) values (%s,%s)", (other, oid))
+    pid = ensure_person(conn, name="dana example", email="dana@bank.example.invalid", org_id=oid, title="CTO",
+                        email_status="Unverified (Lemlist)", system="lemlist", external_id="cam_1")
+    assert pid == old
+    assert conn.execute("select work_email from people where id=%s", (old,)).fetchone()["work_email"] == "dana@bank.example.invalid"
+    # same name but a different address on file: a different person, never joined
+    pid2 = ensure_person(conn, name="Eve Example", email="eve@two.example.invalid", org_id=oid, title=None,
+                         email_status="Unverified (Lemlist)", system="lemlist", external_id="cam_1")
+    assert pid2 != other
+    assert conn.execute("select count(*) c from people").fetchone()["c"] == 3
