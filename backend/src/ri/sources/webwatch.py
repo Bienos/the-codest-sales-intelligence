@@ -89,29 +89,94 @@ def xml_safe(text: str) -> str:
     return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
 
 
+def content_signals(robots_txt: str, user_agent: str = UA) -> dict[str, str]:
+    """Cloudflare-style `Content-Signal: search=yes, ai-train=no` lines that apply to `user_agent`.
+
+    A line before any User-agent line applies to everyone; a line inside a group applies to that group's agents. Groups are read the
+    way urllib.robotparser reads them (a blank line ends a group), and a group naming our agent wins over the `*` group, as for Allow/Disallow.
+    Group values override the global ones key by key. Keys and values are lower-cased; tokens that are not key=value are ignored."""
+    me = user_agent.split("/")[0].lower()
+    glob: dict[str, str] = {}
+    groups: list[tuple[list[str], dict[str, str]]] = []
+    cur: tuple[list[str], dict[str, str]] | None = None
+    has_rules = False
+    for raw in robots_txt.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            cur = None
+            continue
+        key, sep, val = line.partition(":")
+        if not sep:
+            continue
+        key, val = key.strip().lower(), val.strip()
+        if key == "user-agent":
+            if cur is None or has_rules:
+                cur, has_rules = ([], {}), False
+                groups.append(cur)
+            cur[0].append(val.lower())
+            continue
+        if cur is not None:
+            has_rules = True
+        if key == "content-signal":
+            target = cur[1] if cur is not None else glob
+            for part in val.split(","):
+                k, eq, v = part.partition("=")
+                if eq and k.strip():
+                    target[k.strip().lower()] = v.strip().lower()
+    mine = [g for agents, g in groups if any(a != "*" and a in me for a in agents)]
+    chosen = mine or [g for agents, g in groups if "*" in agents]
+    out = dict(glob)
+    for g in chosen:
+        out.update(g)
+    return out
+
+
 class RobotsCache:
+    """robots.txt per origin. Besides Allow/Disallow it honours Cloudflare Content Signals: everything we fetch can be sent to a language
+    model for extraction, so `ai-input=no` means we may not read the page at all. `ai-train=no` alone does not stop us (we never train)."""
+
     def __init__(self):
         self._c: dict[str, urllib.robotparser.RobotFileParser | None] = {}
+        self._signals: dict[str, dict[str, str]] = {}
+
+    @staticmethod
+    def _origin(url: str) -> str:
+        return f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+
+    async def _load(self, client: httpx.AsyncClient, origin: str) -> None:
+        rp = urllib.robotparser.RobotFileParser()
+        self._signals[origin] = {}
+        try:
+            r = await client.get(f"{origin}/robots.txt", headers={"User-Agent": UA})
+            if r.status_code == 200:
+                rp.parse(r.text.splitlines())
+                self._c[origin] = rp
+                self._signals[origin] = content_signals(r.text)
+            elif r.status_code in (401, 403):
+                self._c[origin] = None          # explicit denial => treat as disallowed
+            else:
+                self._c[origin] = rp            # no robots file => allowed (parser default)
+                rp.parse([])
+        except httpx.HTTPError:
+            self._c[origin] = rp
+            rp.parse([])
+
+    def ai_input_refused(self, url: str) -> bool:
+        """True when the site's robots.txt says its content may not be given to AI models (Content-Signal ai-input=no)."""
+        return self._signals.get(self._origin(url), {}).get("ai-input") == "no"
+
+    def refusal(self, url: str) -> str:
+        """Plain reason for a refused URL, for error messages."""
+        if self.ai_input_refused(url):
+            return f"robots.txt Content-Signal says ai-input=no: the site does not allow its pages to be given to AI models ({url})"
+        return f"robots.txt disallows {url}"
 
     async def allowed(self, client: httpx.AsyncClient, url: str) -> bool:
-        origin = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+        origin = self._origin(url)
         if origin not in self._c:
-            rp = urllib.robotparser.RobotFileParser()
-            try:
-                r = await client.get(f"{origin}/robots.txt", headers={"User-Agent": UA})
-                if r.status_code == 200:
-                    rp.parse(r.text.splitlines())
-                    self._c[origin] = rp
-                elif r.status_code in (401, 403):
-                    self._c[origin] = None          # explicit denial => treat as disallowed
-                else:
-                    self._c[origin] = rp            # no robots file => allowed (parser default)
-                    rp.parse([])
-            except httpx.HTTPError:
-                self._c[origin] = rp
-                rp.parse([])
+            await self._load(client, origin)
         rp = self._c[origin]
-        return bool(rp and rp.can_fetch(UA, url))
+        return bool(rp and rp.can_fetch(UA, url)) and not self.ai_input_refused(url)
 
 
 class PageWatchConnector:
@@ -135,7 +200,7 @@ class PageWatchConnector:
 
     async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
         if not await self.robots.allowed(self.client, self.url):
-            raise PolicyBlocked(f"robots.txt disallows {self.url}")
+            raise PolicyBlocked(self.robots.refusal(self.url))
         hdrs = {"User-Agent": UA}
         if cursor:  # cursor = "etag|last-modified" from the previous successful run
             etag, _, lm = cursor.partition("|")
@@ -183,7 +248,7 @@ class FeedConnector:
 
     async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
         if not await self.robots.allowed(self.client, self.url):
-            raise PolicyBlocked(f"robots.txt disallows {self.url}")
+            raise PolicyBlocked(self.robots.refusal(self.url))
         resp = await self.client.get(self.url, headers={"User-Agent": UA}, follow_redirects=True)
         classify(resp)
         try:

@@ -12,7 +12,7 @@ class NoConnector(NotImplementedError):
 
 def build_connector(conn: Conn, source_id: str):
     from .procurement import ContractsFinderConnector, FindTenderConnector, PolishBzpConnector, TedConnector
-    from .jobs_market import JobTechConnector
+    from .jobs_market import ArbeitnowConnector, JobTechConnector
     from .webwatch import FeedConnector, PageWatchConnector
     src = registry.get(conn, source_id)
     cfg = src["config"] or {}
@@ -27,6 +27,8 @@ def build_connector(conn: Conn, source_id: str):
         return PolishBzpConnector(client)
     if source_id == "jobs-jobtech-se":
         return JobTechConnector(client, queries=cfg.get("queries"))
+    if source_id == "jobs-arbeitnow-de":
+        return ArbeitnowConnector(client)
     url = cfg.get("url")
     if url:
         if src["collection_method"] == "feed":

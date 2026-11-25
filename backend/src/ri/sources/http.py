@@ -12,6 +12,23 @@ from .base import (AccessDenied, AuthError, BillingError, EgressBlocked, NotFoun
                    TransientError)
 
 UA = "CodestRevenueIntelligence/0.1 (+contact: sales-intelligence@thecodest.co)"
+RATE_LIMIT_MAX_WAIT = 30.0          # a page that answers 429 is retried once when the provider asks us to wait at most this long
+RATE_LIMIT_DEFAULT_WAIT = 10.0      # used when a 429 carries no Retry-After header
+
+
+def retry_after_seconds(value: str | None) -> float | None:
+    """Retry-After is either a number of seconds or an HTTP date."""
+    if not value:
+        return None
+    v = value.strip()
+    if v.isdigit():
+        return float(v)
+    try:
+        from datetime import datetime, timezone
+        from email.utils import parsedate_to_datetime
+        return max(0.0, (parsedate_to_datetime(v) - datetime.now(timezone.utc)).total_seconds())
+    except (TypeError, ValueError, IndexError):
+        return None
 
 
 def classify(resp: httpx.Response) -> None:
@@ -28,8 +45,7 @@ def classify(resp: httpx.Response) -> None:
     if s == 404:
         raise NotFound("404 not found", status=s)
     if s == 429:
-        ra = resp.headers.get("Retry-After")
-        raise RateLimited("429 rate limited", retry_after=float(ra) if ra and ra.isdigit() else None, status=s)
+        raise RateLimited("429 rate limited", retry_after=retry_after_seconds(resp.headers.get("Retry-After")), status=s)
     if s >= 500:
         raise ServerError(f"{s} server error", status=s)
     body = ""
@@ -63,3 +79,17 @@ async def request_json(client: httpx.AsyncClient, method: str, url: str, *, retr
             await asyncio.sleep(backoff * (2 ** attempt))
     assert last is not None
     raise last
+
+
+async def request_json_patient(client: httpx.AsyncClient, method: str, url: str, *, sleep=asyncio.sleep,
+                               max_wait: float = RATE_LIMIT_MAX_WAIT, **kw: Any) -> Any:
+    """request_json, but a 429 that asks for a short wait (Retry-After up to `max_wait`, or no header at all) is waited out and the
+    same request is tried ONCE more, so a paged run does not stop halfway. A longer wait, or a second 429, is raised for the job layer."""
+    try:
+        return await request_json(client, method, url, **kw)
+    except RateLimited as exc:
+        wait = RATE_LIMIT_DEFAULT_WAIT if exc.retry_after is None else exc.retry_after
+        if wait > max_wait:
+            raise
+        await sleep(wait)
+    return await request_json(client, method, url, **kw)
