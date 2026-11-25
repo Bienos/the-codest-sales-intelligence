@@ -1,22 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, fmtDate, fmtDateTime } from "../api";
+import { api, fmtDate, fmtDateTime, trackSourceOpened } from "../api";
 import { getLanguage, number, tr } from "../locale";
 import { countryName } from "../pages/targetMarket";
 import { Badge, Err, Skeleton, lab, safeHref } from "./ui";
 import { SignalRef, SignalTag } from "./Signals";
+import "../styles/findings.css";
 
-type Source = { url: string; source: string | null };
+type Source = { url: string; source: string | null; published_at?: string | null };
 type Play = { play_id: string; offers: string[] };
 type Finding = {
   id: string; event_ids: string[]; type: string; summary: string; language?: string;
-  summary_en?: string; summary_pl?: string; happened: string;
+  summary_en?: string; summary_pl?: string; happened: string; published?: string | null;
   organization: { id: string; name: string; country: string; qualified?: boolean };
   tender: { title: string; url: string; deadline: string; checked_at: string; notice_id: string; scope?: string | null } | null;
   evidence: Array<Source & { claim: string; claim_id: string; translation?: string | null }>;
   sources: Source[];
   fit: { plays: Play[] };
-  why?: { level: string; service: string; reason: string };
+  why?: { level: string; service: string; reason: string } | null;
   signals?: SignalRef[];
   next_action?: { hypothesis_id: string; action_type: string; has_owner: boolean; owner_name?: string; due_at?: string } | null;
 };
@@ -27,6 +28,7 @@ type Lead = {
 type Coverage = { monitored_sources: number; unhealthy: unknown[]; pending_validation_sources: number; extraction_waiting_for_credit?: boolean };
 type Result = { items: Finding[]; leads: Lead[]; has_more: boolean; coverage: Coverage };
 
+/** What each sales play means for us in one sentence. Used when the finding has no reason of its own. */
 const WHY: Record<string, string> = {
   "SP-01": "A specialist engineering gap may suit staff augmentation.",
   "SP-02": "The programme may need extra engineers or a team to own a workstream.",
@@ -46,6 +48,50 @@ const LEAD_STATUS: Record<string, string> = {
   waiting_budget: "Waiting for AI budget", no_event: "No verified finding for this company", not_checked: "Not checked yet",
   blocked: "Page not allowed", failed: "Could not check", verified: "Source checked",
 };
+
+/* ------------------------------------------------------------------ small shared pieces (also used by the account list and buying signals) */
+
+/** "4 days ago", "3 weeks ago": how fresh a piece of news is. */
+export function ago(v?: string | null): string {
+  if (!v) return "";
+  const t = new Date(v).getTime();
+  if (isNaN(t)) return "";
+  const days = Math.floor((Date.now() - t) / 86_400_000);
+  if (days <= 0) return tr("today");
+  if (days === 1) return tr("yesterday");
+  if (days < 14) return tr("{} days ago", days);
+  if (days < 60) return tr("{} weeks ago", Math.round(days / 7));
+  return tr("{} months ago", Math.round(days / 30));
+}
+
+const LEGAL = /^(the|plc|ltd|limited|ag|sa|s\.a\.|ab|as|asa|gmbh|se|nv|bv|spa|oyj|inc|llc|a\/s|sp\.?|z|o\.o\.)$/i;
+/** A square with the company's initials. The shade is stable per name so the same company always looks the same. */
+export function CompanyAvatar({ name, small = false }: { name: string; small?: boolean }) {
+  const words = name.split(/[\s\-–/&,()]+/).filter((w) => w && !LEGAL.test(w));
+  const letters = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? name).slice(0, 2)).toUpperCase();
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return <span className={`co-av co-av-${h % 4}${small ? " sm" : ""}`} aria-hidden="true">{letters}</span>;
+}
+
+let permissionCache: { token: string | null; perms: Promise<string[]> } | null = null;
+/** The signed-in person's permissions, fetched once per session, for pages rendered without them (Today, the findings archive). */
+export function useCan(): (permission: string) => boolean | undefined {
+  const [perms, setPerms] = useState<string[] | null>(null);
+  useEffect(() => {
+    let token: string | null = null;
+    try { token = sessionStorage.getItem("ri_token"); } catch { /* storage unavailable */ }
+    if (!permissionCache || permissionCache.token !== token) {
+      permissionCache = { token, perms: api<{ permissions: string[] }>("/api/me").then((m) => m.permissions).catch(() => { permissionCache = null; return []; }) };
+    }
+    let live = true;
+    permissionCache.perms.then((p) => { if (live) setPerms(p); });
+    return () => { live = false; };
+  }, []);
+  return (permission) => (perms ? perms.includes(permission) : undefined);
+}
+
+const same = (a?: string | null, b?: string | null) => (a ?? "").replace(/\W+/g, " ").trim().toLowerCase() === (b ?? "").replace(/\W+/g, " ").trim().toLowerCase();
 
 export function SourceCoverage({ coverage }: { coverage: Coverage }) {
   const { monitored_sources: monitored, unhealthy, pending_validation_sources: pending } = coverage;
@@ -78,60 +124,97 @@ export function useFindings(query: string) {
   };
 }
 
-export function FindingCard({ item, onAccount = false }: { item: Finding; onAccount?: boolean }) {
+/** Why the finding matters to The Codest: the finding's own reason first, then what the kind of news usually means. */
+function reasonFor(item: Finding): { text: string; specific: boolean } {
+  if (item.why?.reason && item.why.level !== "none") return { text: item.why.reason, specific: true };
+  if (item.tender) return { text: tr("The notice requests engineering services. Review scope and supplier eligibility before bidding."), specific: false };
+  if (item.type === "engineering_job_opened" || item.type === "contractor_job_opened")
+    return { text: tr("Engineering hiring can indicate a need for skills or capacity. Check the team and whether it uses external partners."), specific: false };
+  const play = item.fit.plays.find(p => WHY[p.play_id]);
+  if (play) return { text: tr(WHY[play.play_id]), specific: false };
+  const service = item.why?.service ? SERVICES[item.why.service] : undefined;
+  if (item.why?.level === "strong" && service) return { text: tr("This finding may fit {}. Confirm the workstream and supplier need.", tr(service)), specific: false };
+  const meaning = item.signals?.find(s => s.meaning)?.meaning;
+  if (meaning) return { text: tr(meaning), specific: false };
+  return { text: tr("Confirm the workstream and whether the company needs an external team."), specific: false };
+}
+
+/** One verified finding: the company, what happened and when, the buying signal, why it matters for us, the evidence and what to do next. */
+export function FindingCard({ item, onAccount = false, canCampaign, canPeople }: { item: Finding; onAccount?: boolean; canCampaign?: boolean; canPeople?: boolean }) {
+  const can = useCan();
+  const campaign = canCampaign ?? can("draft.create");
+  const people = canPeople ?? can("contacts.read");
+  const [hint, setHint] = useState(false);
   const language = getLanguage();
   const summary = (language === "pl" ? item.summary_pl : item.summary_en) || item.summary;
-  const hiring = item.type === "engineering_job_opened" || item.type === "contractor_job_opened";
   const translated = summary !== item.summary;
-  const play = item.fit.plays.find(p => WHY[p.play_id]);
-  const service = item.why?.service ? SERVICES[item.why.service] : undefined;
-  const reason = item.tender ? tr("The notice requests engineering services. Review scope and supplier eligibility before bidding.")
-    : hiring ? tr("Engineering hiring can indicate a need for skills or capacity. Check the team and whether it uses external partners.")
-    : play ? tr(WHY[play.play_id])
-    : item.why?.level === "strong" && service ? tr("This finding may fit {}. Confirm the workstream and supplier need.", tr(service))
-    : tr("Confirm the workstream and whether the company needs an external team.");
-  const deadline = item.tender ? new Intl.DateTimeFormat(language, {
-    dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
-  }).format(new Date(item.tender.deadline)) : null;
-  const source = item.tender ?? item.evidence[0] ?? item.sources[0];
-  return <article className={`fcard finding-card${item.tender ? " finding-tender" : ""}`} id={`finding-${item.id}`}>
-    <div className="row spread start">
-      <div className="row small">
-        <Badge kind={item.tender ? "bad" : "info"}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</Badge>
-        {!onAccount && <Link to={`/accounts/${item.organization.id}?finding=${item.id}`}><b>{item.organization.name}</b></Link>}
-        <span className="muted">{countryName(item.organization.country)}</span>
-        {item.organization.qualified === false && <Badge kind="warn">{tr("Ownership to check")}</Badge>}
-      </div>
-      <time className="small muted" dateTime={item.happened}>{fmtDate(item.happened)}</time>
+  const signals = (item.signals ?? []).filter(s => !s.rule_id.startsWith("NEG-"));
+  const rule = signals[0]?.rule_id;
+  const meaning = signals.find(s => s.meaning)?.meaning;
+  const why = reasonFor(item);
+  const org = item.organization;
+  const company = `/accounts/${org.id}?finding=${item.id}`;
+  const deadline = item.tender ? new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(new Date(item.tender.deadline)) : null;
+  const first = item.evidence[0];
+  const source = item.tender ? { url: item.tender.url, source: tr("Official notice"), published_at: null } : first ?? item.sources[0];
+  const published = first?.published_at ?? item.sources[0]?.published_at ?? item.published ?? null;
+  const showQuote = first && !same(first.claim, item.summary) && !same(first.claim, summary);
+  const extra = Math.max(item.evidence.length - 1, 0) + item.sources.filter(s => !item.evidence.some(e => e.url === s.url)).length;
+  const href = safeHref(source?.url);
+  return <article className={`fd-card${item.tender ? " is-tender" : ""}`} id={`finding-${item.id}`} aria-labelledby={`finding-${item.id}-h`}>
+    <header className="fd-top">
+      {!onAccount && <Link to={company} className="fd-co" aria-label={tr("Open company {}", org.name)}>
+        <CompanyAvatar name={org.name} />
+        <span className="fd-co-text"><span className="fd-co-name">{org.name}</span><span className="fd-co-meta">{countryName(org.country)}</span></span>
+      </Link>}
+      {onAccount && <span className="fd-kind">{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span>}
+      <span className="fd-when"><time dateTime={item.happened}>{fmtDate(item.happened)}</time><span>{ago(item.happened)}</span></span>
+    </header>
+    <h3 className="fd-head" id={`finding-${item.id}-h`}>{summary}</h3>
+    <div className="fd-tags">
+      {!onAccount && <span className={`fd-kind${item.tender ? " tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span>}
+      {signals.map(sig => <SignalTag key={sig.rule_id} s={sig} />)}
+      {org.qualified === false && <Badge kind="warn">{tr("Ownership to check")}</Badge>}
     </div>
-    <h3 className="fcard-t">{summary}</h3>
-    {item.signals && item.signals.length > 0 && <div className="sigtags">{item.signals.map(sig => <SignalTag key={sig.rule_id} s={sig} />)}</div>}
-    {translated && <details className="small finding-details"><summary>{tr("Translated summary · view original")}</summary><p>{item.summary}</p></details>}
-    {item.tender && <p className="small"><b>{tr("Tender deadline")}</b> {deadline} UTC
-      <span className="muted"> · {tr("Status checked {}.", fmtDateTime(item.tender.checked_at))}</span></p>}
-    {item.tender?.scope && <p className="small"><b>{tr("Scope")}</b> {item.tender.scope}</p>}
-    <div className="finding-fit">
-      {item.signals?.[0]?.meaning && !item.tender && <p className="m-0"><b>{tr("Why this is a buying signal")}</b><br />{tr(item.signals[0].meaning)}</p>}
-      <p className={item.signals?.[0]?.meaning && !item.tender ? "mb-0 mt-2" : "m-0"}><b>{tr("Why it fits The Codest")}</b><br />{reason}</p>
+    {translated && <details className="fd-orig"><summary>{tr("Translated summary · view original")}</summary><p>{item.summary}</p></details>}
+    {item.tender && <p className="fd-deadline"><b>{tr("Tender deadline")}</b> {deadline} UTC <span className="muted">{tr("Status checked {}.", fmtDateTime(item.tender.checked_at))}</span>
+      {item.tender.scope && <span className="fd-scope"><b>{tr("Scope")}</b> {item.tender.scope}</span>}</p>}
+    <div className="fd-why">
+      <p><b>{tr("Why this matters for us")}</b> {why.text}</p>
+      {meaning && why.text !== tr(meaning) && <>
+        <button type="button" className="fd-hint-btn" aria-expanded={hint} onClick={() => setHint(!hint)}>{hint ? tr("Hide what this signal usually means") : tr("What this signal usually means")}</button>
+        {hint && <p className="fd-hint">{tr(meaning)}</p>}
+      </>}
     </div>
-    <div className="row spread">
-      <span>{source && safeHref(source.url) && <a href={safeHref(source.url)} target="_blank" rel="noreferrer noopener">{tr("Original source")} ↗</a>}
-        <span className="small muted"> · {item.tender ? tr("confirmed by the official notice; eligibility still to check") : tr("confirmed by the source; outside need still to check")}</span></span>
-      {onAccount && <Link to={`/feed?finding=${item.id}`}>{tr("Open in findings archive")}</Link>}
+    <div className="fd-ev">
+      {showQuote && <blockquote className="fd-quote">“{first.claim}”
+        {language === "en" && first.translation && <span className="fd-trans">{tr("English translation")}: “{first.translation}”</span>}</blockquote>}
+      <p className="fd-src">
+        <span className="fd-checked">{item.tender ? tr("Confirmed by the official notice") : tr("Checked against the original page")}</span>
+        {source?.source && <span>{source.source}</span>}
+        {published && <span>{tr("published {}", fmtDate(published))}</span>}
+        {href && <a href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>{tr("Open source")} ↗</a>}
+      </p>
+      {extra > 0 && <details className="fd-more">
+        <summary>{tr("More evidence ({})", extra)}</summary>
+        {item.evidence.slice(1).map(e => <blockquote key={e.claim_id} className="fd-quote">“{e.claim}”
+          {language === "en" && e.translation && <span className="fd-trans">{tr("English translation")}: “{e.translation}”</span>}
+          <cite>{safeHref(e.url) ? <a href={safeHref(e.url)} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a> : e.source}</cite>
+        </blockquote>)}
+        <ul className="fd-links">{item.sources.filter(s => !item.evidence.some(e => e.url === s.url)).map(s => <li key={s.url}>
+          {safeHref(s.url) ? <a href={safeHref(s.url)} target="_blank" rel="noreferrer noopener">{s.source || new URL(s.url).hostname} ↗</a> : s.source}
+          {s.published_at && <span className="muted"> {fmtDate(s.published_at)}</span>}</li>)}</ul>
+      </details>}
     </div>
-    <p className="small"><b>{tr("Next step")}</b>{" "}{item.next_action ? <Link to={`/opportunities/${item.next_action.hypothesis_id}`}>{tr("Open recommended action")}</Link> : item.tender ? tr("Check how to submit and whether we meet the supplier requirements.")
-      : item.organization.qualified === false ? tr("Confirm company ownership and qualify demand for outside engineering.")
-      : tr("Identify the delivery owner and qualify demand for outside engineering.")}
-      {item.next_action && <span className="muted"> · {tr("Owner")}: {item.next_action.owner_name || tr(item.next_action.has_owner ? "Assigned" : "Unassigned")}
-        {item.next_action.due_at && <> · {tr("due {}", fmtDateTime(item.next_action.due_at))}</>}</span>}</p>
-    {item.evidence.length > 0 && <details className="finding-details">
-      <summary>{tr("View evidence")}</summary>
-      {item.evidence.map(e => <blockquote key={e.claim_id} className="fquote">
-        <span>{tr("Original wording")}: “{e.claim}”</span>
-        {language === "en" && e.translation && <span className="trans">{tr("English translation")}: “{e.translation}”</span>}
-        <cite>{safeHref(e.url) ? <a href={safeHref(e.url)} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a> : e.source}</cite>
-      </blockquote>)}
-    </details>}
+    <footer className="fd-actions">
+      {!onAccount && <Link className="fd-act primary" to={company}>{tr("Open company")}</Link>}
+      {campaign && rule && <Link className="fd-act" to={`/campaigns/new?rules=${rule}`}>{tr("Start a campaign with this signal")}</Link>}
+      {people && !onAccount && <Link className="fd-act" to={`/people?q=${encodeURIComponent(org.name)}`}>{tr("People at this company")}</Link>}
+      {onAccount && <Link className="fd-act" to={`/feed?finding=${item.id}`}>{tr("Open in findings archive")}</Link>}
+      {item.next_action && <span className="fd-next"><Link to={`/opportunities/${item.next_action.hypothesis_id}`}>{tr("Open recommended action")}</Link>
+        <span className="muted"> {tr("Owner")}: {item.next_action.owner_name || tr(item.next_action.has_owner ? "Assigned" : "Unassigned")}
+          {item.next_action.due_at && <>, {tr("due {}", fmtDateTime(item.next_action.due_at))}</>}</span></span>}
+    </footer>
   </article>;
 }
 
@@ -186,9 +269,9 @@ export function AccountFindings({ accountId, selected, leadsOnly }: { accountId:
 
 export function FindingsPagination({ page, hasMore, change }: { page: number; hasMore?: boolean; change: (page: number) => void }) {
   if (page === 1 && !hasMore) return null;
-  return <div className="row" aria-label={tr("Findings pages")}>
+  return <nav className="fd-pages" aria-label={tr("Findings pages")}>
     <button type="button" disabled={page <= 1} onClick={() => change(page - 1)}>{tr("Previous")}</button>
     <span>{tr("Page {}", page)}</span>
     <button type="button" disabled={!hasMore} onClick={() => change(page + 1)}>{tr("Next")}</button>
-  </div>;
+  </nav>;
 }

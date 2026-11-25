@@ -25,7 +25,19 @@ from .search import all_like, tokens
 _LIST_RANK = {"P1": 0, "P2": 1, "P3": 2}
 # Verified signals first; among equals (and while nothing is verified yet) the lead list's own priority and score decide.
 SORTS = {"score": lambda r: (-(float(r["score"] or 0)), _LIST_RANK.get(r["list_priority"] or "", 9), -(float(r["list_score"] or 0)), r["name"].lower()), "name": lambda r: r["name"].lower(), "size": lambda r: (-(r["employees"] or 0), r["name"].lower()),
-         "recent": lambda r: (r["last_signal_at"] is None, -(r["last_signal_at"].timestamp() if r["last_signal_at"] else 0), r["name"].lower())}
+         "recent": lambda r: (r["last_signal_at"] is None, -(r["last_signal_at"].timestamp() if r["last_signal_at"] else 0), r["name"].lower()),
+         # the lead list's own ranking: priority first, then its score; companies the list does not rank go last
+         "priority": lambda r: (_LIST_RANK.get(r["list_priority"] or "", 9), -(float(r["list_score"] or -1)), r["name"].lower()),
+         "list_score": lambda r: (r["list_score"] is None, -(float(r["list_score"] or 0)), _LIST_RANK.get(r["list_priority"] or "", 9), r["name"].lower())}
+# The same chain the account list shows as a verified signal (signals.seller.leading_signals): an active, verified signal on a
+# verified event, backed by a supported, anchored claim with a web source. Used to filter on "has a verified signal".
+_VERIFIED_SIGNAL = """EXISTS (SELECT 1 FROM signals vs JOIN events ve ON ve.id=vs.event_id AND ve.subject_org_id=vs.organization_id
+        JOIN event_claims vec ON vec.event_id=ve.id AND vec.claim_id=ANY(vs.evidence_claim_ids) JOIN claims vc ON vc.id=vec.claim_id
+        LEFT JOIN source_documents vd ON vd.id=vc.source_document_id
+        WHERE vs.organization_id=o.id AND vs.status='active' AND vs.verification_status='verified' AND (vs.expires_at IS NULL OR vs.expires_at>now())
+        AND ve.verification_status='verified' AND ve.lifecycle_status='active' AND NOT ve.is_historical_replay AND (NOT %s OR ve.lane <> 'public')
+        AND vc.status='supported' AND vc.anchor_verified AND vc.claim_kind IN ('quote','structured') AND (vc.valid_to IS NULL OR vc.valid_to>now())
+        AND coalesce(vd.canonical_url, vc.object_json->>'official_url', vc.object_json->>'url') ~* '^https?://')"""
 ORIGIN_LABEL = {"list": "Your lists", "added": "Added by a person", "discovered": "Found by the platform"}
 
 
@@ -50,9 +62,10 @@ def _rows(conn, p: Principal, q: str, scope: str = "") -> list[dict[str, Any]]:
         f"(SELECT count(DISTINCT e.person_id) FROM employment e JOIN people pe ON pe.id=e.person_id AND pe.erased_at IS NULL AND pe.work_email IS NOT NULL AND NOT pe.suppressed "
         f"WHERE e.organization_id=o.id) AS people_with_email, "
         f"EXISTS (SELECT 1 FROM legacy_account_research r WHERE r.organization_id=o.id AND r.kind='priority_outreach') AS shortlist, "
-        f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched "
+        f"EXISTS (SELECT 1 FROM watchlist w WHERE w.organization_id=o.id AND w.user_email=%s) AS watched, "
+        f"{_VERIFIED_SIGNAL} AS has_signal "
         f"FROM organizations o LEFT JOIN account_scores s ON s.organization_id=o.id LEFT JOIN new_company_candidates c ON c.organization_id=o.id "
-        f"WHERE ({where}) AND {focus} AND ({match})", [p.email, *params, *search_args])
+        f"WHERE ({where}) AND {focus} AND ({match})", [p.email, bool(scope), *params, *search_args])
     out = []
     for r in rows:
         icp = icp_band(r["employees"], bool(r["employees_uncertain"]), r["segment"])
@@ -62,7 +75,8 @@ def _rows(conn, p: Principal, q: str, scope: str = "") -> list[dict[str, Any]]:
     return out
 
 
-def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public, watched=False, lane="", focus="", qualification=""):
+def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist, public, watched=False, lane="", focus="", qualification="",
+            priority="", has_email=False, has_signal=False):
     now = datetime.now(timezone.utc)
     cut = now - timedelta(days=signal_days) if signal_days else None
     out = []
@@ -87,6 +101,12 @@ def _filter(rows, *, region, icp, segment, band, origin, signal_days, shortlist,
             continue
         if focus and r["sector"] != focus:
             continue
+        if priority and r["list_priority"] != priority:
+            continue
+        if has_email and not r["people_with_email"]:
+            continue
+        if has_signal and not r["has_signal"]:
+            continue
         if lane == "public":
             if r["entity_type"] != "public_body" or r["candidate_status"] == "rejected":
                 continue
@@ -104,7 +124,14 @@ def _facets(rows) -> dict[str, Any]:
             d[k] = d.get(k, 0) + 1
         return d
     return {"region": count("region", lambda r: r["region"]), "icp": count("icp", lambda r: r["icp"]), "segment": count("segment", lambda r: r["segment"]),
-            "band": count("band", lambda r: r["band"]), "origin": count("origin", lambda r: r["origin"])}
+            "band": count("band", lambda r: r["band"]), "origin": count("origin", lambda r: r["origin"]),
+            "priority": count("priority", lambda r: r["list_priority"] if r["list_priority"] in _LIST_RANK else "none"),
+            "has_email": sum(1 for r in rows if r["people_with_email"]), "has_signal": sum(1 for r in rows if r["has_signal"])}
+
+
+def _order(rows: list[dict[str, Any]], sort: str, scope: str, by_region: bool) -> None:
+    """Sort in place. The target and review lists were shown region by region, so they keep that order unless `by_region` is off."""
+    rows.sort(key=lambda row: (TARGET_REGION_ORDER.get(row["region"], 99), SORTS[sort](row)) if scope and by_region else SORTS[sort](row))
 
 
 class ScanSelectedIn(BaseModel):
@@ -121,16 +148,19 @@ def register_leads(app: FastAPI) -> None:
     Params = dict(q=Query("", max_length=120), region=Query("", pattern="^(|uk|dach|nordics|poland|europe|international|us|other|unknown)$"),
                   icp=Query("", max_length=40), segment=Query("", max_length=60), band=Query("", pattern="^(|hot|warm|watch|none)$"),
                   origin=Query("", pattern="^(|list|added|discovered)$"), watched=Query(False), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False), lane=Query("", pattern="^(|public)$"), focus=Query("", pattern="^(|finance|other|unclassified)$"),
-                  qualification=Query("", pattern="^(|pending_qualification)$"), sort=Query("score", pattern="^(score|name|size|recent)$"), scope=Query("", pattern="^(|target|review)$"))
+                  qualification=Query("", pattern="^(|pending_qualification)$"), sort=Query("score", pattern="^(score|name|size|recent|priority|list_score)$"), scope=Query("", pattern="^(|target|review)$"),
+                  priority=Query("", pattern="^(|P1|P2|P3)$"), has_email=Query(False), has_signal=Query(False), by_region=Query(True))
 
     @app.get("/api/leads")
     def leads(request: Request, page: int = Query(1, ge=1), size: int = Query(50, ge=10, le=200), q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"],
               segment: str = Params["segment"], band: str = Params["band"], origin: str = Params["origin"], signal_days: int = Params["signal_days"],
-              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], watched: bool = Params["watched"], sort: str = Params["sort"], scope: str = Params["scope"], focus: str = Params["focus"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
+              shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"], watched: bool = Params["watched"], sort: str = Params["sort"], scope: str = Params["scope"], focus: str = Params["focus"], qualification: str = Params["qualification"],
+              priority: str = Params["priority"], has_email: bool = Params["has_email"], has_signal: bool = Params["has_signal"], by_region: bool = Params["by_region"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             allrows = _rows(conn, p, q, scope)
-            rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched, lane=lane, focus=focus, qualification=qualification)
-            rows.sort(key=lambda row: (TARGET_REGION_ORDER.get(row["region"], 99), SORTS[sort](row)) if scope else SORTS[sort](row))
+            rows = _filter(allrows, region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, watched=watched, lane=lane, focus=focus, qualification=qualification,
+                           priority=priority, has_email=has_email, has_signal=has_signal)
+            _order(rows, sort, scope, by_region)
             total = len(rows)
             page = min(page, max(1, (total + size - 1) // size)) if scope else page
             items = rows[(page - 1) * size: page * size]
@@ -171,19 +201,23 @@ def register_leads(app: FastAPI) -> None:
     @app.get("/api/leads.csv")
     def leads_csv(request: Request, q: str = Params["q"], region: str = Params["region"], icp: str = Params["icp"], segment: str = Params["segment"], band: str = Params["band"],
                   origin: str = Params["origin"], signal_days: int = Params["signal_days"], shortlist: bool = Params["shortlist"], public: bool = Params["public"], lane: str = Params["lane"],
-                  sort: str = Params["sort"], scope: str = Params["scope"], watched: bool = Params["watched"], focus: str = Params["focus"], qualification: str = Params["qualification"], p: Principal = Depends(require("accounts.read"))):
+                  sort: str = Params["sort"], scope: str = Params["scope"], watched: bool = Params["watched"], focus: str = Params["focus"], qualification: str = Params["qualification"],
+                  priority: str = Params["priority"], has_email: bool = Params["has_email"], has_signal: bool = Params["has_signal"], by_region: bool = Params["by_region"], p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
-            rows = _filter(_rows(conn, p, q, scope), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane, watched=watched, focus=focus, qualification=qualification)
-            rows.sort(key=lambda row: (TARGET_REGION_ORDER.get(row["region"], 99), SORTS[sort](row)) if scope else SORTS[sort](row))
+            rows = _filter(_rows(conn, p, q, scope), region=region, icp=icp, segment=segment, band=band, origin=origin, signal_days=signal_days, shortlist=shortlist, public=public, lane=lane, watched=watched, focus=focus, qualification=qualification,
+                           priority=priority, has_email=has_email, has_signal=has_signal)
+            _order(rows, sort, scope, by_region)
             rows = rows[:5000]
             audit(conn, actor=p.email, operation="leads_exported", record_type="organization", record_id="export", detail={"rows": len(rows)})
         safe = lambda v: ("'" + v) if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r") else v      # noqa: E731  spreadsheet formula injection
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["Company", "Website", "Country", "Region", "Segment", "Employees", "ICP band", "Score", "Band", "Signal groups", "Last signal", "Origin"])
+        w.writerow(["Company", "Website", "Country", "Region", "Segment", "Employees", "ICP band", "Score", "Band", "Signal groups", "Last signal", "Origin",
+                    "List priority", "List score", "People", "People with email"])
         for r in rows:
             w.writerow([safe(x) for x in [r["name"], r["canonical_domain"] or "", r["country_code"] or "", r["region"], r["segment"] or "", r["employees"] or "", r["icp"],
-                                          r["score"] if r["score"] is not None else "", r["band"], " ".join(r["groups"]), r["last_signal_at"].date().isoformat() if r["last_signal_at"] else "", ORIGIN_LABEL[r["origin"]]]])
+                                          r["score"] if r["score"] is not None else "", r["band"], " ".join(r["groups"]), r["last_signal_at"].date().isoformat() if r["last_signal_at"] else "", ORIGIN_LABEL[r["origin"]],
+                                          r["list_priority"] or "", r["list_score"] if r["list_score"] is not None else "", r["people"], r["people_with_email"]]])
         return Response(buf.getvalue(), media_type="text/csv", headers={"Content-Disposition": 'attachment; filename="leads.csv"'})
 
     @app.post("/api/leads/scan")

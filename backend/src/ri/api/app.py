@@ -590,4 +590,6 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     people_api.register_people(app)
     from . import campaigns as campaigns_api
     campaigns_api.register_campaigns(app, settings)
+    from .buying_signals import register_buying_signals; register_buying_signals(app)      # noqa: E702
+    from .profiles import register_profiles; register_profiles(app)      # noqa: E702  (company research, people, relationship, owner)
     return app

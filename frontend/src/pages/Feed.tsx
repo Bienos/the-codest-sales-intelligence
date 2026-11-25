@@ -4,8 +4,9 @@ import { post } from "../api";
 import { tr } from "../locale";
 import { Err } from "../components/ui";
 import { FindingCard, FindingsPagination, FindingsResult, ResearchLeads, SourceCoverage, useFindings } from "../components/Findings";
-import { REGIONS } from "./targetMarket";
+import { REGIONS, regionName } from "./targetMarket";
 import { SHORT, signalName } from "../components/Signals";
+import "../styles/findings.css";
 
 /** Tenders have their own page, covering every buyer; old links to the tender view of the findings land there. */
 export default function Feed() {
@@ -13,12 +14,15 @@ export default function Feed() {
   return params.get("kind") === "tender" ? <Navigate to="/tenders" replace /> : <Findings />;
 }
 
+const WINDOWS: [string, string][] = [["14", "Last 2 weeks"], ["30", "Last 30 days"], ["60", "Last 60 days"], ["180", "Last 6 months"], ["365", "Last 12 months"]];
+
 function Findings() {
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get("q") ?? "");
   const page = Math.max(1, Number(params.get("page")) || 1);
+  const days = params.get("days") ?? "60";
   const query = new URLSearchParams({
-    q: params.get("q") ?? "", days: params.get("days") ?? "60", kind: params.get("kind") ?? "",
+    q: params.get("q") ?? "", days, kind: params.get("kind") ?? "",
     region: params.get("region") ?? "", qualification: params.get("qualification") ?? "all", page: String(page), rule: params.get("rule") ?? "",
   });
   const event = params.get("finding");
@@ -32,41 +36,69 @@ function Findings() {
     next.delete("finding");
     setParams(next);
   };
+  const filtered = ["q", "region", "rule", "kind", "qualification"].some((k) => params.get(k)) || days !== "60";
+  const clear = () => { setSearch(""); setParams(new URLSearchParams()); };
+  const windowLabel = tr(WINDOWS.find(([k]) => k === days)?.[1] ?? "Last 60 days").toLowerCase();
   return <>
-    <div className="page-head"><div><h1>{tr("All findings")}</h1><p className="sub">{tr("Search verified activity and open requests by company, region or date.")}</p></div></div>
+    <div className="fd-intro">
+      <div>
+        <h1>{tr("All findings")}</h1>
+        <p className="fd-explain">{tr("A finding is news we checked against the original page: which company, what happened, the buying signal it points to and the quote that proves it. Open the company to see who to contact.")}</p>
+      </div>
+      <p className="fd-legend" aria-label={tr("Colour key")}>
+        <span><i aria-hidden="true" />{tr("Buying signal")}</span>
+        <span><i className="tender" aria-hidden="true" />{tr("Open RFP or tender")}</span>
+      </p>
+    </div>
     {event && <p><Link to="/feed">{tr("Show all findings")}</Link></p>}
-    <form className="feedbar" onSubmit={e => { e.preventDefault(); update("q", search.trim()); }}>
-      <input type="search" aria-label={tr("Search the feed")} placeholder={tr("Search company or keyword")}
-        maxLength={120} value={search} onChange={e => setSearch(e.target.value)} />
-      <button type="submit">{tr("Search")}</button>
-      <select aria-label={tr("Region")} value={query.get("region") ?? ""} onChange={e => update("region", e.target.value)}>
-        <option value="">{tr("All regions")}</option>{REGIONS.map(([id, label]) => <option key={id} value={id}>{tr(label)}</option>)}
-      </select>
-      <select aria-label={tr("Buying signal")} value={query.get("rule") ?? ""} onChange={e => update("rule", e.target.value)}>
-        <option value="">{tr("All buying signals")}</option>{Object.keys(SHORT).map(id => <option key={id} value={id}>{signalName(id)}</option>)}
-      </select>
-      <select aria-label={tr("Finding type")} value={query.get("kind") ?? ""} onChange={e => update("kind", e.target.value)}>
-        <option value="">{tr("All types")}</option><option value="tender">{tr("Open RFPs and tenders")}</option><option value="signal">{tr("Buying signals")}</option>
-      </select>
-      <select aria-label={tr("Company eligibility")} value={query.get("qualification") ?? "all"} onChange={e => update("qualification", e.target.value)}>
-        <option value="all">{tr("All eligible and pending accounts")}</option><option value="target">{tr("Confirmed target accounts")}</option><option value="review">{tr("Ownership to check")}</option>
-      </select>
-      <select aria-label={tr("Time window")} value={query.get("days") ?? "60"} onChange={e => update("days", e.target.value)}>
-        <option value="14">{tr("Last 2 weeks")}</option><option value="30">{tr("Last 30 days")}</option>
-        <option value="60">{tr("Last 60 days")}</option><option value="180">{tr("Last 6 months")}</option>
-      </select>
+    <form className="fd-filters" role="search" aria-label={tr("Filter findings")} onSubmit={e => { e.preventDefault(); update("q", search.trim()); }}>
+      <div className="fd-field"><label htmlFor="fd-q">{tr("Search")}</label>
+        <span className="fd-search">
+          <input id="fd-q" type="search" placeholder={tr("Company or keyword")} maxLength={120} value={search} onChange={e => setSearch(e.target.value)} />
+          <button type="submit">{tr("Search")}</button>
+        </span>
+      </div>
+      <label>{tr("Region")}
+        <select value={params.get("region") ?? ""} onChange={e => update("region", e.target.value)}>
+          <option value="">{tr("All regions")}</option>{REGIONS.map(([id, label]) => <option key={id} value={id}>{tr(label)}</option>)}
+        </select>
+      </label>
+      <label>{tr("Buying signal")}
+        <select value={params.get("rule") ?? ""} onChange={e => update("rule", e.target.value)}>
+          <option value="">{tr("All buying signals")}</option>{Object.keys(SHORT).map(id => <option key={id} value={id}>{signalName(id)}</option>)}
+        </select>
+      </label>
+      <label>{tr("Type")}
+        <select value={params.get("kind") ?? ""} onChange={e => update("kind", e.target.value)}>
+          <option value="">{tr("All types")}</option><option value="tender">{tr("Open RFPs and tenders")}</option><option value="signal">{tr("Buying signals")}</option>
+        </select>
+      </label>
+      <label>{tr("Companies")}
+        <select value={params.get("qualification") ?? "all"} onChange={e => update("qualification", e.target.value)}>
+          <option value="all">{tr("Targets and ownership to check")}</option><option value="target">{tr("Confirmed target accounts")}</option><option value="review">{tr("Ownership to check")}</option>
+        </select>
+      </label>
+      <label>{tr("When")}
+        <select value={days} onChange={e => update("days", e.target.value)}>
+          {WINDOWS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
+        </select>
+      </label>
     </form>
     <div className="feed-grid"><div>
+      {data && data.items.length > 0 && <p className="fd-status" role="status">
+        <span>{tr("Page {}: {} findings from the {}", page, data.items.length, windowLabel)}{params.get("region") ? tr(", {}", regionName(params.get("region") ?? "")) : ""}{params.get("rule") ? tr(", signal: {}", signalName(params.get("rule") ?? "")) : ""}</span>
+        {filtered && <button type="button" className="linkish" onClick={clear}>{tr("Clear filters")}</button>}
+      </p>}
       <FindingsResult data={data} error={error} retry={retry} empty="No matching findings">
         {data?.items.map(item => <FindingCard key={item.id} item={item} />)}
       </FindingsResult>
       {data?.items.length === 0 && !event && <div className="card archive-next">
         <p>{tr("Workbook leads and their original sources are available while new findings are being verified.")}</p>
-        <Link to="/accounts?view=leads">{tr("Browse workbook leads")} →</Link>
-        {params.get("kind") && <Link to="/feed">{tr("Show all findings")}</Link>}
+        <Link to="/accounts?view=leads">{tr("Browse workbook leads")}</Link>
+        {filtered && <button type="button" className="linkish" onClick={clear}>{tr("Clear filters")}</button>}
       </div>}
       <FindingsPagination page={page} hasMore={data?.has_more} change={n => update("page", String(n))} />
-    </div><aside>
+    </div><aside className="fd-aside" aria-label={tr("Sources and missed news")}>
       {data && <><SourceCoverage coverage={data.coverage} /><ResearchLeads data={data} /></>}
       <ReportMiss />
     </aside></div>

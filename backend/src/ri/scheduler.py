@@ -196,6 +196,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     from .events.structured import recheck_procurement_relevance
     step("tender_relevance", lambda: recheck_procurement_relevance(conn, 2000))
     step("fit_queued", lambda: schedule_fit(conn, now))
+    from .tender_summary import schedule as schedule_tender_summaries
+    step("tender_summaries_queued", lambda: schedule_tender_summaries(conn, now))     # every two hours while tenders wait for a summary
     from .renewals import schedule_recent
     from .renewals import recheck_awards
     step("renewals_refreshed", lambda: schedule_recent(conn, now))

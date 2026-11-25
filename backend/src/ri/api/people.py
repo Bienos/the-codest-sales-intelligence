@@ -99,7 +99,7 @@ def register_people(app: FastAPI) -> None:
         return request.app.state.db.tx()
 
     @app.get("/api/people")
-    def people(request: Request, q: str = Query("", max_length=120), source: str = Query("", pattern="^(|sheets|apollo|pipedrive|lemlist|manual)$"),
+    def people(request: Request, q: str = Query("", max_length=120), source: str = Query("", pattern="^(|sheets|apollo|pipedrive|lemlist|manual|exa)$"),
                email: str = Query("", pattern="^(|verified|unverified|none)$"),
                engagement_: str = Query("", alias="engagement", pattern="^(|not_contacted|pushed|sent|opened|clicked|replied|interested|not_interested|bounced|unsubscribed)$"),
                region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|us|other|unknown)$"), signal: str = Query("", pattern="^(|yes|no)$"),

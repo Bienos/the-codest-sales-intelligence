@@ -81,7 +81,7 @@ const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("
    sends a pulse that steps along the grid, cell by cell, into one pink cell beside the sign-in card: many signals, one place,
    sign in here. Cells and routes follow the real layout and never cross the text or the card. */
 const GRID = 24;                  // px between dots: must match .dots in landing.css
-const CYCLE = 10, DWELL = 0.45, STEP = 0.09;   // seconds: one round of signals, a signal's flash before its pulse leaves, one cell of travel
+const CYCLE = 8, DWELL = 0.4, STEP = 0.11, ARRIVE = 4;   // seconds: one round, a signal's flash before its pulse leaves, one cell of travel, when the first pulse lands
 type Box = { l: number; t: number; r: number; b: number };
 type Pt = [number, number];
 type Hit = { x: number; y: number; next?: boolean };
@@ -105,10 +105,12 @@ function hitCells(w: number, h: number, card: Box, text: Box, link: Box): Hit[] 
   return out;
 }
 
-/** A grid route with one turn that keeps clear of the text and the card; none if both ways are blocked. */
-function routeTo(s: Hit, p: Hit, walls: Box[]): Pt[] | undefined {
+/** A grid route with one turn that keeps clear of the text and the card; none if both ways are blocked.
+    `across` first runs along the row and enters the pink cell from above or below; otherwise it enters along the pink cell's row. */
+function routeTo(s: Hit, p: Hit, walls: Box[], across: boolean): Pt[] | undefined {
   const clear = (a: Pt, b: Pt) => !walls.some((w) => Math.min(a[0], b[0]) < w.r + 8 && Math.max(a[0], b[0]) > w.l - 8 && Math.min(a[1], b[1]) < w.b + 8 && Math.max(a[1], b[1]) > w.t - 8);
-  for (const turn of [[p.x, s.y], [s.x, p.y]] as Pt[]) {
+  const turns: Pt[] = [[p.x, s.y], [s.x, p.y]];
+  for (const turn of across ? turns : turns.reverse()) {
     if (clear([s.x, s.y], turn) && clear(turn, [p.x, p.y])) return ([[s.x, s.y], turn, [p.x, p.y]] as Pt[]).filter((q, i, a) => i === 0 || q[0] !== a[i - 1][0] || q[1] !== a[i - 1][1]);
   }
 }
@@ -148,8 +150,8 @@ function WatchGrid() {
         placed.push({ ...c, x, y });
       });
       const next = placed.find((c) => c.next);
-      const walls = [card, text, eyebrow, link, { ...watch, r: watch.l + Math.min(watch.r - watch.l, 330) }];   // the watching line is short; its box is not
-      if (next) placed.forEach((c) => { if (!c.next) c.route = routeTo(c, next, walls); });
+      const walls = [card, text, eyebrow, link, { ...watch, r: watch.l + Math.min(watch.r - watch.l, 300) }];   // the watching line is at most ~300px wide; its box is wider
+      if (next) placed.forEach((c, i) => { if (!c.next) c.route = routeTo(c, next, walls, i % 2 === 1); });   // alternate, so pulses arrive from several sides
       setCells(placed);
     };
     place();
@@ -167,19 +169,20 @@ function WatchGrid() {
       if (el) out.push(el.animate(frames, { duration: CYCLE * 1000, delay: delay * 1000, iterations: Infinity, fill }));
     };
     routed.forEach((c, i) => {
-      const r = c.route!, t0 = 0.5 + (i * CYCLE) / routed.length;
+      const r = c.route!, lens = r.slice(1).map((q, j) => Math.round((Math.abs(q[0] - r[j][0]) + Math.abs(q[1] - r[j][1])) / GRID));
+      const cellsToGo = lens.reduce((a, b) => a + b, 0), step = Math.min(STEP, (0.78 * CYCLE - DWELL) / cellsToGo);   // long routes hop a little faster
+      const t0 = ARRIVE + i * 0.3 - DWELL - cellsToGo * step;     // leave so that all pulses land within a few beats of each other
       const tr = (q: Pt) => `translate(${q[0] - r[0][0]}px, ${q[1] - r[0][1]}px)`;
-      let at = DWELL / CYCLE;
-      const frames: Keyframe[] = [{ offset: 0, opacity: 0, transform: tr(r[0]) }, { offset: at, opacity: 0, transform: tr(r[0]) }];
-      at += 0.001;
-      r.slice(1).forEach((q, j) => {
-        const n = Math.round((Math.abs(q[0] - r[j][0]) + Math.abs(q[1] - r[j][1])) / GRID);
-        frames.push({ offset: at, opacity: 1, transform: tr(r[j]), easing: `steps(${n}, end)` });   // hop cell by cell
-        at += (n * STEP) / CYCLE;
+      let at = DWELL / CYCLE + 0.001;
+      const keys: [number, Pt, string?][] = [];
+      lens.forEach((n, j) => { keys.push([at, r[j], `steps(${n}, end)`]); at += (n * step) / CYCLE; });   // hop cell by cell
+      const end = r[r.length - 1];
+      root.querySelectorAll(`[data-pulse="${i}"]`).forEach((el, k) => {     // the head, then a trail one, two and three cells behind
+        const o = [1, 0.85, 0.55, 0.3][k];
+        run(el, [{ offset: 0, opacity: 0, transform: tr(r[0]) }, { offset: DWELL / CYCLE, opacity: 0, transform: tr(r[0]) },
+          ...keys.map(([offset, q, easing]) => ({ offset, opacity: o, transform: tr(q), easing })),
+          { offset: at, opacity: o, transform: tr(end) }, { offset: at + 0.002, opacity: 0, transform: tr(end) }, { offset: 1, opacity: 0, transform: tr(end) }], t0 + k * step);
       });
-      at = Math.min(at, 0.8);
-      frames.push({ offset: at, opacity: 1, transform: tr(r[r.length - 1]) }, { offset: at + 0.002, opacity: 0, transform: tr(r[r.length - 1]) }, { offset: 1, opacity: 0, transform: tr(r[r.length - 1]) });
-      root.querySelectorAll(`[data-pulse="${i}"]`).forEach((el, k) => run(el, frames, t0 + k * STEP));   // the trail runs one and two cells behind
       run(root.querySelector(`[data-sig="${i}"]`), [{ offset: 0, opacity: 1, transform: "scale(1.8)" }, { offset: 0.03, opacity: 1, transform: "none" },
         { offset: 0.6, opacity: 0.9, transform: "none" }, { offset: 1, opacity: 0.45, transform: "none" }], t0, "none");
       run(root.querySelector(`[data-sig="${i}"] span`), [{ offset: 0, opacity: 0.9, transform: "none", easing: "cubic-bezier(.2,.7,.2,1)" }, { offset: 0.12, opacity: 0, transform: "scale(4.5)" },
@@ -189,12 +192,17 @@ function WatchGrid() {
       run(root.querySelector(`[data-arrive="${i}"] + .wgrid-ring`), [{ offset: 0, opacity: 0, transform: "none" }, { offset: at, opacity: 0, transform: "none" },
         { offset: at + 0.002, opacity: 0.9, transform: "none", easing: "cubic-bezier(.2,.7,.2,1)" }, { offset: Math.min(at + 0.15, 1), opacity: 0, transform: "scale(5)" }, { offset: 1, opacity: 0, transform: "scale(5)" }], t0);
     });
+    const glow = root.querySelector(".wgrid-glow");     // the grid around the pink cell brightens as the pulses land, then settles
+    if (glow && routed.length) {
+      const base = parseFloat(getComputedStyle(glow).opacity) || 0.5, peak = Math.min(1, base * 1.8), last = Math.min(0.97, (ARRIVE + routed.length * 0.3) / CYCLE);
+      run(glow, [{ offset: 0, opacity: base * 1.3 }, { offset: 0.2, opacity: base }, { offset: ARRIVE / CYCLE, opacity: base }, { offset: last, opacity: peak }, { offset: 1, opacity: base * 1.3 }], 0);
+    }
     anims.current = out;
     return () => { out.forEach((a) => a.cancel()); anims.current = []; };
   }, [cells, still]);
   useEffect(() => { anims.current.forEach((a) => (live ? a.play() : a.pause())); }, [live, cells]);
   const next = cells.find((c) => c.next), routed = cells.filter((c) => c.route);
-  const trace = routed.flatMap((c) => routeCells(c.route!).slice(1, -1)).map(([x, y]) => `M${x - 1} ${y - 1}h2v2h-2z`).join("");
+  const trace = routed.flatMap((c) => routeCells(c.route!).slice(1, -1)).map(([x, y]) => `M${x - 2} ${y - 2}h4v4h-4z`).join("");
   return (
     <div className="wgrid" ref={ref} aria-hidden="true" data-live={live} style={{ ["--nx" as any]: `${next?.x ?? 0}px`, ["--ny" as any]: `${next?.y ?? 0}px` }}>
       {next && <div className="wgrid-glow" />}
@@ -204,7 +212,7 @@ function WatchGrid() {
         const path = routeCells(c.route!), at = Math.round(path.length * 0.62);      // with reduced motion each pulse is shown part-way, still heading in
         return [
           <i key={`h${i}`} data-sig={i} className="wgrid-hit" style={{ left: c.x, top: c.y }}><span className="wgrid-ring" /></i>,
-          ...[0, 1, 2].map((k) => {
+          ...[0, 1, 2, 3].map((k) => {
             const q = path[Math.max(0, at - k)];
             return <i key={`p${i}-${k}`} data-pulse={i} className={`wgrid-pulse wgrid-pulse-${k}`} style={{ left: c.x, top: c.y, transform: still ? `translate(${q[0] - c.x}px, ${q[1] - c.y}px)` : undefined }} />;
           }),

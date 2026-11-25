@@ -416,14 +416,22 @@ def register_feed(app: FastAPI) -> None:
     @app.get("/api/tenders")
     def tenders(request: Request, q: str = Query("", max_length=120), region: str = Query("", pattern="^(|core|uk|dach|nordics|poland|europe|international)$"),
                 buyer: str = Query("", pattern="^(|finance|public)$"), min_days: int = Query(3, ge=0, le=60), page: int = Query(1, ge=1, le=200), limit: int = Query(30, ge=1, le=100),
+                fit: str = Query("", pattern="^(|strong|possible)$"),
+                work_type: str = Query("", pattern="^(|software_development|maintenance_support|consulting|licences_products|infrastructure_hardware|data_ai|testing_qa|other)$"),
+                max_days: int = Query(0, ge=0, le=365), min_value: float = Query(0, ge=0, le=1e12), sort: str = Query("deadline", pattern="^(deadline|fit|value|newest)$"),
                 p: Principal = Depends(principal_dep)):
         """Open tenders for software work from every official source, whoever the buyer is (public bodies included), soonest deadline first.
-        `region=core` keeps our markets (UK, DACH, Nordics, Poland); no region means every region."""
+        `region=core` keeps our markets (UK, DACH, Nordics, Poland); no region means every region. Each tender carries its plain English and
+        Polish summary once the summary job has written it; `q` also searches the summaries. `fit`, `work_type`, `max_days`, `min_value` and
+        `sort` are explained in ri.tenders.open_tenders."""
+        from ..tender_summary import count_pending, job_waiting
         from ..tenders import TENDER_SOURCES, open_tenders
         if not (p.can("today.read") or p.can("explorer.read")):
             raise HTTPException(403, "missing permission today.read")
         with tx(request) as conn:
-            out = open_tenders(conn, p, q=q, region=region, buyer=buyer, min_days=min_days, limit=limit, offset=(page - 1) * limit)
+            out = open_tenders(conn, p, q=q, region=region, buyer=buyer, min_days=min_days, limit=limit, offset=(page - 1) * limit,
+                               fit=fit, work_type=work_type, max_days=max_days, min_value=min_value, sort=sort)
+            summaries = {"waiting": count_pending(conn), "running": job_waiting(conn)}
             sources = qa(conn, "SELECT s.source_id, s.display_name, s.status, h.last_success_at FROM sources s LEFT JOIN source_health h USING (source_id) "
                                "WHERE s.source_family='procurement' AND s.collection_method='official_api' AND s.source_id = ANY(%s) ORDER BY s.display_name",
                          (list(TENDER_SOURCES),))
@@ -431,7 +439,29 @@ def register_feed(app: FastAPI) -> None:
             refreshing = q1(conn, "SELECT 1 FROM jobs WHERE kind='source_run' AND status = ANY(%s) AND payload->>'source_id' = ANY(%s) "
                                   "AND created_at > now() - interval '30 minutes' LIMIT 1", (list(RUN_WAITING), list(TENDER_SOURCES))) is not None
         last = max((s["last_success_at"] for s in sources if s["last_success_at"]), default=None)
-        return {**out, "page": page, "sources": sources, "last_updated": last, "refreshing": refreshing}
+        return {**out, "page": page, "sources": sources, "last_updated": last, "refreshing": refreshing, "summaries": summaries}
+
+    @app.post("/api/tenders/summarise")
+    def summarise_tenders(request: Request, p: Principal = Depends(require("admin.sources"))):
+        """Write the plain-language summaries for waiting tenders now instead of waiting for the two-hourly run. The run is capped and
+        budget-gated like the scheduled one; while a run is waiting or running nothing new is queued, and repeated clicks within the same
+        five minutes queue nothing new."""
+        from ..tender_summary import RUN_CAP, WAITING_JOB, count_pending
+        now = datetime.now(timezone.utc)
+        window = f"{now:%Y%m%d%H}{now.minute // 5:02d}"
+        with tx(request) as conn:
+            waiting = count_pending(conn)
+            running = q1(conn, "SELECT id FROM jobs WHERE kind='tender_summaries' AND status = ANY(%s) ORDER BY created_at LIMIT 1", (list(WAITING_JOB),))
+            if running:
+                jid, created = str(running["id"]), False
+            elif waiting == 0:
+                jid, created = None, False
+            else:
+                jid, created = enqueue(conn, "tender_summaries", {"cap": RUN_CAP, "requested_by": p.email}, idempotency_key=f"tender-summaries:manual:{window}",
+                                       max_attempts=2, correlation_id=f"tenders-summarise-{window}")
+            audit(conn, actor=p.email, operation="tender_summaries_requested", record_type="source_family", record_id="procurement",
+                  detail={"queued": created, "job_id": jid, "waiting": waiting})
+        return {"queued": created, "already_running": bool(running) or (jid is not None and not created), "job_id": jid, "waiting": waiting, "cap": RUN_CAP}
 
     @app.post("/api/tenders/refresh")
     def refresh_tenders(request: Request, p: Principal = Depends(require("admin.sources"))):

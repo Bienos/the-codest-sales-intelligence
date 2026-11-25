@@ -1,76 +1,103 @@
-import { counted, tr } from "../locale";
+import { counted, number, tr } from "../locale";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { Badge, Err, humanize, Skeleton, reloadPage, Tabs } from "../components/ui";
-import Library from "./Library";
+import { Err, humanize, Skeleton, reloadPage, Strength, Tabs } from "../components/ui";
+import Library, { Dot, LEmpty, LFacts, LFilter, LGroup, LRow, shortUrl, TIERS } from "./Library";
 
 type Tab = "signals" | "sources" | "urls";
 
-function Strength({ n }: { n: number }) {
-  return <span className="strength" role="img" aria-label={tr("Strength {} of 3", n)}>{[1, 2, 3].map((i) => <i key={i} className={i <= n ? "on" : ""} />)}</span>;
+/** Waits a moment after typing before asking the server again. */
+function useDebounced<T>(value: T, ms = 220): T {
+  const [v, setV] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setV(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return v;
 }
 
-function Signals({ q }: { q: string }) {
+function Signals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   const [group, setGroup] = useState(""); const [status, setStatus] = useState("");
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
-  useEffect(() => { api(`/api/library/signals?q=${encodeURIComponent(q)}&group=${encodeURIComponent(group)}&status=${status}`).then(setD).catch(setErr); }, [q, group, status]);
+  const dq = useDebounced(q);
+  useEffect(() => { api(`/api/library/signals?q=${encodeURIComponent(dq)}&group=${encodeURIComponent(group)}&status=${status}`).then(setD).catch(setErr); }, [dq, group, status]);
   if (err) return <Err e={err} onRetry={reloadPage} />;
   if (!d) return <Skeleton />;
+  const groups = (d.groups as string[]).map((g) => [g, d.items.filter((s: any) => s.grp === g)] as [string, any[]]).filter(([, l]) => l.length);
   return (
     <>
-      <div className="row mb-3">
-        <select aria-label={tr("Signal group")} value={group} onChange={(e) => setGroup(e.target.value)}><option value="">{tr("All groups")}</option>{d.groups.map((g: string) => <option key={g} value={g}>{tr(g)}</option>)}</select>
-        <select aria-label={tr("Status")} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">{tr("Any status")}</option><option value="active">{tr("On: detected automatically")}</option><option value="defined_not_activated">{tr("Not yet on")}</option></select>
-        <span className="small muted">{counted(d.items.length, ["signal", "signals"], ["sygnał", "sygnały", "sygnałów"])}</span>
-      </div>
-      <p className="small muted">{tr("The 64 buying signals we look for, in their original wording.") + " "}<b>{tr("On")}</b>{" " + tr("means we detect it automatically from checked findings.") + " "}<b>{tr("Not yet on")}</b>{" " + tr("means it is written down and waiting for a source or a test. Nothing is switched on until it has been shown to work.") + " "}<b>{tr("Strength")}</b>{" " + tr("is how strongly the signal suggests outside engineering work, from 1 to 3.")}</p>
-      <div className="sigs"><div className="small muted">{tr("Signal · Strength · Status")}</div>{d.items.map((s: any) => (
-        <details key={s.rule_id} className="sigrow">
-          <summary>
-            <span className="sigrow-id">{s.rule_id}</span>
-            <span className="sigrow-t">{s.signal}</span>
-            <span className="sigrow-m"><Strength n={s.strength} /><Badge kind={s.status === "active" ? "ok" : ""}>{s.status === "active" ? tr("On") : tr("Not yet on")}</Badge></span>
-          </summary>
-          <dl className="lib-facts wide">
-            <dt>{tr("Group")}</dt><dd>{s.grp}</dd>
-            <dt>{tr("Stays relevant for")}</dt><dd>{s.fresh_for_days}{" " + tr("days")}{s.window_note ? `. ${s.window_note}` : ""}</dd>
-            <dt>{tr("How to spot it")}</dt><dd>{s.how_to_spot ?? tr("Not recorded")}</dd>
-            <dt>{tr("Who to contact")}</dt><dd>{s.who_to_contact ?? tr("Not recorded")}</dd>
-            <dt>{tr("Check it is genuine")}</dt><dd>{s.check_it_is_real ?? tr("Not recorded")}</dd>
-            {s.pairs_best_with && <><dt>{tr("Pairs best with")}</dt><dd>{s.pairs_best_with}</dd></>}
-            {s.stop_effect && <><dt>{tr("What cancels it")}</dt><dd>{s.stop_effect}</dd></>}
-            <dt>{tr("Comes from")}</dt><dd>{s.fed_by?.length ? s.fed_by.map((f: string) => <span key={f} className="pill">{f}</span>) : <span className="muted">{tr("No source connected yet")}</span>}</dd>
-          </dl>
-        </details>))}
-      </div>
+      <p className="lintro">{tr("The buying signals we look for, in their original wording.") + " "}<b>{tr("On")}</b>{" " + tr("means we detect it automatically from checked findings;") + " "}<b>{tr("Not yet on")}</b>{" " + tr("means it is written down and waiting for a source or a test.") + " "}<b>{tr("Strength")}</b>{" " + tr("is how strongly it suggests outside engineering work, from 1 to 3.")}</p>
+      <LFilter q={q} setQ={setQ} placeholder="Search signals" count={counted(d.items.length, ["signal", "signals"], ["sygnał", "sygnały", "sygnałów"])} selects={[
+        { label: "Signal group", value: group, onChange: setGroup, options: [["", tr("Every group")], ...d.groups.map((g: string) => [g, tr(g)] as [string, string])] },
+        { label: "Status", value: status, onChange: setStatus, options: [["", tr("Any status")], ["active", tr("On: detected automatically")], ["defined_not_activated", tr("Not yet on")]] },
+      ]} />
+      {d.items.length === 0 && <LEmpty>{tr("No signals match these filters.")}</LEmpty>}
+      {groups.map(([g, list]) => (
+        <LGroup key={g} title={g} count={list.length} cols={["Signal", "Strength", "Status", "Stays relevant"]}>
+          {list.map((s) => (
+            <LRow key={s.rule_id} name={s.signal} sub={s.rule_id} kind={<Strength n={Number(s.strength)} />}
+              status={s.status === "active" ? ["ok", "On"] : ["", "Not yet on"]} extraLabel="Stays relevant" extra={tr("{} days", s.fresh_for_days)}>
+              <LFacts rows={[
+                ["How to spot it", s.how_to_spot ?? tr("Not recorded")],
+                ["Who to contact", s.who_to_contact ?? tr("Not recorded")],
+                ["Check it is genuine", s.check_it_is_real ?? tr("Not recorded")],
+                ["Pairs best with", s.pairs_best_with],
+                ["What cancels it", s.stop_effect],
+                ["Stays relevant for", <>{tr("{} days", s.fresh_for_days)}{s.window_note ? `. ${s.window_note}` : ""}</>],
+                ["Comes from", s.fed_by?.length ? s.fed_by.map((f: string) => <span key={f} className="pill">{f}</span>) : <span className="muted">{tr("No source connected yet")}</span>],
+              ]} />
+            </LRow>))}
+        </LGroup>))}
     </>
   );
 }
 
-/** A web address without its scheme, shortened for a table cell; the full address stays in the link and its tooltip. */
-const shortUrl = (url: string, max = 90) => { const t = url.replace(/^https?:\/\//, ""); return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
+const METHOD_GROUP: Record<string, string> = { feed: "Feeds", change_monitor: "Pages checked for changes" };
+const METHOD_LABEL: Record<string, string> = { feed: "Reads its feed", change_monitor: "Checks the page for changes" };
+const feedStatus = (s: string): [Dot, string] => s === "active" ? ["ok", "Live"] : s === "paused" ? ["", "Paused"] : ["warn", "Not set up yet"];
 
 function Urls({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
-  useEffect(() => { const t = setTimeout(() => api(`/api/library/urls?q=${encodeURIComponent(q)}&limit=80`).then(setD).catch(setErr), q ? 250 : 0); return () => clearTimeout(t); }, [q]);
+  const [type, setType] = useState(""); const [status, setStatus] = useState("");
+  const dq = useDebounced(q);
+  useEffect(() => { api(`/api/library/urls?q=${encodeURIComponent(dq)}&limit=80`).then(setD).catch(setErr); }, [dq]);
   if (err) return <Err e={err} onRetry={reloadPage} />;
   if (!d) return <Skeleton />;
+  const feeds = d.feeds.filter((f: any) => (!q || `${f.display_name} ${f.url} ${f.canonical_domain ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+    && (!type || f.collection_method === type) && (!status || (status === "active" ? f.status === "active" : f.status !== "active")));
+  const methods = Array.from(new Set<string>(d.feeds.map((f: any) => f.collection_method)));
+  const groups = methods.map((m) => [m, feeds.filter((f: any) => f.collection_method === m)] as [string, any[]]).filter(([, l]) => l.length);
   return (
     <>
-      <div className="section-title mt-0">{tr("Pages and feeds we watch")}</div>
-      <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("Source · Tier · Status")}><table className="cards feeds-table"><thead><tr><th>{tr("Source")}</th><th>{tr("Tier")}</th><th>{tr("Status")}</th><th>{tr("Address")}</th></tr></thead><tbody>
-        {d.feeds.filter((f: any) => !q || `${f.display_name} ${f.url}`.toLowerCase().includes(q.toLowerCase())).map((f: any) => (
-          <tr key={f.source_id}><td className="feeds-name"><b>{f.display_name}</b><div className="small muted">{humanize(f.collection_method)}</div></td><td data-label={tr("Tier")} className="feeds-tier">{f.source_tier}</td><td data-label={tr("Status")} className="feeds-status"><Badge kind={f.status === "active" ? "ok" : "warn"}>{f.status === "active" ? tr("Live") : tr("Not set up yet")}</Badge></td>
-            <td data-label={tr("Address")} className="small feeds-addr"><a href={f.url} target="_blank" rel="noreferrer noopener" title={f.url}>{shortUrl(f.url)} ↗</a>{f.basis && <div className="muted">{f.basis}</div>}</td></tr>))}
-      </tbody></table></div>
-      <div className="section-title">{tr("Websites your workbooks cite most")}</div>
-      <div className="chips">{d.domains.map((x: any) => <button key={x.domain} className="chip" onClick={() => setQ(x.domain)}>{x.domain} <b>{x.count}</b></button>)}</div>
-      <div className="section-title">{tr("Every link in your workbooks")}</div>
-      <p className="small muted">{tr("LinkedIn links are left out on purpose. Open the original and read it before you act.")}</p>
-      <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Link · Account · Workbook column")}><table><thead><tr><th>Link</th><th>{tr("Account")}</th><th>{tr("Workbook column")}</th></tr></thead><tbody>
-        {d.items.map((u: any) => <tr key={u.url}><td className="small"><a href={u.url} target="_blank" rel="noreferrer noopener">{u.url.replace(/^https?:\/\//, "").slice(0, 80)} ↗</a></td><td>{u.organization}</td><td className="small muted">{u.field}</td></tr>)}
-        {d.items.length === 0 && <tr><td colSpan={3} className="muted">{tr("No cited URLs match.")}</td></tr>}</tbody></table></div>
+      <p className="lintro">{tr("Every news page and feed we read on a schedule, and every link your workbooks cite. Open one to see the full address and how we found it.")}</p>
+      <LFilter q={q} setQ={setQ} placeholder="Search pages and feeds" count={tr("{} pages and feeds", number(feeds.length))} selects={[
+        { label: "Type", value: type, onChange: setType, options: [["", tr("Feeds and pages")], ...methods.map((m) => [m, tr(METHOD_GROUP[m] ?? humanize(m))] as [string, string])] },
+        { label: "Status", value: status, onChange: setStatus, options: [["", tr("Any status")], ["active", tr("Live")], ["other", tr("Not set up yet")]] },
+      ]} />
+      {feeds.length === 0 && <LEmpty>{tr("No pages or feeds match these filters.")}</LEmpty>}
+      {groups.map(([m, list]) => (
+        <LGroup key={m} title={METHOD_GROUP[m] ?? humanize(m)} count={list.length} cols={["Page or feed", "Source type", "Status", "Address"]}>
+          {list.map((f) => (
+            <LRow key={f.source_id} name={f.display_name} sub={f.canonical_domain ?? shortUrl(f.url, 40)} kind={tr(TIERS[f.source_tier] ?? f.source_tier)} status={feedStatus(f.status)}
+              extraLabel="Address" extra={<span className="lrow-addr">{shortUrl(f.url, 44)}</span>}>
+              <LFacts rows={[
+                ["Address", <a href={f.url} target="_blank" rel="noreferrer noopener">{shortUrl(f.url, 90)} ↗</a>],
+                ["How", tr(METHOD_LABEL[f.collection_method] ?? humanize(f.collection_method))],
+                ["How we found it", f.basis],
+                ["Source type", tr(TIERS[f.source_tier] ?? f.source_tier)],
+              ]} />
+            </LRow>))}
+        </LGroup>))}
+      <LGroup title="Links in your workbooks" count={d.items.length} open={false} cols={["Account and link", "Workbook column", "", "Website"]}
+        note={<>{tr("LinkedIn links are left out on purpose. Open the original and read it before you act.")}{d.domains.length > 0 && <span className="ldomains">{" " + tr("Cited most:") + " "}{d.domains.map((x: any) => <button key={x.domain} type="button" className="chip" onClick={() => setQ(x.domain)}>{x.domain} <b>{x.count}</b></button>)}</span>}</>}>
+        {d.items.length === 0 && <LEmpty>{tr("No workbook links match.")}</LEmpty>}
+        {d.items.map((u: any) => (
+          <LRow key={u.url} name={u.organization ?? u.domain} sub={shortUrl(u.url, 60)} kind={u.field} extraLabel="Website" extra={u.domain}>
+            <LFacts rows={[
+              ["Link", <a href={u.url} target="_blank" rel="noreferrer noopener">{shortUrl(u.url, 90)} ↗</a>],
+              ["Account", u.organization_id ? <Link to={`/accounts/${u.organization_id}`}>{u.organization}</Link> : u.organization],
+              ["Workbook column", u.field],
+            ]} />
+          </LRow>))}
+      </LGroup>
     </>
   );
 }
@@ -80,17 +107,17 @@ export default function LibraryHub() {
   const requested = sp.get("tab");
   const tab: Tab = requested === "signals" || requested === "urls" ? requested : "sources";
   const q = sp.get("q") ?? "";
-  const set = (next: Record<string, string>) => setSp({ tab, ...(q ? { q } : {}), ...next });
+  const setQ = (v: string) => setSp({ tab, ...(v ? { q: v } : {}) }, { replace: true });
   return (
     <>
-      <div className="page-head"><div className="eyebrow">{tr("Reference")}</div><h1>{tr("Library")}</h1></div>
-      <Tabs label={tr("Library sections")} items={[["signals", "Signals"], ["sources", "Sources"], ["urls", "Pages and feeds"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => set({ tab: k })}>
-        <input aria-label={tr("Filter by keyword")} placeholder={tr("Filter by keyword")} value={q} onChange={(e) => setSp({ tab, ...(e.target.value ? { q: e.target.value } : {}) })} className="field-md" />
-      <div className="mt-4">
-        {tab === "signals" && <Signals q={q} />}
-        {tab === "sources" && <Library render={() => null} query={q} canSetup={false} />}
-        {tab === "urls" && <Urls q={q} setQ={(v) => set({ q: v })} />}
-      </div>
+      <div className="page-head"><div className="eyebrow">{tr("Reference")}</div><h1>{tr("Library")}</h1>
+        <p className="sub">{tr("Every buying signal we look for, every source we read, and every page and feed we watch.")}</p></div>
+      <Tabs label={tr("Library sections")} items={[["signals", "Signals"], ["sources", "Sources"], ["urls", "Pages and feeds"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={(k) => setSp({ tab: k, ...(q ? { q } : {}) })}>
+        <div className="libtab">
+          {tab === "signals" && <Signals q={q} setQ={setQ} />}
+          {tab === "sources" && <Library query={q} setQuery={setQ} />}
+          {tab === "urls" && <Urls q={q} setQ={setQ} />}
+        </div>
       </Tabs>
     </>
   );

@@ -217,6 +217,13 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     campaign_draft.own_transactions = True  # type: ignore[attr-defined]
     assess_fit.own_transactions = True  # type: ignore[attr-defined]       # commits after each batch (and the budget calls commit): no wrapping transaction
 
+    def tender_summaries(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        """Plain English and Polish summaries for open tenders, our markets and soonest deadline first; capped per run and budget-gated."""
+        from ..tender_summary import run_job
+        return run_job(conn, job)
+
+    tender_summaries.own_transactions = True  # type: ignore[attr-defined]  # commits per batch
+
     def verify_url(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..verify.run import run_verification
         if extractor_factory is None or fetch_factory is None:
@@ -313,7 +320,13 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
     return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit,
-            "crm_sync": crm_sync, "lemlist_sync": lemlist_sync}
+            "crm_sync": crm_sync, "lemlist_sync": lemlist_sync, "tender_summaries": tender_summaries, **_exa_research_jobs()}
+
+
+def _exa_research_jobs() -> dict[str, Callable[[Conn, dict], dict]]:
+    """Exa research (company profile, person profile, find decision makers): interactive lane, budget-gated, outcome stored on its own row."""
+    from ..research import profile_jobs
+    return {"account_profile": profile_jobs.account_profile, "person_profile": profile_jobs.person_profile, "people_search": profile_jobs.people_search}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

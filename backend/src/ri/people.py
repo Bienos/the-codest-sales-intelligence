@@ -12,7 +12,7 @@ from typing import Any, Iterable
 
 from .db import Conn, jb, q1, qa
 
-SYSTEM_LABEL = {"sheets": "Sheets", "apollo": "Apollo", "pipedrive": "Pipedrive", "lemlist": "Lemlist", "manual": "Added by hand"}
+SYSTEM_LABEL = {"sheets": "Sheets", "apollo": "Apollo", "pipedrive": "Pipedrive", "lemlist": "Lemlist", "manual": "Added by hand", "exa": "Found with Exa"}
 ENGAGEMENT_ORDER = ["unsubscribed", "bounced", "interested", "replied", "not_interested", "clicked", "opened", "sent", "pushed"]
 ACTIVITY_STATUS = {"emailsSent": "sent", "emailsOpened": "opened", "emailsClicked": "clicked", "emailsReplied": "replied", "emailsBounced": "bounced",
                    "emailsUnsubscribed": "unsubscribed", "emailsInterested": "interested", "emailsNotInterested": "not_interested", "interested": "interested",
