@@ -26,7 +26,7 @@
 .acc-viewline { margin: 0; max-width: 92ch; font-size: var(--fs-md); line-height: 1.5; color: var(--body); }
 
 /* what makes a target account: one click away, four plain rules */
-.acc-how { margin: 4px 0 16px; max-width: 100ch; }
+.acc-how { margin: 4px 0 16px; }
 .acc-how > summary { display: inline-flex; align-items: center; gap: 6px; margin: 0; font: 600 var(--fs-sm)/1.4 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--navy);
   text-decoration: underline; text-decoration-color: var(--pink); text-underline-offset: .25em; list-style: none; cursor: pointer; }
 .acc-how > summary::-webkit-details-marker { display: none; }
@@ -36,8 +36,8 @@
 .acc-how-body { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 10px 0 0; background: var(--white); border: 1px solid var(--line); }
 .acc-how-body > div { padding: 12px 14px; border-left: 1px solid var(--line); }
 .acc-how-body > div:first-child { border-left: 0; }
-.acc-how-body dt { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font: 800 var(--fs-sm)/1.25 var(--font-head); color: var(--navy); }
-.acc-how-body dt::before { content: ""; flex: none; inline-size: 8px; block-size: 8px; background: var(--pink); }
+.acc-how-body dt { display: flex; align-items: baseline; gap: 8px; margin: 0 0 4px; font: 800 var(--fs-sm)/1.25 var(--font-head); color: var(--navy); }
+.acc-how-body dt::before { content: ""; flex: none; inline-size: 8px; block-size: 8px; background: var(--pink); transform: translateY(-1px); }
 .acc-how-body dd { margin: 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--body); }
 
 /* how Exa is getting on: a calm strip, with a bar for how much of the queue it has looked at */
@@ -141,7 +141,7 @@
 .acc-sig-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; font-size: var(--fs-sm); line-height: 1.4; color: var(--muted); }
 .acc-sig-from { font-weight: 600; }
 .acc-sig-meta a, .acc-sig-meta button { position: relative; z-index: 1; font-weight: 600; }
-.acc-sig-meta button.linkish { font-weight: 600; }
+.acc-sig-meta button.linkish { position: relative; z-index: 1; font-weight: 600; }      /* above the row's link (linkish resets position) */
 .acc-mk { display: inline-block; flex: none; align-self: center; inline-size: 9px; block-size: 9px; border: 1.5px dashed var(--purple); }
 .acc-mk.on { background: var(--purple); border-style: solid; }
 .acc-mk.off { border: 1.5px solid var(--off); }
@@ -224,6 +224,7 @@
   .acc-how-body > div { border-left: 0; border-top: 1px solid var(--line); }
   .acc-how-body > div:first-child { border-top: 0; }
   .acc-facts { white-space: normal; }
+  .acc-facts > span { white-space: nowrap; }
   .acc-head { display: none; }
   .acc-row, .acc-list.no-pick .acc-row, .acc-list.is-filling .acc-row, .acc-list.is-other .acc-row { row-gap: 10px; column-gap: 12px; min-block-size: 0; padding: 14px 12px; }
   .acc-row { grid-template-columns: 22px 40px minmax(0, 1fr) 44px; grid-template-areas: "pick av id end" ". sig sig sig" ". nums nums nums"; }

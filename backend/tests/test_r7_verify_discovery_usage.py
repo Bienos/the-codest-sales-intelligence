@@ -184,8 +184,9 @@ def test_private_rfp_discovery_keeps_buyer_owned_links_in_research(conn):
               company_ownership, company_profile_source_url)
         VALUES ('Private Insurance','buyer.invalid','GB','Insurance',1000,'private','https://buyer.invalid/about') RETURNING id
     """).fetchone()["id"]
+    # round 33: a listed company is fine (and one without a source is "being filled in"), so the company that must stay out is state-owned
     conn.execute("""INSERT INTO organizations(display_name, canonical_domain, country_code, segment, employees_estimate, company_ownership)
-                    VALUES ('Listed Bank','public.invalid','GB','Banking',9999,'listed')""")
+                    VALUES ('State Bank','public.invalid','GB','Banking',9999,'state_owned')""")
     pid = conn.execute("SELECT plan_id FROM discovery_plans WHERE theme='private-rfp' AND geography='UK'").fetchone()["plan_id"]
 
     class BuyerSearch:

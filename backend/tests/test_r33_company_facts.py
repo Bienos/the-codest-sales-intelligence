@@ -8,6 +8,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from test_r4_crm_notify import mk_user
 
 from ri import budget, usage
 from ri.api.app import create_app
@@ -17,7 +18,6 @@ from ri.db import Database, jb, q1, qa
 from ri.research import company_facts as cf
 from ri.sources.base import AuthError
 from ri.target_market import state_sql
-from test_r4_crm_notify import mk_user
 
 SECRET = "f" * 40
 

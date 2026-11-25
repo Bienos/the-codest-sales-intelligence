@@ -50,12 +50,12 @@ export const put = <T = any>(p: string, body?: unknown) => api<T>(p, { method: "
 export function fmtDate(v?: string | null): string {
   if (!v) return tr("Unknown");
   const d = new Date(v);
-  return isNaN(d.getTime()) ? tr("Unknown") : d.toLocaleDateString(getLanguage(), { year: "numeric", month: "short", day: "numeric" });
+  return isNaN(d.getTime()) ? tr("Unknown") : d.toLocaleDateString(getLanguage() === "pl" ? "pl-PL" : "en-GB", { year: "numeric", month: "short", day: "numeric" });
 }
 export function fmtDateTime(v?: string | null): string {
   if (!v) return tr("Unknown");
   const d = new Date(v);
-  return isNaN(d.getTime()) ? tr("Unknown") : d.toLocaleString(getLanguage(), { dateStyle: "medium", timeStyle: "short" });
+  return isNaN(d.getTime()) ? tr("Unknown") : d.toLocaleString(getLanguage() === "pl" ? "pl-PL" : "en-GB", { dateStyle: "medium", timeStyle: "short" });
 }
 
 export async function upload<T = any>(path: string, file: File): Promise<T> {

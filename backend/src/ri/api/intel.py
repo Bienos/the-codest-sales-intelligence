@@ -346,16 +346,16 @@ def register_pipeline(app: FastAPI) -> None:
             {"key": "opportunities", "label": "Events to opportunities", "mode": "automatic", "state": "ok",
              "note": f"{ev.get('n', 0)} verified events ({ev.get('week', 0)} this week), {ini.get('n', 0)} active programmes, {hyp.get('scored', 0)} scored opportunities. Each verified event updates its programme and re-scores it with no manual step."},
             {"key": "digest", "label": "Daily digest", "mode": "automatic" if digest_cfg else "off", "state": "ok" if digest_cfg else "off", "last": dig.get("t"),
-             "note": "Sent to Slack when something material changes; never repeats an unchanged item." if digest_cfg else "Not configured. Set SLACK_WEBHOOK_URL, RI_BASE_URL and RI_LINK_SECRET on the scheduler to switch it on."},
+             "note": "Sent to Slack when something material changes; never repeats an unchanged item." if digest_cfg else "Not switched on yet. It needs a Slack webhook added to the scheduler."},
             {"key": "sheets", "label": "Sheet import", "mode": "manual", "state": "ok" if imp else "waiting", "last": imp["finished_at"] if imp else None,
-             "note": "You upload the .xlsx exports in Administration, Imports. Hourly automatic sync needs a read-only Google service account."},
+             "note": "You upload the .xlsx exports in Administration, Sources & data, Workbooks. Hourly automatic sync needs a read-only Google service account."},
             {"key": "pipedrive", "label": "Pipedrive", "mode": "off", "state": "off", "note": "Not connected. Without it there is no ownership data, so every account is open to every seller, and no CRM changes can be made."},
         ]
         nexts = []
         if not src.get("active"):
             nexts.append("Test and activate the newsroom and feed sources (Administration, Sources). Until one is live, only discovery and manual verification feed the platform.")
         if not imp:
-            nexts.append("Upload the two workbooks (Administration, Imports).")
+            nexts.append("Upload the two workbooks (Administration, Sources & data, Workbooks).")
         if not wrk or fresh(wrk, 300) != "ok":
             nexts.append("The worker has not checked in recently. Check the worker service on Render.")
         if not digest_cfg:

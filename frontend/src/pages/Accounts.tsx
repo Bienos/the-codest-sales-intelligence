@@ -77,7 +77,7 @@ const TOGGLES: [string, string, string, string][] = [
 ];
 const ORIGIN: Record<string, string> = { added: "Added by the team", discovered: "Found by research" };
 const PRIORITY = /^P[123]$/;
-const MISSING: Record<string, string> = { ownership: "Owner", employees: "Headcount", country: "Country", sector: "Sector", website: "Website" };
+const MISSING: Record<string, string> = { ownership: "Owned by", employees: "Headcount", country: "Country", sector: "Sector", website: "Website" };
 const WHY_NOT: Record<string, string> = {
   list_out_of_scope: "Lead list: out of scope",
   state_owned: "State-owned",
@@ -108,6 +108,7 @@ export function Accounts({ me }: { me: { permissions: string[] } }) {
   const view = viewOf(params.get("view"));
   const [movedFromLeads, setMovedFromLeads] = useState(() => params.get("view") === "leads");
   const adding = params.get("add") === "1";
+  const [counts, setCounts] = useState<Record<string, number> | null>(null);       // kept across views, so the switch never blinks
   // old links (/accounts?view=leads, ?view=review) land on the one list
   useEffect(() => {
     const raw = params.get("view");
@@ -140,7 +141,7 @@ export function Accounts({ me }: { me: { permissions: string[] } }) {
         <button type="button" className="linkish" onClick={() => setMovedFromLeads(false)}>{tr("Got it")}</button>
       </div>}
       {adding && research && <AddCompany onClose={() => update({ add: "", name: "" })} />}
-      <CompanyDirectory key={view} view={view} research={research} params={params} update={update} />
+      <CompanyDirectory key={view} view={view} research={research} params={params} update={update} counts={counts} setCounts={setCounts} />
     </>
   );
 }
@@ -165,8 +166,10 @@ function FillInNote({ compact = false }: { compact?: boolean }) {
     : s.state === "paused"
       ? tr("Paused: the last 30% of this month's Exa budget is kept for your own research. It starts again next month.")
       : s.queue === 0 ? tr("Nothing is waiting for Exa.")
-        : tr("Exa is filling in facts for {} companies; {} done this week. It looks at about {} a day, and the same company again after {} days.",
-            number(s.queue), number(s.checked_week), number(s.per_day), number(s.recheck_days));
+        : s.websites > 0
+          ? tr("Exa is filling in facts for {} companies: the {} here, and {} target accounts without a website. {} done this week; about {} a day.",
+              number(s.queue), number(s.filling), number(s.websites), number(s.checked_week), number(s.per_day))
+          : tr("Exa is filling in facts for {} companies; {} done this week, about {} a day.", number(s.queue), number(s.checked_week), number(s.per_day));
   return <div className={`acc-fill is-${s.state}`} role="status">
     <span className="acc-fill-mark" aria-hidden="true"><i /><i /><i /></span>
     <p>{line}</p>
@@ -175,8 +178,9 @@ function FillInNote({ compact = false }: { compact?: boolean }) {
   </div>;
 }
 
-function CompanyDirectory({ view, research, params, update }: {
+function CompanyDirectory({ view, research, params, update, counts, setCounts }: {
   view: View; research: boolean; params: URLSearchParams; update: (values: Record<string, string>) => void;
+  counts: Record<string, number> | null; setCounts: (counts: Record<string, number> | null) => void;
 }) {
   const q = params.get("q") ?? "";
   const requestedRegion = params.get("region") ?? "";
@@ -193,7 +197,6 @@ function CompanyDirectory({ view, research, params, update }: {
   const [result, setResult] = useState<{ query: string; data: any } | null>(null);
   const d = result?.query === query ? result.data : null;
   const [facets, setFacets] = useState<any>(null);
-  const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const [selection, setSelection] = useState<{ query: string; ids: string[] }>({ query: filterQuery, ids: [] });

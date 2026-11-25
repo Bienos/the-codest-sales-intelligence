@@ -27,7 +27,8 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from ..db import Conn, jb, q1, qa
 from ..sheets.parsers import _COUNTRIES, normalize_domain
@@ -404,6 +405,7 @@ def schedule(conn: Conn, now: datetime | None = None) -> int:
 def status(conn: Conn, where: str = "TRUE", params: list[Any] | None = None) -> dict[str, Any]:
     """What the Accounts page says about the fill-in: how many companies Exa is working through and how many it looked at this week."""
     r = q1(conn, f"""SELECT count(*) FILTER (WHERE {queue_sql()}) AS queue,
+                            count(*) FILTER (WHERE {target_sql(review=True)}) AS filling,
                             count(*) FILTER (WHERE {due_sql()}) AS due,
                             count(*) FILTER (WHERE o.facts_checked_at > now() - interval '7 days') AS week,
                             count(*) FILTER (WHERE o.facts_checked_at > now() - interval '7 days' AND o.facts_status = 'found') AS found_week,
@@ -413,6 +415,7 @@ def status(conn: Conn, where: str = "TRUE", params: list[Any] | None = None) -> 
     on = switched_on(conn)
     pause = budget_pause(conn) if on else None
     state = "off" if not on else "paused" if pause else "waiting" if not r.get("due") else "running"
-    return {"state": state, "pause": pause, "queue": r.get("queue", 0), "due": r.get("due", 0), "checked_week": r.get("week", 0),
+    return {"state": state, "pause": pause, "queue": r.get("queue", 0), "filling": r.get("filling", 0),
+            "websites": r.get("queue", 0) - r.get("filling", 0), "due": r.get("due", 0), "checked_week": r.get("week", 0),
             "found_week": r.get("found_week", 0), "checked_today": r.get("today", 0), "last_checked_at": r.get("last"),
             "per_day": DAILY_LIMIT, "recheck_days": RECHECK_DAYS}
