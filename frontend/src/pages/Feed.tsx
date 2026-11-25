@@ -5,6 +5,7 @@ import { tr } from "../locale";
 import { Err } from "../components/ui";
 import { FindingCard, FindingsPagination, FindingsResult, ResearchLeads, SourceCoverage, useFindings } from "../components/Findings";
 import { REGIONS } from "./targetMarket";
+import { SHORT, signalName } from "../components/Signals";
 
 export default function Feed() {
   const [params, setParams] = useSearchParams();
@@ -12,7 +13,7 @@ export default function Feed() {
   const page = Math.max(1, Number(params.get("page")) || 1);
   const query = new URLSearchParams({
     q: params.get("q") ?? "", days: params.get("days") ?? "60", kind: params.get("kind") ?? "",
-    region: params.get("region") ?? "", qualification: params.get("qualification") ?? "all", page: String(page),
+    region: params.get("region") ?? "", qualification: params.get("qualification") ?? "all", page: String(page), rule: params.get("rule") ?? "",
   });
   const event = params.get("finding");
   if (event) query.set("event", event);
@@ -34,6 +35,9 @@ export default function Feed() {
       <button type="submit">{tr("Search")}</button>
       <select aria-label={tr("Region")} value={query.get("region") ?? ""} onChange={e => update("region", e.target.value)}>
         <option value="">{tr("All regions")}</option>{REGIONS.map(([id, label]) => <option key={id} value={id}>{tr(label)}</option>)}
+      </select>
+      <select aria-label={tr("Buying signal")} value={query.get("rule") ?? ""} onChange={e => update("rule", e.target.value)}>
+        <option value="">{tr("All buying signals")}</option>{Object.keys(SHORT).map(id => <option key={id} value={id}>{signalName(id)}</option>)}
       </select>
       <select aria-label={tr("Finding type")} value={query.get("kind") ?? ""} onChange={e => update("kind", e.target.value)}>
         <option value="">{tr("All types")}</option><option value="tender">{tr("Open RFPs and tenders")}</option><option value="signal">{tr("Buying signals")}</option>

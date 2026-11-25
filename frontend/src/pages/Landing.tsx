@@ -12,6 +12,10 @@ function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
   const [cfg, setCfg] = useState<any>(null);
   const [t, setT] = useState("");
   const [err, setErr] = useState("");
+  const [ready, setReady] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => { const timer = setTimeout(() => setSlow(true), 6000); return () => clearTimeout(timer); }, []);
   useEffect(() => { fetch("/api/config").then((r) => r.json()).then(setCfg).catch(() => setErr(tr("Cannot reach the server."))); }, []);
   useEffect(() => {
     if (!cfg?.google_client_id) return;
@@ -20,11 +24,14 @@ function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
     const renderButton = () => {
       if (!active || !googleButton) return;
       if (initializedClient.current !== cfg.google_client_id) {
-        window.google.accounts.id.initialize({ client_id: cfg.google_client_id, callback: async (r: any) => { setToken(r.credential); await startSession(); onDone(); } });
+        window.google.accounts.id.initialize({ client_id: cfg.google_client_id, ...(cfg.allowed_domain ? { hd: cfg.allowed_domain } : {}), ux_mode: "popup", itp_support: true,
+          callback: async (r: any) => { setSigning(true); setToken(r.credential); await startSession(); onDone(); } });
         initializedClient.current = cfg.google_client_id;
       }
       googleButton.replaceChildren();
-      window.google.accounts.id.renderButton(googleButton, { theme: "outline", size: "large", text: "signin_with", shape: "rectangular", width: 300, locale });
+      const width = Math.max(200, Math.min(380, Math.floor(googleButton.getBoundingClientRect().width || 300)));      // fill the card, within Google's limits
+      window.google.accounts.id.renderButton(googleButton, { theme: "filled_blue", size: "large", text: "continue_with", shape: "rectangular", logo_alignment: "left", width, locale });
+      setReady(true);
     };
     if (window.google?.accounts?.id) {
       renderButton();
@@ -41,10 +48,16 @@ function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
   return (
     <div className="auth-card" id="signin">
       <div className="eyebrow">{tr("Sign in")}</div>
-      <h2>{tr("Welcome back")}</h2>
+      <h2>{tr("Sign in to your workspace")}</h2>
+      <p className="sub mt-0 mb-3">{cfg?.allowed_domain ? tr("Use your {} Google account.", "@" + cfg.allowed_domain) : tr("Use your work Google account.")}</p>
       {notice?.kind === "denied" && <div className="err" role="alert"><b>{notice.email ?? tr("This Google account")}{" " + tr("has not been given access.")}</b><br />{tr("Ask an administrator to add you, then sign in again. If you have more than one Google account, choose your work account.")}</div>}
       {notice?.kind === "expired" && <div className="okmsg" role="status">{tr("Your session ended. Sign in again to continue.")}</div>}
-      {cfg?.google_client_id ? <div id="g-btn" style={{ minHeight: 44 }} /> :
+      {cfg?.google_client_id ? <>
+          <div id="g-btn" className={`g-btn${ready ? " ready" : ""}`} aria-busy={!ready} />
+          {!ready && !err && <div className="g-btn-wait small muted" role="status">{tr("Loading Google sign-in")}</div>}
+          {signing && <div className="okmsg" role="status">{tr("Signing you in")}</div>}
+          {!ready && slow && !err && <p className="small muted mt-2 mb-0">{tr("If the Google button does not appear, allow pop-ups and third-party sign-in for this site, or try another browser.")}</p>}
+        </> :
         cfg && cfg.env !== "production" ? <><p className="sub mt-0 mb-3">{tr("Development environment. Paste a signed development token.")}</p>
           <input aria-label={tr("Development token")} type="password" value={t} onChange={(e) => setT(e.target.value)} placeholder={tr("Development token")} style={{ width: "100%", marginBottom: 14 }} />
           <button className="primary" onClick={() => { setToken(t); onDone(); }}>{tr("Continue")}</button></> :
@@ -224,11 +237,11 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
   };
   return (
     <div className="land" ref={root}>
-      <div className="land-top"><header className="land-nav"><Brand /><div className="land-nav-actions"><LanguageSwitcher /><a className="land-jump" href="#signin">{tr("Sign in")}</a></div></header>
+      <div className="land-top"><header className="land-nav"><Brand /><div className="land-nav-actions"><LanguageSwitcher /><a className="land-jump land-signin" href="#signin" onClick={() => setTimeout(() => (document.querySelector("#g-btn [role=button], #g-btn iframe, #signin input, #signin button") as HTMLElement | null)?.focus(), 400)}>{tr("Sign in")}</a></div></header>
 
       <section className="land-hero" ref={hero} onPointerMove={onMove}>
         <div className="dots" aria-hidden="true" /><div className="dots lit" aria-hidden="true" />
-        <SignalField />
+        <SignalField target={false} />
         <div className="land-hero-in">
           <div className="land-copy">
             <div className="eyebrow">{tr("Revenue intelligence")}</div>

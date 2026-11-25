@@ -13,7 +13,9 @@ import Search from "./pages/Search";
 import Feed from "./pages/Feed";
 import LibraryHub from "./pages/LibraryHub";
 import Knowledge from "./pages/Knowledge";
-import { Err, Skeleton, lab, IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, Brand } from "./components/ui";
+import People from "./pages/People";
+import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
+import { Err, Skeleton, lab, IconAccounts, IconAdmin, IconExplorer, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 
@@ -76,6 +78,8 @@ export default function App() {
           <span className="nav-group">{tr("Work")}</span>
           {can("today.read") && link("/today", tr("Today"), IconToday)}
           {can("accounts.read") && link("/accounts", tr("Accounts & leads"), IconAccounts)}
+          {can("contacts.read") && link("/people", tr("People"), IconPeople)}
+          {can("draft.create") && link("/campaigns", tr("Campaigns"), IconCampaign)}
           {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}
           <span className="nav-group">{tr("Look up")}</span>
           {can("explorer.read") && link("/explorer", tr("Research explorer"), IconExplorer)}
@@ -90,7 +94,11 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Navigate to={can("today.read") ? "/today" : "/admin"} replace />} />
-          <Route path="/today" element={<Today canReview={can("research.request")} />} />
+          <Route path="/today" element={<Today canReview={can("research.request")} canCampaign={can("draft.create")} />} />
+          <Route path="/people" element={<div className="page"><People /></div>} />
+          <Route path="/campaigns" element={<div className="page"><CampaignList /></div>} />
+          <Route path="/campaigns/new" element={<div className="page"><NewCampaign /></div>} />
+          <Route path="/campaigns/:id" element={<div className="page"><CampaignDetail key={loc.pathname} canDecide={can("approvals.decide")} /></div>} />
           <Route path="/guide" element={<Guide />} />
           <Route path="/feed" element={<div className="page"><Feed /></div>} />
           <Route path="/renewals" element={<Navigate to="/accounts" replace />} />

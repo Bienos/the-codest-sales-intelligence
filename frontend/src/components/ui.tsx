@@ -16,6 +16,8 @@ export const IconKnowledge = I(<><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z
 export const IconFeed = I(<><path d="M4 5h16M4 10h16M4 15h10M4 20h7" /><circle cx="19" cy="17" r="2" /></>);
 export const IconPass = I(<><circle cx="12" cy="12" r="9" /><path d="M7.5 12.5l3 3 6-7" /></>);
 export const IconUnknown = I(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 015 .5c0 1.6-2.5 2-2.5 3.5M12 17v.5" /></>);
+export const IconPeople = I(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M15.5 4.8a3.3 3.3 0 010 6.4M18 14.8c2 .7 3.2 2.4 3.5 5.2" /></>);
+export const IconCampaign = I(<><path d="M3 10v4h3l6 4V6L6 10z" /><path d="M16 9a4 4 0 010 6M18.5 6.5a7.5 7.5 0 010 11" /></>);
 export const IconFail = I(<><circle cx="12" cy="12" r="9" /><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" /></>);
 
 export const Badge = ({ kind = "", children }: { kind?: string; children: ReactNode }) => <span className={`badge ${kind}`}>{typeof children === "string" ? tr(children) : children}</span>;
@@ -47,7 +49,7 @@ export const LABELS = {
   group: { SRC: "buying route", CAP: "hiring", MAN: "new leader", PRG: "funded project", COM: "business event", REG: "deadline", REL: "existing relationship" },
   dismiss: { not_relevant: "Not relevant", wrong_entity: "Wrong company", stale: "Out of date", duplicate: "Duplicate", no_external_demand: "They will not outsource this",
     not_commercially_relevant: "Not worth pursuing", owned_elsewhere: "Someone else owns it", other: "Other" },
-  approval: { crm_write: "Pipedrive change", crm_activity: "Pipedrive activity", outbound_message: "Outreach message", sequence_enrolment: "Add to an email sequence", contact_reveal: "Reveal an email address", contact_enrichment: "Reveal an email address",
+  approval: { signal_campaign_push: "Signal campaign to Lemlist", crm_write: "Pipedrive change", crm_activity: "Pipedrive activity", outbound_message: "Outreach message", sequence_enrolment: "Add to an email sequence", contact_reveal: "Reveal an email address", contact_enrichment: "Reveal an email address",
     supplier_application: "Supplier application", quote_or_commitment: "Quote or commitment", proof_release: "Release of proof" },
   committee: { problem_owner: "problem owner", programme_owner: "programme owner", economic_buyer: "budget holder", technical_evaluator: "technical evaluator", procurement_owner: "procurement",
     risk_security: "risk and security", technical_sponsor: "technical sponsor" },
@@ -219,20 +221,31 @@ export function Tabs({ items, value, onChange, label, children }: { items: { key
 export const reloadPage = () => window.location.reload();
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{tr(title)}</b>{typeof children === "string" ? tr(children) : children}</div>;
 
-/** Brand mark: the official logo file when it has been supplied, otherwise the plain text mark. Never redrawn here. */
+/** Brand mark: the official logo file when it has been supplied, otherwise the plain text mark. Never redrawn here.
+ * The text mark shows straight away and the logo replaces it once it has actually loaded, so the header is never blank. */
 export function Brand({ sub = true }: { sub?: boolean }) {
-  // 0 = logo file supplied with the app, 1 = the logo from thecodest.co (served by our API), 2 = plain text mark
+  // 0 = logo file supplied with the app, 1 = the logo from thecodest.co (served by our API), 2 = plain text mark only
   const [stage, setStage] = useState(0);
-  const ok = stage < 2;
+  const [loaded, setLoaded] = useState(false);
   return (
     <div className="brand brand-bare">
-      {ok ? <img className="brand-logo" src={stage === 0 ? "/brand/logo-white.svg" : "/brand/logo"} alt="The Codest" width={140}
-                 onError={() => setStage(stage + 1)} />
-        : <div className="brand-row"><span className="brand-mark" /><div className="brand-name">The Codest</div></div>}
+      {stage < 2 && <img className="brand-logo" src={stage === 0 ? "/brand/logo-white.svg" : "/brand/logo"} alt={loaded ? "The Codest" : ""} width={140}
+                         style={loaded ? undefined : { position: "absolute", width: 1, height: 1, opacity: 0 }}
+                         onLoad={() => setLoaded(true)} onError={() => { setLoaded(false); setStage(stage + 1); }} />}
+      {!loaded && <div className="brand-row"><span className="brand-mark" /><div className="brand-name">The Codest</div></div>}
       {sub && <div className="brand-sub mt-0">{tr("Revenue Intelligence")}</div>}
     </div>
   );
 }
+
+/** Links built from stored or scraped data: only http(s) addresses become links (defence in depth next to the CSP). */
+export const safeHref = (u?: string | null): string | undefined => {
+  if (!u) return undefined;
+  try { const x = new URL(u, window.location.origin); return ["http:", "https:"].includes(x.protocol) ? x.href : undefined; } catch { return undefined; }
+};
+
+/** Signal strength 0-3 as filled squares. */
+export const Strength = ({ n }: { n: number }) => <span className="strength" role="img" aria-label={tr("Strength {} of 3", n)}>{[1, 2, 3].map((i) => <i key={i} className={i <= n ? "on" : ""} />)}</span>;
 
 export function Meter({ used, cap, unit = "", warn = 0.8 }: { used: number; cap: number; unit?: string; warn?: number }) {
   const pct = cap > 0 ? Math.min(used / cap, 1) : 0;

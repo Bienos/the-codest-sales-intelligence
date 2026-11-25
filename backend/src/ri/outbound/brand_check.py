@@ -28,7 +28,7 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").replace("’", "'")).strip().casefold()
 
 
-def check_step(step: dict[str, Any], facts: dict[str, str], *, first: bool) -> list[dict[str, str]]:
+def check_step(step: dict[str, Any], facts: dict[str, str], *, first: bool, placeholders: set[str] | frozenset[str] = frozenset(PLACEHOLDERS)) -> list[dict[str, str]]:
     r = rules()
     subject, body = str(step.get("subject") or ""), str(step.get("body") or "")
     text = f"{subject}\n{body}"
@@ -82,7 +82,7 @@ def check_step(step: dict[str, Any], facts: dict[str, str], *, first: bool) -> l
     if len(ctas) != 1:
         brk("cta", "use exactly one approved next step" if ctas else "no approved next step found")
     for token in re.findall(r"\{\{[^}]*\}\}", text):
-        if token not in PLACEHOLDERS:
+        if token not in placeholders:
             brk("placeholder", f"unknown placeholder {token}")
     if re.search(r"https?://|[\w.+-]+@[\w-]+\.[\w.]+", text):
         brk("link_or_address", "no links or email addresses in the draft")
@@ -96,10 +96,10 @@ def check_step(step: dict[str, Any], facts: dict[str, str], *, first: bool) -> l
     return out
 
 
-def review_sequence(steps: list[dict[str, Any]], facts: dict[str, str]) -> dict[str, Any]:
+def review_sequence(steps: list[dict[str, Any]], facts: dict[str, str], *, placeholders: set[str] | frozenset[str] = frozenset(PLACEHOLDERS)) -> dict[str, Any]:
     breaks = []
     for i, s in enumerate(steps):
-        for b in check_step(s, facts, first=i == 0):
+        for b in check_step(s, facts, first=i == 0, placeholders=placeholders):
             breaks.append({**b, "step": i + 1})
     if not steps:
         breaks.append({"code": "empty", "detail": "no steps", "step": 0})

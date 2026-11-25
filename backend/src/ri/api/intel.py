@@ -387,6 +387,7 @@ def register_feed(app: FastAPI) -> None:
                           limit: int = Query(20, ge=1, le=50), kind: str = Query("", pattern="^(|tender|signal)$"),
                           region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
                           qualification: str = Query("target", pattern="^(target|review|all)$"),
+                          rule: str = Query("", pattern=r"^(|[A-Z]{3}-\d{2})$"),
                           p: Principal = Depends(principal_dep)):
         from ..findings import account_leads, findings, rfp_research
 
@@ -406,7 +407,7 @@ def register_feed(app: FastAPI) -> None:
             elif scope == "archive" and p.can("research.request"):
                 leads = rfp_research(conn, p)
             items = findings(conn, p, scope=scope, days=365 if event else days, limit=limit, page=page, kind=kind, region=region,
-                             organization_id=organization, event=event, search=q,
+                             organization_id=organization, event=event, search=q, rule=rule,
                              qualification="target" if scope == "today" else "all" if organization or event else qualification)
             return {"items": items[:limit], "page": page, "has_more": len(items)>limit, "leads": leads,
                     "coverage": coverage_health(conn, p)}

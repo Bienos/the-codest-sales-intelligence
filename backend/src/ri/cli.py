@@ -68,11 +68,12 @@ def main(argv: list[str] | None = None) -> int:
             print(sync_incremental(conn, reader), process_inbox(conn))
             conn.commit()
         elif a.cmd == "schedule":
-            from .scheduler import crm_sync_step, exa_budget_set, run_maintenance, schedule_due
+            from .scheduler import crm_sync_step, exa_budget_set, lemlist_sync_step, run_maintenance, schedule_due
             from .heartbeat import beat
             from .scheduler import schedule_discovery
             res = {"enqueued": schedule_due(conn), "discovery": schedule_discovery(conn, enabled=exa_budget_set(conn)), **run_maintenance(conn)}
             res.update(crm_sync_step(conn, s))
+            res.update(lemlist_sync_step(conn, s))
             conn.commit()
             try:
                 from .canary import run_canary

@@ -186,7 +186,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     @app.get("/api/config")
     def public_config():
         """Public, non-secret bootstrap for the SPA (Google OAuth client IDs are public by design)."""
-        return {"auth_mode": settings.auth_mode, "google_client_id": settings.google_client_id, "env": settings.env}
+        return {"auth_mode": settings.auth_mode, "google_client_id": settings.google_client_id, "env": settings.env, "allowed_domain": settings.allowed_email_domain}
 
     @app.post("/api/auth/session")
     def start_session(request: Request, p: Principal = Depends(principal_dep)):
@@ -263,13 +263,16 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
 
     # ------------------------------------------------------------------ Accounts
     @app.get("/api/accounts")
-    def accounts(request: Request, q: str = "", limit: int = Query(50, le=200), p: Principal = Depends(require("accounts.read"))):
+    def accounts(request: Request, q: str = Query("", max_length=120), limit: int = Query(50, le=200), p: Principal = Depends(require("accounts.read"))):
+        from .search import all_like, tokens
         with tx(request) as conn:
             where, params = org_scope_sql(p, "o.id")
+            toks = tokens(q) or ([q.strip()] if q.strip() else [])
+            match, margs = all_like("concat_ws(' ', o.display_name, o.canonical_domain)", toks) if toks else ("TRUE", [])
             return {"items": [dict(r, id=str(r["id"])) for r in qa(conn,
                 f"SELECT o.id, o.display_name, o.country_code, o.segment, o.in_master_list, o.employees_estimate, o.employees_basis, o.employees_uncertain, c.owner_id AS crm_owner_id, "   # noqa: S608
                 f"(SELECT count(*) FROM initiatives i WHERE i.owner_org_id=o.id AND i.status='active') AS initiatives FROM organizations o LEFT JOIN crm_organizations c ON c.organization_id=o.id AND c.link_status='linked' "
-                f"WHERE ({where}) AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') ORDER BY o.in_master_list DESC, o.display_name LIMIT %s", [*params, q, q, limit])]}
+                f"WHERE ({where}) AND ({match}) ORDER BY o.in_master_list DESC, o.display_name LIMIT %s", [*params, *margs, limit])]}
 
     @app.get("/api/accounts/{oid}")
     def account(oid: str, request: Request, target: bool = False, p: Principal = Depends(require("accounts.read"))):
@@ -326,21 +329,21 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
             focus = target_sql() if target else "TRUE"
             if entity == "companies":
                 sql = ("SELECT o.id, o.display_name, o.country_code, o.segment, o.in_master_list, o.employees_estimate FROM organizations o WHERE (" + where + f") AND {focus} "
-                       "AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%') AND (%s::text IS NULL OR o.country_code=%s) AND (%s::bool IS NULL OR o.in_master_list=%s) ORDER BY o.display_name LIMIT %s")
+                       "AND (%s='' OR ri_fold(o.display_name) LIKE '%%'||ri_fold(%s)||'%%') AND (%s::text IS NULL OR o.country_code=%s) AND (%s::bool IS NULL OR o.in_master_list=%s) ORDER BY o.display_name LIMIT %s")
                 rows = qa(conn, sql, [*params, q, q, country, country, existing, existing, limit]); basis = "alphabetical (ICP fit not applied)"
             elif entity == "procurement":
                 if target:
                     raise HTTPException(404, "Not found.")
                 rows = qa(conn, "SELECT n.notice_id, n.buyer_name, n.title, n.status, n.deadline_at, n.deadline_tz, n.last_status_check_at, n.official_url FROM procurement_notices n "
-                                "LEFT JOIN organizations o ON o.id=n.buyer_org_id WHERE (n.buyer_org_id IS NULL OR (" + where + ")) AND (%s='' OR n.title ILIKE '%%'||%s||'%%') "
+                                "LEFT JOIN organizations o ON o.id=n.buyer_org_id WHERE (n.buyer_org_id IS NULL OR (" + where + ")) AND (%s='' OR ri_fold(n.title) LIKE '%%'||ri_fold(%s)||'%%') "
                                 "ORDER BY (n.status IN ('open','amended')) DESC, n.deadline_at LIMIT %s", [*params, q, q, limit]); basis = "open notices first, then deadline"
             elif entity == "events":
                 rows = qa(conn, "SELECT e.id, e.event_type, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verification_status, e.is_historical_replay FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
-                                "WHERE (e.subject_org_id IS NULL OR (" + where + f")) AND {focus} AND (NOT %s OR e.lane <> 'public') AND (%s='' OR e.summary ILIKE '%%'||%s||'%%') ORDER BY coalesce(e.event_at, e.pub_at) DESC NULLS LAST LIMIT %s", [*params, target, q, q, limit]); basis = "freshness (event date, publication date shown separately)"
+                                "WHERE (e.subject_org_id IS NULL OR (" + where + f")) AND {focus} AND (NOT %s OR e.lane <> 'public') AND (%s='' OR ri_fold(e.summary) LIKE '%%'||ri_fold(%s)||'%%') ORDER BY coalesce(e.event_at, e.pub_at) DESC NULLS LAST LIMIT %s", [*params, target, q, q, limit]); basis = "freshness (event date, publication date shown separately)"
             else:
                 rows = qa(conn, "SELECT h.id, o.display_name, h.route_type, h.counterparty_name, h.priority, h.state, h.score_total, h.evidence_confidence, h.access_status, h.external_demand_status, i.title, i.stage "
                                 "FROM opportunity_hypotheses h JOIN organizations o ON o.id=h.organization_id JOIN initiatives i ON i.id=h.initiative_id WHERE (" + where + f") AND {focus} AND (NOT %s OR h.route_type <> 'procurement') "
-                                "AND (%s='' OR o.display_name ILIKE '%%'||%s||'%%' OR i.title ILIKE '%%'||%s||'%%') AND (%s::text IS NULL OR o.country_code=%s) AND (%s::bool IS NULL OR o.in_master_list=%s) "
+                                "AND (%s='' OR ri_fold(o.display_name) LIKE '%%'||ri_fold(%s)||'%%' OR ri_fold(i.title) LIKE '%%'||ri_fold(%s)||'%%') AND (%s::text IS NULL OR o.country_code=%s) AND (%s::bool IS NULL OR o.in_master_list=%s) "
                                 "AND (%s::text IS NULL OR i.stage=%s) AND (%s::text IS NULL OR h.evidence_confidence=%s) AND (%s::bool IS NULL OR (h.priority='blocked')=%s) "
                                 "AND (%s::text IS NULL OR EXISTS (SELECT 1 FROM signals s JOIN initiative_events ie ON ie.event_id=s.event_id WHERE ie.initiative_id=i.id AND s.rule_id LIKE %s||'-%%')) "
                                 "ORDER BY h.score_total DESC LIMIT %s", [*params, target, q, q, q, country, country, existing, existing, stage, stage, confidence, confidence, blocked, blocked, signal_family, signal_family, limit])
@@ -413,6 +416,14 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                 try:
                     client = LemlistClient(settings.lemlist_api_key) if settings.lemlist_api_key else None
                     return enrol_mod.execute_enrolment(conn, aid, client, settings)
+                except (appr.ApprovalError, LemlistError, ConnectorBlocked) as exc:
+                    raise HTTPException(409, str(exc)) from exc
+            if kind == "signal_campaign_push":
+                from ..outbound import signal_campaigns as sc_mod
+                from ..outbound.lemlist import LemlistClient, LemlistError
+                try:
+                    client = LemlistClient(settings.lemlist_api_key) if settings.lemlist_api_key else None
+                    return sc_mod.execute_push(conn, aid, client, settings)
                 except (appr.ApprovalError, LemlistError, ConnectorBlocked) as exc:
                     raise HTTPException(409, str(exc)) from exc
             if kind == "contact_enrichment":
@@ -557,4 +568,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     search_api.register_kb_admin(app)
     from . import sources_admin
     sources_admin.register(app)
+    from . import people as people_api
+    people_api.register_people(app)
+    from . import campaigns as campaigns_api
+    campaigns_api.register_campaigns(app, settings)
     return app

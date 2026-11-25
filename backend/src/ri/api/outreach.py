@@ -128,13 +128,17 @@ def register_outreach(app: FastAPI, settings: Settings) -> None:
             with tx(request) as conn:
                 conn.execute("INSERT INTO audit_events(actor, operation, record_type) VALUES ('webhook','auth_failed','lemlist_webhook')")
             raise HTTPException(401, "bad credentials")
-        body = await request.json()
+        try:
+            body = await request.json()
+        except ValueError as exc:
+            raise HTTPException(400, "body is not JSON") from exc
         events = body if isinstance(body, list) else [body]
         out = []
+        from ..people import apply_lemlist_activity
         with tx(request) as conn:
             for ev in events[:50]:
                 if isinstance(ev, dict):
-                    out.append(enrol.record_event(conn, ev))
+                    out.append(apply_lemlist_activity(conn, ev))      # stores the activity for the people database and updates the enrolment
         return {"accepted": True, "results": out}
 
     @app.post("/api/accounts/{oid}/crm/propose-deal")

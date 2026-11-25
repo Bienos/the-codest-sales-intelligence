@@ -11,7 +11,7 @@ from typing import Any
 from .audit import audit
 from .db import Conn, canonical_json, jb, q1
 
-TWO_PERSON = {"contact_enrichment", "crm_write", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"}
+TWO_PERSON = {"contact_enrichment", "crm_write", "outbound_message", "sequence_enrolment", "signal_campaign_push", "supplier_application", "quote_or_commitment", "proof_release"}
 APPROVER_ROLES = {"sales_manager", "admin", "bdm"}
 
 

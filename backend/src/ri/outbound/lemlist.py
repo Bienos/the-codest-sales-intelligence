@@ -74,5 +74,15 @@ class LemlistClient:
         return self._req("POST", f"/campaigns/{campaign_id}/leads/{quote(email, safe='@')}",
                          params={"deduplicate": "true", "updateStrategy": "fillEmptyOnly"}, json=fields)
 
+    def activities(self, *, offset: int = 0, limit: int = 100, campaign_id: str | None = None) -> list[dict[str, Any]]:
+        """Newest-first activity feed (sent, opened, replied, bounced, unsubscribed, interested). Read-only."""
+        params: dict[str, Any] = {"offset": offset, "limit": limit, **({"campaignId": campaign_id} if campaign_id else {})}
+        result = self._req("GET", "/activities", params=params)
+        return result if isinstance(result, list) else []
+
+    def campaigns(self) -> list[dict[str, Any]]:
+        result = self._req("GET", "/campaigns")
+        return result if isinstance(result, list) else []
+
     def create_hook(self, target_url: str, *, event_type: str | None = None) -> dict[str, Any]:
         return self._req("POST", "/hooks", json={"targetUrl": target_url, **({"type": event_type} if event_type else {})})

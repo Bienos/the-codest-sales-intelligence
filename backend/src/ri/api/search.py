@@ -25,8 +25,26 @@ def like(t: str) -> str:
     return "%" + t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
+_FOLD = str.maketrans("ąćęłńóśźżäöüåæøéèêëáàâãíìîïóòôõúùûçñýÿšžčřěůđő", "acelnoszzaouaaoeeeeaaaaiiiioooouuucnyyszcreudo")
+
+
+def fold(t: str) -> str:
+    """Python twin of the SQL ri_fold(): lower case, accents removed, ß as ss."""
+    return t.lower().replace("ß", "ss").translate(_FOLD)
+
+
 def all_like(expr: str, toks: list[str]) -> tuple[str, list[str]]:
-    return " AND ".join(f"{expr} ILIKE %s ESCAPE '\\'" for _ in toks), [like(t) for t in toks]
+    """Every token must appear, ignoring case and accents. Short tokens (CTO, CIO, AI, API) must match a whole word, so "cto" does not hit "director"."""
+    parts, args = [], []
+    for t in toks:
+        f = fold(t)
+        if len(f) <= 3 and f.isalnum():
+            parts.append(f"ri_fold({expr}) ~ %s")
+            args.append(r"\m" + f + r"\M")
+        else:
+            parts.append(f"ri_fold({expr}) LIKE %s ESCAPE '\\'")
+            args.append(like(f))
+    return " AND ".join(parts), args
 
 
 def snippet(text: str, toks: list[str], width: int = 230) -> str:
