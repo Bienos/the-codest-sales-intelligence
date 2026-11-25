@@ -346,7 +346,7 @@ def _pulse(raw: list[dict[str, Any]], companies: list[dict[str, Any]], now: date
 
 
 def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = "", q: str = "", rule: str = "", sort: str = "strength",
-                   family: str = "", pulse: bool = True) -> dict[str, Any]:
+                   family: str = "", pulse: bool = False) -> dict[str, Any]:
     from ..outbound.signal_campaigns import ANGLES, DEFAULT_ANGLE
 
     now = datetime.now(timezone.utc)

@@ -195,7 +195,7 @@
 .bs-str b { font: 800 var(--fs-sm)/1 var(--font-head); color: var(--navy); }
 .c-when time { display: inline-flex; align-items: baseline; white-space: nowrap; color: var(--body); }
 .c-when time.is-fresh, .bs-sd-k time.is-fresh, .bs-card-k time.is-fresh, .bs-sum-l time.is-fresh { color: var(--navy); font-weight: 600; }
-.c-reg { white-space: nowrap; }
+.bs-table td.c-reg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-mail { white-space: nowrap; color: var(--muted); text-decoration: none; }
 .bs-mail.on { color: var(--navy); font-weight: 600; }
 a.bs-mail:hover, a.bs-mail:focus-visible { text-decoration: underline; text-decoration-color: var(--pink); text-underline-offset: 3px; }

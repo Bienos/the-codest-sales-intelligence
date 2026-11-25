@@ -30,7 +30,7 @@ POST /api/signals/refresh  (research.request)
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import Depends, FastAPI, Request
@@ -116,8 +116,14 @@ def _last_manual(conn: Conn) -> dict[str, Any] | None:
 def _manual_progress(conn: Conn, last: dict[str, Any] | None, p: Principal, now: datetime) -> dict[str, Any] | None:
     if not last:
         return None
-    corr = (last["detail"] or {}).get("correlation_id")
-    counts = {r["status"]: int(r["n"]) for r in qa(conn, "SELECT status, count(*) AS n FROM jobs WHERE correlation_id=%s GROUP BY status", (corr,))} if corr else {}
+    detail = last["detail"] or {}
+    ids, corr = detail.get("job_ids"), detail.get("correlation_id")
+    if ids:          # by primary key: the jobs table keeps every job ever run, and this is read every few seconds while a check runs
+        counts = {r["status"]: int(r["n"]) for r in qa(conn, "SELECT status, count(*) AS n FROM jobs WHERE id = ANY(%s::uuid[]) GROUP BY status", (ids,))}
+    elif corr:
+        counts = {r["status"]: int(r["n"]) for r in qa(conn, "SELECT status, count(*) AS n FROM jobs WHERE correlation_id=%s GROUP BY status", (corr,))}
+    else:
+        counts = {}
     total = sum(counts.values())
     waiting = sum(n for s, n in counts.items() if s in ACTIVE)
     failed = sum(n for s, n in counts.items() if s in ("permanent_failed", "quarantined", "requires_approval", "cancelled"))
@@ -225,12 +231,13 @@ def refresh(conn: Conn, p: Principal) -> dict[str, Any]:
 
     stamp = now.strftime("%Y%m%dT%H%M%S")
     corr = f"signals-refresh:{stamp}"
-    queued = 0
+    queued, job_ids = 0, []
     for sid in picked:
-        _, created = enqueue(conn, "source_run", {"source_id": sid}, idempotency_key=f"source_run:{sid}:refresh:{stamp}", max_attempts=2, correlation_id=corr)
+        jid, created = enqueue(conn, "source_run", {"source_id": sid}, idempotency_key=f"source_run:{sid}:refresh:{stamp}", max_attempts=2, correlation_id=corr)
         queued += int(created)
+        job_ids.append(jid)
     audit(conn, actor=p.email, operation=AUDIT_OP, record_type=AUDIT_TYPE, record_id=AUDIT_ID,
-          detail={"correlation_id": corr, "queued": queued, "sources": picked, "skipped": skipped})
+          detail={"correlation_id": corr, "queued": queued, "job_ids": job_ids, "sources": picked, "skipped": skipped})
     return {"queued": queued, "skipped": skipped, "freshness": freshness(conn, p)}
 
 

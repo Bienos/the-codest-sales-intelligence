@@ -592,7 +592,7 @@ function TableRow({ c, kinds, cols, showFit, canPeople, canCampaign, focus, onKe
       <td className="c-str" data-label={tr("Strength")}><span className="bs-str" title={reason || undefined}><Bars n={c.strength} /><b>{level}</b><span className="bs-vh">{reason ? `. ${reason}` : ""}</span></span></td>
       <td className="c-when" data-label={tr("When")}><time className={fresh ? "is-fresh" : ""} dateTime={c.latest ?? undefined} title={c.latest ? fmtDate(c.latest) : undefined}>
         {fresh && <i className="bs-new" aria-hidden="true" />}{ago(c.latest) || tr("Date unknown")}</time></td>
-      <td className="c-reg" data-label={tr("Region")}>{REGION_SHORT[org.region] ? tr(REGION_SHORT[org.region]) : "—"}</td>
+      <td className="c-reg" data-label={tr("Region")} title={REGION_SHORT[org.region] ? tr(REGION_SHORT[org.region]) : undefined}>{REGION_SHORT[org.region] ? tr(REGION_SHORT[org.region]) : "—"}</td>
       <td className="c-mail" data-label={tr("Email")}><Reach org={org} canPeople={canPeople} /></td>
       {showFit && <td className="c-fit" data-label={tr("Best fit")}>{org.best_fit
         ? <span className={`bs-fit is-${org.best_fit.level ?? "possible"}`} title={org.best_fit.reason ?? undefined}>{tr(org.best_fit.name)}</span> : <span className="muted">—</span>}</td>}
