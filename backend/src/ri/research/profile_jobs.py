@@ -83,6 +83,10 @@ def _run_research(conn: Conn, job: dict[str, Any], *, table: str, kind: str, res
     conn.execute(f"UPDATE {table} SET status='done', content=%s, sources=%s, searches=%s, exa_cost_usd=%s, model=%s, tokens_in=%s, tokens_out=%s, dropped=%s, "      # noqa: S608
                  "finished_at=now() WHERE id=%s",
                  (jb(r["content"]), jb(r["sources"]), searcher.calls, round(searcher.cost, 4), r["model"], r["tokens_in"], r["tokens_out"], r["dropped"], rid))
+    if table == "person_profiles" and r.get("photo_url"):
+        from ..enrichment.exa_people import set_photo
+        person = q1(conn, "SELECT linkedin_url FROM people WHERE id=%s", (row["person_id"],))
+        set_photo(conn, str(row["person_id"]), person["linkedin_url"] if person else None, r["photo_url"])
     conn.commit()
     return {"status": "done", "searches": searcher.calls, "cost_usd": round(searcher.cost, 4), "dropped": r["dropped"]}
 

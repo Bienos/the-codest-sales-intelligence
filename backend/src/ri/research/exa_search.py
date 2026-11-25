@@ -60,13 +60,18 @@ def _clean(s: Any, cap: int) -> str:
     return re.sub(r"[ \t]+", " ", str(s or "")).strip()[:cap]
 
 
+def image_url(v: Any) -> str | None:
+    """The picture Exa found for a page (for a LinkedIn profile: the profile photo). Only a plain https address of sane length."""
+    return v.strip() if isinstance(v, str) and v.strip().lower().startswith("https://") and len(v.strip()) <= 600 and not re.search(r"\s", v.strip()) else None
+
+
 def normalise_result(r: dict[str, Any], purpose: str, text_cap: int = 2500) -> dict[str, Any] | None:
     url = r.get("url")
     if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
         return None
     pub = r.get("publishedDate")
     return {"url": url, "title": _clean(r.get("title"), 300) or None, "published": pub[:10] if isinstance(pub, str) and re.match(r"\d{4}-\d{2}-\d{2}", pub) else None,
-            "author": _clean(r.get("author"), 120) or None, "text": _clean(r.get("text") or " ".join(r.get("highlights") or []), text_cap), "purpose": purpose}
+            "author": _clean(r.get("author"), 120) or None, "image": image_url(r.get("image")), "text": _clean(r.get("text") or " ".join(r.get("highlights") or []), text_cap), "purpose": purpose}
 
 
 class ExaSearcher:

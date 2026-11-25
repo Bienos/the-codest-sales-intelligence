@@ -42,6 +42,31 @@ def normalise_linkedin(url: str) -> str | None:
     return f"https://www.linkedin.com/in/{unquote(m.group(1)).strip().lower()}"
 
 
+def profile_photo(image: Any) -> str | None:
+    """A LinkedIn profile picture (what Exa returns as the image of a profile page), or None. Company logos, banners, LinkedIn's grey placeholder and
+    pictures hosted anywhere else are not profile photos and are ignored."""
+    from urllib.parse import urlparse
+    from ..research.exa_search import image_url
+    u = image_url(image)
+    if not u:
+        return None
+    parts = urlparse(u)
+    host = (parts.hostname or "").lower()
+    return u if (host == "licdn.com" or host.endswith(".licdn.com")) and "displayphoto" in parts.path.lower() else None
+
+
+def set_photo(conn: Conn, person_id: str, profile_url: str | None, photo: str | None) -> bool:
+    """Keeps the picture only on the person whose own LinkedIn address it came from (a same-name mix-up must never lend someone a face)."""
+    mine = normalise_linkedin(profile_url or "")
+    if not photo or not mine:
+        return False
+    p = q1(conn, "SELECT linkedin_url FROM people WHERE id=%s AND erased_at IS NULL", (person_id,))
+    if not p or normalise_linkedin(p["linkedin_url"] or "") != mine:
+        return False
+    conn.execute("UPDATE people SET photo_url=%s, photo_checked_at=now() WHERE id=%s", (photo, person_id))
+    return True
+
+
 def company_keys(name: str, domain: str | None) -> list[str]:
     base = re.sub(r"\s+", " ", LEGAL.sub(" ", name.replace("&", " and "))).strip().casefold()
     keys = {base} if len(base) >= 3 else set()
@@ -86,7 +111,8 @@ def parse_result(r: dict[str, Any], keys: list[str]) -> dict[str, Any] | None:
     if not title or NOT_DECIDER.search(title) or not seniority(title):
         return {"skip": "not a decision role", "name": name}
     snippet = re.sub(r"\s+", " ", text).strip()[:400] or None
-    return {"linkedin_url": url, "name": name[:120], "title": title[:160], "seniority": seniority(title), "snippet": snippet, "company_match": match}
+    return {"linkedin_url": url, "name": name[:120], "title": title[:160], "seniority": seniority(title), "snippet": snippet, "company_match": match,
+            "photo_url": profile_photo(r.get("image"))}
 
 
 def known_people(conn: Conn, org_id: str) -> tuple[dict[str, str], dict[str, str]]:
@@ -138,18 +164,25 @@ def find_people(conn: Conn, org_id: str, search_id: str, *, searcher: ExaSearche
                 out["skipped"] += 1
                 continue
             if c["linkedin_url"] in seen:
+                if c["photo_url"]:               # the same person came back from another search, and this time with a picture
+                    again = conn.execute("UPDATE people_candidates SET photo_url=coalesce(photo_url, %s) WHERE organization_id=%s AND linkedin_url=%s RETURNING person_id",
+                                         (c["photo_url"], org_id, c["linkedin_url"])).fetchone()
+                    if again and again["person_id"]:
+                        set_photo(conn, str(again["person_id"]), c["linkedin_url"], c["photo_url"])
                 continue
             seen.add(c["linkedin_url"])
             out["found"] += 1
             known = by_url.get(c["linkedin_url"]) or by_name.get(re.sub(r"\s+", " ", c["name"]).strip().casefold())
             status = "already_known" if known else "found"
             row = conn.execute(
-                "INSERT INTO people_candidates(organization_id, search_id, provider, linkedin_url, name, title, persona, seniority, snippet, company_match, status, person_id, found_by) "
-                "VALUES (%s,%s,'exa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (organization_id, linkedin_url) DO UPDATE SET "
+                "INSERT INTO people_candidates(organization_id, search_id, provider, linkedin_url, name, title, persona, seniority, snippet, company_match, status, person_id, found_by, photo_url) "
+                "VALUES (%s,%s,'exa',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (organization_id, linkedin_url) DO UPDATE SET "
                 "title=EXCLUDED.title, snippet=EXCLUDED.snippet, company_match=EXCLUDED.company_match, search_id=EXCLUDED.search_id, updated_at=now(), "
                 "status=CASE WHEN people_candidates.status='found' THEN EXCLUDED.status ELSE people_candidates.status END, "
-                "person_id=coalesce(people_candidates.person_id, EXCLUDED.person_id) RETURNING (xmax = 0) AS inserted",
-                (org_id, search_id, c["linkedin_url"], c["name"], c["title"], persona, c["seniority"], c["snippet"], c["company_match"], status, known, by)).fetchone()
+                "person_id=coalesce(people_candidates.person_id, EXCLUDED.person_id), photo_url=coalesce(EXCLUDED.photo_url, people_candidates.photo_url) RETURNING (xmax = 0) AS inserted",
+                (org_id, search_id, c["linkedin_url"], c["name"], c["title"], persona, c["seniority"], c["snippet"], c["company_match"], status, known, by, c["photo_url"])).fetchone()
+            if known and c["photo_url"]:
+                set_photo(conn, known, c["linkedin_url"], c["photo_url"])      # someone we already know: a fresh picture replaces one that has expired
             if known:
                 out["already_known"] += 1
             elif row and row["inserted"]:
@@ -176,6 +209,7 @@ def add_candidate(conn: Conn, cid: str, *, by: str) -> dict[str, Any]:
                      (pid, org_id, c["title"], c["linkedin_url"]))
     else:
         conn.execute("UPDATE people SET linkedin_url=%s WHERE id=%s AND linkedin_url IS NULL", (c["linkedin_url"], pid))
+    set_photo(conn, pid, c["linkedin_url"], c.get("photo_url"))
     record_source(conn, pid, "exa", c["linkedin_url"], {"persona": c["persona"], "seniority": c["seniority"], "added_by": by})
     conn.execute("UPDATE people_candidates SET status='added', person_id=%s, decided_by=%s, updated_at=now() WHERE id=%s", (pid, by, cid))
     return {"person_id": pid, "created": created}

@@ -26,7 +26,7 @@ def people_rows(conn, p: Principal, q: str = "") -> list[dict[str, Any]]:
     terms = tokens(q)
     match, margs = all_like("concat_ws(' ', pe.full_name, e.title, o.display_name, o.canonical_domain)", terms) if terms else ("TRUE", [])
     rows = qa(conn, f"""
-        SELECT pe.id, pe.full_name, pe.work_email, pe.email_verification_status, pe.suppressed, pe.suppression_reason, pe.linkedin_url IS NOT NULL AS has_linkedin,
+        SELECT pe.id, pe.full_name, pe.work_email, pe.email_verification_status, pe.suppressed, pe.suppression_reason, pe.linkedin_url IS NOT NULL AS has_linkedin, pe.photo_url,
                e.title, e.buyer_lane, e.verification_status AS role_status, e.source_link_id IS NOT NULL AS from_sheets,
                o.id AS org_id, o.display_name AS org_name, o.country_code, o.segment, s.band, s.score, s.stopped,
                c.owner_id AS crm_owner_id, c.open_deals_count,
@@ -55,7 +55,7 @@ def people_rows(conn, p: Principal, q: str = "") -> list[dict[str, Any]]:
             systems.add("lemlist")
         eng = engagement([*(r["enrol_statuses"] or []), *(ACTIVITY_STATUS.get(t) for t in (r["activity_types"] or []))])
         out.append({"id": str(r["id"]), "name": r["full_name"], "title": r["title"], "lane": r["buyer_lane"], "role_verified": r["role_status"] == "verified",
-                    "email": email_state(r["work_email"], r["email_verification_status"]), "has_linkedin": r["has_linkedin"],
+                    "email": email_state(r["work_email"], r["email_verification_status"]), "has_linkedin": r["has_linkedin"], "photo_url": r["photo_url"],
                     "suppressed": bool(r["suppressed"]), "suppression_reason": r["suppression_reason"] if r["suppressed"] else None,
                     "company": {"id": str(r["org_id"]), "name": r["org_name"], "country": r["country_code"], "region": region_for(r["country_code"]), "segment": r["segment"],
                                 "band": r["band"] or "none", "score": float(r["score"]) if r["score"] is not None else None, "stopped": bool(r["stopped"])},

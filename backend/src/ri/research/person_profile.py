@@ -173,6 +173,14 @@ def _same_profile(url: str, linkedin: str | None) -> bool:
     return bool(linkedin) and normalise_linkedin(url) == normalise_linkedin(linkedin or "")
 
 
+def _own_photo(results: list[dict[str, Any]], linkedin: str | None, confident: bool) -> str | None:
+    """The profile picture from the person's own LinkedIn page (the address on record), when the model also judged the pages to be about this person."""
+    from ..enrichment.exa_people import profile_photo
+    if not (linkedin and confident):
+        return None
+    return next((p for r in results if _same_profile(r["url"], linkedin) and (p := profile_photo(r.get("image")))), None)
+
+
 def research_person(conn: Conn, person_id: str, *, searcher: ExaSearcher, call: Call, run: Callable[[Any], Any], now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     rec = recorded_person(conn, person_id)
@@ -207,4 +215,5 @@ def research_person(conn: Conn, person_id: str, *, searcher: ExaSearcher, call: 
                 "sources": [], "dropped": 0, "model": None, "tokens_in": 0, "tokens_out": 0}
     parsed, tin, tout, model = ask_json(call, run, SYSTEM, user_prompt(src, rec, now))
     content, dropped = verify_person(parsed, src, now)
-    return {"content": {**base, **content}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout}
+    return {"content": {**base, **content}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout,
+            "photo_url": _own_photo(results, rec.get("linkedin"), content["identity"]["confident"])}

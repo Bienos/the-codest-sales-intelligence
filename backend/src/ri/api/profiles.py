@@ -208,7 +208,7 @@ def _owner(conn, o: dict[str, Any]) -> dict[str, Any] | None:
 
 def account_people(conn, oid: str) -> list[dict[str, Any]]:
     rows = qa(conn, """
-        SELECT DISTINCT ON (pe.id) pe.id, pe.full_name, pe.linkedin_url, pe.work_email, pe.email_verification_status, pe.suppressed, pe.suppression_reason,
+        SELECT DISTINCT ON (pe.id) pe.id, pe.full_name, pe.linkedin_url, pe.photo_url, pe.work_email, pe.email_verification_status, pe.suppressed, pe.suppression_reason,
                e.title, e.buyer_lane, e.verification_status AS role_status, e.evidence_url, e.source_link_id IS NOT NULL AS from_sheets,
                (SELECT coalesce(jsonb_agg(jsonb_build_object('system', ps.system, 'detail', ps.detail) ORDER BY ps.first_seen_at), '[]'::jsonb)
                   FROM person_sources ps WHERE ps.person_id=pe.id) AS sources,
@@ -233,7 +233,7 @@ def account_people(conn, oid: str) -> list[dict[str, Any]]:
         seniority = lead.get("seniority") or (exa or {}).get("seniority") or title_seniority(r["title"])
         persona = lead.get("persona") or (exa or {}).get("persona")
         out.append({"id": str(r["id"]), "name": r["full_name"], "title": r["title"], "lane": r["buyer_lane"], "role_confirmed": r["role_status"] == "verified",
-                    "linkedin_url": r["linkedin_url"], "email": email_state(r["work_email"], r["email_verification_status"]), "has_email": bool(r["work_email"]),
+                    "linkedin_url": r["linkedin_url"], "photo_url": r["photo_url"], "email": email_state(r["work_email"], r["email_verification_status"]), "has_email": bool(r["work_email"]),
                     "suppressed": bool(r["suppressed"]), "suppression_reason": r["suppression_reason"] if r["suppressed"] else None,
                     "lead_list": lead or None, "seniority": seniority, "persona": persona,
                     "committee": committee_group(r["title"], seniority, persona, lead.get("committee_role")),
@@ -278,7 +278,7 @@ def register_profiles(app: FastAPI) -> None:
             o = _visible_org(conn, p, oid)
             s = q1(conn, "SELECT id, status, searches, exa_cost_usd, found, new_candidates, already_known, skipped, error, requested_by, created_at, finished_at "
                          "FROM people_searches WHERE organization_id=%s ORDER BY created_at DESC LIMIT 1", (o["id"],))
-            items = qa(conn, "SELECT id, name, title, persona, seniority, linkedin_url, snippet, company_match, status, person_id, created_at FROM people_candidates "
+            items = qa(conn, "SELECT id, name, title, persona, seniority, linkedin_url, photo_url, snippet, company_match, status, person_id, created_at FROM people_candidates "
                              "WHERE organization_id=%s AND status IN ('found','already_known','added') ORDER BY (status='found') DESC, company_match, created_at DESC LIMIT 60", (o["id"],))
             if items:
                 audit(conn, actor=p.email, operation="pii_read", record_type="people_candidates", record_id=str(o["id"]), detail={"count": len(items)})
@@ -339,7 +339,7 @@ def register_profiles(app: FastAPI) -> None:
         with tx(request) as conn:
             v = _visible_person(conn, p, pid)
             pid = str(v["id"])
-            pe = q1(conn, "SELECT id, full_name, linkedin_url, work_email, email_verification_status, suppressed, suppression_reason, created_at FROM people WHERE id=%s", (pid,))
+            pe = q1(conn, "SELECT id, full_name, linkedin_url, photo_url, work_email, email_verification_status, suppressed, suppression_reason, created_at FROM people WHERE id=%s", (pid,))
             where, params = org_scope_sql(p, "o.id")
             jobs = qa(conn, f"SELECT e.title, e.buyer_lane, e.verification_status, e.evidence_url, e.valid_from, e.valid_to, e.observed_at, o.id AS org_id, o.display_name, "   # noqa: S608
                             f"o.canonical_domain, o.country_code, o.segment FROM employment e JOIN organizations o ON o.id=e.organization_id WHERE e.person_id=%s AND ({where}) "
@@ -368,13 +368,13 @@ def register_profiles(app: FastAPI) -> None:
                            "relationship": o.get("relationship"),
                            "signal": {"rule_id": sig["rule_id"], "label": sig["label"], "summary": sig["summary"], "date": sig["happened_at"] or sig["published_at"],
                                       "source_url": sig["source_url"]} if sig else None}
-                colleagues = [{k: x[k] for k in ("id", "name", "title", "committee", "has_email", "seniority", "suppressed")}
+                colleagues = [{k: x[k] for k in ("id", "name", "title", "committee", "has_email", "seniority", "suppressed", "photo_url")}
                               for x in account_people(conn, oid) if x["id"] != pid][:12]
             ll_lead = lead or {}
             eng = engagement([*(e["status"] for e in enrol), *(ACTIVITY_STATUS.get(a["type"]) for a in activity)])
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=pid, detail={"view": "profile"})
             return {
-                "person": {"id": pid, "name": pe["full_name"], "linkedin_url": pe["linkedin_url"], "email": email_state(pe["work_email"], pe["email_verification_status"]),
+                "person": {"id": pid, "name": pe["full_name"], "linkedin_url": pe["linkedin_url"], "photo_url": pe["photo_url"], "email": email_state(pe["work_email"], pe["email_verification_status"]),
                            "has_email": bool(pe["work_email"]), "seniority": ll_lead.get("seniority") or title_seniority(jobs[0]["title"] if jobs else None),
                            "committee": committee_group(jobs[0]["title"] if jobs else None, ll_lead.get("seniority"), ll_lead.get("persona"), ll_lead.get("committee_role")),
                            "suppressed": bool(pe["suppressed"]), "suppression_reason": pe["suppression_reason"] if pe["suppressed"] else None, "created_at": pe["created_at"]},

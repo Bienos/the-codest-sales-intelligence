@@ -485,7 +485,7 @@ def test_every_email_counts_and_the_pages_connect(conn, env):
     d = r.json()
     assert "@kestrel.example" not in r.text and d["person"]["has_email"] is True and d["person"]["seniority"] == "Head / Director"
     assert d["company"]["id"] == oid and d["company"]["employees"] == 1800 and d["company"]["signal"] is None
-    assert {x["name"] for x in d["colleagues"]} == {"Ada Clarke", "Eve Lund"} and all(set(x) == {"id", "name", "title", "committee", "has_email", "seniority", "suppressed"} for x in d["colleagues"])
+    assert {x["name"] for x in d["colleagues"]} == {"Ada Clarke", "Eve Lund"} and all(set(x) == {"id", "name", "title", "committee", "has_email", "seniority", "suppressed", "photo_url"} for x in d["colleagues"])
     assert nomail in {x["id"] for x in d["colleagues"]}
 
 

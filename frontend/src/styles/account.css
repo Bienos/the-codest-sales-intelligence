@@ -13,6 +13,10 @@
 .mono-xs { width: 20px; height: 20px; font-size: 9px; }
 .mono-sm { width: 32px; height: 32px; font-size: 12px; }
 .mono-lg { width: 76px; height: 76px; font-size: 30px; }
+.mono.avatar.has-photo { overflow: hidden; background-color: var(--tint-1); }
+.mono.avatar.has-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 25%; display: block; }
+.mono.avatar.has-photo::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--tone, var(--navy)); }
+.mono.avatar.has-photo.mono-xs::after { height: 2px; }
 .mono.framed { border: 3px solid var(--white); margin: 0 6px 6px 0; }
 .mono.framed::after { content: ""; position: absolute; inset: -3px; border: 2px solid var(--pink); transform: translate(6px, 6px); z-index: -1; }
 
@@ -366,6 +370,8 @@ a.ac-cite:hover { border-color: var(--purple); color: var(--navy); background: v
 
 /* the global people list */
 .pl-person { display: flex; align-items: flex-start; gap: 10px; }
+.pl-mono.has-photo { position: relative; overflow: hidden; background: var(--tint-1); }
+.pl-mono.has-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 25%; display: block; }
 .pl-mono { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; background: var(--navy); color: var(--white); font: 900 11px/1 var(--font-head); }
 
 /* activity tab */

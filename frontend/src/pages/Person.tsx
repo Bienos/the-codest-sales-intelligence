@@ -86,7 +86,7 @@ export default function Person() {
         <span aria-hidden="true">/</span><span aria-current="page">{p.name}</span>
       </nav>
       <div className="ac-id">
-        <span className="ps-avatar"><Avatar name={p.name} committee={g} size="lg" /></span>
+        <span className="ps-avatar"><Avatar name={p.name} committee={g} size="lg" photo={p.photo_url} /></span>
         <div className="ac-name">
           <h1>{p.name}</h1>
           <p className="ps-role">{title ?? tr("Role not recorded")}{co && <> {tr("at")} <Link className="ps-co" to={`/accounts/${co.id}`}><Monogram name={co.name} size="xs" />{co.name}</Link></>}</p>
@@ -175,7 +175,7 @@ export default function Person() {
         </section>
         {co && colleagues.length > 0 && <section className="ac-panel kp" aria-labelledby="ps-co"><h2 id="ps-co">{tr("Other people at {}", co.name)}</h2>
           <ul className="kp-list">{colleagues.slice(0, 6).map((x: any) => <li key={x.id}>
-            <Avatar name={x.name} committee={x.committee} size="sm" />
+            <Avatar name={x.name} committee={x.committee} size="sm" photo={x.photo_url} />
             <div className="kp-who"><Link to={`/people/${x.id}`}>{x.name}</Link><span>{x.title || tr("Role not recorded")}</span></div>
             {x.has_email && <span className="kp-mail" title={tr("Email ✓")}><Ic.mail /><span className="ac-sr">{tr("Email ✓")}</span></span>}
           </li>)}</ul>

@@ -5,10 +5,19 @@ import { number, tr } from "../locale";
 import { Badge, Empty, Err, PageHeader, Skeleton } from "../components/ui";
 import { SHORT, SignalTag, signalName } from "../components/Signals";
 import { EmailMark, initials } from "./AccountDetail";
+
+/** The small mark in the people list: the person's LinkedIn photo when Exa found one (dropping back to initials if the picture no longer loads), else their initials. */
+function ListMono({ name, photo }: { name: string; photo?: string | null }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const shown = Boolean(photo) && failed !== photo;
+  return <span className={`pl-mono${shown ? " has-photo" : ""}`} aria-hidden="true">
+    {shown ? <img src={photo!} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(photo!)} /> : initials(name)}
+  </span>;
+}
 import { REGIONS } from "./targetMarket";
 
 type Person = {
-  id: string; name: string; title: string | null; email: "verified" | "unverified" | "none"; suppressed: boolean; suppression_reason: string | null;
+  id: string; name: string; photo_url?: string | null; title: string | null; email: "verified" | "unverified" | "none"; suppressed: boolean; suppression_reason: string | null;
   company: { id: string; name: string; country: string | null; region: string; segment: string | null; band: string; score: number | null; stopped: boolean };
   owner: { crm_owner_id: number | null; open_deals: number; mine: boolean };
   sources: string[]; engagement: string | null; engagement_label: string; last_activity_at: string | null; campaigns: number;
@@ -104,7 +113,7 @@ export default function People() {
       <div className="card flush table-wrap" tabIndex={0} role="region" aria-label={tr("People")}><table className="cards people-table"><thead><tr>
         <th>{tr("Person")}</th><th>{tr("Company")}</th><th>{tr("Buying signal")}</th><th>{tr("Email")}</th><th>{tr("Outreach")}</th></tr></thead><tbody>
         {data.items.map((p) => <tr key={p.id} className={p.suppressed ? "muted-row" : ""}>
-          <td><div className="pl-person"><span className="pl-mono" aria-hidden="true">{initials(p.name)}</span><div><b><Link to={`/people/${p.id}`}>{p.name}</Link></b><div className="small muted">{p.title || tr("Role not recorded")}</div>{p.suppressed && <Badge kind="bad">{tr("Do not contact")}</Badge>}</div></div></td>
+          <td><div className="pl-person"><ListMono name={p.name} photo={p.photo_url} /><div><b><Link to={`/people/${p.id}`}>{p.name}</Link></b><div className="small muted">{p.title || tr("Role not recorded")}</div>{p.suppressed && <Badge kind="bad">{tr("Do not contact")}</Badge>}</div></div></td>
           <td data-label={tr("Company")}><Link to={`/accounts/${p.company.id}`}>{p.company.name}</Link>
             <div className="small muted">{[p.company.country, p.company.segment].filter(Boolean).join(" · ")}</div></td>
           <td data-label={tr("Buying signal")}>{p.signal ? <><SignalTag s={{ rule_id: p.signal.rule_id, name: p.signal.name, strength: 0 }} />

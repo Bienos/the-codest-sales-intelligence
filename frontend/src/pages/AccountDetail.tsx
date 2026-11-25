@@ -57,9 +57,15 @@ export const COMMITTEE: Record<string, { label: string; one: string; hint: strin
 export const COMMITTEE_ORDER = ["decision", "technical", "procurement", "influencer"];
 const group = (g?: string | null) => (g && COMMITTEE[g] ? g : "influencer");
 
-/** A person's mark: initials on the colour of their part of the buying committee. */
-export function Avatar({ name, committee, size = "md" }: { name: string; committee?: string | null; size?: "xs" | "sm" | "md" | "lg" }) {
-  return <span className={`mono avatar mono-${size}`} style={{ background: COMMITTEE[group(committee)].color }} aria-hidden="true">{initials(name)}</span>;
+/** A person's mark: their LinkedIn photo when Exa research found one, otherwise initials on the colour of their part of the buying committee.
+ *  LinkedIn picture addresses expire after a while, so a picture that no longer loads drops back to the initials. The committee colour stays as a thin bar along the bottom of a photo. */
+export function Avatar({ name, committee, size = "md", photo }: { name: string; committee?: string | null; size?: "xs" | "sm" | "md" | "lg"; photo?: string | null }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const color = COMMITTEE[group(committee)].color;
+  const shown = Boolean(photo) && failed !== photo;
+  return <span className={`mono avatar mono-${size}${shown ? " has-photo" : ""}`} style={{ background: color, "--tone": color } as React.CSSProperties} aria-hidden="true">
+    {shown ? <img src={photo!} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(photo!)} /> : initials(name)}
+  </span>;
 }
 
 const I = (d: ReactNode) => ({ className = "" }: { className?: string }) => (
@@ -498,7 +504,7 @@ function WhyNow({ d, people, canPeople, canDraft, canScan, scanBusy, runScan, go
       <p className="wn-step-text">{stepText(ns, contact, reasons.length > 0)}</p>
       {ns?.kind === "lead_list" && <p className="wn-step-src">{tr("From your lead list")}</p>}
       {contact && <div className="wn-who">
-        <Avatar name={contact.name} committee={contact.committee} size="sm" />
+        <Avatar name={contact.name} committee={contact.committee} size="sm" photo={contact.photo_url} />
         <span><small>{tr("Start with")}</small><Link to={`/people/${contact.id}`}>{contact.name}</Link><span>{contact.title || tr("Role not recorded")}</span></span>
         <EmailMark has={Boolean(contact.has_email)} onNavy />
       </div>}
@@ -659,7 +665,7 @@ function KeyPeople({ people, goto, canSee }: { people: any[] | null; goto: (t: T
       <button type="button" onClick={() => goto("people")}>{tr("Find decision makers")}</button></> : <>
       <Coverage people={people} />
       <ul className="kp-list">{live.slice(0, 5).map((p) => <li key={p.id}>
-        <Avatar name={p.name} committee={p.committee} size="sm" />
+        <Avatar name={p.name} committee={p.committee} size="sm" photo={p.photo_url} />
         <div className="kp-who"><Link to={`/people/${p.id}`}>{p.name}</Link><span>{p.title || tr("Role not recorded")}</span></div>
         {p.has_email && <span className="kp-mail" title={tr("Email ✓")}><Ic.mail /><span className="ac-sr">{tr("Email ✓")}</span></span>}
       </li>)}</ul>
@@ -750,7 +756,7 @@ function FindPeople({ orgId, company, onAdded }: { orgId: string; company: strin
     <Err e={err} />
     {found.length > 0 && <ul className="fp-grid" aria-label={tr("People found")}>{found.map((c: any) => <li key={c.id} className="fp-card">
       <div className="pp-top">
-        <Avatar name={c.name} committee={c.committee} />
+        <Avatar name={c.name} committee={c.committee} photo={c.photo_url} />
         <div className="pp-who"><b className="pp-name">{c.name}</b><span className="pp-title">{c.title}</span></div>
         <LinkedIn url={c.linkedin_url} name={c.name} />
       </div>
@@ -779,7 +785,7 @@ function PersonCard({ p }: { p: any }) {
   const seniority = useful(p.seniority);
   return <li className={`pp-card${prio === "P1" ? " p1" : ""}${p.suppressed ? " off" : ""}`}>
     <div className="pp-top">
-      <Avatar name={p.name} committee={p.committee} />
+      <Avatar name={p.name} committee={p.committee} photo={p.photo_url} />
       <div className="pp-who"><Link className="pp-name" to={`/people/${p.id}`}>{p.name}</Link><span className="pp-title">{p.title || tr("Role not recorded")}</span></div>
       {prio && <span className={`ac-tag ${prio.toLowerCase()}`} title={tr("Contact priority on your lead list")}>{prio}</span>}
     </div>
@@ -1119,7 +1125,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
             <FitCells points={fit.points} />
             <span><b>{tr("{} of {} points in our favour", good, fit.points.length)}</b><small>{tr("How they fit us")}</small></span></button>}
           {canPeople && <button type="button" className="glance" onClick={() => goto("people")}>
-            {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 4).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" />)}{live.length > 4 && <span className="mono mono-sm more">+{live.length - 4}</span>}</span>
+            {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 4).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" photo={p.photo_url} />)}{live.length > 4 && <span className="mono mono-sm more">+{live.length - 4}</span>}</span>
               : <span className="glance-ic" aria-hidden="true"><Ic.people /></span>}
             <span><b>{peopleCount === 1 ? tr("1 person") : peopleCount ? tr("{} people", number(peopleCount)) : tr("No people yet")}</b>
               <small>{!peopleCount ? tr("Find decision makers with Exa") : deciders === 1 ? tr("1 decision maker") : tr("{} decision makers", deciders)}</small></span></button>}
