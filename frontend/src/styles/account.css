@@ -368,7 +368,7 @@ a.ac-cite:hover { border-color: var(--purple); color: var(--navy); background: v
 .pl-mono { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; background: var(--navy); color: var(--white); font: 900 11px/1 var(--font-head); }
 
 /* activity tab */
-.ac-subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; }
+.ac-subnav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 16px; }
 .ac-subnav .chip { margin: 0; }
 .ac-subnav-more { margin-left: 10px; padding-left: 14px; border-left: 1px solid var(--line); font-size: var(--fs-xs); color: var(--muted); }
 .ac-sub-purpose { margin-top: -6px; }
