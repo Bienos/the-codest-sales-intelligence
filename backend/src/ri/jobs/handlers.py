@@ -68,6 +68,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         except Exception:  # noqa: BLE001  (the import itself succeeded; the scheduler will keep relinking)
             conn.rollback()
             rl = {"checked": 0, "linked": 0}
+        _match_after_import(conn, res.run_id)
         return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile, "relinked": rl}
 
     def sheet_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
@@ -92,6 +93,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             conn.commit()
         except Exception:  # noqa: BLE001
             conn.rollback()
+        _match_after_import(conn, res.run_id)
         return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
 
     def account_brief(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
@@ -320,13 +322,39 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
     return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit,
-            "crm_sync": crm_sync, "lemlist_sync": lemlist_sync, "tender_summaries": tender_summaries, **_exa_research_jobs()}
+            "crm_sync": crm_sync, "lemlist_sync": lemlist_sync, "tender_summaries": tender_summaries, **_exa_research_jobs(), **_admin_ops_jobs()}
+
+
+def _match_after_import(conn: Conn, run_id: str | None) -> None:
+    """New company-match reviews from this import are looked at by the automatic matcher straight away."""
+    from ..identity.auto import after_import
+    try:
+        after_import(conn, run_id)
+        conn.commit()
+    except Exception:  # noqa: BLE001 - the hourly schedule picks them up anyway
+        conn.rollback()
 
 
 def _exa_research_jobs() -> dict[str, Callable[[Conn, dict], dict]]:
     """Exa research (company profile, person profile, find decision makers): interactive lane, budget-gated, outcome stored on its own row."""
     from ..research import profile_jobs
     return {"account_profile": profile_jobs.account_profile, "person_profile": profile_jobs.person_profile, "people_search": profile_jobs.people_search}
+
+
+def _admin_ops_jobs() -> dict[str, Callable[[Conn, dict], dict]]:
+    """Housekeeping that used to wait for a person: automatic company matching and the daily source test. Background lane (not in the
+    worker's interactive list); both commit as they go."""
+    def identity_autoresolve(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..identity.auto import run_job
+        return run_job(conn, job)
+
+    def sources_validate_daily(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..sources.autovalidate import run_daily
+        return run_daily(conn, by=job["payload"].get("by") or "system:daily-source-check")
+
+    identity_autoresolve.own_transactions = True  # type: ignore[attr-defined]
+    sources_validate_daily.own_transactions = True  # type: ignore[attr-defined]
+    return {"identity_autoresolve": identity_autoresolve, "sources_validate_daily": sources_validate_daily}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

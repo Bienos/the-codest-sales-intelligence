@@ -502,24 +502,13 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
 
     @app.post("/api/admin/identity-reviews/{rid}/resolve")
     def resolve_identity(rid: str, body: IdentityResolveIn, request: Request, p: Principal = Depends(require("identity.manage"))):
+        from ..identity.review import ReviewError, apply_decision        # the same code path the automatic matcher uses
         with tx(request) as conn:
-            r = q1(conn, "SELECT * FROM identity_reviews WHERE id=%s AND status='open'", (rid,))
-            if not r:
-                raise HTTPException(404, "review not found")
-            if body.decision == "link":
-                if not body.organization_id or body.organization_id not in [str(x) for x in r["candidate_org_ids"]]:
-                    raise HTTPException(422, "organization_id must be one of the candidates")
-                conn.execute("UPDATE account_source_links SET organization_id=%s WHERE id=%s", (body.organization_id, r["source_link_id"]))
-                status = "resolved_link"
-            elif body.decision == "new":
-                oid = conn.execute("INSERT INTO organizations(display_name, in_master_list) VALUES (%s,true) RETURNING id", (r["raw_company_name"],)).fetchone()["id"]
-                conn.execute("UPDATE account_source_links SET organization_id=%s WHERE id=%s", (oid, r["source_link_id"]))
-                body.organization_id, status = str(oid), "resolved_new"
-            else:
-                status = "resolved_reject"
-            conn.execute("UPDATE identity_reviews SET status=%s, resolved_org_id=%s, reviewer=%s, reviewer_note=%s, resolved_at=now() WHERE id=%s", (status, body.organization_id, p.email, body.note, rid))
-            audit(conn, actor=p.email, operation="identity_review_resolved", record_type="identity_review", record_id=rid, detail={"decision": body.decision, "note": body.note})
-            return {"status": status}
+            try:
+                r = apply_decision(conn, rid, body.decision, actor=p.email, note=body.note, organization_id=body.organization_id, resolved_by="person")
+            except ReviewError as exc:
+                raise HTTPException(exc.status, str(exc)) from exc
+            return {"status": r["status"]}
 
     @app.get("/api/admin/jobs")
     def admin_jobs(request: Request, p: Principal = Depends(require("admin.jobs"))):
@@ -592,4 +581,5 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     campaigns_api.register_campaigns(app, settings)
     from .buying_signals import register_buying_signals; register_buying_signals(app)      # noqa: E702
     from .profiles import register_profiles; register_profiles(app)      # noqa: E702  (company research, people, relationship, owner)
+    from .admin_ops import register as register_admin_ops; register_admin_ops(app)      # noqa: E702  (automatic matching, source checks, failures, usage)
     return app

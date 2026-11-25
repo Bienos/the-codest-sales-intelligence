@@ -107,40 +107,54 @@ def world(conn, db_url):
 
 
 def _items(body):
-    return [i for g in body["groups"] for i in g["items"]]
+    return [s for c in body["companies"] for s in c["signals"]]
+
+
+def _names(body):
+    return [c["organization"]["name"] for c in body["companies"]]
 
 
 def test_only_high_intent_signals_at_target_companies(world):
-    c, h, o = world["c"], world["h"], world["o"]
+    c, h = world["c"], world["h"]
     r = c.get("/api/buying-signals", headers=h("bdm"))
     assert r.status_code == 200
     body = r.json()
-    names = {i["organization"]["name"] for i in _items(body)}
+    names = set(_names(body))
     assert names == {"Kestrel Pay", "Fjord Bank"}
     # context-only news, companies outside the target market, another seller's account, a stopped account and stale news stay out
     assert not names & {"Launch Insurer", "Outside Fintech", "Owned Elsewhere", "Frozen Bank", "Old News Bank"}
-    assert body["totals"] == {"signals": 2, "companies": 2, "reachable": 1, "fresh": 2, "held_back": 1}
+    assert body["totals"] == {"companies": 2, "signals": 2, "reachable": 1, "fresh": 2, "strong": 0, "held_back": 1}
+    assert body["all"] == {"companies": 2, "signals": 2}
 
-    groups = {g["rule_id"]: g for g in body["groups"]}
-    assert set(groups) == {"COM-01", "PRG-06"}
-    funding = groups["COM-01"]
-    assert funding["meaning"] == ANGLES["COM-01"] and funding["companies"] == 1 and funding["reachable"] == 1
-    assert funding["who_to_contact"]
-    item = funding["items"][0]
-    assert item["more"] == 1                          # the older funding news at the same company is folded into one row
+    # one entry per company, strongest first: a funded payments programme (strength 2) before a funding round without a named build (strength 1)
+    assert _names(body) == ["Fjord Bank", "Kestrel Pay"]
+    fjord, kestrel = body["companies"]
+    assert (fjord["strength"], fjord["strength_reason"]) == (2, "clear")
+    assert (kestrel["strength"], kestrel["strength_reason"]) == (1, "early")
+    assert kestrel["kinds"] == 1 and kestrel["age_days"] == 10
+    item = kestrel["signals"][0]
+    assert item["rule_id"] == "COM-01"
+    assert item["more"] == 1                          # the older funding news at the same company is folded into one line
     assert item["intent"] == "business" and item["demand_tier"] == "D4"
     assert item["summary"].startswith("Kestrel Pay raises a Series B")
     assert item["evidence"]["url"] == "https://kestrelpay.example/funding"
     assert item["evidence"]["quote"] == item["summary"]
-    assert item["organization"]["people"] == 3 and item["organization"]["people_with_email"] == 1      # the opted-out person does not count
-    assert item["organization"]["list_priority"] == "P1" and item["organization"]["list_score"] == 96.0
     assert item["age_days"] == 10
-    assert groups["PRG-06"]["items"][0]["intent"] == "programme"
+    org = kestrel["organization"]
+    assert org["people"] == 3 and org["people_with_email"] == 1      # the opted-out person does not count
+    assert org["list_priority"] == "P1" and org["list_score"] == 96.0
+    assert fjord["signals"][0]["intent"] == "programme"
+
+    # every kind of signal in view, with how many companies have it, for the filter chips
+    kinds = {k["rule_id"]: k for k in body["kinds"]}
+    assert set(kinds) == {"COM-01", "PRG-06"}
+    assert kinds["COM-01"]["meaning"] == ANGLES["COM-01"] and kinds["COM-01"]["companies"] == 1 and kinds["COM-01"]["who_to_contact"]
+    assert kinds["PRG-06"]["companies"] == 1 and kinds["PRG-06"]["fresh"] == 1
 
 
 def test_buying_signals_filters_scope_and_permissions(world):
     c, h = world["c"], world["h"]
-    names = lambda q, who="bdm": {i["organization"]["name"] for i in _items(c.get(f"/api/buying-signals?{q}", headers=h(who)).json())}      # noqa: E731
+    names = lambda q, who="bdm": set(_names(c.get(f"/api/buying-signals?{q}", headers=h(who)).json()))      # noqa: E731
     assert names("region=nordics") == {"Fjord Bank"}
     assert names("rule=COM-01") == {"Kestrel Pay"}
     assert names("q=sepa") == {"Fjord Bank"}
@@ -150,6 +164,52 @@ def test_buying_signals_filters_scope_and_permissions(world):
     assert c.get("/api/buying-signals", headers=h("mkt")).status_code == 403
     assert c.get("/api/buying-signals?region=mars", headers=h("bdm")).status_code == 422
     assert c.get("/api/buying-signals?days=3", headers=h("bdm")).status_code == 422
+    assert c.get("/api/buying-signals?sort=bogus", headers=h("bdm")).status_code == 422
+
+
+def test_signals_grouped_by_company_with_kind_counts_and_sorting(world, conn):
+    c, h, o = world["c"], world["h"], world["o"]
+    event(conn, o["kestrel"], "Kestrel Pay", "payments", days=20)      # a second kind of signal at the same company
+    conn.commit()
+    get = lambda q="": c.get(f"/api/buying-signals?{q}", headers=h("bdm")).json()      # noqa: E731
+
+    body = get()
+    assert _names(body) == ["Kestrel Pay", "Fjord Bank"]            # two kinds of signal at once make Kestrel the strongest
+    kestrel = body["companies"][0]
+    assert (kestrel["strength"], kestrel["strength_reason"], kestrel["kinds"]) == (3, "several", 2)
+    assert [s["rule_id"] for s in kestrel["signals"]] == ["PRG-06", "COM-01"]      # both on one company entry, the stronger kind first
+    assert kestrel["age_days"] == 10                                 # how fresh the newest of them is
+    assert body["totals"]["strong"] == 1 and body["totals"]["signals"] == 3
+    assert {k["rule_id"]: k["companies"] for k in body["kinds"]} == {"PRG-06": 2, "COM-01": 1}
+    assert body["kinds"][0]["rule_id"] == "PRG-06"                   # the kind most companies have comes first
+
+    # picking a kind keeps every kind's count (they are the filters) and puts the picked kind first on each company
+    picked = get("rule=COM-01")
+    assert _names(picked) == ["Kestrel Pay"] and picked["rule"] == "COM-01"
+    assert [s["rule_id"] for s in picked["companies"][0]["signals"]] == ["COM-01", "PRG-06"]
+    assert {k["rule_id"]: k["companies"] for k in picked["kinds"]} == {"PRG-06": 2, "COM-01": 1}
+    assert picked["all"] == {"companies": 2, "signals": 3} and picked["totals"]["companies"] == 1
+
+    assert _names(get("sort=newest")) == ["Fjord Bank", "Kestrel Pay"]      # news from 3 days ago before news from 10 days ago
+    assert _names(get("sort=priority")) == ["Kestrel Pay", "Fjord Bank"]    # P1 before P2
+    assert get("sort=newest")["sort"] == "newest"
+
+
+def test_company_strength_levels():
+    from ri.api.buying_signals import _strength
+
+    def sig(rule, strength=2, intent="programme", tender=None):
+        return {"rule_id": rule, "strength": strength, "intent": intent, "tender": tender}
+
+    assert _strength([sig("SRC-01", 3, "outside_demand", {"deadline": None})]) == (3, "outside_demand")
+    assert _strength([sig("SRC-06", 2, "outside_demand")]) == (3, "outside_demand")
+    assert _strength([sig("CAP-01", 2, "need_likely")]) == (3, "need_likely")
+    assert _strength([sig("PRG-01", 3, "strong")]) == (3, "strong_kind")
+    assert _strength([sig("PRG-01")]) == (2, "clear")
+    assert _strength([sig("COM-01", 1, "business")]) == (1, "early")
+    assert _strength([sig("COM-01", 1, "business"), sig("MAN-01", 1, "leader")]) == (2, "several")
+    assert _strength([sig("COM-01", 1, "business"), sig("PRG-01")]) == (3, "several")
+    assert _strength([sig("PRG-01"), sig("PRG-01")]) == (2, "clear")      # the same kind twice is not two signals
 
 
 def test_account_list_filters_for_priority_email_and_verified_signal(world):

@@ -202,6 +202,10 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     from .renewals import recheck_awards
     step("renewals_refreshed", lambda: schedule_recent(conn, now))
     step("renewals_rechecked", lambda: recheck_awards(conn))
+    from .identity.auto import schedule as schedule_identity_auto
+    step("identity_auto_queued", lambda: schedule_identity_auto(conn, now))      # hourly while company matches wait for an automatic look
+    from .sources.autovalidate import schedule as schedule_source_check
+    step("source_check_queued", lambda: schedule_source_check(conn, now))        # once a day: test every source, switch on the safe ones that pass
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))

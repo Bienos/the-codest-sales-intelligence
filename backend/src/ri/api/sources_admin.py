@@ -87,7 +87,7 @@ def register(app: FastAPI) -> None:
         with tx(request) as conn:
             s = load(conn, sid)
             url = check_url(body.url, s["canonical_domain"])
-            cfg = {k: v for k, v in (s["config"] or {}).items() if k not in {"validation"}}
+            cfg = {k: v for k, v in (s["config"] or {}).items() if k not in {"validation", "auto"}}      # a new address needs a new test
             cfg.update({"url": url, "url_basis": f"set by {p.email}"})
             if body.selector:
                 cfg["selector"] = body.selector
