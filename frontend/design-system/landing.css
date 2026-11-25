@@ -21,23 +21,19 @@
 /* brighter, larger dots gather around the next step, so the grid itself glows there */
 .wgrid-glow { position: absolute; inset: 0; opacity: .6; background-image: conic-gradient(from 270deg at 4px 4px, #B87DFF 25%, transparent 0); background-size: 24px 24px; background-position: 10px 10px;
   -webkit-mask-image: radial-gradient(circle 320px at var(--nx) var(--ny), #000 0, rgba(0, 0, 0, .3) 45%, transparent 100%); mask-image: radial-gradient(circle 320px at var(--nx) var(--ny), #000 0, rgba(0, 0, 0, .3) 45%, transparent 100%); }
-/* the reading head: a band of brighter dots with a fading tail. The band moves right while its dots move left by the same
-   amount, so they stay on the grid; both are transforms, so the sweep costs no repaint. */
-.wgrid-sweep { position: absolute; top: 0; bottom: 0; left: 0; width: 22%; overflow: hidden; opacity: .6; animation: wgridSweep 12s linear infinite;
-  -webkit-mask-image: linear-gradient(90deg, transparent, rgba(0, 0, 0, .22) 62%, #000 93%, transparent); mask-image: linear-gradient(90deg, transparent, rgba(0, 0, 0, .22) 62%, #000 93%, transparent); }
-.wgrid-sweep::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: calc(100% / .22); animation: wgridSweepIn 12s linear infinite;
-  background-image: conic-gradient(from 270deg at 4px 4px, #B87DFF 25%, transparent 0); background-size: 24px 24px; background-position: 10px 10px; }
-@keyframes wgridSweep { from { transform: translateX(-100%); } to { transform: translateX(calc(100% / .22)); } }
-@keyframes wgridSweepIn { from { transform: translateX(22%); } to { transform: translateX(-100%); } }
-/* what the head reads: a flash, a ring, then the signal stays lit and slowly fades until the next pass */
-.wgrid-hit { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; background: var(--purple); opacity: .3; animation: wgridHit 12s linear infinite var(--d, 0s); }
-.wgrid-hit::after { content: ""; position: absolute; inset: -1px; border: 1.5px solid var(--purple); opacity: 0; animation: wgridRing 12s linear infinite var(--d, 0s); }
-@keyframes wgridHit { 0% { opacity: 1; background: var(--white); transform: scale(1.7); } 3% { background: var(--purple); transform: none; } 55% { opacity: 1; } 88%, 100% { opacity: .3; } }
-@keyframes wgridRing { 0% { opacity: .9; transform: none; animation-timing-function: cubic-bezier(.2, .7, .2, 1); } 13%, 100% { opacity: 0; transform: scale(4.5); } }
-.wgrid-next { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: var(--pink); opacity: 1; animation-name: wgridNext; }
-.wgrid-next::after { border-color: var(--pink); animation: smapPing 2.4s ease-out infinite; }
-@keyframes wgridNext { 0% { background: var(--white); transform: scale(1.9); } 4%, 100% { background: var(--pink); transform: none; } }
-.wgrid[data-live="false"] .wgrid-sweep, .wgrid[data-live="false"] .wgrid-sweep::before, .wgrid[data-live="false"] .wgrid-hit, .wgrid[data-live="false"] .wgrid-hit::after { animation-play-state: paused; }
+/* signals: a purple cell flashes, then a pulse hops along the grid, cell by cell, into the pink cell beside the sign-in card,
+   which flashes as each one lands. WatchGrid in Landing.tsx places the cells and routes and runs the timing (Web Animations). */
+.wgrid-trace { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: var(--purple); opacity: .32; }
+.wgrid-hit { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; background: var(--purple); opacity: .6; }
+.wgrid-hit[data-sig] { opacity: .45; }
+.wgrid-ring { position: absolute; inset: -1px; border: 1.5px solid var(--purple); opacity: 0; }
+.wgrid-next { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: var(--pink); opacity: 1; } .wgrid-next .wgrid-ring { border-color: var(--pink); }
+.wgrid-pulse { position: absolute; background: var(--white); opacity: 0; }
+.wgrid-pulse-0 { width: 6px; height: 6px; margin: -3px 0 0 -3px; box-shadow: 0 0 0 2px rgba(184, 125, 255, .45); }
+.wgrid-pulse-1 { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--purple); }
+.wgrid-pulse-2 { width: 4px; height: 4px; margin: -2px 0 0 -2px; background: var(--purple); }
+.wgrid-flash { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; background: #FF7AB4; opacity: 0; }
+.wgrid-ring-next { inset: auto; width: 10px; height: 10px; margin: -6px 0 0 -6px; border-color: var(--pink); }
 .land-hero-in { position: relative; z-index: 2; width: 100%; max-width: 1280px; margin: 0 auto; padding: 24px clamp(18px, 4vw, 40px) 0; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, 400px); gap: 56px; align-items: center; }
 .land-copy h1 { font-size: clamp(36px, 5vw, 66px); line-height: 1; max-width: 14ch; }
 .land-copy h1 .w { display: inline-block; opacity: 0; transform: translateY(.45em); animation: wordIn .7s cubic-bezier(.2, .7, .2, 1) forwards; }
@@ -208,7 +204,7 @@
   .land-jump { display: inline-flex; align-items: center; min-height: 40px; padding: 0 16px; background: var(--pink-solid); color: #fff; text-decoration: none; font: 800 12px var(--font-head); letter-spacing: .1em; text-transform: uppercase; box-shadow: 3px 3px 0 -1px var(--white), 3px 3px 0 0 var(--pink); }
   .land-hero { min-height: 0; padding-bottom: 96px; } .land-hero-in, .land-split { grid-template-columns: 1fr; gap: 36px; }
   .wgrid-glow { opacity: .4; -webkit-mask-image: radial-gradient(circle 110px at var(--nx) var(--ny), #000 0, rgba(0, 0, 0, .3) 45%, transparent 100%); mask-image: radial-gradient(circle 110px at var(--nx) var(--ny), #000 0, rgba(0, 0, 0, .3) 45%, transparent 100%); }
-  .dots { opacity: .15; } .wgrid-sweep { opacity: .45; }      /* the copy runs over the grid here: keep the dots quieter behind it */
+  .dots { opacity: .15; }      /* the copy runs over the grid here: keep the dots quieter behind it */
   .land-stick { position: static; } .land-cols { grid-template-columns: 1fr; }
   .demo { grid-template-columns: 1fr; gap: 20px; }
   .demo-steps { display: flex; overflow-x: auto; gap: 8px; scrollbar-width: none; margin: 0 -2px; padding: 0 2px 4px; } .demo-steps::-webkit-scrollbar { display: none; }
@@ -239,9 +235,10 @@
   [data-reveal] { opacity: 1; transform: none; }
   .demo-steps button.on::after { width: 100%; }
   .smap-mk, .smap-pm, .smap-card, .smap-next { transition: none !important; }
-  .wgrid-sweep, .wgrid-sweep::before { animation-delay: var(--at, -6s); animation-play-state: paused; }     /* the head stops at the next step */
-  .wgrid-hit, .wgrid-hit::after { animation: none; } .wgrid-hit { opacity: .8; } .wgrid-next { opacity: 1; }
-  .wgrid-next::after { animation: none; opacity: .55; transform: scale(2.6); }
+  /* still: the routes show, each pulse waits part-way along its route, and the pink cell keeps a ring */
+  .wgrid-trace { opacity: .5; } .wgrid-hit, .wgrid-hit[data-sig] { opacity: .85; }
+  .wgrid-pulse-0 { opacity: 1; } .wgrid-pulse-1 { opacity: .6; } .wgrid-pulse-2 { opacity: .3; }
+  .wgrid-next .wgrid-ring { opacity: .55; transform: scale(2.6); }
   .smap-pm::after { animation: none !important; }
   .smap-ping.smap-pick .smap-pm::after { opacity: .55; transform: scale(2.6); }
 }
