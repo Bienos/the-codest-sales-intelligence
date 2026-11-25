@@ -65,11 +65,53 @@ def quote_ok(quote: Any, text: str) -> bool:
     return isinstance(quote, str) and len(_norm(quote)) >= 12 and _norm(quote) in _norm(text)
 
 
+_AFTER_COMMA = re.compile(r'(?:"|\{|\[|-?\d|true\b|false\b|null\b)')
+
+
+def repair_json(s: str) -> str:
+    """Fixes the usual slips of a small model in JSON that is otherwise well formed: a raw double quote inside a string (a copied excerpt that
+    itself contains quotes) and raw line breaks inside strings. A double quote only ends a string when what follows is what JSON allows after
+    a string (a colon, a closing bracket, or a comma and then the next value); any other double quote inside a string is escaped."""
+    out: list[str] = []
+    i, n, in_str = 0, len(s), False
+    while i < n:
+        c = s[i]
+        if not in_str:
+            out.append(c)
+            in_str = c == '"'
+        elif c == "\\":
+            out.append(s[i:i + 2])
+            i += 1
+        elif c == '"':
+            j = i + 1
+            while j < n and s[j] in " \t\r\n":
+                j += 1
+            nxt = s[j] if j < n else ""
+            ends = nxt in (":", "}", "]", "")
+            if nxt == ",":
+                k = j + 1
+                while k < n and s[k] in " \t\r\n":
+                    k += 1
+                ends = k >= n or s[k] in "}]" or bool(_AFTER_COMMA.match(s, k))
+            out.append(c if ends else '\\"')
+            in_str = not ends
+        elif c in "\n\r\t":
+            out.append(" ")
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def parse_json(text: str) -> dict[str, Any]:
-    m = re.search(r"\{.*\}", text or "", re.S)
-    if not m:
+    text = text or ""
+    start = text.find("{")
+    if start < 0 or "}" not in text[start:]:
         raise ValueError("no JSON in model output")
-    out = json.loads(m.group(0))
+    try:
+        out, _ = json.JSONDecoder().raw_decode(text[start:])          # stops at the end of the first complete object, so a closing note is ignored
+    except json.JSONDecodeError:
+        out, _ = json.JSONDecoder().raw_decode(repair_json(text[start:text.rindex("}") + 1]))
     if not isinstance(out, dict):
         raise ValueError("model output is not an object")
     return out
@@ -87,7 +129,12 @@ def ask_json(call: Call, run: Callable[[Any], Any], system: str, user: str) -> t
                "Return the SAME content again as ONE valid JSON object and nothing else. Inside every string, escape each double quote as \\\" "
                "or use a single quote instead; never leave a raw double quote inside a string.")
         text2, tin2, tout2, model2 = run(call(system, fix))
-        return parse_json(text2), tin + tin2, tout + tout2, model2
+        try:
+            return parse_json(text2), tin + tin2, tout + tout2, model2
+        except (ValueError, json.JSONDecodeError) as exc2:
+            pos = getattr(exc2, "pos", 0) or 0
+            # the model wrote this from public web pages; keep the stretch around the failure so the next error is diagnosable
+            raise ValueError(f"model JSON still invalid after one repair ({exc2}); near: {text2[max(0, pos - 120):pos + 120]!r}") from exc2
 
 
 def _s(v: Any, cap: int) -> str | None:

@@ -378,14 +378,23 @@ def test_a_broken_json_answer_is_repaired_once_then_raised():
     async def call(system, user):
         calls.append(user)
         if len(calls) == 1:
-            return '{"about": {"text": "He said "hello" to us", "sources": ["W1"]}}', 100, 50, "fake"
+            return '{"about": {"text": "A payments company.", "sources": ["W1"]', 100, 50, "fake"          # cut off: nothing local can repair it
         return good, 10, 5, "fake"
     out, tin, tout, _ = ask_json(call, lambda c: asyncio.run(c), "sys", "user text")
     assert out["about"]["text"] == "A payments company." and (tin, tout) == (110, 55) and len(calls) == 2
-    assert "not valid JSON" in calls[1] and "hello" in calls[1]
+    assert "not valid JSON" in calls[1] and "A payments company" in calls[1]
 
     async def always_bad(system, user):
         return '{"about": ', 1, 1, "fake"
     import pytest
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="still invalid after one repair"):
         ask_json(always_bad, lambda c: asyncio.run(c), "sys", "u")
+
+
+def test_parse_json_survives_the_usual_small_model_slips():
+    from ri.research.company_profile import parse_json
+    assert parse_json('{"a": {"text": "He said "hello" to us", "sources": ["W1"]}}')["a"]["text"] == 'He said "hello" to us'
+    assert parse_json('{"a": "He said "go", then fled", "b": "x"}') == {"a": 'He said "go", then fled', "b": "x"}
+    assert parse_json('{"a": "line one\nline two"}')["a"] == "line one line two"
+    assert parse_json('Here you go:\n```json\n{"a": "x"}\n```\nNote: done {ok}') == {"a": "x"}
+    assert parse_json('{"a": "plain \\"escaped\\" quote", "b": 1, "c": true}')["b"] == 1
