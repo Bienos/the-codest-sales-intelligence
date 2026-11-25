@@ -188,9 +188,12 @@ class Ev(dict):
 
 
 def _ev(*, text: str, kind: str, weights: dict[str, float], url: str | None = None, day: str | None = None, key: str | None = None,
-        short: str | None = None, rank: int = 0) -> Ev:
+        short: str | None = None, rank: int = 0, say: dict[str, Any] | None = None) -> Ev:
+    """`say` tells the person brief how a seller could mention this in a first message: {"style": "statement" | "headline" | "contract" |
+    "jobs", ...}. Evidence without it (our own ideas, the lead list's judgements, live tenders) is never turned into an opener."""
     return Ev(text=_clip(text, 300), short=_clip(short or text, 120), source_url=_url(url), date=day, kind=kind,
-              weights={s: round(w, 1) for s, w in weights.items() if w > 0}, key=key or _url_key(url) or f"{kind}:{_clip(text, 80).casefold()}", rank=rank)
+              weights={s: round(w, 1) for s, w in weights.items() if w > 0}, key=key or _url_key(url) or f"{kind}:{_clip(text, 80).casefold()}", rank=rank,
+              say=say)
 
 
 def _story(text: Any, url: Any = None, day: str | None = None) -> str:
@@ -315,7 +318,7 @@ def evidence(g: dict[str, Any], today: date) -> tuple[list[Ev], dict[str, int], 
             factors[svc] = max(factors.get(svc, 0), .6 * f)
         base = 30 + 6 * int(s["strength"] or 1) + {"D1": 6, "D2": 3}.get(s["demand_tier"] or "", 0)
         items.append(_ev(text=s["summary"] or s["rule_name"] or "Buying signal", kind="signal", weights=_scale(base, factors, _fresh(d, today)),
-                         url=s["url"], day=d, key=f"event:{s['event_id']}", rank=0))
+                         url=s["url"], day=d, key=f"event:{s['event_id']}", rank=0, say={"style": "statement"} if s["summary"] else None))
     seen_events = {s["event_id"] for s in g["signals"]}
     for e in g["events"]:
         if e["event_id"] in seen_events:
@@ -323,7 +326,8 @@ def evidence(g: dict[str, Any], today: date) -> tuple[list[Ev], dict[str, int], 
         d = _day(e["at"])
         f = services_in(f"{e['event_type'] or ''} {e['summary'] or ''}")
         if f and e["summary"]:
-            items.append(_ev(text=e["summary"], kind="news", weights=_scale(18, f, _fresh(d, today)), url=e["url"], day=d, key=f"event:{e['event_id']}", rank=3))
+            items.append(_ev(text=e["summary"], kind="news", weights=_scale(18, f, _fresh(d, today)), url=e["url"], day=d, key=f"event:{e['event_id']}", rank=3,
+                             say={"style": "statement"}))
     for t in g["tenders"]:
         title = t["title_en"] or t["title"] or "Tender"
         deadline, pub = _day(t["deadline_at"]), _day(t["published_at"])
@@ -344,7 +348,8 @@ def evidence(g: dict[str, Any], today: date) -> tuple[list[Ev], dict[str, int], 
         who = ", ".join([w for w in (a["winners"] or []) if w][:2])
         items.append(_ev(text=f"A contract for {a['title'] or 'IT services'}{f' with {who}' if who else ''} is due to end around {_fmt_day(end)}; it may be tendered again.",
                          short=f"Contract ends {_fmt_day(end)}: {a['title'] or 'IT services'}", kind="tender",
-                         weights=_scale(30, {"delivery_team": 1.0, "team_extension": .5}), url=a["official_url"], day=end, rank=1))
+                         weights=_scale(30, {"delivery_team": 1.0, "team_extension": .5}), url=a["official_url"], day=end, rank=1,
+                         say={"style": "contract", "title": a["title"] or "IT services"}))
     jobs = [j for j in g["jobs"] if ENG_TITLE.search(f"{j['title']} {j['team'] or ''}")]
     if jobs:
         per: dict[str, list[dict[str, Any]]] = {}
@@ -359,7 +364,8 @@ def evidence(g: dict[str, Any], today: date) -> tuple[list[Ev], dict[str, int], 
             w = min(15 + 6 * len(js), 45)
             weights = {svc: w} if svc == "team_extension" else {svc: w, "team_extension": w * .6}
             items.append(_ev(text=f"{len(js)} open {'role' if len(js) == 1 else 'roles'} on their careers page, e.g. {eg}", kind="job", weights=weights,
-                             url=js[0]["url"], day=_day(js[0]["posted_at"] or js[0]["first_seen_at"]) or newest, key=f"jobs:{svc}", rank=1))
+                             url=js[0]["url"], day=_day(js[0]["posted_at"] or js[0]["first_seen_at"]) or newest, key=f"jobs:{svc}", rank=1,
+                             say={"style": "jobs", "n": len(js), "eg": _clip(js[0]["title"], 60)}))
         if contract:
             items.append(_ev(text=f"{len(contract)} contract or interim engineering {'role' if len(contract) == 1 else 'roles'}, e.g. {_clip(contract[0]['title'], 60)}",
                              kind="job", weights={"team_extension": 40}, url=contract[0]["url"], day=_day(contract[0]["posted_at"] or contract[0]["first_seen_at"]),
@@ -377,7 +383,7 @@ def evidence(g: dict[str, Any], today: date) -> tuple[list[Ev], dict[str, int], 
         d = _day(r.get("date"))
         f = services_in(f"{r.get('headline') or ''} {r.get('detail') or ''}")
         if f and r.get("headline") and (_age(d, today) or 0) <= 400:
-            items.append(_ev(text=r["headline"], kind="news", weights=_scale(22, f, _fresh(d, today)), url=r.get("source_url"), day=d, rank=2))
+            items.append(_ev(text=r["headline"], kind="news", weights=_scale(22, f, _fresh(d, today)), url=r.get("source_url"), day=d, rank=2, say={"style": "headline"}))
     for p in c.get("icp_points") or []:
         label, val = str(p.get("label") or ""), str(p.get("value") or "")
         if re.search(r"change|programme|program", label, re.I) and p.get("fit") == "good":
@@ -396,7 +402,8 @@ def evidence(g: dict[str, Any], today: date) -> tuple[list[Ev], dict[str, int], 
         v = str(m.get(col) or "").strip()
         if v and services_in(v):
             items.append(_ev(text=v, kind="lead_list", weights=_scale(base, services_in(v), _fresh(sig_day, today)), url=m.get("Primary Source URL"), day=sig_day,
-                             key=_story(v, m.get("Primary Source URL"), sig_day), rank=3))
+                             key=_story(v, m.get("Primary Source URL"), sig_day), rank=3,
+                             say={"style": "statement"} if col == "Strongest Buying Signal" else None))      # the other two are the list's own ideas
     seen_story: set[tuple[str, str]] = set()
     for x in g["log"]:
         d = _day(x.get("Event date") or x.get("Event Date"))
@@ -411,7 +418,7 @@ def evidence(g: dict[str, Any], today: date) -> tuple[list[Ev], dict[str, int], 
             continue
         conf = CONFIDENCE.get(str(x.get("Evidence confidence") or x.get("Evidence Confidence") or "").strip().casefold(), .6)
         items.append(_ev(text=what, short=f"{x.get('Signal type') or 'Lead list signal'}: {what}", kind="lead_list", weights=_scale(24 * conf, f, _fresh(d, today)),
-                         url=x.get("Source URL"), day=d, key=_story(what, x.get("Source URL"), d), rank=1))
+                         url=x.get("Source URL"), day=d, key=_story(what, x.get("Source URL"), d), rank=1, say={"style": "statement"}))
 
     off: dict[str, int] = {}
     watch: list[str] = []
@@ -593,10 +600,15 @@ def _why_now(ranked: list[dict[str, Any]], today: date) -> str | None:
 def solution_fit(conn: Conn, org_id: str) -> dict[str, Any]:
     """The company page's "What fits them best": every service with any evidence, ranked, with the evidence lines (date and source), proof
     we may use, why now, watch-outs and what we still do not know."""
+    return _solution(conn, org_id)[0]
+
+
+def _solution(conn: Conn, org_id: str) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any] | None]:
+    """(what solution_fit returns, the ranked services with all their evidence, the gathered records)."""
     today = datetime.now(timezone.utc).date()
     g = _gather(conn, [org_id]).get(str(org_id))
     if not g:
-        return {"services": [], "best": None, "why_now": None, "watch_outs": [], "unknowns": []}
+        return {"services": [], "best": None, "why_now": None, "watch_outs": [], "unknowns": []}, [], None
     items, off, watch = evidence(g, today)
     ranked = score(items, off)
     try:
@@ -617,7 +629,7 @@ def solution_fit(conn: Conn, org_id: str) -> dict[str, Any]:
                  "more": max(0, len(r["evidence"]) - 6), "proof": proof.get(r["service"], [])} for r in ranked]
     best = ranked[0]["service"] if ranked and ranked[0]["score"] >= 15 else None
     return _scrub({"services": services, "best": best, "why_now": _why_now(ranked, today),
-                   "watch_outs": list(dict.fromkeys([*watch, *_watch_more(g, rel)]))[:6], "unknowns": _unknowns(conn, str(org_id), g, ranked)})
+                   "watch_outs": list(dict.fromkeys([*watch, *_watch_more(g, rel)]))[:6], "unknowns": _unknowns(conn, str(org_id), g, ranked)}), ranked, g
 
 
 # ------------------------------------------------------------------ the person page
@@ -677,8 +689,103 @@ ROLE_AFFINITY = {
 TEAM_HINT = re.compile(r"\b(team|organisation|organization|department|unit) of (\d[\d,]*)\b|\b(\d[\d,]*)\+? (engineers|developers|people|staff|employees|technologists)\b", re.I)
 KIND_WORD = {"talk": "talk", "post": "post", "article": "article", "interview": "interview", "podcast": "podcast", "news": "news", "appointment": "appointment",
              "award": "award", "other": "update"}
-ASK_FOR = {"delivery_team": "who is building it, and is there room for an outside team?", "team_extension": "is the team big enough to deliver it this year?",
-           "ai_data": "what does it take to move that into production?", "qa": "how are you keeping release quality up while you ship it?"}
+# the question that follows the evidence in an opener, by the best-fitting service
+ASK_FOR = {"delivery_team": "Who is building it, and is there room for an outside team?", "team_extension": "Is your team big enough to deliver it this year?",
+           "ai_data": "What will it take to move that into production?", "qa": "How are you keeping release quality up while you ship it?"}
+ASK_JOBS = "Which of those roles is hardest to fill, and what is waiting on it?"
+ASK_CONTRACT = "Are you planning to tender it again, and what would you change this time?"
+KIND_PLURAL = {"signal": ("a buying signal we checked", "{} buying signals we checked"), "tender": ("a tender record", "{} tender records"),
+               "job": ("their hiring", "their hiring"), "news": ("a news item", "{} news items"), "profile": ("the Exa company profile", "the Exa company profile"),
+               "lead_list": ("your lead list", "your lead list")}
+_COMMON_FIRST = {"on", "in", "at", "the", "a", "an", "after", "following", "during", "from", "its", "this", "their", "new", "two", "three", "ten",
+                 "since", "by", "with", "as", "for", "under", "over", "according"}
+_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+_TEXT_DATE = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)? (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?(?:,? (\d{4}))?", re.I)
+
+
+def _statement(text: str) -> str:
+    """A stored sentence ready to follow "I read that": its first sentence, without the closing full stop, the first word in lower case
+    when it is an ordinary word (names keep their capital)."""
+    t = re.sub(r"\s+", " ", str(text or "")).strip()
+    t = re.split(r"(?<=[a-z0-9)])\. (?=[A-Z])", t)[0].rstrip(" .;:")
+    if len(t) > 190:
+        t = t[:190].rsplit(" ", 1)[0].rstrip(",;:-")
+    first = t.split(" ", 1)[0]
+    return (first.lower() + t[len(first):]) if first.lower() in _COMMON_FIRST else t
+
+
+def _same_story(a: str, b: str) -> bool:
+    """Two texts tell the same story when most of the longer words of the shorter one are in the other."""
+    wa, wb = ({w for w in re.findall(r"\w{4,}", x.casefold())} for x in (a, b))
+    return bool(wa and wb) and len(wa & wb) / min(len(wa), len(wb)) >= .6
+
+
+def _date_in_text(text: str, today: date) -> str | None:
+    """A date written in a stored sentence ("13 Nov", "2 November 2026"); without a year, the most recent such day that is not in the future."""
+    m = _TEXT_DATE.search(text or "")
+    if not m:
+        return None
+    day_n, month = int(m.group(1)), _MONTHS[m.group(2)[:3].lower()]
+    year = int(m.group(3)) if m.group(3) else today.year
+    try:
+        d = date(year, month, day_n)
+        if not m.group(3) and d > today:
+            d = date(year - 1, month, day_n)
+    except ValueError:
+        return None
+    return d.isoformat()
+
+
+def _opener(e: Ev, ask: str, label: str) -> dict[str, Any] | None:
+    """A first line a seller could send, built from one dated piece of evidence, with why it works. None when the evidence is not something
+    to quote to them (our own ideas, the lead list's judgements, a live tender: tenders are discussed only through their official channel)."""
+    say = e.get("say") or {}
+    when = _fmt_day(e["date"])
+    if say.get("style") == "statement":
+        text = f"I read that {_statement(e['text'])}. {ask}"
+        because = {"signal": f"A buying signal we checked, from {when}. It points to {label}.",
+                   "news": f"Their news from {when}. It points to {label}.",
+                   "lead_list": f"Your lead list's signal log, {when} (we have not checked it). It points to {label}."}.get(e["kind"], f"From {when}.")
+    elif say.get("style") == "headline":
+        text, because = f"I read about “{_clip(e['text'], 120)}”. {ask}", f"Their news from {when}, found by Exa. It points to {label}."
+    elif say.get("style") == "jobs":
+        n = say.get("n", 1)
+        roles = "an open engineering role" if n == 1 else f"{n} open engineering roles"
+        text, because = f"I noticed {roles} on your careers page, for example {say.get('eg')}. {ASK_JOBS}", f"Their careers page, {when}. Hiring points to {label}."
+    elif say.get("style") == "contract":
+        text, because = f"I understand the contract for {say.get('title')} is due to end around {when}. {ASK_CONTRACT}", "A contract award record with an end date."
+    else:
+        return None
+    return {"text": text, "because": because, "source_url": e.get("source_url"), "date": e.get("date")}
+
+
+def _fit_why(evs: list[Ev], service: str) -> str:
+    """Why this service fits, in one or two sentences: the strongest dated story, and what else backs it. When only the lead list backs it,
+    say so plainly and what would confirm it."""
+    label = LABEL[service]
+    real = [e for e in evs if e["kind"] != "records"]
+    if not real:
+        return "Fits what the company is doing."
+    dated = [e for e in real if e.get("date") and e.get("source_url")]
+    top = dated[0] if dated else real[0]
+    kinds = [e["kind"] for e in real]
+    confirm = "A buying signal we check, a job post or Exa research would confirm it."
+    if set(kinds) <= {"lead_list"}:
+        if not dated:
+            fit = next((e["text"].split(": ", 1)[-1] for e in real if e["text"].startswith("Your lead list sees a fit")), label)
+            return f"Only your lead list points to {label} so far (“{_clip(fit, 80)}”), with nothing dated behind it. {confirm}"
+        lead = _clip(_statement(top["text"]), 150)
+        return f"{lead[0].upper() + lead[1:]} ({_fmt_day(top['date'])}). Only your lead list backs this so far, and we have not checked it. {confirm}"
+    lead = _clip(_statement(top["text"]), 150) + (f" ({_fmt_day(top['date'])})" if top.get("date") and top["kind"] != "tender" else "")
+    lead = lead[0].upper() + lead[1:] if lead else lead
+    parts = []
+    for k in ("signal", "tender", "job", "news", "profile", "lead_list"):
+        n = kinds.count(k)
+        if n:
+            one, many = KIND_PLURAL[k]
+            parts.append(one if n == 1 else many.format(n))
+    backed = ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + parts[-1]
+    return f"{lead}. Backed by {backed}."
 
 
 def _lens_group(title: str | None, lead: dict[str, str], seniority: str | None) -> str:
@@ -706,7 +813,8 @@ def person_brief(conn: Conn, person_id: str) -> dict[str, Any]:
     from .api.profiles import title_seniority
     seniority = lead.get("seniority") or title_seniority(title)
     group = _lens_group(title, lead, seniority)
-    company = solution_fit(conn, job["org"]) if job else {"services": [], "best": None, "why_now": None, "watch_outs": [], "unknowns": []}
+    company, ranked, gathered = _solution(conn, job["org"]) if job else ({"services": [], "best": None, "why_now": None, "watch_outs": [], "unknowns": []}, [], None)
+    evidence_of = {r["service"]: r["evidence"] for r in ranked}
 
     # best fit for this person: the company's evidence, nudged towards what their role owns
     remit = " ".join([str(title or ""), str(lead.get("persona") or ""), str(cur.get("remit") or ""), *(str(f.get("label") or "") for f in pc.get("focus_areas") or [])])
@@ -714,11 +822,10 @@ def person_brief(conn: Conn, person_id: str) -> dict[str, Any]:
     best_fit = None
     if company["services"]:
         pick = max(company["services"], key=lambda s: (s["score"] + (20 if aff.get(s["service"]) else 0), -SERVICES.index(s["service"])))
-        top = pick["why"][0] if pick["why"] else None
-        why = f"{_clip(top['text'], 140)}{' (' + _fmt_day(top['date']) + ')' if top and top.get('date') and top['kind'] != 'tender' else ''}" if top else ""
+        why = _fit_why(evidence_of.get(pick["service"], []), pick["service"])
         if aff.get(pick["service"]) and pick["service"] != company["best"]:
-            why = f"Their role covers this area, and the company shows a need: {why}"
-        best_fit = {"service": pick["service"], "label": pick["label"], "why": why or "Fits what the company is doing.", "level": pick["level"], "score": pick["score"]}
+            why = f"{pick['label']} fits their role, and the company shows a need for it. {why}"
+        best_fit = {"service": pick["service"], "label": pick["label"], "why": _clip(why, 420), "level": pick["level"], "score": pick["score"]}
     elif any(aff.values()):
         s = next(x for x in ("ai_data", "qa", "delivery_team", "team_extension") if aff.get(x))
         best_fit = {"service": s, "label": LABEL[s], "why": "A suggestion from their role only: we hold no evidence of a need at the company yet.", "level": "weak", "score": 0}
@@ -730,40 +837,49 @@ def person_brief(conn: Conn, person_id: str) -> dict[str, Any]:
     if confident:
         cares.extend(f"Named in their own profile: {f['label']}" for f in (pc.get("focus_areas") or [])[:2] if f.get("label"))
 
-    # openers: their own dated activity first, then the company's dated evidence, then the lead list's note about them
+    # openers: their own dated activity first, then the company's dated evidence (the best fit's first), then the lead list's dated note
+    # about them. One story is used once, whichever source tells it. Each is a full sentence with its date and source behind it.
     openers: list[dict[str, Any]] = []
-    ask = ASK_FOR.get(svc or "delivery_team")
+    used: list[str] = []
+    ask = ASK_FOR.get(svc or "delivery_team", ASK_FOR["delivery_team"])
+
+    def fresh(text: str, url: str | None) -> bool:
+        return not any(_same_story(text, u) for u in used) and not (url and any(o["source_url"] == url for o in openers))
+
     if confident:
         for a in sorted(pc.get("recent_activity") or [], key=lambda x: str(x.get("date") or ""), reverse=True)[:2]:
             d = _day(a.get("date"))
-            if not a.get("title") or (_age(d, today) or 0) > 540:
+            if not a.get("title") or not d or (_age(d, today) or 0) > 540:
                 continue
-            openers.append({"text": f"Your {KIND_WORD.get(a.get('kind') or 'other', 'update')} “{_clip(a['title'], 90)}”{' (' + _fmt_day(d) + ')' if d else ''} caught my eye: {ask}",
-                            "because": "Their own public activity: specific, recent and about their work.", "source_url": _url(a.get("source_url")), "date": d})
-    for s in company["services"]:
-        for e in s["why"]:
+            kind = KIND_WORD.get(a.get("kind") or "other", "update")
+            openers.append({"text": f"I came across your {kind} “{_clip(a['title'], 90)}”. {ask}", "because": f"Their own {kind} from {_fmt_day(d)}: specific and about their work.",
+                            "source_url": _url(a.get("source_url")), "date": d})
+            used.append(str(a["title"]))
+    order = sorted(ranked, key=lambda r: r["service"] != svc)                 # the person's best fit first, then the company's other fits
+    for r in order:
+        for e in sorted(r["evidence"], key=lambda e: (not (e.get("date") and e.get("source_url")), -e["weights"].get(r["service"], 0))):
             if len(openers) >= 3:
                 break
-            if e["kind"] in ("signal", "tender", "news", "lead_list", "job") and e.get("date") and (_age(e["date"], today) or 0) <= 365 \
-                    and not any(o["source_url"] and o["source_url"] == e["source_url"] for o in openers):
-                line = _clip(e["text"], 150)
-                lead_in = "I saw" if e["kind"] in ("news", "signal", "lead_list") else "I noticed"
-                openers.append({"text": f"{lead_in}: {line}{'' if e['kind'] == 'tender' else ' (' + _fmt_day(e['date']) + ')'}. {ask[0].upper() + ask[1:]}",
-                                "because": f"Company evidence behind the best fit ({LABEL[s['service']]}).", "source_url": e["source_url"], "date": e["date"]})
+            if not e.get("date") or not (-200 <= (_age(e["date"], today) or 0) <= 365) or not fresh(e["text"], e.get("source_url")):
+                continue
+            o = _opener(e, ask if r["service"] == svc else ASK_FOR[r["service"]], LABEL[r["service"]])
+            if o:
+                openers.append(o)
+                used.append(e["text"])
         if len(openers) >= 2:
             break
-    said = " ".join(o["text"].casefold() for o in openers)
-    if len(openers) < 3 and lead.get("signal") and _clip(lead["signal"], 60).casefold().rstrip("…") not in said:
-        openers.append({"text": f"Open with what your lead list noted about them: {_clip(lead['signal'], 180)}", "because": "Your lead list's note about this person (not checked by us).",
-                        "source_url": None, "date": None})
-    if len(openers) < 3 and lead.get("angle"):
-        openers.append({"text": f"Angle from your lead list: {_clip(lead['angle'], 180)}", "because": "Your lead list's suggested angle.", "source_url": None, "date": None})
+    note = lead.get("signal") or ""
+    note_day = _date_in_text(note, today)
+    if len(openers) < 3 and note and note_day and (_age(note_day, today) or 0) <= 365 and fresh(note, None):
+        openers.append({"text": f"I read that {_statement(note)}. {ask}", "because": f"Your lead list's note about them, from {_fmt_day(note_day)} (we have not checked it).",
+                        "source_url": None, "date": note_day})
+        used.append(note)
     if len(openers) < 2 and confident:
         for t in (pc.get("talking_points") or [])[:2]:
             cite = next((c for c in t.get("sources") or [] if _url(c.get("source_url"))), {})
-            if t.get("point") and len(openers) < 3:
-                openers.append({"text": _clip(t["point"], 200), "because": _clip(t.get("why") or "From their Exa profile.", 200),
-                                "source_url": cite.get("source_url"), "date": _day(cite.get("published"))})
+            d = _day(cite.get("published"))
+            if t.get("point") and d and len(openers) < 3 and fresh(t["point"], cite.get("source_url")):
+                openers.append({"text": _clip(t["point"], 220), "because": _clip(t.get("why") or "From their Exa profile.", 200), "source_url": cite.get("source_url"), "date": d})
 
     questions = [*QUESTIONS[group]]
     if svc:
@@ -836,6 +952,9 @@ def person_brief(conn: Conn, person_id: str) -> dict[str, Any]:
         avoid.append("Our last email to them bounced: check the address before writing again.")
     elif eng in ("sent", "opened", "clicked", "pushed"):
         avoid.append("They are already in one of our email sequences: do not start a second one in parallel.")
+    live = [t for t in (gathered or {}).get("tenders", []) if t["status"] in ("open", "amended") and t["deadline_at"] and t["deadline_at"] > datetime.now(timezone.utc)]
+    if live:
+        avoid.append(f"Discussing their open tender “{_clip(live[0]['title_en'] or live[0]['title'], 80)}” outside its official channel: questions go through the tender.")
     avoid.append(AVOID[group])
     avoid.append("Client names, unless the case study is approved for use with clients, and any number we cannot point to.")
     for w in company["watch_outs"][:2]:

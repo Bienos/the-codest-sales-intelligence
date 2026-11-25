@@ -106,7 +106,7 @@ def world(conn, db_url):
     mk_user(conn, "bdm@x", "bdm", 555); mk_user(conn, "admin@x", "admin"); mk_user(conn, "comp@x", "compliance"); mk_user(conn, "analyst@x", "research_analyst")
     o = {"kestrel": org(conn, "Kestrel Pay"), "fjord": org(conn, "Fjord Bank", segment="Banking", country="NO"), "checks": org(conn, "Checkwell Insurance", segment="Insurance"),
          "quiet": org(conn, "Quiet Bank", segment="Banking"), "frozen": org(conn, "Frozen Bank", segment="Banking"), "theirs": org(conn, "Owned Elsewhere", owner=999),
-         "outside": org(conn, "Outside Retail", segment="Retail", eligibility="Out of scope")}
+         "outside": org(conn, "Outside Retail", segment="Retail", eligibility="Out of scope"), "listonly": org(conn, "Listonly Insurance", segment="Insurance")}
     # Kestrel: everything points at AI and data
     signal(conn, o["kestrel"], "CAP-05", "Kestrel Pay is hiring machine learning engineers for its fraud models", URLS["ai_sig"], days=8, strength=2, tier="D2")
     job(conn, o["kestrel"], "Senior Machine Learning Engineer", URLS["ml_job"])
@@ -137,12 +137,20 @@ def world(conn, db_url):
     negative(conn, o["frozen"], "NEG-04", hub)
     signal(conn, o["theirs"], "PRG-10", "Owned Elsewhere moves its AI pilot to production", "https://news.example/theirs", days=3)
     list_row(conn, o["outside"], "master_account", {"Company": "Outside Retail", "The Codest Service Fit": "Development", "Eligibility": "Out of scope"})
+    # Listonly: only the lead list says anything, and it tells the same story in its log and in its note about the person
+    list_row(conn, o["listonly"], "master_account", {"Company": "Listonly Insurance", "The Codest Service Fit": "AI"})
+    when = TODAY - timedelta(days=9)
+    story = f"Listonly Insurance said on {when.day} {when.strftime('%b')} that it is rolling out an AI claims assistant across its motor business."
+    list_row(conn, o["listonly"], "buying_signal_log", {"Company": "Listonly Insurance", "Verified event": story, "Event date": when.isoformat(), "Signal type": "AI implementation",
+                                                        "Service Fit": "AI", "Source URL": "https://press.example/listonly-ai", "Evidence confidence": "High"})
     p = {"ada": person(conn, o["kestrel"], "Ada Clarke", "Chief Technology Officer", email="ada@kestrel.example",
                        detail={"seniority": "Executive", "persona": "C-Level Technology", "committee_role": "Economic buyer", "priority": "P1",
-                               "signal": "Kestrel Pay told analysts it will double its AI team (mail ada@kestrel.example for details)."}),
+                               "signal": "Kestrel Pay told analysts it will double its AI team (mail ada@kestrel.example for details).",
+                               "angle": "Test whether the current initiative creates a scoped need; clarify engineering sponsor."}),
          "pia": person(conn, o["kestrel"], "Pia Lund", "IT Procurement Manager", detail={"persona": "Procurement & Vendor Management"}),
          "quinn": person(conn, o["quiet"], "Quinn Hale", "Head of QA"),
-         "tom": person(conn, o["theirs"], "Tom Ward", "CTO", email="tom@owned.example")}
+         "tom": person(conn, o["theirs"], "Tom Ward", "CTO", email="tom@owned.example"),
+         "lena": person(conn, o["listonly"], "Lena Berg", "Chief Digital Officer", detail={"signal": story, "angle": "Test whether the rollout needs outside engineers."})}
     person_profile(conn, p["ada"], o["kestrel"], {
         "identity": {"confident": True, "note": ""},
         "current_role": {"title": "CTO", "remit": "Leads a team of 120 engineers across payments and data. Reach her at ada.private@gmail.com.", "since": str(TODAY.year - 2),
@@ -227,6 +235,11 @@ def test_person_brief_is_grounded_and_role_aware(conn, world):
     assert facts["Team size hint"]["value"] == "team of 120" and "2 years" in facts["In this role since"]["value"]
     assert facts["Part in the buying decision"]["value"] == "Economic buyer" and facts["Part in the buying decision"]["source"] == "Lead list"
     assert isinstance(b["gaps"], list) and b["avoid"]
+    for op in b["openers"]:                                    # full sentences, each with its dated evidence behind it
+        assert op["date"] and op["text"][0].isupper() and op["text"].rstrip().endswith("?")
+        assert "lead list" not in op["text"].lower() and "angle" not in op["text"].lower()
+    assert not any("scoped need" in op["text"] for op in b["openers"])            # the lead list's analyst note is never quoted
+    assert "Backed by" in b["best_fit"]["why"] and "buying signal" in b["best_fit"]["why"]
     text = json.dumps(b)
     assert EMAIL.search(text) is None and "ada@kestrel.example" not in text and "gmail" not in text
 
@@ -237,6 +250,30 @@ def test_procurement_person_gets_a_procurement_lens(conn, world):
     assert any("supplier" in q.lower() for q in b["questions"])
     assert {f["label"]: f["value"] for f in b["facts"]}["Email"] == "No email"
     assert any("Exa" in g for g in b["gaps"]) and any("email address" in g.lower() for g in b["gaps"])
+
+
+def test_lead_list_only_fit_says_it_is_thin_and_tells_one_story_once(conn, world):
+    b = S.person_brief(conn, world["p"]["lena"])
+    assert b["best_fit"]["service"] == "ai_data"
+    why = b["best_fit"]["why"]
+    assert "rolling out an AI claims assistant" in why and "Only your lead list" in why and "would confirm it" in why
+    stories = [op for op in b["openers"] if "AI claims assistant" in op["text"]]
+    assert len(stories) == 1                                     # the signal log and the note about her are the same story: once
+    assert stories[0]["text"].startswith("I read that Listonly Insurance said on") and stories[0]["date"]
+    assert not any("outside engineers" in op["text"] for op in b["openers"])     # the angle note is not an opener
+    # with no dated story at all, the reason says plainly that nothing dated backs the fit
+    conn.execute("delete from legacy_account_research where kind='buying_signal_log' and organization_id=%s", (world["o"]["listonly"],))
+    conn.commit()
+    b = S.person_brief(conn, world["p"]["lena"])
+    assert "nothing dated behind it" in b["best_fit"]["why"] and "“AI”" in b["best_fit"]["why"]
+
+
+def test_live_tender_is_not_an_opener_but_a_caution(conn, world):
+    pid = person(conn, world["o"]["fjord"], "Ola Nordmann", "Head of Digital Channels")
+    conn.commit()
+    b = S.person_brief(conn, pid)
+    assert not any("tender" in op["text"].lower() for op in b["openers"])
+    assert any("open tender" in a and "official channel" in a for a in b["avoid"])
 
 
 def test_role_only_suggestion_is_labelled_as_such(conn, world):

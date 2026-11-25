@@ -229,7 +229,7 @@ export default function BuyingSignals({ canCampaign = false, canPeople = false }
       <Freshness state={freshness} updated={updated} />
     </header>
 
-    {data?.pulse ? <SignalPulse pulse={data.pulse} family={family} onFamily={(f) => update({ family: f === family ? "" : f, rule: "" })} canPeople={canPeople} />
+    {data?.pulse ? <SignalPulse pulse={data.pulse} family={family} onFamily={(f) => update({ family: f === family ? "" : f, rule: "" })} canPeople={canPeople} kinds={kinds} />
       : !data && !error ? <div className="bs-pulse is-empty" aria-hidden="true" /> : null}
 
     <section className="bs-tools" aria-label={tr("Search and filter")}>
@@ -404,7 +404,7 @@ function Freshness({ state, updated }: { state: ReturnType<typeof useFreshness>;
     {manual && <span className="bs-progress" role="progressbar" aria-label={tr("Sources checked")} aria-valuemin={0} aria-valuemax={manual.jobs} aria-valuenow={manual.done}>
       <i style={{ inlineSize: `${manual.jobs ? Math.max(4, (manual.done / manual.jobs) * 100) : 0}%` }} /></span>}
     {cadence && <p className="bs-fresh-sub">{cadence}{updated && now - updated < 10 * 60_000 ? ` ${tr("List updated at {}.", clock(new Date(updated)))}` : ""}</p>}
-    {f.blocked !== "permission" && <div className="bs-fresh-act">
+    {f.blocked !== "permission" && f.blocked !== "no_sources" && <div className="bs-fresh-act">
       <button type="button" className="bs-refresh" onClick={press} disabled={busy || !f.can_refresh} aria-describedby={reason || note ? noteId : undefined}>
         <IconRefresh />{busy ? tr("Starting") : manual ? tr("Checking") : tr("Refresh now")}</button>
     </div>}
@@ -415,8 +415,12 @@ function Freshness({ state, updated }: { state: ReturnType<typeof useFreshness>;
 /* ------------------------------------------------------------------------------------------------ the pulse at the top */
 
 /** The picture at the top: is anything new this week, which kinds of signal are busy, and the one signal to look at first. */
-function SignalPulse({ pulse, family, onFamily, canPeople }: { pulse: Pulse; family: string; onFamily: (f: string) => void; canPeople: boolean }) {
+function SignalPulse({ pulse, family, onFamily, canPeople, kinds }: { pulse: Pulse; family: string; onFamily: (f: string) => void; canPeople: boolean; kinds: Map<string, Kind> }) {
   const max = Math.max(1, ...pulse.families.map((f) => f.d90));
+  if (!pulse.companies) return <section className="bs-pulse is-quiet" aria-labelledby="bs-pulse-h">
+    <h2 id="bs-pulse-h" className="bs-k">{tr("Signal pulse")}</h2>
+    <p>{tr("No buying signal in the last {} days yet. Once sources are checked, this shows what is new each week, which kinds of signal are busy, and the strongest one to look at first.", pulse.days)}</p>
+  </section>;
   return <section className="bs-pulse" aria-labelledby="bs-pulse-h">
     <h2 id="bs-pulse-h" className="bs-vh">{tr("Signal pulse")}</h2>
     <div className="bs-pulse-week">
@@ -438,7 +442,7 @@ function SignalPulse({ pulse, family, onFamily, canPeople }: { pulse: Pulse; fam
           return <li key={f.family}>
             <button type="button" className={`bs-famrow${f.d90 ? "" : " is-zero"}`} aria-pressed={on} disabled={!f.d90 && !on} onClick={() => onFamily(f.family)}
               aria-label={label} title={tr(FAMILY[f.family]?.meaning ?? "")}>
-              <span className="bs-famrow-n"><Swatch family={f.family} />{familyName(f.family)}</span>
+              <span className="bs-famrow-n"><Swatch family={f.family} />{familyName(f.family, true)}</span>
               <span className="bs-meter" aria-hidden="true">
                 {f.d90 > 0 && <i className="w90" style={{ inlineSize: `${(f.d90 / max) * 100}%` }} />}
                 {f.d30 > 0 && <i className="w30" style={{ inlineSize: `${(f.d30 / max) * 100}%` }} />}
@@ -451,7 +455,7 @@ function SignalPulse({ pulse, family, onFamily, canPeople }: { pulse: Pulse; fam
       </ul>
     </div>
 
-    <TopSignal top={pulse.top} canPeople={canPeople} />
+    <TopSignal top={pulse.top} canPeople={canPeople} meaning={pulse.top ? kinds.get(pulse.top.signal.rule_id)?.meaning : undefined} />
   </section>;
 }
 
@@ -459,13 +463,13 @@ function SignalPulse({ pulse, family, onFamily, canPeople }: { pulse: Pulse; fam
 function WeekColumns({ weeks }: { weeks: Pulse["weeks"] }) {
   const [hot, setHot] = useState<number | null>(null);
   const max = Math.max(1, ...weeks.map((w) => w.news));
-  const W = 260, H = 64, slot = W / weeks.length, bar = Math.min(12, slot - 4);
+  const W = 260, H = 84, slot = W / weeks.length, bar = Math.min(12, slot - 4);
   const peak = weeks.reduce((best, w, i) => (w.news > weeks[best].news ? i : best), 0);
   const label = (w: Pulse["weeks"][number], i: number) => tr("{}: {} at {}", i === weeks.length - 1 ? tr("This week") : tr("Week of {}", fmtDate(w.start)),
     w.news === 1 ? tr("1 piece of news") : tr("{} pieces of news", number(w.news)), counted(w.companies, ["company", "companies"], ["firmie", "firmach", "firmach"]));
   const total = weeks.reduce((n, w) => n + w.news, 0);
   return <div className="bs-weeks">
-    <svg viewBox={`0 0 ${W} ${H + 14}`} preserveAspectRatio="none" role="img" tabIndex={0}
+    <svg viewBox={`0 0 ${W} ${H + 14}`} role="img" tabIndex={0}
       aria-label={tr("News per week for the last 13 weeks: {} in all, {} this week. Use the arrow keys to read each week.", number(total), number(weeks[weeks.length - 1]?.news ?? 0))}
       onKeyDown={(e) => {
         if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); setHot((h) => Math.max(0, Math.min(weeks.length - 1, (h ?? weeks.length) + (e.key === "ArrowRight" ? 1 : -1)))); }
@@ -490,7 +494,7 @@ function WeekColumns({ weeks }: { weeks: Pulse["weeks"] }) {
   </div>;
 }
 
-function TopSignal({ top, canPeople }: { top: Top | null; canPeople: boolean }) {
+function TopSignal({ top, canPeople, meaning }: { top: Top | null; canPeople: boolean; meaning?: string }) {
   if (!top) return <div className="bs-pulse-top is-none">
     <p className="bs-k">{tr("Strongest new signal")}</p>
     <p className="bs-top-none">{tr("Nothing new in the last 30 days. New signals appear here as sources are checked.")}</p>
@@ -503,6 +507,7 @@ function TopSignal({ top, canPeople }: { top: Top | null; canPeople: boolean }) 
       {top.organization.country && <span>{countryName(top.organization.country)}</span>}</p>
     <p className="bs-top-k"><Swatch ruleId={s.rule_id} /><b>{signalName(s.rule_id)}</b><span className="bs-top-str"><Bars n={top.company_strength} />{level}</span></p>
     <p className="bs-top-t">{said(s, top.organization.name)}</p>
+    {meaning && <p className="bs-top-why">{tr(meaning)}</p>}
     <p className="bs-top-f"><time dateTime={s.happened ?? undefined} title={s.happened ? fmtDate(s.happened) : undefined}>{ago(s.happened)}</time>
       {s.tender?.deadline && <span>{tr("Deadline {}", fmtDate(s.tender.deadline))}</span>}
       <Link to={`/accounts/${top.organization.id}?event=${s.event_id}`}>{tr("Open company")} →</Link>
@@ -632,7 +637,7 @@ function SignalDetail({ s, org, kind }: { s: Signal; org: Org; kind?: Kind }) {
   const why = s.fit?.reason && s.fit.level !== "none" ? s.fit.reason : kind?.meaning ? tr(kind.meaning) : null;
   return <li className="bs-sd">
     <p className="bs-sd-k"><Swatch ruleId={s.rule_id} /><b>{signalName(s.rule_id, kind?.name)}</b>
-      <time className={fresh ? "is-fresh" : ""} dateTime={s.happened ?? undefined}>{fresh && <i className="bs-new" aria-hidden="true" />}{ago(s.happened) || tr("Date unknown")}{s.happened && <span> · {fmtDate(s.happened)}</span>}</time>
+      <time className={fresh ? "is-fresh" : ""} dateTime={s.happened ?? undefined}>{fresh && <i className="bs-new" aria-hidden="true" />}{ago(s.happened) || tr("Date unknown")}{s.happened && <span className="bs-sd-date">· {fmtDate(s.happened)}</span>}</time>
       {s.more > 0 && <span className="bs-sd-more">{tr("and {} earlier", number(s.more))}</span>}</p>
     <p className="bs-sd-t">{said(s, org.name)}</p>
     {s.tender?.deadline && <p className="bs-sd-dl">{tr("Tender deadline")} <b>{fmtDateTime(s.tender.deadline)}</b></p>}
@@ -681,7 +686,7 @@ function CompanyCard({ c, kinds, canPeople, canCampaign }: { c: Company; kinds: 
       {c.signals.length > 1 && <p className="bs-card-also">{tr("Also")}: {c.signals.slice(1).map((s) => signalName(s.rule_id, kinds.get(s.rule_id)?.name)).join(", ")}</p>}
     </div>
     <dl className="bs-card-facts">
-      <div><dt>{tr("Email")}</dt><dd><Reach org={org} canPeople={canPeople} /></dd></div>
+      <div><dt className="bs-vh">{tr("Email")}</dt><dd><Reach org={org} canPeople={canPeople} /></dd></div>
       {org.best_fit && <div><dt>{tr("Best fit")}</dt><dd title={org.best_fit.reason ?? undefined}>{tr(org.best_fit.name)}</dd></div>}
     </dl>
     <footer className="bs-card-f">

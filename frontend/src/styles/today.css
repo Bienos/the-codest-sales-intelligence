@@ -255,6 +255,8 @@
   .td-newlist-t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   .td-newlist li > .td-onlist { grid-column: 2; justify-self: start; }
   .td-work { grid-template-columns: minmax(0, 1fr); margin-top: 14px; }
+  .td-detail:not(.has-item) { order: -1; }
+  .td button.td-next-t { justify-content: flex-start; min-height: 48px; }
   .td button.td-row { min-height: 64px; }
   .td button.td-row.is-sel { background: var(--white); box-shadow: none; }
   .td button.td-row.is-sel::after { display: none; }
