@@ -79,7 +79,6 @@
 .land-top .brand-sub, .land-top .land-copy .eyebrow, .land-top .watching-k { color: var(--on-navy-muted); }
 .land-top .land-hero { min-height: clamp(550px, 70svh, 680px); padding: 32px 0 64px; background: radial-gradient(ellipse at 84% 25%, #363071 0, transparent 51%), var(--navy); }
 .land-top .land-hero-in { gap: clamp(26px, 6vw, 85px); }
-.land-top .field { opacity: .8; mask-image: linear-gradient(90deg, transparent 30%, #000 63%); }
 .land-top .land-copy h1 { margin: 12px 0 16px; color: var(--white); max-width: 15ch; text-wrap: balance; letter-spacing: -.025em; line-height: 1.02; }
 .land-top .land-copy p { color: var(--on-navy); line-height: 1.55; max-width: 47ch; }
 .land-top .watching-w { color: var(--white); }

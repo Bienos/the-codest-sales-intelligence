@@ -85,8 +85,12 @@ type Hit = { x: number; y: number; next?: boolean };
 
 /** Where the head finds signals: in the open space around the copy and the card, never under the text. */
 function hitCells(w: number, h: number, card: Box, text: Box, link: Box): Hit[] {
-  if (w <= 980) return [{ x: card.r - 24, y: card.t - 20, next: true }, { x: w * 0.86, y: text.t / 2 }, { x: Math.max(link.r + 48, w * 0.72), y: (link.t + link.b) / 2 },
-    { x: w * 0.2, y: (card.b + h) / 2 }, { x: w * 0.64, y: (card.b + h) / 2 }];
+  if (w <= 980) {
+    const out: Hit[] = [{ x: card.r - 24, y: card.t - 20, next: true }, { x: w * 0.86, y: text.t / 2 }, { x: Math.max(link.r + 48, w * 0.72), y: (link.t + link.b) / 2 },
+      { x: w * 0.2, y: (card.b + h) / 2 }, { x: w * 0.64, y: (card.b + h) / 2 }];
+    if (w - card.r > 120) out.push({ x: (card.r + w) / 2, y: card.t + (card.b - card.t) * 0.3 }, { x: card.r + (w - card.r) * 0.7, y: card.t + (card.b - card.t) * 0.78 });
+    return out;
+  }
   const gl = text.r + 36, gr = card.l - 36, gx = (f: number) => gl + (gr - gl) * f, cw = card.r - card.l;
   const out: Hit[] = [{ x: card.l + cw * 0.2, y: card.t * 0.5 }, { x: card.l + cw * 0.76, y: card.t * 0.28 },
     { x: card.l + cw * 0.58, y: (card.b + h) / 2 }, { x: text.l / 2, y: h * 0.88 }];
