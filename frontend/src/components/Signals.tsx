@@ -15,6 +15,19 @@ export const SHORT: Record<string, string> = {
 };
 export const signalName = (id: string, fallback?: string) => tr(SHORT[id] ?? fallback ?? id);
 
+/** The families of buying signal (the letters before the dash), in the order pages show them, with a plain name and one line on what they mean. */
+export const FAMILIES = ["SRC", "CAP", "PRG", "MAN", "COM", "REL"] as const;
+export const FAMILY: Record<string, { name: string; meaning: string }> = {
+  SRC: { name: "Tenders and buying routes", meaning: "They are buying now: a tender, a supplier panel, or a partner chosen for a programme." },
+  CAP: { name: "Hiring", meaning: "They are hiring more engineers than they can easily find." },
+  PRG: { name: "Funded projects", meaning: "A funded programme with named systems is under way." },
+  MAN: { name: "New technology leaders", meaning: "A new technology leader is setting the roadmap and the team model." },
+  COM: { name: "Funding and deals", meaning: "Money raised or a deal done that comes with build or integration work." },
+  REL: { name: "People we know", meaning: "Someone who knows us has moved to a new role or asked for help." },
+};
+export const familyOf = (ruleId?: string | null) => (ruleId ?? "").slice(0, 3).toUpperCase();
+export const familyName = (family: string) => tr(FAMILY[family]?.name ?? family);
+
 export type SignalRef = { rule_id: string; name: string; strength: number; group?: string; meaning?: string };
 export type SignalOption = { rule_id: string; group: string; name: string; strength: number; what_it_means: string; how_to_spot: string | null; who_to_contact: string | null;
   accounts: number; reachable_accounts: number; latest: string | null };

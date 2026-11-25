@@ -200,7 +200,8 @@ def _best_fit(conn: Conn, ids: list[str]) -> dict[str, dict[str, Any]]:
 
 
 def _shape_fit(fit: Any) -> dict[str, Any] | None:
-    """Whatever the fit engine returns for one company, as {name, reason, key}: the page needs a short service name and one line why."""
+    """One company's best fit as {key, name, reason, level, score}: the page needs a short service name and one line why.
+    ``best_fit_many`` returns {service, label, score, level, why}; other shapes are read leniently so the page never breaks on a change."""
     if fit is None:
         return None
     if isinstance(fit, list):
@@ -208,18 +209,20 @@ def _shape_fit(fit: Any) -> dict[str, Any] | None:
         if fit is None:
             return None
     if isinstance(fit, str):
-        return {"key": None, "name": fit, "reason": None}
+        return {"key": None, "name": fit, "reason": None, "level": None, "score": None}
     if not isinstance(fit, dict):
         return None
     inner = fit.get("solution") if isinstance(fit.get("solution"), dict) else fit
-    name = inner.get("short_name") or inner.get("name") or inner.get("title") or fit.get("name") or fit.get("service")
+    name = inner.get("label") or inner.get("short_name") or inner.get("name") or inner.get("title") or fit.get("name") or fit.get("service")
     if not name:
         return None
-    reason = fit.get("reason") or fit.get("why") or fit.get("summary")
+    reason = fit.get("why") or fit.get("reason") or fit.get("summary")
     if isinstance(reason, list):
         reason = "; ".join(str(x) for x in reason[:2]) or None
-    return {"key": inner.get("key") or inner.get("id") or fit.get("key"), "name": str(name),
-            "reason": str(reason) if reason else None}
+    level = fit.get("level")
+    return {"key": inner.get("service") or inner.get("key") or inner.get("id") or fit.get("key"), "name": str(name),
+            "reason": str(reason) if reason else None, "level": level if level in ("strong", "possible", "weak") else None,
+            "score": fit.get("score") if isinstance(fit.get("score"), (int, float)) else None}
 
 
 def _sort_key(sort: str):

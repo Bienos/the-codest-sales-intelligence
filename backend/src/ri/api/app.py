@@ -591,7 +591,9 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from . import campaigns as campaigns_api
     campaigns_api.register_campaigns(app, settings)
     from .buying_signals import register_buying_signals; register_buying_signals(app)      # noqa: E702
+    from .refresh import register_refresh; register_refresh(app)      # noqa: E702  (Buying signals: how fresh, and "Refresh now")
     from .profiles import register_profiles; register_profiles(app)      # noqa: E702  (company research, people, relationship, owner)
     from .admin_ops import register as register_admin_ops; register_admin_ops(app)      # noqa: E702  (automatic matching, source checks, failures, usage)
     from .today import register_today; register_today(app)      # noqa: E702  (Today: who to contact today, and why)
+    from .solutions import register_solutions; register_solutions(app)      # noqa: E702  (what fits them best; the person's sales brief)
     return app

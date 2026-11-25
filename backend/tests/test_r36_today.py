@@ -227,6 +227,11 @@ def test_at_most_three_tenders_in_the_first_seven_and_the_rest_wait_in_the_queue
     queued = [a.get("buyer") or a["organization"]["name"] for a in b["queue"] if a["kind"] == "tender"]
     assert queued[:2] == ["Buyer 3", "Buyer 4"] and "Tender Bank" in queued
     assert b["glance"]["open_tenders"] == 5
+    # a tender dealt with today still counts: the next tender does not slip into its place, the rest of the list stays put
+    first = b["actions"][0]
+    world["c"].post("/api/today/brief/items", headers=world["h"]("bdm"), json={"key": first["key"], "outcome": "done", "kind": "tender", "slot": "today"})
+    after = _brief(world)
+    assert [a["key"] for a in after["actions"]] == [a["key"] for a in b["actions"][1:]]
 
 
 def test_nothing_urgent_points_to_the_top_of_the_lead_list(world, conn):
@@ -328,11 +333,12 @@ def test_follow_ups_for_people_who_clicked_but_did_not_answer(world, conn):
 def test_best_fit_service_when_the_fit_engine_is_there(world, monkeypatch):
     oid = world["o"]["p1"]
     fake = types.ModuleType("ri.solutions")
-    fake.best_fit_many = lambda conn, ids: {i: {"key": "team_extension", "name": "Team extension", "why": "Hiring ten engineers"} for i in ids if i == oid}
+    fake.best_fit_many = lambda conn, ids: {i: {"service": "team_extension", "label": "Team extension", "score": 70, "level": "strong",
+                                                "why": "Hiring ten engineers"} for i in ids if i == oid}
     monkeypatch.setitem(sys.modules, "ri.solutions", fake)
     b = _brief(world)
     prime = next(a for a in b["actions"] if a["organization"]["id"] == oid)
-    assert prime["fit"] == {"key": "team_extension", "name": "Team extension", "why": "Hiring ten engineers"}
+    assert prime["fit"] == {"service": "team_extension", "name": "Team extension", "level": "strong", "why": "Hiring ten engineers"}
     assert all(a["fit"] is None for a in b["actions"] if a["organization"]["id"] != oid)
 
     def broken(conn, ids):

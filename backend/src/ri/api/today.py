@@ -32,6 +32,7 @@ also the tracking of what was acted on.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import logging
 import re
 from datetime import date, datetime, timedelta, timezone
@@ -327,13 +328,12 @@ def _contacts(conn: Conn, p: Principal, ask_for: dict[str, str | None]) -> dict[
 
 
 def _fits(conn: Conn, oids: list[str]) -> dict[str, dict[str, Any]]:
-    """The best-fit service for each company, from the fit engine (``ri.solutions.best_fit_many``) when it is installed. Anything it
-    cannot answer is simply left out: the page works without it."""
+    """The best-fit service for each company, from the fit engine (``ri.solutions.best_fit_many``: {org id: {service, label, level,
+    why}}) when it is installed. Anything it cannot answer is simply left out: the page works without it."""
     if not oids:
         return {}
     try:
-        from .. import solutions  # type: ignore[attr-defined]
-        best_fit_many = solutions.best_fit_many
+        best_fit_many = importlib.import_module("ri.solutions").best_fit_many
     except (ImportError, AttributeError):
         return {}
     try:
@@ -342,17 +342,13 @@ def _fits(conn: Conn, oids: list[str]) -> dict[str, dict[str, Any]]:
     except Exception:       # noqa: BLE001 - optional enrichment of the page
         log.warning("today: best-fit services unavailable", exc_info=True)
         return {}
-    items = raw.items() if isinstance(raw, dict) else ((str((x or {}).get("organization_id")), x) for x in (raw or []))
     out: dict[str, dict[str, Any]] = {}
-    for oid, fit in items:
-        if isinstance(fit, list):
-            fit = fit[0] if fit else None
+    for oid, fit in (raw or {}).items() if isinstance(raw, dict) else ():
         if not isinstance(fit, dict):
             continue
-        name = _clean(fit.get("name") or fit.get("label") or fit.get("title") or fit.get("solution"))
-        if name:
-            out[str(oid)] = {"key": fit.get("key") or fit.get("id"), "name": name,
-                             "why": _clean(fit.get("why") or fit.get("reason") or fit.get("summary")) or None}
+        name = _clean(fit.get("label") or fit.get("name"))
+        if name and fit.get("level") != "weak":
+            out[str(oid)] = {"service": fit.get("service"), "name": name, "level": fit.get("level"), "why": _clean(fit.get("why")) or None}
     return out
 
 
@@ -559,12 +555,15 @@ def brief(conn: Conn, p: Principal, *, now: datetime | None = None) -> dict[str,
         if oid:
             companies.add(oid)
         eligible.append({k: v for k, v in c.items() if k != "rank"})
-    limit = max(0, DO_LIMIT - sum(d["slot"] == "today" for d in done_today))
+    done_kinds = [d["kind"] for d in done_today if d["slot"] == "today"]
+    limit = max(0, DO_LIMIT - len(done_kinds))
     caps = {"tender": TENDER_CAP, "follow_up": FOLLOW_CAP}
     actions: list[dict[str, Any]] = []
     rest: list[dict[str, Any]] = []
     for c in eligible:
-        if len(actions) < limit and not (c["kind"] in caps and sum(a["kind"] == c["kind"] for a in actions) >= caps[c["kind"]]):
+        # what was dealt with today still counts towards the caps, so the rest of the list stays as it was this morning
+        used = sum(a["kind"] == c["kind"] for a in actions) + done_kinds.count(c["kind"])
+        if len(actions) < limit and not (c["kind"] in caps and used >= caps[c["kind"]]):
             actions.append(c)
         else:
             rest.append(c)

@@ -17,6 +17,7 @@ const REL: Record<string, string> = { none: "No relationship", prospect: "Prospe
 /** Our services, by the key the fit engine sends. Anything else is read from its wording. */
 const SVC: Record<string, typeof Ic.mail> = { team_extension: Ic.teamExt, staff_augmentation: Ic.teamExt, delivery_team: Ic.delivery, ai_data: Ic.data, ai_services: Ic.data, qa: Ic.qa };
 const svcIcon = (s?: string | null): typeof Ic.mail => SVC[s ?? ""] ?? (/ai|data/i.test(s ?? "") ? Ic.data : /qa|test/i.test(s ?? "") ? Ic.qa : /deliver/i.test(s ?? "") ? Ic.delivery : Ic.teamExt);
+const SVC_LABEL: Record<string, string> = { delivery_team: "Delivery team", team_extension: "Team extension", ai_data: "AI and data", qa: "QA and testing" };
 const isUrl = (u?: string | null) => /^https?:\/\//i.test(String(u ?? "").trim());
 
 /** A few line icons this page needs that the shared set does not have (same drawing rules). */
@@ -34,9 +35,20 @@ const Lc = {
 
 /** What GET /api/people/{id}/brief returns: a short, sourced brief for one person. */
 type Opener = { text: string; because: string; source_url?: string | null; date?: string | null };
-type Fact = { label: string; value: string; source?: string | null };
-type Brief = { lens: { role?: string | null; cares_about: string[]; committee?: string | null }; best_fit?: { service?: string | null; label: string; why?: string | null } | null;
-  openers: Opener[]; questions: string[]; facts: Fact[]; gaps: string[]; avoid: string[] };
+type Fact = { label: string; value: string; source?: string | null; source_url?: string | null };
+type Brief = { lens: { role?: string | null; cares_about: string[]; committee?: string | null; committee_key?: string | null };
+  best_fit?: { service?: string | null; label: string; why?: string | null; level?: string | null; score?: number | null } | null;
+  openers: Opener[]; questions: string[]; facts: Fact[]; gaps: string[]; avoid: string[]; company?: { id: string; name: string; best?: string | null; why_now?: string | null } | null };
+/** Facts the masthead already shows; the brief's ledger leaves them out so nothing is said twice. */
+const HERO_FACTS = new Set(["Role", "Seniority", "Priority", "Email", "Our contact so far"]);
+const LEVEL: Record<string, [string, number]> = { strong: ["Strong fit", 3], possible: ["Possible fit", 2], weak: ["Weak fit", 1] };
+/** A lead-list note offered as an opener often repeats the dated company evidence already in an opener above it: show that line once. */
+const plain = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "");
+const dedupe = (xs: Opener[]) => xs.filter((o, i) => {
+  if (o.source_url) return true;
+  const note = plain(o.text.slice(o.text.indexOf(": ") + 2)).slice(0, 80);
+  return note.length < 40 || !xs.slice(0, i).some((p) => plain(p.text).includes(note));
+});
 
 type Role = { title: string; company?: string | null; from?: number | null; to?: number | null; current?: boolean; cite?: any };
 const yearOf = (v: any): number | null => { const m = /\b(19|20)\d{2}\b/.exec(String(v ?? "")); return m ? Number(m[0]) : null; };
@@ -77,16 +89,20 @@ function CopyButton({ text, what }: { text: string; what: string }) {
     }
     setDone(true); window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setDone(false), 2200);
   };
-  return <button type="button" className={`sb-copy${done ? " done" : ""}`} onClick={copy} aria-label={done ? tr("Copied") : tr("Copy {}", what)}>
-    {done ? <Ic.check /> : <Lc.copy />}<span aria-hidden="true">{done ? tr("Copied") : tr("Copy")}</span><span className="ac-sr" role="status">{done ? tr("Copied") : ""}</span>
-  </button>;
+  return <>
+    <button type="button" className={`sb-copy${done ? " done" : ""}`} onClick={copy} aria-label={tr("Copy {}", what)}>
+      {done ? <Ic.check /> : <Lc.copy />}<span aria-hidden="true">{done ? tr("Copied") : tr("Copy")}</span>
+    </button>
+    <span className="ac-sr" role="status">{done ? tr("Copied") : ""}</span>
+  </>;
 }
 
 /** Where a fact came from: a link when it is a page, otherwise the name of our own record. */
-function Source({ s }: { s?: string | null }) {
-  if (!s) return null;
-  const href = isUrl(s) ? safeHref(s) : undefined;
-  return href ? <a className="ac-cite" href={href} target="_blank" rel="noreferrer noopener">{host(s)} ↗</a> : <span className="ac-cite rec">{tr(s)}</span>;
+function Source({ s, url }: { s?: string | null; url?: string | null }) {
+  const u = url ?? (isUrl(s) ? s : null);
+  const href = u ? safeHref(u) : undefined;
+  if (href) return <a className="ac-cite" href={href} target="_blank" rel="noreferrer noopener" title={s && !isUrl(s) ? tr(s) : undefined}>{host(u)} ↗</a>;
+  return s ? <span className="ac-cite rec">{tr(s)}</span> : null;
 }
 
 /** The sales brief: what this person cares about, what to offer, how to open, what to ask, and what we know against what we still need. */
@@ -98,22 +114,29 @@ function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; firs
   </header>;
   if (!b) return <section className="sb" aria-labelledby="sb-h" aria-busy={!err}>{head}
     <div className="sb-body">{err ? <Err e={err} onRetry={retry} /> : <Skeleton rows={4} label={tr("Writing the brief")} />}</div></section>;
-  const g = b.lens.committee && COMMITTEE[b.lens.committee] ? b.lens.committee : null;
+  const key = [b.lens.committee_key, b.lens.committee].find((k) => k && COMMITTEE[k]) ?? null;
+  const gLabel = key ? tr(COMMITTEE[key].one) : b.lens.committee ? tr(b.lens.committee) : null;
   const gaps = [...b.gaps, ...extraGaps.filter((x) => !b.gaps.some((y) => y.toLowerCase() === x.toLowerCase()))];
-  const Fit = svcIcon(b.best_fit?.service ?? b.best_fit?.label);
+  const facts = b.facts.filter((f) => !HERO_FACTS.has(f.label));
+  const openers = dedupe(b.openers);
+  const fit = b.best_fit;
+  const Fit = svcIcon(fit?.service ?? fit?.label);
+  const level = fit?.level ? LEVEL[fit.level] : undefined;
   return <section className="sb" aria-labelledby="sb-h">{head}
     <div className="sb-top">
       <div className="sb-lens">
         <h3>{tr("What matters to {}", first)}</h3>
-        {(b.lens.role || g) && <p className="sb-role">{b.lens.role}{g && <span className="sb-grp" style={{ "--g": COMMITTEE[g].color } as React.CSSProperties}><i aria-hidden="true" />{tr(COMMITTEE[g].one)}</span>}</p>}
-        {b.lens.cares_about.length > 0 ? <ul className="sb-cares">{b.lens.cares_about.map((x, i) => <li key={i}>{x}</li>)}</ul>
+        {(b.lens.role || gLabel) && <p className="sb-role">{b.lens.role && <span>{b.lens.role}</span>}
+          {gLabel && <span className="sb-grp" style={{ "--g": key ? COMMITTEE[key].color : "var(--navy)" } as React.CSSProperties}><i aria-hidden="true" />{gLabel}</span>}</p>}
+        {b.lens.cares_about.length > 0 ? <ul className="sb-cares">{b.lens.cares_about.map((x, i) => <li key={i}>{tr(x)}</li>)}</ul>
           : <p className="small m-0">{tr("Not enough known about the role yet.")}</p>}
       </div>
       <div className="sb-fit">
         <h3>{tr("Best fit from The Codest")}</h3>
-        {b.best_fit ? <>
-          <p className="sb-svc"><span className="sb-svc-ic" aria-hidden="true"><Fit /></span>{b.best_fit.label}</p>
-          {b.best_fit.why && <p className="sb-why">{b.best_fit.why}</p>}
+        {fit ? <>
+          <p className="sb-svc"><span className="sb-svc-ic" aria-hidden="true"><Fit /></span>{tr(fit.label)}</p>
+          {level && <p className="sb-level"><Strength n={level[1]} />{tr(level[0])}</p>}
+          {fit.why && <p className="sb-why">{tr(fit.why)}</p>}
         </> : <p className="sb-why">{tr("No clear fit yet. Ask about their engineering plans first.")}</p>}
       </div>
     </div>
@@ -121,15 +144,15 @@ function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; firs
     <div className="sb-part">
       <h3><Ic.quote />{tr("Ways to open")}</h3>
       <p className="ac-purpose">{tr("Each one rests on something you can point to. Copy one and make it your own.")}</p>
-      {b.openers.length ? <ol className="sb-open">{b.openers.map((o, i) => <li key={i}>
+      {openers.length ? <ol className="sb-open">{openers.map((o, i) => <li key={i}>
         <span className="sb-n" aria-hidden="true">{i + 1}</span>
         <div className="sb-o">
           <p className="sb-line">{o.text}</p>
-          {o.because && <p className="sb-because"><b>{tr("Why this works:")}</b> {o.because}</p>}
           <div className="sb-ev">
             {o.date && <span className="sb-date"><Lc.cal />{fmtDay(o.date)}</span>}
             {o.source_url && safeHref(o.source_url) ? <a className="ac-cite" href={safeHref(o.source_url)} target="_blank" rel="noreferrer noopener">{host(o.source_url)} ↗</a>
-              : <span className="ac-cite rec">{tr("Our records")}</span>}
+              : <span className="ac-cite rec">{/lead list/i.test(o.because) ? tr("Your lead list") : tr("Our records")}</span>}
+            {o.because && <span className="sb-because">{tr(o.because)}</span>}
             <CopyButton text={o.text} what={tr("opener {}", i + 1)} />
           </div>
         </div>
@@ -140,12 +163,12 @@ function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; firs
       <div className="sb-part">
         <h3><Lc.ask />{tr("Questions to ask")}</h3>
         <p className="ac-purpose">{tr("To find the need, the budget and who decides.")}</p>
-        {b.questions.length ? <ol className="sb-q">{b.questions.map((q, i) => <li key={i}>{q}</li>)}</ol> : <p className="small m-0">{tr("None yet.")}</p>}
+        {b.questions.length ? <ol className="sb-q">{b.questions.map((q, i) => <li key={i}>{tr(q)}</li>)}</ol> : <p className="small m-0">{tr("None yet.")}</p>}
       </div>
-      <div className="sb-part">
+      <div className="sb-part sb-avoid-part">
         <h3><Ic.alert />{tr("Avoid")}</h3>
         <p className="ac-purpose">{tr("What is likely to put {} off.", first)}</p>
-        {b.avoid.length ? <ul className="sb-avoid">{b.avoid.map((a, i) => <li key={i}><Ic.cross />{a}</li>)}</ul> : <p className="small m-0">{tr("Nothing in particular.")}</p>}
+        {b.avoid.length ? <ul className="sb-avoid">{b.avoid.map((a, i) => <li key={i}><Ic.cross />{tr(a)}</li>)}</ul> : <p className="small m-0">{tr("Nothing in particular.")}</p>}
       </div>
     </div>
 
@@ -153,13 +176,13 @@ function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; firs
       <div className="sb-part">
         <h3><Ic.check />{tr("What we know")}</h3>
         <p className="ac-purpose">{tr("Facts we hold, each with where it came from.")}</p>
-        {b.facts.length ? <dl className="sb-facts">{b.facts.map((f, i) => <div key={i}><dt>{f.label}</dt><dd>{f.value} <Source s={f.source} /></dd></div>)}</dl>
-          : <p className="small m-0">{tr("Nothing beyond the name and role yet.")}</p>}
+        {facts.length ? <dl className="sb-facts">{facts.map((f, i) => <div key={i}><dt>{tr(f.label)}</dt><dd><span>{f.value}</span><Source s={f.source} url={f.source_url} /></dd></div>)}</dl>
+          : <p className="small m-0">{tr("Nothing beyond what the top of the page shows.")}</p>}
       </div>
       <div className="sb-part">
         <h3><Lc.eye />{tr("Still to find out")}</h3>
         <p className="ac-purpose">{tr("Ask or check these before you propose anything.")}</p>
-        {gaps.length ? <ul className="sb-gaps">{gaps.map((x, i) => <li key={i}>{x}</li>)}</ul> : <p className="small m-0">{tr("No open questions.")}</p>}
+        {gaps.length ? <ul className="sb-gaps">{gaps.map((x, i) => <li key={i}>{tr(x)}</li>)}</ul> : <p className="small m-0">{tr("No open questions.")}</p>}
       </div>
     </div>
   </section>;
@@ -195,7 +218,7 @@ function LinkList({ rows, label }: { rows: LinkRow[]; label: string }) {
 }
 
 /** The company card in the rail: who they are, how they sit with us, the strongest reason to call now, and every useful link. */
-function CompanyCard({ co, company, acc, ctx, cres, fit, others }: { co: any; company: any; acc: any; ctx: any[]; cres: any; fit: Brief["best_fit"] | undefined; others: any[] }) {
+function CompanyCard({ co, company, acc, ctx, cres, best, others }: { co: any; company: any; acc: any; ctx: any[]; cres: any; best?: string | null; others: any[] }) {
   const a = acc?.account;
   const lp: Record<string, string> = acc?.list_profile ?? {};
   const sig = strongest(acc, company);
@@ -225,7 +248,7 @@ function CompanyCard({ co, company, acc, ctx, cres, fit, others }: { co: any; co
     ...(supplier && safeHref(supplier) ? [{ href: safeHref(supplier), icon: Ic.key, label: tr("Supplier registration"), detail: host(supplier) }] : []),
     ...sources,
   ];
-  const Fit = svcIcon(fit?.service ?? fit?.label);
+  const Fit = svcIcon(best);
   return <section className="ps-co" aria-labelledby="ps-co-h">
     <div className="ps-co-top" data-mark={initials(co.name)}>
       <span className="ps-co-eyebrow">{tr("Works at")}</span>
@@ -239,7 +262,7 @@ function CompanyCard({ co, company, acc, ctx, cres, fit, others }: { co: any; co
       <div className="ps-co-chips">
         <span className={`ps-chip prio${prio ? ` ${String(prio).toLowerCase()}` : " none"}`}>{prio ? <><b>{prio}</b>{tr("Lead list")}{score != null ? ` · ${tr("score {}", score)}` : ""}</> : tr("Not on your lead list")}</span>
         <span className={`rel-badge on-navy ${rel ?? "unset"}`}><i aria-hidden="true" />{rel ? tr(REL[rel] ?? rel) : tr("Relationship not recorded")}</span>
-        {fit && <span className="ps-chip fit" title={tr("Best fit from The Codest")}><Fit />{fit.label}</span>}
+        {best && <span className="ps-chip ps-svc" title={tr("Best fit for the company")}><Fit /><span className="ac-sr">{tr("Best fit for the company")}: </span>{tr(SVC_LABEL[best] ?? best)}</span>}
       </div>
     </div>
     <div className="ps-co-body">
@@ -275,9 +298,9 @@ function Colleagues({ co, people, me }: { co: any; people: any[]; me: { name: st
     <h2 id="ps-team-h">{tr("Who else to know at {}", co.name)}</h2>
     <p className="ac-purpose">{tr("Colleagues on your list, by their part in the buying decision. An empty square is a gap to fill.")}</p>
     <ul className="ps-cov" aria-label={tr("Buying committee coverage")}>
-      {groups.map(([g, xs]) => { const Icon = COMMITTEE_ICON[g]; const n = xs.length + (me.committee === g ? 1 : 0);
-        return <li key={g} className={n ? "" : "gap"} style={{ "--g": COMMITTEE[g].color } as React.CSSProperties} title={tr(COMMITTEE[g].hint)}>
-          <Icon /><b>{number(n)}</b><span>{tr(COMMITTEE[g].label)}</span></li>; })}
+      {groups.map(([g, xs]) => { const Icon = COMMITTEE_ICON[g]; const n = xs.length, self = me.committee === g;
+        return <li key={g} className={n || self ? "" : "gap"} style={{ "--g": COMMITTEE[g].color } as React.CSSProperties} title={tr(COMMITTEE[g].hint)}>
+          <Icon /><b>{number(n)}</b><span>{tr(COMMITTEE[g].label)}{self && <span className="ac-sr"> {tr("(not counting {})", me.name)}</span>}</span></li>; })}
     </ul>
     {groups.filter(([, xs]) => xs.length).map(([g, xs]) => <div key={g} className="ps-grp" style={{ "--g": COMMITTEE[g].color } as React.CSSProperties}>
       <h3>{tr(COMMITTEE[g].label)}<span className="ps-grp-n">{xs.length}</span></h3>
@@ -303,7 +326,7 @@ function ResearchInvite({ r, first, canRun, start, busy, err }: { r: any; first:
       <div><p className="m-0"><b>{tr("Not researched yet.")}</b> {tr("Exa reads the LinkedIn profile, public talks, articles and news that name them. Professional information only; a few US cents from the monthly Exa budget.")}</p>
         {!r.setup?.ready && <p className="small muted m-0 mt-1">{tr("Research is not switched on yet: an administrator can turn it on.")}</p>}
         <Err e={err} /></div>
-      {canRun && <button type="button" className="primary" disabled={busy || !r.setup?.ready} onClick={start}>{tr("Research with Exa")}</button>}
+      {canRun && <button type="button" disabled={busy || !r.setup?.ready} onClick={start}>{tr("Research with Exa")}</button>}
     </div>
   </section>;
 }
@@ -320,22 +343,21 @@ export default function Person() {
   const [acc, setAcc] = useState<any>(null);
   const [ctx, setCtx] = useState<any[]>([]);
   const [cres, setCres] = useState<any>(null);
+  const [team, setTeam] = useState<any[] | null>(null);
   const load = () => api(`/api/people/${id}/profile`).then(setD).catch(setErr);
-  const loadBrief = () => { setBErr(null); return api<Brief>(`/api/people/${id}/brief`).then(setBrief).catch((e) => {
-    // DEV-ONLY MOCK (remove before finishing): the brief endpoint is being built in parallel
-    if ((import.meta as any).env?.DEV && (e as any)?.status === 404) { api(`/api/people/${id}/profile`).then((x) => setBrief(devBrief(x))).catch(setBErr); return; }
-    setBErr(e);
-  }); };
+  const loadBrief = () => { setBErr(null); return api<Brief>(`/api/people/${id}/brief`).then(setBrief).catch(setBErr); };
   useEffect(() => { setD(null); setErr(null); setBrief(null); load(); loadBrief(); }, [id]);
   usePoll(Boolean(d?.research?.running), load, 5000);
   const orgId: string | undefined = d?.employment?.[0]?.company?.id;
   useEffect(() => {
-    setAcc(null); setCtx([]); setCres(null);
+    setAcc(null); setCtx([]); setCres(null); setTeam(null);
     if (!orgId) return;
     const q = new AbortController();
     api(`/api/accounts/${orgId}?target=true`, { signal: q.signal }).then((x) => { if (!q.signal.aborted) setAcc(x); }).catch(() => undefined);
     api(`/api/accounts/${orgId}/context`, { signal: q.signal }).then((x) => { if (!q.signal.aborted) setCtx(x.items ?? []); }).catch(() => undefined);
     api(`/api/accounts/${orgId}/research`, { signal: q.signal }).then((x) => { if (!q.signal.aborted) setCres(x); }).catch(() => undefined);
+    // everyone at the company (the profile carries only the first twelve), so the committee counts are exact
+    api(`/api/accounts/${orgId}/people`, { signal: q.signal }).then((x) => { if (!q.signal.aborted) setTeam(x.items ?? null); }).catch(() => undefined);
     return () => q.abort();
   }, [orgId]);
   // a new profile from research changes the brief: read it again (quietly, the old one stays meanwhile)
@@ -372,7 +394,7 @@ export default function Person() {
     ...(c.current_role ? [{ title: c.current_role.title, company: co?.name, from: c.current_role.since_year ?? yearOf(c.current_role.since), current: true, cite: c.current_role }] : []),
     ...(c.previous_roles ?? []).map((x: any) => ({ title: x.title, company: x.company, from: x.from ?? yearOf(x.period), to: x.to ?? yearOf(String(x.period ?? "").split(/[-–]/)[1]), cite: x })),
   ] : [];
-  const colleagues = d.colleagues ?? [];
+  const colleagues: any[] = team ? team.filter((x) => x.id !== p.id) : d.colleagues ?? [];
   const company = d.company;
   const prio = ll.priority as string | undefined;
   const lastTouch = touches[0]?.when;
@@ -442,7 +464,7 @@ export default function Person() {
         </section>}
       </div>
       <aside className="ac-rail" aria-label={tr("Company, colleagues and outreach")}>
-        {co && <CompanyCard co={co} company={company} acc={acc} ctx={ctx} cres={cres} fit={brief?.best_fit} others={others} />}
+        {co && <CompanyCard co={co} company={company} acc={acc} ctx={ctx} cres={cres} best={brief?.company?.id === co.id ? brief?.company?.best : null} others={others} />}
         {co && colleagues.length > 0 && <Colleagues co={co} people={colleagues} me={{ name: p.name, committee: g }} />}
         <section className="ac-panel" aria-labelledby="ps-out"><h2 id="ps-out">{tr("Outreach")}</h2>
           <p className="ac-purpose">{tr("What we have sent {} from this platform, and how they responded.", first)}</p>
@@ -456,25 +478,4 @@ export default function Person() {
       </aside>
     </div>
   </>;
-}
-
-// DEV-ONLY MOCK (remove before finishing): a typed stand-in for GET /api/people/{id}/brief until that endpoint exists.
-function devBrief(x: any): Brief {
-  const ll = x.lead_list ?? {}; const job = x.employment?.[0]; const co = job?.company?.name ?? "the company";
-  const c = x.research?.profile?.content;
-  return {
-    lens: { role: `${job?.title ?? "Role not recorded"}: signs off budget and suppliers for this area.`, committee: x.person.committee,
-      cares_about: ["Delivering the announced AI initiatives on time without growing headcount", "Keeping core and enterprise systems stable while AI is added", "Supplier risk, security and model governance"] },
-    best_fit: { service: "ai_data", label: "AI and data engineering", why: `${co} committed to ten AI initiatives by end-2027 and is building an AI platform. A senior AI and data team can take one workstream from pilot to production.` },
-    openers: [
-      { text: `Of the ten AI initiatives ${co} announced, which ones sit with your area, and which are short of engineering hands?`, because: ll.signal ?? "The company announced an AI programme.", source_url: "https://media.pzu.pl/pl/informacje-prasowe/szczegoly/pzu-rozwija-transformacje-ai-do-konca-przyszlego-roku-wdrozy-10-kluczowych-inicjatyw", date: "2026-11-12" },
-      ...(c?.talking_points ?? []).slice(0, 2).map((t: any) => ({ text: t.point, because: t.why, source_url: t.sources?.[0]?.source_url ?? null, date: t.sources?.[0]?.published ?? null })),
-      { text: "How are you staffing integration work around the AI platform while the hybrid cloud foundations are built?", because: "Platform and cloud work usually lands on the same few senior engineers.", source_url: null, date: null },
-    ],
-    questions: ["Which initiatives already have a team, and which are still waiting for one?", "Who signs off outside engineering help: you, the business unit or procurement?", "What would make a supplier a safe choice for you: references, security, a pilot?"],
-    facts: [{ label: "Lead list", value: `${ll.priority ?? "Not on the list"}, ${ll.eligibility ?? ""}`, source: "Lead list" }, { label: "Company signal", value: "Ten priority AI initiatives through 2027", source: "https://media.pzu.pl/pl/informacje-prasowe" },
-      { label: "Company size", value: "11,026 employees", source: "Lead list" }],
-    gaps: ["Budget for outside help in 2027", "Whether procurement runs a supplier panel for AI work"],
-    avoid: ["Leading with day rates or team size before the need is clear", "Generic AI claims without an insurance example"],
-  };
 }

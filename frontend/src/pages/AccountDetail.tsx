@@ -518,16 +518,16 @@ function WhyNow({ d, people, canPeople, canDraft, canScan, scanBusy, runScan, go
   </section>;
 }
 
-/* ------------------------------------------------------------------ where we could help */
+/* ------------------------------------------------------------------ what fits them best */
 const SERVICE: Record<string, [string, typeof Ic.mail]> = { team_extension: ["Team extension", Ic.teamExt], delivery_team: ["Delivery team", Ic.delivery], ai_data: ["AI and data", Ic.data], qa: ["QA and testing", Ic.qa] };
-/** The service an angle is about: the research names it; older profiles are read from the wording. */
-const serviceOf = (h: any): string => (h.service && SERVICE[h.service] ? h.service
-  : /\bqa\b|test/i.test(h.angle ?? "") ? "qa" : /\bai\b|data|machine learning|\bml\b|analytics/i.test(h.angle ?? "") ? "ai_data"
-  : /delivery team|dedicated team|squad|project team/i.test(h.angle ?? "") ? "delivery_team" : "team_extension");
 const ROUTE_WORDS: Record<string, string> = { direct: "Directly with {}", vendor: "Through {}, their platform vendor", prime_subcontract: "Through {}, their integrator",
   procurement: "Public tender run by {}", relationship: "Through {}" };
 const urlKey = (u?: string | null) => String(u ?? "").trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, "").split("#")[0].replace(/\/+$/, "");
 const plainTitle = (t?: string | null) => String(t ?? "").replace(/\s*\((analyst )?working title\)\s*$/i, "").trim();
+const LEVEL: Record<string, string> = { strong: "Strong fit", possible: "Possible fit", weak: "Weak fit" };
+/** Where an evidence line comes from, in a seller's words. */
+const KIND: Record<string, [string, typeof Ic.mail]> = { signal: ["Buying signal", Ic.target], tender: ["Tender", Ic.stamp], job: ["Job post", Ic.hiring], news: ["News", Ic.news],
+  profile: ["Exa research", Ic.spark], lead_list: ["Lead list", Ic.list], records: ["Our records", Ic.badge] };
 
 /** One card per programme. The API already folds routes and same-kind repeats together; this keeps the page safe if it ever does not. */
 function programmes(opps: any[]): any[] {
@@ -544,21 +544,88 @@ function programmes(opps: any[]): any[] {
   return [...m.values()];
 }
 
-function HelpSection({ d, c, lp }: { d: any; c: any; lp: Record<string, string> }) {
-  const byService = new Map<string, any[]>();
-  for (const h of c?.how_we_help ?? []) { const s = serviceOf(h); byService.set(s, [...(byService.get(s) ?? []), h]); }
+/** How strong a fit is: five squares, filled by the score (0 to 100). */
+function FitMeter({ score, level }: { score: number; level: string }) {
+  const on = Math.max(1, Math.min(5, Math.ceil(score / 20)));
+  return <span className={`wf-meter lv-${level}`} role="img" aria-label={tr("{}: {} out of 100", tr(LEVEL[level] ?? level), score)} title={tr("{} out of 100", score)}>
+    {[1, 2, 3, 4, 5].map((i) => <i key={i} className={i <= on ? "on" : ""} />)}</span>;
+}
+
+/** One evidence line: when, what, where it comes from. */
+function WhyLine({ w }: { w: any }) {
+  const [label, Icon] = KIND[w.kind] ?? KIND.records;
+  const href = w.source_url ? safeHref(w.source_url) : undefined;
+  return <li className="wf-line">
+    <span className="wf-when">{w.date ? fmtDay(w.date) : tr("Undated")}</span>
+    <span className="wf-text">{w.text}</span>
+    <span className="wf-src"><span className={`wf-kind k-${w.kind}`}><Icon />{tr(label)}</span>
+      {href ? <a href={href} target="_blank" rel="noreferrer noopener">{host(w.source_url)} ↗</a> : null}</span>
+  </li>;
+}
+
+function ServiceFit({ s, rank, best }: { s: any; rank: number; best: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [label, Icon] = SERVICE[s.service] ?? [s.label, Ic.spark];
+  const lines: any[] = s.why ?? [];
+  const base = best ? 3 : 1;                       // the best fit shows its three strongest reasons, the others their strongest one
+  const shown = open ? lines : lines.slice(0, base);
+  const hidden = lines.length - shown.length;
+  const proof = (best || open) && s.proof?.length > 0;
+  return <li className={`wf-svc lv-${s.level}${best ? " best" : ""}`}>
+    <div className="wf-head">
+      <span className="wf-rank" aria-hidden="true">{rank}</span>
+      <span className="wf-ic" aria-hidden="true"><Icon /></span>
+      <div className="wf-title">
+        <h3>{tr(label)}{best && <span className="wf-best">{tr("Best fit")}</span>}</h3>
+        {s.pitch && <p>{tr(s.pitch)}</p>}
+      </div>
+      <span className="wf-lv"><FitMeter score={s.score} level={s.level} /><b>{tr(LEVEL[s.level] ?? s.level)}</b></span>
+    </div>
+    <ul className="wf-why" aria-label={tr("Why {} fits", tr(label))}>{shown.map((w, i) => <WhyLine key={i} w={w} />)}</ul>
+    {proof && <div className="wf-proof">
+      <h4>{tr("Proof we can use")}</h4>
+      <ul>{s.proof.map((p: any, i: number) => <li key={i}><b>{p.href ? <Link to={p.href}>{p.title}</Link> : p.title}</b>{p.detail && <span>{p.detail}</span>}</li>)}</ul>
+    </div>}
+    {best && !s.proof?.length && <p className="wf-noproof">{tr("No approved case study for this service yet. The sales field guide in the Knowledge base says what we may claim.")}</p>}
+    {(hidden > 0 || (open && lines.length > base)) && <p className="wf-foot">
+      <button type="button" className="linkish" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? tr("Show less") : hidden === 1 ? tr("Show 1 more reason") : tr("Show {} more reasons", hidden)}</button>
+    </p>}
+  </li>;
+}
+
+/** The fit's "why now", unless "Why talk to them now" above already gives the same story (said once is enough). */
+function freshWhyNow(fit: any, d: any): string | null {
+  const w = String(fit?.why_now ?? "").trim();
+  if (!w) return null;
+  const head = w.slice(0, 40).toLowerCase();
+  const said = (d.why_now?.reasons ?? []).some((r: any) => [r.text, r.detail].some((t: any) => t && (String(t).toLowerCase().includes(head) || (String(t).length >= 15 && head.includes(String(t).slice(0, 40).toLowerCase())))));
+  return said ? null : w;
+}
+
+function HelpSection({ d, fit, fitErr, c }: { d: any; fit: any; fitErr: unknown; c: any }) {
   const opps = programmes(d.opportunities ?? []);
-  const listIdea: [string, string][] = byService.size ? [] : ([["Possible work for us", lp["Potential Opportunity"]], ["How The Codest fits", lp["The Codest Service Fit"]]] as [string, string][]).filter(([, v]) => v);
-  return <Part title="Where we could help" purpose="The services that match what they are doing. Check each idea before you use it." id="sec-help">
-    {!byService.size && !opps.length && !listIdea.length && <p className="small m-0">{tr("No ideas yet. Research with Exa suggests services that match what they are doing.")}</p>}
-    {byService.size > 0 && <ul className="svc-grid">{[...byService].map(([svc, items]) => {
-      const [label, Icon] = SERVICE[svc];
-      return <li key={svc} className="svc-card">
-        <div className="svc-head"><span className="svc-tag"><Icon />{tr(label)}</span>{items.length > 1 && <span className="ac-count">{tr("{} ideas", items.length)}</span>}</div>
-        {items.map((h, i) => <div key={i} className="svc-idea"><b>{h.angle}</b>{h.why && <p>{h.why}</p>}<div>{(h.sources ?? []).map((s: any, k: number) => <Cite key={k} c={s} />)}</div></div>)}
-      </li>;
-    })}</ul>}
-    {listIdea.length > 0 && <div className="svc-list-idea">{listIdea.map(([k, v]) => <p key={k}><b>{tr(k)}:</b> {v}</p>)}<span className="ac-note">{tr("From your lead list")}</span></div>}
+  const whyNow = freshWhyNow(fit, d);
+  const services: any[] = fit?.services ?? [];
+  const asked = new Set((c?.open_questions ?? []).map((q: string) => q.trim()));
+  const unknowns: string[] = (fit?.unknowns ?? []).filter((u: string) => !asked.has(u.trim()));      // the research's own questions are listed below
+  const watch: string[] = fit?.watch_outs ?? [];
+  return <Part title="What fits them best" purpose="Which of our four services fits them best, ranked by what we hold about them. Every reason shows its date and where it comes from." id="sec-help">
+    {!fit && !fitErr && <Skeleton rows={3} label={tr("Working out what fits them")} />}
+    <Err e={fitErr} />
+    {whyNow && <p className="wf-now"><span className="wf-now-ic" aria-hidden="true"><Ic.clock /></span><span><b>{tr("Why now")}</b>{whyNow}</span></p>}
+    {fit && services.length > 0 && <ol className="wf-list">{services.map((s, i) => <ServiceFit key={s.service} s={s} rank={i + 1} best={s.service === fit.best} />)}</ol>}
+    {fit && !services.length && <p className="wf-empty">{tr("Nothing we hold points to one of our services yet. Research them with Exa, check for news, or add what you know to the lead list.")}</p>}
+    {fit && (watch.length > 0 || unknowns.length > 0) && <div className="wf-notes">
+      {watch.length > 0 && <section className="wf-watch" aria-labelledby="wf-watch-h">
+        <h3 id="wf-watch-h"><Ic.alert />{tr("Watch out")}</h3>
+        <ul>{watch.map((w, i) => <li key={i}>{tr(w)}</li>)}</ul>
+      </section>}
+      {unknowns.length > 0 && <section className="wf-unknown" aria-labelledby="wf-unknown-h">
+        <h3 id="wf-unknown-h"><Ic.search />{tr("We do not know yet")}</h3>
+        <ul>{unknowns.map((u, i) => <li key={i}>{tr(u)}</li>)}</ul>
+      </section>}
+    </div>}
     {opps.length > 0 && <>
       <h3 className="ac-sub-h">{tr("Programmes we track")}</h3>
       <ul className="opp-list">{opps.map((o) => <li key={o.hypothesis_id} className="opp">
@@ -679,7 +746,7 @@ function fitPoints(a: any, lp: Record<string, string>, c: any): { points: any[];
   return c?.icp_points?.length ? { points: c.icp_points, fromRecords: false } : { points: recordFit(a, lp), fromRecords: true };
 }
 
-function Overview({ d, research, rel, orgId, me, canRun, startResearch, researchBusy, researchErr, reloadRel, onOwner, goto, people, fit, scanBusy, runScan }: any) {
+function Overview({ d, research, rel, orgId, me, canRun, startResearch, researchBusy, researchErr, reloadRel, onOwner, goto, people, fit, scanBusy, runScan, solutions, solutionsErr }: any) {
   const lp: Record<string, string> = d.list_profile ?? {};
   const c = research?.profile?.content;
   const why = d.why_now ?? {};
@@ -687,7 +754,10 @@ function Overview({ d, research, rel, orgId, me, canRun, startResearch, research
   const skip = new Set<string>();
   if ((why.reasons ?? []).some((r: any) => r.kind === "lead_list")) skip.add("Strongest signal");
   if (why.next_step?.kind === "lead_list") skip.add("Next step");
-  if (!c?.how_we_help?.length) { skip.add("Possible work for us"); skip.add("How The Codest fits"); }
+  // what "What fits them best" already shows from the lead list is not repeated in the lead list section
+  const fitText = (solutions?.services ?? []).flatMap((s: any) => (s.why ?? []).map((w: any) => String(w.text ?? ""))).join("\n");
+  if (lp["The Codest Service Fit"] && fitText.includes(lp["The Codest Service Fit"])) skip.add("How The Codest fits");
+  if (lp["Potential Opportunity"] && fitText.includes(lp["Potential Opportunity"])) skip.add("Possible work for us");
   const showState = research && (research.running || research.latest?.status === "failed");
   return <>
     <WhyNow d={d} people={people} canPeople={me.permissions.includes("contacts.read")} canDraft={me.permissions.includes("draft.create")} canScan={canRun}
@@ -695,7 +765,7 @@ function Overview({ d, research, rel, orgId, me, canRun, startResearch, research
     {showState && <ResearchState r={research} kind="company" name={d.account.display_name} canRun={canRun} start={startResearch} busy={researchBusy} err={researchErr} />}
     <div className="ac-grid">
       <div className="ac-sheet">
-        <HelpSection d={d} c={c} lp={lp} />
+        <HelpSection d={d} fit={solutions} fitErr={solutionsErr} c={c} />
         <AboutSection c={c} research={research} canRun={canRun} startResearch={startResearch} researchBusy={researchBusy} researchErr={researchErr} />
         <Part title="How they fit us" purpose="How close they are to the companies we sell to best." id="sec-fit">
           {fit.points.length ? <FitList points={fit.points} fromRecords={fit.fromRecords} /> : <p className="small m-0">{tr("We hold too little about this company to judge its fit. Edit the company details or research it with Exa.")}</p>}
@@ -1036,15 +1106,26 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const loadResearch = () => api(`/api/accounts/${id}/research`).then(setResearch).catch(() => undefined);
   useEffect(() => { setResearch(null); loadResearch(); }, [id]);
   usePoll(Boolean(research?.running), loadResearch, 5000);
+  const [solutions, setSolutions] = useState<any>(null);
+  const [solutionsErr, setSolutionsErr] = useState<unknown>(null);
   // when a new profile lands, the reasons to call may change: read the account again (quietly, the page stays as it is meanwhile)
   const profileSeen = useRef<string | null | undefined>(undefined);
   const profileId: string | null | undefined = research ? research.profile?.id ?? null : undefined;
   useEffect(() => {
     if (profileId === undefined) return;
-    if (profileSeen.current !== undefined && profileSeen.current !== profileId) api(`/api/accounts/${id}?target=true`).then((data) => setD((cur: any) => (cur?.account.id === data.account.id ? data : cur))).catch(() => undefined);
+    if (profileSeen.current !== undefined && profileSeen.current !== profileId) {
+      api(`/api/accounts/${id}?target=true`).then((data) => setD((cur: any) => (cur?.account.id === data.account.id ? data : cur))).catch(() => undefined);
+      api(`/api/accounts/${id}/solutions`).then(setSolutions).catch(() => undefined);       // new research can change what fits
+    }
     profileSeen.current = profileId;
   }, [profileId]);
   useEffect(() => { profileSeen.current = undefined; }, [id]);
+  useEffect(() => {
+    const request = new AbortController();
+    setSolutions(null); setSolutionsErr(null);
+    api(`/api/accounts/${id}/solutions`, { signal: request.signal }).then((r) => { if (!request.signal.aborted) setSolutions(r); }).catch((e) => { if (!request.signal.aborted) setSolutionsErr(e); });
+    return () => request.abort();
+  }, [id]);
   const [rel, setRel] = useState<any>(null);
   const loadRel = () => api(`/api/accounts/${id}/relationship`).then(setRel).catch(() => undefined);
   useEffect(() => { loadRel(); }, [id]);
@@ -1144,7 +1225,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         { key: "activity", label: tr("Findings & tenders") }, { key: "outreach", label: tr("Outreach") }]} value={tab} onChange={(k) => goto(k as Tab)} label={tr("Company sections")}>
         {tab === "overview" && <Overview d={d} research={research} rel={rel} orgId={a.id} me={me} canRun={canScan} startResearch={startResearch} researchBusy={researchBusy}
           researchErr={researchErr} reloadRel={loadRel} onOwner={(owner: any) => setRel({ ...rel, owner })} goto={goto} people={canPeople ? people : null} fit={fit}
-          scanBusy={scan.busy} runScan={runScan} />}
+          scanBusy={scan.busy} runScan={runScan} solutions={solutions} solutionsErr={solutionsErr} />}
         {tab === "people" && <PeopleTab orgId={a.id} company={a.display_name} me={me} people={people} err={peopleErr} reload={() => { loadPeople(); loadRel(); }} />}
         {tab === "activity" && <Activity d={d} eps={eps} sub={sub} setSub={setSub} params={params} sigNames={sigNames} />}
         {tab === "outreach" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={a.id} make={makeCampaign} decide={decideCampaign} />}
