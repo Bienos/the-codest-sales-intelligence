@@ -1,6 +1,7 @@
 import { getLanguage, number, tr } from "../locale";
 import { ReactNode, useEffect, useRef, useState } from "react";
-import { api, fmtDateTime, post, upload } from "../api";
+import { Link, useSearchParams } from "react-router-dom";
+import { api, post, upload } from "../api";
 import { Badge, Err, humanize, lab, Skeleton } from "../components/ui";
 import "../styles/admin.css";
 
@@ -48,6 +49,65 @@ export function Fold({ title, desc, status, open = false, id, children }: { titl
 /** When a block has nothing behind it, one quiet line instead of an empty table. */
 export const Quiet = ({ children }: { children: ReactNode }) => <p className="quiet">{children}</p>;
 
+/* ------------------------------------------------------------------ small pieces every Administration table shares */
+
+const loc = () => (getLanguage() === "pl" ? "pl-PL" : "en-GB");
+const sameDay = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+/** A date read at a glance: "Today, 13:24", "Yesterday, 09:10", "23 Nov, 16:56", or "23 Nov 2025" for another year. */
+export function when(v?: string | null, withTime = true): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  const now = new Date(); const yday = new Date(now); yday.setDate(now.getDate() - 1);
+  const t = d.toLocaleTimeString(loc(), { hour: "2-digit", minute: "2-digit" });
+  if (sameDay(d, now)) return withTime ? tr("Today, {}", t) : tr("Today");
+  if (sameDay(d, yday)) return withTime ? tr("Yesterday, {}", t) : tr("Yesterday");
+  const date = d.toLocaleDateString(loc(), d.getFullYear() === now.getFullYear() ? { day: "numeric", month: "short" } : { day: "numeric", month: "short", year: "numeric" });
+  return withTime ? `${date}, ${t}` : date;
+}
+
+/** How long something took, in the unit that reads best. */
+export const took = (s?: number | null) => (s === null || s === undefined ? "—" : s < 1 ? tr("under 1 s") : s < 90 ? tr("{} s", Math.round(s)) : s < 5400 ? tr("{} min", Math.round(s / 60)) : tr("{} h", (s / 3600).toFixed(1)));
+
+/** The time windows every history view offers. */
+export const windows = (): [string, string][] => [["24h", tr("Last 24 hours")], ["7d", tr("Last 7 days")], ["30d", tr("Last 30 days")], ["90d", tr("Last 90 days")], ["all", tr("Any time")]];
+
+/** One labelled drop-down in a filter bar. */
+export function Pick({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
+  return <label className="fbar-f"><span>{tr(label)}</span><select value={value} onChange={(e) => onChange(e.target.value)}>{options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>;
+}
+
+/** Where a long list is, and the way to the next or previous page. */
+export function Pager({ total, offset, limit, onPage, label }: { total: number; offset: number; limit: number; onPage: (o: number) => void; label: string }) {
+  if (total <= 0) return null;
+  const to = Math.min(offset + limit, total);
+  return (
+    <nav className="pager" aria-label={tr("Pages of {}", tr(label))}>
+      <span>{total <= limit ? tr("{} in total", number(total)) : tr("{} to {} of {}", number(offset + 1), number(to), number(total))}</span>
+      {total > limit && <span className="pager-b">
+        <button type="button" className="ghost" disabled={offset === 0} onClick={() => onPage(Math.max(0, offset - limit))}>{tr("Previous")}</button>
+        <button type="button" className="ghost" disabled={to >= total} onClick={() => onPage(offset + limit)}>{tr("Next")}</button>
+      </span>}
+    </nav>
+  );
+}
+
+/** Query-string state for a filterable list, so a link from the overview opens the list already filtered. */
+export function useQueryState<T extends Record<string, string>>(defaults: T): [T, (patch: Partial<T>) => void] {
+  const [sp, setSp] = useSearchParams();
+  const state = Object.fromEntries(Object.entries(defaults).map(([k, v]) => [k, sp.get(k) ?? v])) as T;
+  const set = (patch: Partial<T>) => {
+    const next = new URLSearchParams(sp);
+    for (const [k, v] of Object.entries(patch)) { if (v === undefined || v === defaults[k]) next.delete(k); else next.set(k, String(v)); }
+    setSp(next, { replace: true });
+  };
+  return [state, set];
+}
+
+/** A short line naming a number from a job's result ("events_created: 3" becomes "3 events created"). */
+export const resultLine = (pairs: [string, number][]) => pairs.map(([k, v]) => `${number(v)} ${tr(humanize(k).toLowerCase())}`).join(" · ");
+
 /* ------------------------------------------------------------------ processing pipeline */
 
 const STATE: Record<string, [Kind, string]> = { ok: ["ok", "Running"], waiting: ["warn", "Waiting for you"], stale: ["bad", "Stopped reporting"], never: ["bad", "Never reported"], off: ["", "Switched off"] };
@@ -75,28 +135,45 @@ function Funnel({ f, accounts, candidates }: { f: any[]; accounts: number; candi
 
 const visibleStages = (d: any) => d.stages.filter((s: any) => s.key !== "pipedrive");
 
+/** Each stage in plain words. Stages whose server note carries live numbers keep that note; the others get a plain one here. */
+const STAGE: Record<string, [string, string | null]> = {
+  scheduler: ["Scheduler", "Starts work on time: every 5 minutes it decides which sources are due and queues the daily web searches."],
+  worker: ["Worker", null],
+  sources: ["Reading sources", null],
+  discovery: ["Saved web searches", null],
+  verification: ["Checking pages", "Opens the original page of a lead and keeps only what the page itself says. Starts when a seller sends a link or a web search finds a page."],
+  opportunities: ["Findings to opportunities", null],
+  digest: ["Daily Slack summary", null],
+  sheets: ["Workbook import", "You upload the two workbooks in Sources & data, Workbooks. Hourly automatic sync needs a Google service account."],
+};
+const QUEUE: Record<string, string> = { scheduled: "Waiting", claimed: "Running", fetching: "Running", parsing: "Running", verifying: "Running", committing: "Running", completed: "Finished",
+  retryable_failed: "Will retry", permanent_failed: "Failed for good", quarantined: "Could not run", cancelled: "Cancelled", requires_approval: "Waiting for approval" };
+
 /** What runs by itself, what waits for a person and what is switched off. */
 export function Pipeline({ d }: { d: any }) {
+  const next = (d.next_steps as string[]).filter((n) => !/pipedrive/i.test(n));
+  const queue = Object.entries(d.queue as Record<string, number>).reduce<Record<string, number>>((a, [k, v]) => { const l = QUEUE[k] ?? humanize(k); a[l] = (a[l] ?? 0) + Number(v); return a; }, {});
   return (
     <>
-      {d.next_steps.length > 0 && <div className="adm-next"><h4 className="adm-h4">{tr("What to do next")}</h4><ol className="tight m-0">{d.next_steps.map((n: string, i: number) => <li key={i}>{tr(n)}</li>)}</ol></div>}
+      {next.length > 0 && <div className="adm-next"><h4 className="adm-h4">{tr("What to do next")}</h4><ol className="tight m-0">{next.map((n, i) => <li key={i}>{tr(n)}</li>)}</ol></div>}
       <ol className="adm-stages" aria-label={tr("Pipeline stages")}>
         {visibleStages(d).map((s: any) => {
           const [kind, label] = STATE[s.state] ?? ["", s.state];
+          const [name, note] = STAGE[s.key] ?? [s.label, null];
           return (
             <li key={s.key} className={`adm-stage ${kind}`}>
-              <div className="adm-stage-head"><b>{tr(s.label)}</b><span className="adm-stage-tags">{s.mode !== "off" && <Badge>{({ automatic: tr("Runs by itself"), manual: tr("A person does this"), off: tr("Switched off") } as Record<string, string>)[s.mode] ?? humanize(s.mode)}</Badge>}<Say k={kind}>{tr(label)}</Say></span></div>
-              <p className="small m-0">{tr(s.note)}</p>
-              {s.last && <div className="small muted">{tr("Last activity") + " "}{fmtDateTime(s.last)}</div>}
+              <div className="adm-stage-head"><b>{tr(name)}</b><span className="adm-stage-tags">{s.mode !== "off" && <Badge>{({ automatic: tr("Runs by itself"), manual: tr("A person does this"), off: tr("Switched off") } as Record<string, string>)[s.mode] ?? tr(humanize(s.mode))}</Badge>}<Say k={kind}>{tr(label)}</Say></span></div>
+              <p className="small m-0">{note ? tr(note) : tr(s.note)}</p>
+              {s.last && <div className="small muted">{tr("Last activity: {}", when(s.last))}</div>}
               {s.detail?.length > 0 && <ul className="tight small">{s.detail.map((f: any, k: number) => <li key={k}><b>{f.display_name}</b>: {f.error_class === "server_error" ? tr("the site returned an error") : humanize(f.error_class).toLowerCase()} {f.consecutive_failures}{" " + tr("times in a row")}</li>)}</ul>}
               {s.counts && Object.keys(s.counts).length > 0 && <div className="chips mt-2 mb-0">{Object.entries(s.counts).map(([k, v]: any) => <Badge key={k}>{humanize(k)} {v}</Badge>)}</div>}
             </li>);
         })}
       </ol>
       <div className="adm-panel">
-        <h4 className="adm-h4">{tr("Jobs waiting")}</h4>
-        <div className="chips mb-0">{Object.entries(d.queue).map(([k, v]: any) => <Badge key={k} kind={k === "permanent_failed" && v ? "bad" : ""}>{({ queued: tr("Waiting"), running: tr("Running"), retrying: tr("Retrying"), permanent_failed: tr("Failed for good"), cancelled: tr("Cancelled") } as Record<string, string>)[k] ?? humanize(k)} {v}</Badge>)}{Object.keys(d.queue).length === 0 && <span className="small muted">{tr("None waiting")}</span>}</div>
-        {d.oldest_waiting_s !== null && <p className="small muted mb-0">{tr("Longest wait:") + " "}{Math.round(d.oldest_waiting_s / 60)} min</p>}
+        <div className="row spread"><h4 className="adm-h4 m-0">{tr("Background jobs, all time")}</h4><Link to="/admin/job-history" className="small">{tr("Open the job history")}</Link></div>
+        <div className="chips mb-0 mt-2">{Object.entries(queue).map(([k, v]) => <Badge key={k} kind={k === "Failed for good" && v ? "bad" : ""}>{`${tr(k)}: ${number(v)}`}</Badge>)}{Object.keys(queue).length === 0 && <span className="small muted">{tr("No background jobs yet.")}</span>}</div>
+        {d.oldest_waiting_s !== null && <p className="small muted mb-0">{tr("The job waiting longest has waited {}.", took(d.oldest_waiting_s))}</p>}
       </div>
       {d.funnel && <Funnel f={d.funnel} accounts={d.accounts} candidates={d.candidates} />}
     </>
@@ -104,7 +181,7 @@ export function Pipeline({ d }: { d: any }) {
 }
 const pipelineStatus = (d: any): [Kind, string] => {
   const st = visibleStages(d);
-  const down = st.filter((s: any) => s.state === "stale" || s.state === "never").map((s: any) => tr(s.label));
+  const down = st.filter((s: any) => s.state === "stale" || s.state === "never").map((s: any) => tr((STAGE[s.key] ?? [s.label])[0]));
   const waiting = st.filter((s: any) => s.state === "waiting").length;
   if (down.length) return ["bad", tr("Not reporting: {}", down.join(", "))];
   if (waiting) return ["warn", tr("{} waiting for you", waiting)];
@@ -144,7 +221,7 @@ const day = (v?: string | null) => (v ? new Date(v).toLocaleDateString(getLangua
 
 function stateLine(g: any): string {
   if (g.state === "handled") return tr("Handled: {} retried, {} dismissed.", g.retried, g.dismissed);
-  if (g.state === "ongoing") return tr("Still happening: the last failure was on {}.", fmtDateTime(g.last_at));
+  if (g.state === "ongoing") return tr("Still happening. Last failure: {}.", when(g.last_at));
   if (g.state === "quiet") return tr("Not seen since {}. The cause may be gone; nothing has proved it yet.", day(g.last_at));
   return ({ ai_ok: tr("Cause fixed: AI calls have worked again since {}.", day(g.state_since)), new_month: tr("Cause fixed: a new month's budget is available."),
     pages_ok: tr("Cause fixed: pages have been read fine since {}.", day(g.state_since)), job_ok: tr("Cause fixed: the same work has succeeded since {}.", day(g.state_since)) } as Record<string, string>)[g.state_basis] ?? tr("Cause fixed.");
@@ -173,7 +250,7 @@ function FailureGroup({ g, reload }: { g: any; reload: () => void }) {
         <Say k={STATE_KIND[g.state] ?? ""}>{stateLine(g)}</Say>
         <p className="fl-explain">{tr(explain)}</p>
         {g.items.length > 0 && <details className="fl-items"><summary>{g.open > g.items.length ? tr("Show the latest {} of {}", g.items.length, g.open) : g.open === 1 ? tr("Show the job") : tr("Show the {} jobs", g.open)}</summary>
-          <ul>{g.items.map((x: any) => <li key={x.id}><span className="fl-when">{fmtDateTime(x.created_at)}</span><span><b>{kindName(x.kind)}</b>{x.subject && <> · {x.subject}</>}<span className="fl-err">{x.error}</span></span></li>)}</ul>
+          <ul>{g.items.map((x: any) => <li key={x.id}><span className="fl-when">{when(x.created_at)}</span><span><b>{kindName(x.kind)}</b>{x.subject && <> · {x.subject}</>}<span className="fl-err">{x.error}</span></span></li>)}</ul>
         </details>}
         {msg && <div className="okmsg m-0" role="status">{msg}</div>}<Err e={err} />
       </div>
@@ -214,20 +291,27 @@ const jobsStatus = (d: any): [Kind, string] => {
 
 /* ------------------------------------------------------------------ are we finding things? */
 
+/** Names for source ids and signal rule ids, so no table shows an internal code. Loaded only when a table needs them. */
+function useNames(path: string, on: boolean, key: string, name: string): Record<string, string> {
+  const r = useLoad(path, on);
+  return Object.fromEntries((r.d?.items ?? []).map((x: any) => [x[key], x[name]]));
+}
+
 function Coverage({ d }: { d: any }) {
+  const names = useNames("/api/admin/sources", d.yield_drops.length > 0, "source_id", "display_name");
   return <>
     <p className="small muted mt-0">{tr("Each cell counts what we found in the last {} days. A red 0 is worth a look: a source may be broken, or the market may just be quiet.", d.grid.days)}</p>
     <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Findings by market and topic")}><table className="grid-table"><thead><tr><th>{tr("Market")}</th>{d.grid.kinds.map((k: string) => <th key={k}>{tr(k)}</th>)}</tr></thead><tbody>
-      {d.grid.markets.map((m: string) => <tr key={m}><td><b>{tr(m)}</b></td>{d.grid.kinds.map((k: string) => { const c = d.grid.cells.find((x: any) => x.market === m && x.kind === k); return <td key={k}>{c.empty ? <Badge kind="bad">0</Badge> : c.count}</td>; })}</tr>)}</tbody></table></div>
+      {d.grid.markets.map((m: string) => <tr key={m}><td><b>{tr(m)}</b></td>{d.grid.kinds.map((k: string) => { const c = d.grid.cells.find((x: any) => x.market === m && x.kind === k); return <td key={k} className="num">{c.empty ? <Badge kind="bad">0</Badge> : number(c.count)}</td>; })}</tr>)}</tbody></table></div>
     <h4 className="adm-h4">{tr("Sources finding less than usual")}</h4>
     {d.yield_drops.length === 0 ? <Quiet>{tr("None. We only judge a source after two weeks of history, and only if it normally finds at least 5 items a week.")}</Quiet>
-      : <ul className="tight small">{d.yield_drops.map((x: any) => <li key={x.source_id}><b>{x.source_id}</b>: {x.last_7_days}{" " + tr("this week, usually about") + " "}{x.usual_per_week}</li>)}</ul>}
+      : <ul className="tight small">{d.yield_drops.map((x: any) => <li key={x.source_id}><b>{names[x.source_id] ?? x.source_id}</b>: {tr("{} this week, usually about {}", number(x.last_7_days), number(x.usual_per_week))}</li>)}</ul>}
     <h4 className="adm-h4">{tr("Pages sellers say we missed")}</h4>
     {d.misses.total === 0 ? <Quiet>{tr("None yet. Sellers can paste a link on the Market feed.")}</Quiet> : <>
       <p className="small muted">{tr("{} reported: we already had {}, and missed {}. Each missed page shows which source should have found it.", d.misses.total, d.misses.caught, d.misses.missed)}</p>
       <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Pages sellers say we missed")}><table><thead><tr><th>{tr("Page")}</th><th>{tr("Did we have it?")}</th><th>{tr("Result")}</th><th>{tr("Reported")}</th></tr></thead><tbody>
         {d.misses.items.map((m: any) => <tr key={m.id}><td><a href={m.url} target="_blank" rel="noreferrer noopener">{m.url.replace(/^https?:\/\//, "").slice(0, 60)} ↗</a>{m.note && <div className="small muted">{m.note}</div>}</td>
-          <td>{m.we_already_had_it ? <Badge kind="ok">{tr("Yes ({})", m.from_source)}</Badge> : <Badge kind="bad">{tr("No")}</Badge>}</td><td className="small">{humanize(m.status)}{m.events_created > 0 ? ` · ${tr("{} findings", m.events_created)}` : ""}</td><td className="small">{fmtDateTime(m.reported_at)}</td></tr>)}</tbody></table></div>
+          <td>{m.we_already_had_it ? <Badge kind="ok">{tr("Yes ({})", names[m.from_source] ?? m.from_source)}</Badge> : <Badge kind="bad">{tr("No")}</Badge>}</td><td className="small">{humanize(m.status)}{m.events_created > 0 ? ` · ${tr("{} findings", m.events_created)}` : ""}</td><td className="small">{when(m.reported_at)}</td></tr>)}</tbody></table></div>
     </>}
   </>;
 }
@@ -274,12 +358,16 @@ const qualityStatus = (d: any): [Kind, string] => {
 /* ------------------------------------------------------------------ which signals work */
 
 function Precision({ d }: { d: any }) {
+  const sig = useNames("/api/library/signals", d.rules.length > 0, "rule_id", "signal");
+  const nm = (id: string) => sig[id] ?? id;
   return <>
-    {d.flagged.length > 0 && <div className="err" role="alert">{tr("Dismissed more than 60% of the time, with enough decisions to judge:") + " "}<b>{d.flagged.join(", ")}</b></div>}
+    <p className="small muted mt-0">{tr("For each kind of buying signal in the last {} days: how often it appeared, and whether sellers followed it up or dismissed it.", d.window_days)}</p>
+    {d.flagged.length > 0 && <div className="err" role="alert">{tr("Dismissed more than 60% of the time, with enough decisions to judge:") + " "}<b>{d.flagged.map(nm).join("; ")}</b></div>}
     {d.rules.length === 0 ? <Quiet>{tr("Nothing to show: no signals fired in the last {} days.", d.window_days)}</Quiet> :
-      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("What sellers did with each signal")}><table><thead><tr><th>{tr("Signal")}</th><th>{tr("Fired")}</th><th>{tr("Pursued")}</th><th>{tr("Dismissed")}</th><th>{tr("Dismissed share")}</th><th>{tr("Main reason")}</th><th><span className="sr">{tr("Flag")}</span></th></tr></thead><tbody>
-        {d.rules.map((r: any) => <tr key={r.rule_id}><td>{r.rule_id}</td><td>{r.fired}</td><td>{r.accepted}</td><td>{r.dismissed}</td><td>{r.dismissal_rate === null ? "n/a" : `${Math.round(r.dismissal_rate * 100)}%`}<div className="small muted">{r.enough_data ? tr("likely range {} to {}%", Math.round(r.interval_95[0] * 100), Math.round(r.interval_95[1] * 100)) : tr("Too few decisions to judge")}</div></td>
-          <td className="small">{r.top_dismiss_reason ? lab("dismiss", r.top_dismiss_reason) : tr("None")}</td><td>{r.flag && <Badge kind="bad">{tr("Look at this")}</Badge>}</td></tr>)}</tbody></table></div>}
+      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("What sellers did with each signal")}><table className="cards adm-t"><thead><tr><th>{tr("Signal")}</th><th className="num">{tr("Seen")}</th><th className="num">{tr("Followed up")}</th><th className="num">{tr("Dismissed")}</th><th className="num">{tr("Dismissed share")}</th><th>{tr("Main reason for dismissing")}</th><th><span className="sr">{tr("Flag")}</span></th></tr></thead><tbody>
+        {d.rules.map((r: any) => <tr key={r.rule_id}><td data-label={tr("Signal")} className="wide">{nm(r.rule_id)}</td><td data-label={tr("Seen")} className="num">{number(r.fired)}</td><td data-label={tr("Followed up")} className="num">{number(r.accepted)}</td><td data-label={tr("Dismissed")} className="num">{number(r.dismissed)}</td>
+          <td data-label={tr("Dismissed share")} className="num">{r.dismissal_rate === null ? "—" : `${Math.round(r.dismissal_rate * 100)}%`}<div className="small muted">{r.enough_data ? tr("likely range {} to {}%", Math.round(r.interval_95[0] * 100), Math.round(r.interval_95[1] * 100)) : tr("Too few decisions to judge")}</div></td>
+          <td data-label={tr("Main reason for dismissing")} className="small">{r.top_dismiss_reason ? lab("dismiss", r.top_dismiss_reason) : "—"}</td><td>{r.flag && <Badge kind="bad">{tr("Look at this")}</Badge>}</td></tr>)}</tbody></table></div>}
     <h4 className="adm-h4">{tr("Outreach results")}</h4>
     {Object.keys(d.outreach).length === 0 ? <Quiet>{tr("Nobody added to a sequence yet.")}</Quiet> : <div className="chips">{Object.entries(d.outreach).map(([k, n]) => <Badge key={k}>{humanize(k)}: {n as number}</Badge>)}</div>}
     {d.caveats.length > 0 && <ul className="tight small muted">{d.caveats.map((c: string, i: number) => <li key={i}>{c}</li>)}</ul>}
@@ -327,6 +415,117 @@ export function Health({ can, part }: { can: (p: string) => boolean; part?: stri
   );
 }
 
+/* ------------------------------------------------------------------ job history: every piece of background work */
+
+const GROUPS: [string, string, Kind][] = [["failed", "Failed", "bad"], ["retrying", "Will retry", "warn"], ["running", "Running", "info"], ["waiting", "Waiting", "info"], ["done", "Finished", "ok"], ["cancelled", "Cancelled", ""]];
+const GROUP: Record<string, [string, Kind]> = Object.fromEntries(GROUPS.map(([k, l, c]) => [k, [l, c]]));
+const CAUSE_TITLE = (c: string, who: string) => (c === "other" || !CAUSE[c] ? tr("Error") : tr(CAUSE[c][0], who || tr("The service")));
+
+/** Status filter as a row of buttons, each with its count. */
+function Chips({ value, onChange, counts, items, label }: { value: string; onChange: (v: string) => void; counts: Record<string, number>; items: [string, string, Kind][]; label: string }) {
+  const all = Object.values(counts).reduce((a, n) => a + n, 0);
+  return (
+    <div className="fchips" role="group" aria-label={tr(label)}>
+      <button type="button" aria-pressed={value === ""} onClick={() => onChange("")}>{tr("All")} <b>{number(all)}</b></button>
+      {items.filter(([k]) => counts[k] || value === k).map(([k, l, c]) => <button key={k} type="button" aria-pressed={value === k} className={c} onClick={() => onChange(value === k ? "" : k)}>{tr(l)} <b>{number(counts[k] ?? 0)}</b></button>)}
+    </div>
+  );
+}
+
+export function JobHistory() {
+  const [f, setF] = useQueryState({ since: "7d", kind: "", status: "", sort: "newest", page: "0" });
+  const off = Number(f.page) || 0, LIMIT = 50;
+  const r = useLoad(`/api/admin/jobs/history?${new URLSearchParams({ since: f.since, kind: f.kind, status: f.status, sort: f.sort, limit: String(LIMIT), offset: String(off) })}`);
+  const d = r.d;
+  const set = (p: Partial<typeof f>) => setF({ ...p, page: "0" });
+  return (
+    <div className="hist">
+      <p className="adm-lead">{tr("Every piece of background work: reading sources, checking pages, research, imports and matching. See what ran, how long it took, and why something failed.")}</p>
+      <div className="fbar">
+        <Pick label="When" value={f.since} onChange={(v) => set({ since: v })} options={windows()} />
+        <Pick label="Kind of job" value={f.kind} onChange={(v) => set({ kind: v })} options={[["", tr("Every kind")], ...(d?.kinds ?? []).map((k: any) => [k.kind, `${kindName(k.kind)} (${number(k.n)})`] as [string, string]),
+          ...(f.kind && !(d?.kinds ?? []).some((k: any) => k.kind === f.kind) ? [[f.kind, kindName(f.kind)] as [string, string]] : [])]} />
+        <Pick label="Order" value={f.sort} onChange={(v) => set({ sort: v })} options={[["newest", tr("Newest first")], ["oldest", tr("Oldest first")], ["slowest", tr("Slowest first")]]} />
+        <button type="button" className="ghost" onClick={r.reload}>{tr("Refresh")}</button>
+      </div>
+      {d && <Chips label="Status" value={f.status} onChange={(v) => set({ status: v })} counts={d.groups} items={GROUPS} />}
+      {r.err ? <Err e={r.err} onRetry={r.reload} /> : !d ? <Skeleton /> : d.items.length === 0 ? (
+        <Quiet>{f.status || f.kind ? tr("No job matches these filters. Choose All, or a longer time.") : <>{tr("No background work in this time. If nothing has run for a day, check that the worker is running:") + " "}<Link to="/admin/health/pipeline">{tr("Processing pipeline")}</Link>.</>}</Quiet>
+      ) : <>
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Job history")}>
+          <table className="cards adm-t">
+            <thead><tr><th>{tr("Last activity")}</th><th>{tr("Job")}</th><th>{tr("Status")}</th><th className="num">{tr("Took")}</th><th className="num">{tr("Tries")}</th><th>{tr("What happened")}</th></tr></thead>
+            <tbody>{d.items.map((j: any) => {
+              const [gl, gk] = GROUP[j.group] ?? [humanize(j.status), ""];
+              return <tr key={j.id}>
+                <td data-label={tr("Last activity")} className="nowrap">{when(j.updated_at)}</td>
+                <td data-label={tr("Job")} className="wide"><b>{kindName(j.kind)}</b>{j.subject && <div className="small muted">{j.subject}</div>}</td>
+                <td data-label={tr("Status")}><Say k={gk}>{tr(gl)}</Say>{j.group === "retrying" && j.run_after && <div className="small muted">{tr("next try {}", when(j.run_after))}</div>}</td>
+                <td data-label={tr("Took")} className="num">{took(j.duration_s)}</td>
+                <td data-label={tr("Tries")} className="num">{tr("{} of {}", number(j.attempts), number(j.max_attempts))}</td>
+                <td data-label={tr("What happened")} className="small">{j.error ? <><b>{j.cause ? CAUSE_TITLE(j.cause, j.subject) : tr("Error")}</b><span className="fl-err">{j.error}</span></> : j.result?.length ? resultLine(j.result) : <span className="muted">—</span>}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+        <Pager total={d.total} offset={off} limit={LIMIT} onPage={(o) => setF({ page: String(o) })} label="Job history" />
+      </>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ source checks: each time a source was read */
+
+const RUN: Record<string, [string, Kind]> = { success: ["Worked", "ok"], partial: ["Partly worked", "warn"], failed: ["Failed", "bad"], skipped: ["Skipped (not allowed)", ""], running: ["Running", "info"] };
+
+export function SourceChecks() {
+  const [f, setF] = useQueryState({ since: "7d", source: "", status: "", page: "0" });
+  const off = Number(f.page) || 0, LIMIT = 50;
+  const r = useLoad(`/api/admin/sources/checks?${new URLSearchParams({ since: f.since, source: f.source, status: f.status, limit: String(LIMIT), offset: String(off) })}`);
+  const d = r.d; const t = d?.today;
+  const set = (p: Partial<typeof f>) => setF({ ...p, page: "0" });
+  return (
+    <div className="hist">
+      <p className="adm-lead">{tr("Each time a source was read: when, how long it took, what was new and any error. Use it to check that the sources you rely on are really being read.")}</p>
+      {t && <dl className="glance-facts">
+        <div><dt>{tr("Sources read in the last 24 hours")}</dt><dd>{number(t.checked)}<small>{tr("of {} live", number(t.live))}</small></dd></div>
+        <div className={t.failing ? "bad" : ""}><dt>{tr("Last read failed")}</dt><dd>{number(t.failing)}</dd></div>
+        <div><dt>{tr("New items found")}</dt><dd>{number(t.items_new)}</dd></div>
+        <div><dt>{tr("Company pages checked")}</dt><dd>{number(t.company_pages)}</dd></div>
+        <div><dt>{tr("Last read")}</dt><dd className="sm">{when(t.last_at)}</dd></div>
+      </dl>}
+      <div className="fbar">
+        <Pick label="When" value={f.since} onChange={(v) => set({ since: v })} options={windows()} />
+        <Pick label="Source" value={f.source} onChange={(v) => set({ source: v })} options={[["", tr("Every source")], ...(d?.sources ?? []).map((x: any) => [x.source_id, `${x.name} (${number(x.n)})`] as [string, string])]} />
+        <button type="button" className="ghost" onClick={r.reload}>{tr("Refresh")}</button>
+      </div>
+      {d && <Chips label="Result" value={f.status} onChange={(v) => set({ status: v })} counts={d.by_status} items={Object.entries(RUN).map(([k, [l, c]]) => [k, l, c])} />}
+      {r.err ? <Err e={r.err} onRetry={r.reload} /> : !d ? <Skeleton /> : d.items.length === 0 ? (
+        <Quiet>{f.status || f.source ? tr("No source check matches these filters. Choose All, or a longer time.") : <>{tr("No source was read in this time. Sources are read on a schedule once they are live; see which are live in") + " "}<Link to="/admin/sources">{tr("Sources")}</Link>.</>}</Quiet>
+      ) : <>
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Source checks")}>
+          <table className="cards adm-t">
+            <thead><tr><th>{tr("Started")}</th><th>{tr("Source")}</th><th>{tr("Result")}</th><th className="num">{tr("Took")}</th><th className="num">{tr("New")}</th><th className="num">{tr("Changed")}</th><th>{tr("Error")}</th></tr></thead>
+            <tbody>{d.items.map((x: any) => {
+              const [l, k] = RUN[x.status] ?? [humanize(x.status), ""];
+              return <tr key={x.id}>
+                <td data-label={tr("Started")} className="nowrap">{when(x.started_at)}</td>
+                <td data-label={tr("Source")} className="wide"><b>{x.display_name ?? x.source_id}</b></td>
+                <td data-label={tr("Result")}><Say k={k}>{tr(l)}</Say></td>
+                <td data-label={tr("Took")} className="num">{took(x.duration_s)}</td>
+                <td data-label={tr("New")} className="num">{number(x.items_new)}</td>
+                <td data-label={tr("Changed")} className="num">{number(x.items_changed)}</td>
+                <td data-label={tr("Error")} className="small">{x.error ? <span className="fl-err">{x.error}</span> : <span className="muted">—</span>}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+        <Pager total={d.total} offset={off} limit={LIMIT} onPage={(o) => setF({ page: String(o) })} label="Source checks" />
+      </>}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ knowledge base documents */
 
 export function KnowledgeAdmin() {
@@ -346,7 +545,7 @@ export function KnowledgeAdmin() {
         {d.items.map((k: any) => (
           <li key={k.id} className={`adm-item ${k.available ? "ok" : "warn"}`}>
             <div className="adm-item-head"><div><b>{k.title}</b><div className="small muted">{k.blurb}</div></div><Say k={k.available ? "ok" : "warn"}>{k.meta ? tr("Uploaded") : k.available ? tr("Built in") : tr("Not uploaded yet")}</Say></div>
-            {k.meta && <p className="small muted m-0">{tr("{} KB, uploaded by {} on {}", (k.meta.size_bytes / 1024).toFixed(0), k.meta.uploaded_by, fmtDateTime(k.meta.uploaded_at))}</p>}
+            {k.meta && <p className="small muted m-0">{tr("{} KB, uploaded by {} on {}", (k.meta.size_bytes / 1024).toFixed(0), k.meta.uploaded_by, when(k.meta.uploaded_at))}</p>}
             <label className="adm-file"><span>{tr("Upload a new copy (.html)")}</span><input type="file" accept=".html,text/html" aria-label={tr("Upload {}", k.title)} onChange={(e) => { void send(k.id, e.target.files?.[0]); e.target.value = ""; }} /></label>
           </li>))}
       </ul>

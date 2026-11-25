@@ -91,7 +91,9 @@ def test_findings_acceptance_matrix(conn, db_url):
         ("Public body", {"entity": "public_body"}), ("ZUS", {}), ("Software vendor", {"sector": "Banking software"}),
         ("Unverified country", {"country": "ZZ"}),
     ]:
-        signal(label, org(label, **options))
+        made, _ = signal(label, org(label, **options))
+        if label == "Listed bank":
+            listed = made          # round 33: a listed company with a source is a target account like a privately held one
     waiting = org("Private ownership pending", ownership="unknown", proof=False)
     waiting_signal, _ = signal("Verified payments programme", waiting)
     pending_tender, _ = notice("pending-owner-rfp", waiting)
@@ -136,7 +138,7 @@ def test_findings_acceptance_matrix(conn, db_url):
             today = request("?scope=today&days=14").json()
             assert [r["id"] for r in today["items"][:2]] == [open_event, later_event]
             seen = {i for r in today["items"] for i in r["event_ids"]}
-            assert seen == {open_event, later_event, first, mirror, intl, nord, de, limited}
+            assert seen == {open_event, later_event, first, mirror, intl, nord, de, limited, listed}
             assert today["items"][0]["tender"]["url"] == "https://bank.example/active-rfp"
             assert today["coverage"]["unhealthy"][0]["state"] == "stale"
 

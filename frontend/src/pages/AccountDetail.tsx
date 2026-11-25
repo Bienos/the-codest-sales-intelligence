@@ -1,12 +1,11 @@
 import { getLanguage, number, tr } from "../locale";
-import { Fragment, ReactNode, useEffect, useState } from "react";
+import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post, put } from "../api";
 import { AccountFindings } from "../components/Findings";
-import { SignalSummary } from "../components/BuyingSignal";
 import { SHORT } from "../components/Signals";
 import { countryName, staffCount } from "./targetMarket";
-import { Badge, Err, Evidence, groupName, humanize, lab, priorityKind, Skeleton, reloadPage, safeHref, whyShort, Tabs } from "../components/ui";
+import { Badge, Err, Evidence, humanize, Skeleton, reloadPage, safeHref, Tabs } from "../components/ui";
 import "../styles/account.css";
 
 /* ------------------------------------------------------------------ shared helpers (also used by the person page) */
@@ -192,6 +191,7 @@ const FIT_WORD: Record<string, string> = { good: "In our favour", neutral: "Neut
 const UKDACH = ["GB", "UK", "IE", "DE", "AT", "CH", "SE", "NO", "DK", "FI", "IS", "PL"];
 const EUROPE = ["FR", "ES", "IT", "PT", "NL", "BE", "LU", "CZ", "SK", "HU", "RO", "BG", "GR", "HR", "SI", "EE", "LV", "LT", "CY", "MT", "LI", "MC"];
 const FIN = /bank|insur|payment|fintech|lend|wealth|financ|credit|asset|invest|pension|brok|card|capital|leasing/i;
+const isUrl = (u?: string | null) => /^https?:\/\//i.test(String(u ?? "").trim());
 
 /** Fit points we can judge from our own records, shown until (and alongside) Exa research. */
 function recordFit(a: any, lp: Record<string, string>): any[] {
@@ -235,30 +235,29 @@ export function FitCells({ points }: { points: any[] }) {
   return <span className="fit-cells" aria-hidden="true">{sortFit(points).map((p, i) => <i key={i} className={`fit-cell ${p.fit}`} />)}</span>;
 }
 
-/** The split as one tall segmented bar (in our favour, neutral, against) with its legend. */
+/** The split as one segmented bar (in our favour, neutral, against) with its legend. */
 function FitBar({ points }: { points: any[] }) {
-  const words: Record<string, string> = { good: "In our favour", neutral: "Neutral", bad: "Against us" };
   return <div className="fit-figure">
     <div className="fit-bar" role="img" aria-label={tr("{} in our favour, {} neutral, {} against", fitCount(points, "good"), fitCount(points, "neutral"), fitCount(points, "bad"))}>
-      {FIT_ORDER.filter((k) => fitCount(points, k)).map((k) => <span key={k} className={`fit-seg ${k}`} style={{ flexGrow: fitCount(points, k) }} title={`${tr(words[k])}: ${fitCount(points, k)}`}><b>{fitCount(points, k)}</b></span>)}
+      {FIT_ORDER.filter((k) => fitCount(points, k)).map((k) => <span key={k} className={`fit-seg ${k}`} style={{ flexGrow: fitCount(points, k) }} title={`${tr(FIT_WORD[k])}: ${fitCount(points, k)}`}><b>{fitCount(points, k)}</b></span>)}
     </div>
-    <ul className="fit-legend">{FIT_ORDER.map((k) => <li key={k}><i className={`fit-cell ${k}`} aria-hidden="true" />{tr(words[k])}</li>)}</ul>
+    <ul className="fit-legend">{FIT_ORDER.map((k) => <li key={k}><i className={`fit-cell ${k}`} aria-hidden="true" />{tr(FIT_WORD[k])}</li>)}</ul>
   </div>;
 }
 
-function FitBoard({ points, fromRecords }: { points: any[]; fromRecords: boolean }) {
+/** One calm row per point: what it is, what we know, and whether it helps us. "Our records" is said once, below, not on every row. */
+function FitList({ points, fromRecords }: { points: any[]; fromRecords: boolean }) {
   return <>
     <FitBar points={points} />
-    <ul className="fit-tiles">{sortFit(points).map((p, i) => {
+    <ul className="fit-rows">{sortFit(points).map((p, i) => {
       const Icon = fitIcon(p.label), Glyph = FIT_GLYPH[p.fit] ?? Ic.dash;
-      return <li key={i} className={`fit-tile ${p.fit}`}>
-        <div className="fit-tile-top"><span className="fit-ic"><Icon /></span>
-          <span className="fit-name"><b>{tr(p.label)}</b><span className={`fit-verdict ${p.fit}`}><Glyph />{tr(FIT_WORD[p.fit] ?? "Neutral")}</span></span></div>
-        <p>{p.value}</p>
-        <Cite c={p} />
+      return <li key={i} className={`fit-row ${p.fit}`}>
+        <span className="fit-ic" aria-hidden="true"><Icon /></span>
+        <span className="fit-row-b"><b>{tr(p.label)}</b><span>{p.value}{p.source !== "R" && <> <Cite c={p} /></>}</span></span>
+        <span className={`fit-verdict ${p.fit}`}><Glyph />{tr(FIT_WORD[p.fit] ?? "Neutral")}</span>
       </li>;
     })}</ul>
-    {fromRecords && <p className="ac-note mt-2">{tr("Judged from our own records. Research with Exa adds the tech stack, the engineering team and current change programmes.")}</p>}
+    {fromRecords && <p className="ac-note mt-2 mb-0">{tr("Judged from our own records. Research with Exa adds the tech stack, the engineering team and current change programmes.")}</p>}
   </>;
 }
 
@@ -283,7 +282,7 @@ function CompanyProfile({ account, onSave }: { account: any; onSave: (profile: a
   };
   return <form className="card company-profile mt-3" onSubmit={save}>
     <h2>{tr("Company details")}</h2>
-    <p className="small muted">{tr("Use the company register, annual report or company website to confirm ownership. For a subsidiary, check who owns the parent company.")}</p>
+    <p className="small muted">{tr("Correct what we hold about the company. For ownership, the company register, annual report or website is a good source.")}</p>
     <div className="directory-filters">
       <label>{tr("Ownership")}<select value={form.ownership} onChange={(e) => setForm({ ...form, ownership: e.target.value })}>
         {Object.entries(OWNERSHIP).map(([key, title]) => <option key={key} value={key}>{tr(title)}</option>)}
@@ -312,8 +311,8 @@ function OwnerControl({ rel, orgId, onChange }: { rel: any; orgId: string; onCha
   };
   let control: ReactNode = null;
   if (rel.can_assign_others) {
-    control = <select aria-label={tr("Owner")} value={owner?.user_id ?? ""} disabled={busy} onChange={(e) => set(e.target.value || null)}>
-      <option value="">{tr("Unassigned")}</option>
+    control = <select aria-label={tr("Account owner")} value={owner?.user_id ?? ""} disabled={busy} onChange={(e) => set(e.target.value || null)}>
+      <option value="">{tr("Nobody yet")}</option>
       {rel.team.map((u: any) => <option key={u.id} value={u.id}>{u.display_name}</option>)}
     </select>;
   } else if (rel.can_edit && !owner) {
@@ -322,9 +321,9 @@ function OwnerControl({ rel, orgId, onChange }: { rel: any; orgId: string; onCha
     control = <button type="button" className="linkish" disabled={busy} onClick={() => set(null)}>{tr("Release")}</button>;
   }
   return <>
-    {rel.can_assign_others ? null : <>{owner ? owner.name : tr("Unassigned")} </>}
+    {rel.can_assign_others ? null : <b>{owner ? owner.name : tr("Nobody yet")} </b>}
     {control}
-    {owner?.assigned_at && <div className="small">{tr("since {}", fmtDate(owner.assigned_at))}</div>}
+    {owner?.assigned_at && <span className="ac-note"> {tr("since {}", fmtDate(owner.assigned_at))}</span>}
     <Err e={err} />
   </>;
 }
@@ -337,7 +336,7 @@ export function RelBadge({ rel, onNavy = false }: { rel: any; onNavy?: boolean }
     <i aria-hidden="true" />{s ? tr(REL_LABEL[s]) : tr("Relationship not recorded")}</span>;
 }
 
-function RelationshipPanel({ rel, orgId, onSaved }: { rel: any; orgId: string; onSaved: () => void }) {
+function RelationshipPanel({ rel, orgId, onSaved, onOwner }: { rel: any; orgId: string; onSaved: () => void; onOwner: (owner: any) => void }) {
   const rec = rel?.recorded;
   const [status, setStatus] = useState<string | null>(rec?.status ?? null);
   const [note, setNote] = useState<string>(rec?.note ?? "");
@@ -353,6 +352,8 @@ function RelationshipPanel({ rel, orgId, onSaved }: { rel: any; orgId: string; o
   const ll = rel.lead_list;
   return <section className="ac-panel ac-rel" id="relationship" aria-labelledby="rel-h">
     <h2 id="rel-h">{tr("Relationship with us")}</h2>
+    <p className="ac-purpose">{tr("Whether we already know them, and who on our team looks after the account.")}</p>
+    <div className="rel-owner"><span className="ac-note">{tr("Account owner")}</span><span><OwnerControl rel={rel} orgId={orgId} onChange={onOwner} /></span></div>
     <div className="rel-now"><RelBadge rel={rel} />
       {rec?.status ? <span className="ac-note">{tr("Recorded by {} on {}", rec.set_by, fmtDate(rec.set_at))}</span>
         : <span className="small">{tr("Our data suggests: {}.", tr(REL_LABEL[rel.suggested]))} {tr(rel.suggested_why)}</span>}</div>
@@ -407,60 +408,228 @@ export function Sec({ title, hint, children, id }: { title: string; hint?: strin
   </section>;
 }
 
-/** What the lead list says about the account: not checked by the platform. */
-function ListProfile({ p }: { p: Record<string, string> }) {
-  const text: [string, string | undefined][] = [["Strongest signal", p["Strongest Buying Signal"]], ["Possible work for us", p["Potential Opportunity"]], ["How The Codest fits", p["The Codest Service Fit"]],
-    ["Next step", p["Next Action"]], ["Still missing", p["Coverage Gap"]]];
-  const facts: [string, string | undefined][] = [["Segment", p["ICP Segment"]], ["Buying stage", p["Buying Stage"]], ["Signal strength", p["Signal Strength"]], ["Last researched", p["Last Researched"]]];
-  const route = p["Procurement Route"];
-  return <>
-    {text.filter(([, v]) => v).map(([k, v]) => <p key={k} className={k === "Still missing" ? "small" : ""}><b>{tr(k)}:</b> {v}</p>)}
-    {(facts.some(([, v]) => v) || route) && <dl className="ac-kv mt-2">{facts.filter(([, v]) => v).map(([k, v]) => <Fragment key={k}><dt>{tr(k)}</dt><dd>{v}</dd></Fragment>)}
-      {route && <><dt>{tr("How they buy")}</dt><dd>{safeHref(route) ? <a href={safeHref(route)} target="_blank" rel="noreferrer noopener">{host(route)} ↗</a> : route}</dd></>}</dl>}
-    {p["Primary Source URL"] && safeHref(p["Primary Source URL"]) && <p className="mt-2"><a className="ac-cite" href={safeHref(p["Primary Source URL"])} target="_blank" rel="noreferrer noopener">{host(p["Primary Source URL"])} ↗</a></p>}
-  </>;
+/** The first few items, and a button for the rest. */
+function useFew<T>(items: T[], n: number): [T[], ReactNode] {
+  const [all, setAll] = useState(false);
+  if (items.length <= n) return [items, null];
+  return [all ? items : items.slice(0, n), <button type="button" className="linkish ac-more" aria-expanded={all} onClick={() => setAll(!all)}>
+    {all ? tr("Show less") : tr("Show {} more", items.length - n)}</button>];
 }
 
-/* ------------------------------------------------------------------ overview */
+/** A section of the company page: its name, one line on what it is for, then the content. */
+function Part({ title, purpose, id, children }: { title: string; purpose: string; id: string; children: ReactNode }) {
+  return <section className="ac-part" aria-labelledby={id}>
+    <h2 id={id}>{tr(title)}</h2>
+    <p className="ac-purpose">{tr(purpose)}</p>
+    {children}
+  </section>;
+}
+
+/* ------------------------------------------------------------------ why talk to them now */
+const ORIGIN: Record<string, string> = { tender: "Open tender", signal: "Finding we checked", lead_list: "Your lead list", news: "In the news" };
+const STRENGTH: Record<number, string> = { 3: "Strong reason", 2: "Good reason", 1: "Worth a look" };
+/** The opportunity engine's next actions in a seller's words. Internal review steps never reach this list (the API leaves them out). */
+const STEP: Record<string, string> = {
+  route_to_owner: "Pass this to the account owner before anyone contacts them.",
+  bid_no_bid_review: "Decide whether to bid: check eligibility, scope and contract terms.",
+  investigate_partner_route: "Ask {} whether they bring in specialist engineers for this work.",
+  investigate_vendor_route: "Ask {} whether they need outside help to roll this out.",
+  qualify_external_demand: "Ask whether they plan to bring in an outside team for this work, and how they choose suppliers.",
+  identify_delivery_owner: "Find the person who runs delivery for this programme.",
+  advance_discovery: "Book a discovery call: who sponsors it, how they buy, and the scope.",
+};
+
+function StrengthMark({ n }: { n: number }) {
+  const word = tr(STRENGTH[n] ?? STRENGTH[1]);
+  return <span className="wn-str" title={word}><span className="ac-sr">{word}</span>{[1, 2, 3].map((i) => <i key={i} className={i <= n ? "on" : ""} aria-hidden="true" />)}</span>;
+}
+const origin = (r: any) => (r.kind === "signal" && r.rule_id && SHORT[r.rule_id] ? tr(SHORT[r.rule_id]) : tr(ORIGIN[r.kind] ?? "Finding we checked"));
+
+/** Who to talk to first: a decision maker we can email, then a technical buyer, then anyone with an email. */
+function firstContact(people: any[] | null) {
+  const rank = (p: any) => (p.committee === "decision" ? 0 : p.committee === "technical" ? 1 : 2) + (p.has_email ? 0 : 3);
+  return [...(people ?? []).filter((p) => !p.suppressed)].sort((x, y) => rank(x) - rank(y))[0] ?? null;
+}
+
+function stepText(ns: any, contact: any, hasReasons: boolean): string {
+  if (ns?.kind === "tender") return ns.date ? tr("Decide by {} whether to bid, or which bidder to partner with.", fmtDate(ns.date)) : tr("Decide whether to bid, or which bidder to partner with.");
+  if (ns?.kind === "lead_list" && ns.text) return ns.text;
+  if (ns?.kind === "ask" && ns.text) return tr("Ask them: {}", ns.text);
+  if (ns?.kind === "opportunity" && STEP[ns.action_type]) return tr(STEP[ns.action_type], ns.counterparty ?? "");
+  if (contact) return hasReasons ? tr("Write to {} and open with the first reason.", contact.name) : tr("Write to {} with a short introduction. There is no fresh news to open with yet.", contact.name);
+  return hasReasons ? tr("Find the people who choose engineering suppliers here, then open with the first reason.") : tr("Find the people who choose engineering suppliers here, and check for news.");
+}
+
+function WhyNow({ d, people, canPeople, canDraft, canScan, scanBusy, runScan, goto }: { d: any; people: any[] | null; canPeople: boolean; canDraft: boolean; canScan: boolean; scanBusy: boolean; runScan: () => void; goto: (t: Tab, s?: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const reasons: any[] = d.why_now?.reasons ?? [];
+  const ns = d.why_now?.next_step ?? null;
+  const contact = canPeople ? firstContact(people) : null;
+  const noPeople = canPeople && people !== null && !(people ?? []).some((p) => !p.suppressed);
+  const details = reasons.some((r) => r.detail);
+  return <section className="wn" aria-labelledby="wn-h">
+    <div className="wn-main">
+      <h2 id="wn-h"><Ic.target />{tr("Why talk to them now")}</h2>
+      <p className="ac-purpose">{tr("The best reasons to get in touch now, strongest first. Each one links to where we found it.")}</p>
+      {reasons.length > 0 ? <ol className="wn-list">{reasons.map((r, i) => {
+        const href = isUrl(r.url) ? safeHref(r.url) : undefined;
+        return <li key={i}>
+          <span className="wn-i" aria-hidden="true">{i + 1}</span>
+          <div className="wn-body">
+            <p className="wn-line" title={r.text}>{r.text}</p>
+            <p className="wn-meta"><StrengthMark n={r.strength} />
+              <span>{r.kind === "tender" && r.deadline ? tr("Closes {}", fmtDate(r.deadline)) : fmtDay(r.date)}</span>
+              {href && <a href={href} target="_blank" rel="noreferrer noopener">{host(r.url)} ↗</a>}
+              <span className="wn-origin">{origin(r)}</span></p>
+            {open && r.detail && <p className="wn-detail">{r.detail}</p>}
+          </div>
+        </li>;
+      })}</ol> : <div className="wn-empty">
+        <p className="m-0"><b>{tr("No fresh reason yet.")}</b> {tr("We look for open tenders, findings we have checked, your lead list's signals and news from the last 12 months.")}</p>
+        {canScan && <button type="button" disabled={scanBusy} onClick={runScan}>{tr("Check for news")}</button>}
+      </div>}
+      <p className="wn-foot">
+        {details && <button type="button" className="linkish" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? tr("Show less") : tr("Show more about each reason")}</button>}
+        <button type="button" className="linkish" onClick={() => goto("activity", "timeline")}>{tr("All findings and tenders")}</button>
+      </p>
+    </div>
+    <aside className="wn-step" aria-labelledby="wn-step-h">
+      <h3 id="wn-step-h">{tr("Suggested next step")}</h3>
+      <p className="wn-step-text">{stepText(ns, contact, reasons.length > 0)}</p>
+      {ns?.kind === "lead_list" && <p className="wn-step-src">{tr("From your lead list")}</p>}
+      {contact && <div className="wn-who">
+        <Avatar name={contact.name} committee={contact.committee} size="sm" />
+        <span><small>{tr("Start with")}</small><Link to={`/people/${contact.id}`}>{contact.name}</Link><span>{contact.title || tr("Role not recorded")}</span></span>
+        <EmailMark has={Boolean(contact.has_email)} onNavy />
+      </div>}
+      <div className="wn-step-act">
+        {noPeople ? <button type="button" className="primary" onClick={() => goto("people")}>{tr("Find decision makers")}</button>
+          : canDraft && <button type="button" className="primary" onClick={() => goto("outreach")}>{tr("Write outreach")}</button>}
+        {ns?.kind === "tender" && isUrl(ns.url) && <a href={safeHref(ns.url)} target="_blank" rel="noreferrer noopener">{tr("Open the tender")} ↗</a>}
+        {ns?.kind === "opportunity" && ns.hypothesis_id && <Link to={`/opportunities/${ns.hypothesis_id}`}>{tr("Open the opportunity")}</Link>}
+      </div>
+    </aside>
+  </section>;
+}
+
+/* ------------------------------------------------------------------ where we could help */
 const SERVICE: Record<string, [string, typeof Ic.mail]> = { team_extension: ["Team extension", Ic.teamExt], delivery_team: ["Delivery team", Ic.delivery], ai_data: ["AI and data", Ic.data], qa: ["QA and testing", Ic.qa] };
 /** The service an angle is about: the research names it; older profiles are read from the wording. */
 const serviceOf = (h: any): string => (h.service && SERVICE[h.service] ? h.service
   : /\bqa\b|test/i.test(h.angle ?? "") ? "qa" : /\bai\b|data|machine learning|\bml\b|analytics/i.test(h.angle ?? "") ? "ai_data"
   : /delivery team|dedicated team|squad|project team/i.test(h.angle ?? "") ? "delivery_team" : "team_extension");
+const ROUTE_WORDS: Record<string, string> = { direct: "Directly with {}", vendor: "Through {}, their platform vendor", prime_subcontract: "Through {}, their integrator",
+  procurement: "Public tender run by {}", relationship: "Through {}" };
+const plainTitle = (t?: string | null) => String(t ?? "").replace(/\s*\((analyst )?working title\)\s*$/i, "").trim();
 
-/** Fit points: from Exa research when there is a profile, otherwise judged from our own records. */
-function fitPoints(a: any, lp: Record<string, string>, c: any): { points: any[]; fromRecords: boolean } {
-  return c?.icp_points?.length ? { points: c.icp_points, fromRecords: false } : { points: recordFit(a, lp), fromRecords: true };
+/** One card per programme. The API already folds routes and same-kind repeats together; this keeps the page safe if it ever does not. */
+function programmes(opps: any[]): any[] {
+  const m = new Map<string, any>();
+  for (const o of opps) {
+    const title = o.initiative?.plain_title || plainTitle(o.initiative?.title);
+    const key = title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim() || o.hypothesis_id;
+    const routes = o.routes ?? [{ hypothesis_id: o.hypothesis_id, type: o.route?.type, counterparty: o.route?.counterparty }];
+    const g = m.get(key);
+    if (!g) { m.set(key, { ...o, title, routes: [...routes], sources: o.sources ?? 1 }); continue; }
+    g.sources += o.sources ?? 1;
+    for (const r of routes) if (!g.routes.some((x: any) => x.type === r.type && x.counterparty === r.counterparty)) g.routes.push(r);
+  }
+  return [...m.values()];
 }
 
-/** The reason to call now: the strongest buying signal next to our best angle. */
-function Opportunity({ d, help, me, goto }: { d: any; help?: any[]; me: { permissions: string[] }; goto: (t: Tab, s?: string) => void }) {
-  const s = d.buying_signal, h = help?.[0];
-  if (!s && !h) return <section className="why-now is-quiet" aria-label={tr("Why talk to them now")}>
-    <p className="m-0"><Ic.target /> {tr("No live buying signal yet. “Check for news” reads their pages and searches the web; research with Exa suggests angles.")}</p>
-  </section>;
-  const [label, Icon] = SERVICE[h ? serviceOf(h) : "team_extension"];
-  return <section className="why-now" aria-labelledby="opp-h">
-    <h2 id="opp-h"><Ic.target />{tr("Why talk to them now")}</h2>
-    <div className={`wn-cols${s && h ? " two" : ""}`}>
-      {s && <div className="wn-sig">
-        <h3>{tr("Strongest buying signal")}</h3>
-        <SignalSummary signal={s} />
-        {s.commercial_questions?.[0] && <p className="small mt-2 mb-0"><b>{tr("Qualify next:")}</b> {s.commercial_questions[0]}</p>}
-        {d.score && !d.score.stopped && <p className="ac-note mt-2 mb-0">{tr("Signal score {} ({}) from {} signals: {}.", d.score.score, tr(BAND[d.score.band]?.[1] ?? d.score.band), d.score.signal_count, d.score.groups.map(groupName).join(", "))}</p>}
-        {d.score?.stopped && <p className="small mt-2 mb-0">{tr("On hold: something we found says not to pursue this account now.")}</p>}
-        <p className="wn-links"><button type="button" className="linkish" onClick={() => goto("activity", "signals")}>{tr("All signals, findings and tenders")}</button>
-          {s.rule_id && me.permissions.includes("draft.create") && <Link to={`/campaigns/new?rules=${s.rule_id}`}>{tr("Start a campaign to every company with this signal")}</Link>}</p>
-      </div>}
-      {h && <div className="wn-help">
-        <h3>{tr("Our best angle")}</h3>
-        <span className="svc-tag"><Icon />{tr(label)}</span>
-        <p className="wn-angle">{h.angle}</p>
-        {h.why && <p className="small">{h.why}</p>}
-        {me.permissions.includes("draft.create") && <button type="button" className="primary" onClick={() => goto("outreach")}>{tr("Write outreach")}</button>}
-      </div>}
+function HelpSection({ d, c, lp }: { d: any; c: any; lp: Record<string, string> }) {
+  const byService = new Map<string, any[]>();
+  for (const h of c?.how_we_help ?? []) { const s = serviceOf(h); byService.set(s, [...(byService.get(s) ?? []), h]); }
+  const opps = programmes(d.opportunities ?? []);
+  const listIdea: [string, string][] = byService.size ? [] : ([["Possible work for us", lp["Potential Opportunity"]], ["How The Codest fits", lp["The Codest Service Fit"]]] as [string, string][]).filter(([, v]) => v);
+  return <Part title="Where we could help" purpose="The services that match what they are doing. Check each idea before you use it." id="sec-help">
+    {!byService.size && !opps.length && !listIdea.length && <p className="small m-0">{tr("No ideas yet. Research with Exa suggests services that match what they are doing.")}</p>}
+    {byService.size > 0 && <ul className="svc-grid">{[...byService].map(([svc, items]) => {
+      const [label, Icon] = SERVICE[svc];
+      return <li key={svc} className="svc-card">
+        <div className="svc-head"><span className="svc-tag"><Icon />{tr(label)}</span>{items.length > 1 && <span className="ac-count">{tr("{} ideas", items.length)}</span>}</div>
+        {items.map((h, i) => <div key={i} className="svc-idea"><b>{h.angle}</b>{h.why && <p>{h.why}</p>}<div>{(h.sources ?? []).map((s: any, k: number) => <Cite key={k} c={s} />)}</div></div>)}
+      </li>;
+    })}</ul>}
+    {listIdea.length > 0 && <div className="svc-list-idea">{listIdea.map(([k, v]) => <p key={k}><b>{tr(k)}:</b> {v}</p>)}<span className="ac-note">{tr("From your lead list")}</span></div>}
+    {opps.length > 0 && <>
+      <h3 className="ac-sub-h">{tr("Programmes we track")}</h3>
+      <ul className="opp-list">{opps.map((o) => <li key={o.hypothesis_id} className="opp">
+        <div className="opp-top"><b>{o.title}</b>
+          {o.sources > 1 && <span className="ac-count" title={tr("Brought together from {} records about the same programme", o.sources)}>{tr("{} sources", o.sources)}</span>}
+          <Link to={`/opportunities/${o.hypothesis_id}`}>{tr("Open")}</Link></div>
+        {(o.plain_reason || o.workstream?.scope_statement) && <p>{o.plain_reason ?? o.workstream.scope_statement}</p>}
+        <p className="opp-routes"><span>{tr("Ways in:")}</span> {o.routes.map((r: any) => tr(ROUTE_WORDS[r.type] ?? "Through {}", r.counterparty ?? "")).join(" · ")}</p>
+      </li>)}</ul>
+    </>}
+  </Part>;
+}
+
+/* ------------------------------------------------------------------ the rest of the overview */
+/** Shown when the company has not been researched: what research adds, in one calm block. */
+function ResearchInvite({ r, canRun, start, busy, err }: { r: any; canRun: boolean; start: () => void; busy: boolean; err: unknown }) {
+  const ready = Boolean(r?.setup?.ready);
+  return <div className="ri-invite">
+    <span className="ri-ic" aria-hidden="true"><Ic.spark /></span>
+    <div>
+      <p className="m-0"><b>{tr("We have not researched this company yet.")}</b> {tr("Exa reads their website, last year's news, partner announcements and hiring pages, then writes a short profile with a link behind every line.")}</p>
+      <p className="ac-note mt-1 mb-0">{tr("About four searches, a few US cents from the monthly Exa budget.")}{r && !ready && <> {tr("Research is not switched on yet: an administrator can turn it on.")}</>}</p>
+      <Err e={err} />
     </div>
-  </section>;
+    {canRun && r && <button type="button" disabled={busy || r.running || !ready} onClick={start}>{tr("Research with Exa")}</button>}
+  </div>;
+}
+
+function AboutSection({ c, research, canRun, startResearch, researchBusy, researchErr }: any) {
+  if (c?.empty) return <Part title="What they do" purpose="The company in a few lines, with the pages behind them." id="sec-about"><p className="m-0">{tr(c.empty)}</p></Part>;
+  return <Part title="What they do" purpose="The company in a few lines, with the pages behind them." id="sec-about">
+    {c ? <>
+      {c.about && <p className="ac-lead">{c.about.text} {c.about.sources.map((s: any, i: number) => <Cite key={i} c={s} />)}</p>}
+      {c.products?.length > 0 && <ul className="ac-tags mt-2" aria-label={tr("Products and services")}>{c.products.map((p: any, i: number) => <li key={i} className="ac-tag prod" title={p.detail ?? undefined}>{p.name}</li>)}</ul>}
+      {c.footprint?.markets && <p className="small mt-2"><b>{tr("Markets")}:</b> {c.footprint.markets.value} <Cite c={c.footprint.markets} /></p>}
+    </> : <ResearchInvite r={research} canRun={canRun} start={startResearch} busy={researchBusy} err={researchErr} />}
+  </Part>;
+}
+
+function NowSection({ c }: { c: any }) {
+  const [shown, more] = useFew<any>(c.recent ?? [], 3);
+  return <Part title="What they're doing now" purpose="Their news from the last 12 months: good openers for a first message." id="sec-now">
+    {shown.length ? <Timeline items={shown.map((x: any) => ({ date: x.date, title: x.headline, detail: x.detail, extra: <Cite c={x} /> }))} />
+      : <p className="small m-0">{tr("Exa found no dated news about this company in the last 12 months.")}</p>}
+    {more}
+  </Part>;
+}
+
+function VendorSection({ c, d }: { c: any; d: any }) {
+  const vendors = [...(c?.vendors ?? []).map((v: any) => ({ name: v.name, role: v.role, cite: <Cite c={v} /> })),
+    ...(d.suppliers ?? []).map((x: any) => ({ name: x.supplier_name, role: [humanize(x.supplier_role), x.scope_text].filter(Boolean).join(": "), cite: <span className="ac-cite rec">{tr("Our records")}</span> }))];
+  const [shown, more] = useFew<any>(vendors, 4);
+  if (!vendors.length && !c) return null;
+  return <Part title="Vendors & partners" purpose="Who already supplies their technology. Ask what these partners do not cover." id="sec-vendors">
+    {vendors.length ? <>
+      <ul className="vchips">{shown.map((v: any, i: number) => <li key={i} className="vchip"><Monogram name={v.name} size="sm" /><div><b>{v.name}</b>{v.role && <span>{v.role}</span>}{v.cite}</div></li>)}</ul>
+      {more}
+      <p className="ac-note mt-2 mb-0">{tr("A named vendor does not mean an exclusive contract or that they cover everything.")}</p></>
+      : <p className="small m-0">{tr("No vendors or integrators are named in the pages Exa found. Ask about current suppliers in the first call.")}</p>}
+  </Part>;
+}
+
+/** What the lead list says, without repeating what the page already shows above (the signal, the next step, the service ideas). */
+function ListSection({ lp, skip }: { lp: Record<string, string>; skip: Set<string> }) {
+  const [open, setOpen] = useState(false);
+  const facts: [string, string | undefined][] = [["Buying stage", lp["Buying Stage"]], ["Signal strength", lp["Signal Strength"]], ["Segment", lp["ICP Segment"]], ["Last researched", lp["Last Researched"]]];
+  const route = lp["Procurement Route"];
+  const text = ([["Strongest signal", lp["Strongest Buying Signal"]], ["Possible work for us", lp["Potential Opportunity"]], ["How The Codest fits", lp["The Codest Service Fit"]],
+    ["Next step", lp["Next Action"]], ["Still missing", lp["Coverage Gap"]]] as [string, string | undefined][]).filter(([k, v]) => v && !skip.has(k));
+  const src = lp["Primary Source URL"];
+  if (!facts.some(([, v]) => v) && !route && !text.length) return null;
+  return <Part title="From your lead list" purpose="What your own lead list says about them. We have not checked it." id="sec-list">
+    <dl className="ac-kv">{facts.filter(([, v]) => v).map(([k, v]) => <Fragment key={k}><dt>{tr(k)}</dt><dd>{v}</dd></Fragment>)}
+      {route && <><dt>{tr("How they buy")}</dt><dd>{isUrl(route) ? <a href={safeHref(route)} target="_blank" rel="noreferrer noopener">{host(route)} ↗</a> : route}</dd></>}
+      {isUrl(src) && <><dt>{tr("Main source")}</dt><dd><a className="ac-cite" href={safeHref(src)} target="_blank" rel="noreferrer noopener">{host(src)} ↗</a></dd></>}</dl>
+    {open && <div className="ac-list-text">{text.map(([k, v]) => <p key={k}><b>{tr(k)}:</b> {v}</p>)}</div>}
+    {text.length > 0 && <button type="button" className="linkish ac-more" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? tr("Show less") : tr("Show more from the lead list")}</button>}
+  </Part>;
 }
 
 /** Who we know in each part of the buying committee: a filled square per group with people, a dashed one for a gap. */
@@ -475,13 +644,15 @@ function Coverage({ people }: { people: any[] }) {
 
 function KeyPeople({ people, goto, canSee }: { people: any[] | null; goto: (t: Tab) => void; canSee: boolean }) {
   if (!canSee) return null;
+  const live = (people ?? []).filter((p) => !p.suppressed);
   return <section className="ac-panel kp" aria-labelledby="kp-h">
     <h2 id="kp-h">{tr("Key people")}</h2>
+    <p className="ac-purpose">{tr("Who we know there, by their part in the buying decision.")}</p>
     {!people ? <Skeleton rows={2} /> : people.length === 0 ? <>
       <p className="small">{tr("No people recorded at this company yet.")}</p>
       <button type="button" onClick={() => goto("people")}>{tr("Find decision makers")}</button></> : <>
       <Coverage people={people} />
-      <ul className="kp-list">{people.filter((p) => !p.suppressed).slice(0, 5).map((p) => <li key={p.id}>
+      <ul className="kp-list">{live.slice(0, 5).map((p) => <li key={p.id}>
         <Avatar name={p.name} committee={p.committee} size="sm" />
         <div className="kp-who"><Link to={`/people/${p.id}`}>{p.name}</Link><span>{p.title || tr("Role not recorded")}</span></div>
         {p.has_email && <span className="kp-mail" title={tr("Email ✓")}><Ic.mail /><span className="ac-sr">{tr("Email ✓")}</span></span>}
@@ -491,51 +662,40 @@ function KeyPeople({ people, goto, canSee }: { people: any[] | null; goto: (t: T
   </section>;
 }
 
-function Overview({ d, research, rel, orgId, me, canRun, startResearch, researchBusy, researchErr, reloadRel, goto, people, fit }: any) {
-  const a = d.account;
+/** Fit points: from Exa research when there is a profile, otherwise judged from our own records. */
+function fitPoints(a: any, lp: Record<string, string>, c: any): { points: any[]; fromRecords: boolean } {
+  return c?.icp_points?.length ? { points: c.icp_points, fromRecords: false } : { points: recordFit(a, lp), fromRecords: true };
+}
+
+function Overview({ d, research, rel, orgId, me, canRun, startResearch, researchBusy, researchErr, reloadRel, onOwner, goto, people, fit, scanBusy, runScan }: any) {
   const lp: Record<string, string> = d.list_profile ?? {};
   const c = research?.profile?.content;
-  const vendors = [...(c?.vendors ?? []).map((v: any) => ({ name: v.name, role: v.role, cite: <Cite c={v} /> })),
-    ...(d.suppliers ?? []).map((x: any) => ({ name: x.supplier_name, role: [humanize(x.supplier_role), x.scope_text].filter(Boolean).join(": "), cite: <span className="ac-cite rec">{tr("Our records")}</span> }))];
+  const why = d.why_now ?? {};
+  // what the lead list section leaves out because the page already says it
+  const skip = new Set<string>();
+  if ((why.reasons ?? []).some((r: any) => r.kind === "lead_list")) skip.add("Strongest signal");
+  if (why.next_step?.kind === "lead_list") skip.add("Next step");
+  if (!c?.how_we_help?.length) { skip.add("Possible work for us"); skip.add("How The Codest fits"); }
+  const showState = research && (research.running || research.latest?.status === "failed");
   return <>
-    <ResearchState r={research} kind="company" name={a.display_name} canRun={canRun} start={startResearch} busy={researchBusy} err={researchErr} />
-    <Opportunity d={d} help={c?.how_we_help} me={me} goto={goto} />
+    <WhyNow d={d} people={people} canPeople={me.permissions.includes("contacts.read")} canDraft={me.permissions.includes("draft.create")} canScan={canRun}
+      scanBusy={scanBusy} runScan={runScan} goto={goto} />
+    {showState && <ResearchState r={research} kind="company" name={d.account.display_name} canRun={canRun} start={startResearch} busy={researchBusy} err={researchErr} />}
     <div className="ac-grid">
       <div className="ac-sheet">
-        {c && (c.about || c.products?.length > 0) && <Sec title="What they do" id="sec-about">
-          {c.about && <p className="ac-lead">{c.about.text} {c.about.sources.map((s: any, i: number) => <Cite key={i} c={s} />)}</p>}
-          {c.products?.length > 0 && <ul className="ac-tags mt-2" aria-label={tr("Products and services")}>{c.products.map((p: any, i: number) => <li key={i} className="ac-tag prod" title={p.detail ?? undefined}>{p.name}</li>)}</ul>}
-          {c.footprint?.markets && <p className="small mt-2"><b>{tr("Markets")}:</b> {c.footprint.markets.value} <Cite c={c.footprint.markets} /></p>}
-        </Sec>}
-        {c?.empty && <section className="ac-sec"><h2>{tr("What they do")}</h2><div><p className="m-0">{tr(c.empty)}</p></div></section>}
-        <Sec title="Why they fit us" hint="Points of our ideal customer profile" id="sec-fit">
-          {fit.points.length ? <FitBoard points={fit.points} fromRecords={fit.fromRecords} /> : <p className="small">{tr("We hold too little about this company to judge its fit. Edit the company details or research it with Exa.")}</p>}
-        </Sec>
-        {c && <Sec title="What they're doing now" hint="Last 12 months, from the sources" id="sec-now">
-          {c.recent?.length ? <Timeline items={c.recent.map((x: any) => ({ date: x.date, title: x.headline, detail: x.detail, extra: <Cite c={x} /> }))} />
-            : <p className="small">{tr("Exa found no dated news about this company in the last 12 months.")}</p>}
-        </Sec>}
-        {(vendors.length > 0 || c) && <Sec title="Vendors & partners" hint="Who they buy technology from" id="sec-vendors">
-          {vendors.length ? <>
-            <ul className="vchips">{vendors.map((v: any, i: number) => <li key={i} className="vchip"><Monogram name={v.name} size="sm" /><div><b>{v.name}</b>{v.role && <span>{v.role}</span>}{v.cite}</div></li>)}</ul>
-            <p className="ac-note mt-2">{tr("A named vendor does not mean an exclusive contract or that they cover everything.")}</p></>
-            : <p className="small">{tr("No vendors or integrators are named in the pages Exa found. Ask about current suppliers in the first call.")}</p>}
-        </Sec>}
-        {c?.how_we_help?.length > 0 && <Sec title="How we could help" hint="Suggested angles, check before you use them" id="sec-help">
-          <ul className="svc-grid">{c.how_we_help.map((h: any, i: number) => { const [label, Icon] = SERVICE[serviceOf(h)]; return <li key={i} className="svc-card">
-            <span className="svc-tag"><Icon />{tr(label)}</span><b>{h.angle}</b>{h.why && <p>{h.why}</p>}
-            <div>{h.sources.map((s: any, k: number) => <Cite key={k} c={s} />)}</div></li>; })}</ul>
-        </Sec>}
-        {Object.keys(lp).length > 0 && <Sec title="From your lead list" hint="Not checked by the platform" id="sec-list"><ListProfile p={lp} /></Sec>}
-        {d.opportunities.length > 0 && <Sec title="Opportunities" id="sec-opps">
-          {d.opportunities.map((o: any) => <div key={o.hypothesis_id} className="mb-3"><div className="row spread"><span><Badge kind={priorityKind(o.priority)}>{lab("priority", o.priority)}</Badge> <b>{o.initiative.title}</b></span><Link to={`/opportunities/${o.hypothesis_id}`}>{tr("Open")}</Link></div>
-            <p className="small">{o.plain_reason ?? whyShort(o.why_it_matters)}</p>{o.next_action && <p className="small"><b>{tr("Next:")}</b> {o.next_action.objective}</p>}</div>)}
-        </Sec>}
-        {c?.open_questions?.length > 0 && <Sec title="Still to find out" id="sec-q"><ul className="tight">{c.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></Sec>}
+        <HelpSection d={d} c={c} lp={lp} />
+        <AboutSection c={c} research={research} canRun={canRun} startResearch={startResearch} researchBusy={researchBusy} researchErr={researchErr} />
+        <Part title="How they fit us" purpose="How close they are to the companies we sell to best." id="sec-fit">
+          {fit.points.length ? <FitList points={fit.points} fromRecords={fit.fromRecords} /> : <p className="small m-0">{tr("We hold too little about this company to judge its fit. Edit the company details or research it with Exa.")}</p>}
+        </Part>
+        {c && <NowSection c={c} />}
+        <VendorSection c={c} d={d} />
+        <ListSection lp={lp} skip={skip} />
+        {c?.open_questions?.length > 0 && <Part title="Still to find out" purpose="Questions to answer in the first call." id="sec-q"><ul className="tight m-0">{c.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></Part>}
       </div>
       <aside className="ac-rail" aria-label={tr("People, relationship and research")}>
         <KeyPeople people={people} goto={goto} canSee={me.permissions.includes("contacts.read")} />
-        <RelationshipPanel rel={rel} orgId={orgId} onSaved={reloadRel} />
+        <RelationshipPanel rel={rel} orgId={orgId} onSaved={reloadRel} onOwner={onOwner} />
         <ResearchPanel r={research} canRun={false} start={startResearch} busy={researchBusy} err={researchErr} />
       </aside>
     </div>
@@ -726,11 +886,19 @@ function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; can
   );
 }
 
-/* ------------------------------------------------------------------ activity */
-const BAND: Record<string, ["ok" | "warn" | "info" | "bad" | "", string]> = { hot: ["bad", "Hot"], warm: ["warn", "Warm"], watch: ["info", "Watch"], none: ["", "No signal"] };
-const DEMAND_TIER: Record<string, string> = { D1: "They asked for outside help", D2: "Likely to need outside help", D3: "Checked programme, outside demand unknown", D4: "Attention, outside demand unknown" };
-const SUBS = ["timeline", "signals", "tenders", "list", "leads", "sources"] as const;
-const SUB_LABEL: Record<string, string> = { timeline: "Findings timeline", signals: "Signals", tenders: "Tenders & RFPs", list: "Lead list signals", leads: "Assigned links", sources: "Sources we watch" };
+/* ------------------------------------------------------------------ findings & tenders */
+const DEMAND_TIER: Record<string, string> = { D1: "They asked for outside help", D2: "Likely to need outside help", D3: "A programme we checked; outside help not yet clear", D4: "Background; outside help not yet clear" };
+const SUBS = ["timeline", "tenders", "list", "signals", "leads", "sources"] as const;
+const MAIN_SUBS = ["timeline", "tenders", "list"];
+const SUB_LABEL: Record<string, string> = { timeline: "Findings", tenders: "Tenders & RFPs", list: "Lead list signals", signals: "Signal details", leads: "Links you added", sources: "Sources we watch" };
+const SUB_PURPOSE: Record<string, string> = {
+  timeline: "Everything we found and checked about this company in the last year, newest first.",
+  tenders: "Public tenders where they are the buyer, and contracts they have awarded.",
+  list: "Buying signals from your own lead list, with the page each one came from. We have not checked them.",
+  signals: "Each checked finding, the kind of signal it is, and how clearly it shows a need for outside help.",
+  leads: "Links you or the lead list gave us about this company, and whether we could check them.",
+  sources: "The pages and feeds we read for this company, and when we last read them.",
+};
 
 function Tenders({ orgId, route }: { orgId: string; route?: string }) {
   const [t, setT] = useState<any>(null);
@@ -739,7 +907,7 @@ function Tenders({ orgId, route }: { orgId: string; route?: string }) {
   if (err) return <Err e={err} />;
   if (!t) return <Skeleton rows={2} />;
   if (!t.notices.length && !t.awards.length) return <div className="card"><p className="m-0">{tr("No public tenders or contract awards name this company as the buyer.")}</p>
-    <p className="small mt-2 mb-0">{tr("Most private banks, insurers and payment companies buy without a public tender.")}{route && safeHref(route) && <> {tr("Their supplier route from your lead list:")} <a href={safeHref(route)} target="_blank" rel="noreferrer noopener">{host(route)} ↗</a></>}</p></div>;
+    <p className="small mt-2 mb-0">{tr("Most private banks, insurers and payment companies buy without a public tender.")}{route && <> {tr("How they buy, from your lead list:")} {isUrl(route) ? <a href={safeHref(route)} target="_blank" rel="noreferrer noopener">{host(route)} ↗</a> : route}</>}</p></div>;
   return <>
     {t.notices.length > 0 && <div className="card"><h3 className="mt-0">{tr("Tenders where they are the buyer")}</h3>
       {t.notices.map((n: any) => <div key={n.id} className="ac-tender"><div><b>{n.title || tr("Untitled notice")}</b>
@@ -768,28 +936,33 @@ function Activity({ d, eps, sub, setSub, params, sigNames }: any) {
     const o = Date.parse(dx) - Date.parse(dy); return signalOrder === "oldest" ? o : -o;
   });
   const counts: Record<string, number | undefined> = { signals: new Set(d.signals.map((s: any) => s.story_key ?? s.event_id)).size, list: (d.list_signals ?? []).length };
+  const chip = (k: string) => <button key={k} type="button" className="chip" aria-pressed={sub === k} onClick={() => setSub(k)}>{tr(SUB_LABEL[k])}{counts[k] != null && <b>{counts[k]}</b>}</button>;
   return <>
-    <div className="ac-subnav" role="group" aria-label={tr("Activity sections")}>
-      {SUBS.map((k) => <button key={k} type="button" className="chip" aria-pressed={sub === k} onClick={() => setSub(k)}>{tr(SUB_LABEL[k])}{counts[k] != null && <b>{counts[k]}</b>}</button>)}
+    <div className="ac-subnav" role="group" aria-label={tr("Findings and tenders")}>
+      {MAIN_SUBS.map(chip)}
+      <span className="ac-subnav-more">{tr("More:")}</span>
+      {SUBS.filter((k) => !MAIN_SUBS.includes(k)).map(chip)}
     </div>
+    <p className="ac-purpose ac-sub-purpose">{tr(SUB_PURPOSE[sub] ?? "")}</p>
     {sub === "timeline" && <AccountFindings key={"t" + (params.get("finding") ?? "")} accountId={a.id} selected={params.get("finding")} leadsOnly={false} />}
     {sub === "leads" && <AccountFindings key="leads" accountId={a.id} selected={null} leadsOnly />}
     {sub === "tenders" && <Tenders orgId={a.id} route={d.list_profile?.["Procurement Route"]} />}
     {sub === "list" && <div className="card">
-      <p className="small muted mt-0">{tr("Buying signals recorded in your lead list, with the source the list gives. Not checked by the platform.")}</p>
       {(d.list_signals ?? []).length === 0 ? <p className="m-0">{tr("Your lead list records no signals for this company.")}</p>
         : <ul className="ac-tl">{d.list_signals.map((x: any, i: number) => <li key={i}><time>{fmtDay(x.date)}</time><div className="ac-tl-body">
-          <b>{x.event}</b><p>{[x.category, x.confidence ? tr("{} confidence", x.confidence) : null].filter(Boolean).join(", ")}</p>
-          {x.implication && <p>{x.implication}</p>}{x.source_url && <Cite c={{ source_url: x.source_url, source: "list" }} />}</div></li>)}</ul>}
+          <b>{x.category || x.event}</b>{x.category && x.event && <p>{x.event}</p>}
+          {x.implication && <p>{x.implication}</p>}
+          <p className="ac-tl-meta">{x.source_url && <Cite c={{ source_url: x.source_url, source: "list" }} />}{x.confidence && <span>{tr("{} confidence", x.confidence)}</span>}
+            {x.repeats > 1 && <span>{tr("Your list records this {} times; shown once.", x.repeats)}</span>}</p></div></li>)}</ul>}
     </div>}
     {sub === "signals" && <>
-      {d.initiatives.length > 0 && <><h3>{tr("Programmes")}</h3>{d.initiatives.map((i: any) => <div key={i.id} className="card"><b>{i.title}</b> {!i.title_is_official && <Badge kind="warn">{tr("Our working title")}</Badge>} <Badge>{humanize(i.stage)}</Badge> {!i.budget_verified && <Badge kind="warn">{tr("Budget not confirmed")}</Badge>}
+      {d.initiatives.length > 0 && <><h3>{tr("Programmes")}</h3>{d.initiatives.map((i: any) => <div key={i.id} className="card"><b>{plainTitle(i.title)}</b> <Badge>{humanize(i.stage)}</Badge> {!i.budget_verified && <Badge kind="warn">{tr("Budget not confirmed")}</Badge>}
         <p className="small">{tr("Technology:") + " "}{i.technology_tags.join(", ") || tr("Not known")}. {tr("Last big news {}, next milestone {}.", fmtDate(i.last_material_event_at), fmtDate(i.next_milestone_at))}</p>
         {i.research_gaps.length > 0 && <><span className="small"><b>{tr("Still to find out")}</b></span><ul className="tight small">{i.research_gaps.map((g: string, k: number) => <li key={k}>{g}</li>)}</ul></>}</div>)}</>}
-      <div className="row gap-2 mb-2">
+      <div className="row gap-2 mb-2 ac-filters">
         <label>{tr("Status") + " "}<select value={signalStatus} onChange={(e) => setSignalStatus(e.target.value)}><option value="all">{tr("All signals")}</option><option value="active">{tr("Current")}</option><option value="historical">{tr("Historical")}</option></select></label>
         <label>{tr("Order") + " "}<select value={signalOrder} onChange={(e) => setSignalOrder(e.target.value)}><option value="newest">{tr("Newest first")}</option><option value="oldest">{tr("Oldest first")}</option></select></label>
-        <label>{tr("Evidence of demand") + " "}<select value={signalTier} onChange={(e) => setSignalTier(e.target.value)}><option value="all">{tr("All levels")}</option><option value="D1">{tr("Explicit")}</option><option value="D2">{tr("Inferred")}</option><option value="D3">{tr("Programme")}</option><option value="D4">{tr("Context")}</option></select></label>
+        <label>{tr("How clear the need is") + " "}<select value={signalTier} onChange={(e) => setSignalTier(e.target.value)}><option value="all">{tr("All levels")}</option><option value="D1">{tr("They asked for help")}</option><option value="D2">{tr("Likely to need help")}</option><option value="D3">{tr("A programme we checked")}</option><option value="D4">{tr("Background")}</option></select></label>
       </div>
       {stories.map((group) => {
         const first = group[0];
@@ -798,14 +971,14 @@ function Activity({ d, eps, sub, setSub, params, sigNames }: any) {
         return <div className="card" key={first.story_key ?? first.event_id}>
           {[...new Set(group.map((x: any) => x.event_id))].map((eventId: any) => <span id={`event-${eventId}`} key={eventId} />)}
           <b>{first.summary}</b><p className="small muted">{first.event_at || first.pub_at ? fmtDate(first.event_at ?? first.pub_at) : tr("Date unknown")}</p>
-          {[...rules.entries()].map(([key, x]: any) => <p className="small" key={key}><Badge kind={x.status === "active" ? "ok" : ""}>{x.status === "active" ? tr("Current") : tr("Historical")}</Badge> {SHORT[x.rule_id] ? tr(SHORT[x.rule_id]) : sigNames[x.rule_id] ?? x.rule_id}. {tr(DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier))}</p>)}
+          {[...rules.entries()].map(([key, x]: any) => <p className="small" key={key}><Badge kind={x.status === "active" ? "ok" : ""}>{x.status === "active" ? tr("Current") : tr("Historical")}</Badge> {SHORT[x.rule_id] ? tr(SHORT[x.rule_id]) : sigNames[x.rule_id] ?? tr("Buying signal")}. {tr(DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier))}</p>)}
           <Evidence items={[...evidence.values()]} />
         </div>;
       })}
-      {stories.length === 0 && <p className="muted">{d.signals.length ? tr("No signals match these filters.") : tr("No verified signals yet. Press “Check for news” to read the company's own pages and search the web.")}</p>}
+      {stories.length === 0 && <p className="muted">{d.signals.length ? tr("No signals match these filters.") : tr("No checked findings yet. Press “Check for news” to read the company's own pages and search the web.")}</p>}
     </>}
     {sub === "sources" && <>
-      <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Coverage table")}><p className="small mt-0">{tr(d.source_coverage_note)}</p><table><thead><tr><th>{tr("Kind of source")}</th><th>{tr("State")}</th><th>{tr("Last successful check")}</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{humanize(c.source_family)}</td><td>{humanize(c.coverage_state)}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
+      <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Coverage table")}><table><thead><tr><th>{tr("Kind of source")}</th><th>{tr("State")}</th><th>{tr("Last successful check")}</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{humanize(c.source_family)}</td><td>{humanize(c.coverage_state)}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
         {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">{tr("We have not checked this account's sources yet. That means we cannot see, not that nothing is happening.")}</td></tr>}</tbody></table></div>
       <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Where this company publishes")}><h3 className="mt-0">{tr("Where this company publishes")}</h3>
         {eps.length === 0 ? <p className="small muted">{tr("Nothing found yet. Press “Check for news” to look for its news feed, press page, careers page and job board.")}</p>
@@ -849,8 +1022,17 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const [researchBusy, setResearchBusy] = useState(false);
   const [researchErr, setResearchErr] = useState<unknown>(null);
   const loadResearch = () => api(`/api/accounts/${id}/research`).then(setResearch).catch(() => undefined);
-  useEffect(() => { loadResearch(); }, [id]);
+  useEffect(() => { setResearch(null); loadResearch(); }, [id]);
   usePoll(Boolean(research?.running), loadResearch, 5000);
+  // when a new profile lands, the reasons to call may change: read the account again (quietly, the page stays as it is meanwhile)
+  const profileSeen = useRef<string | null | undefined>(undefined);
+  const profileId: string | null | undefined = research ? research.profile?.id ?? null : undefined;
+  useEffect(() => {
+    if (profileId === undefined) return;
+    if (profileSeen.current !== undefined && profileSeen.current !== profileId) api(`/api/accounts/${id}?target=true`).then((data) => setD((cur: any) => (cur?.account.id === data.account.id ? data : cur))).catch(() => undefined);
+    profileSeen.current = profileId;
+  }, [profileId]);
+  useEffect(() => { profileSeen.current = undefined; }, [id]);
   const [rel, setRel] = useState<any>(null);
   const loadRel = () => api(`/api/accounts/${id}/relationship`).then(setRel).catch(() => undefined);
   useEffect(() => { loadRel(); }, [id]);
@@ -868,8 +1050,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     if (d && tab === "activity" && sub === "signals" && event) document.getElementById(`event-${event}`)?.scrollIntoView({ block: "center" });
   }, [d, tab, sub, params]);
   if (!d || d.account.id !== id) return <>
-    <p className="small mt-0"><Link to="/accounts">{tr("Accounts")}</Link></p><h1 className="title-sm">{tr("Account details")}</h1>
-    {err ? <Err e={err} onRetry={reloadPage} /> : <Skeleton rows={4} label={tr("Loading the account")} />}
+    <p className="small mt-0"><Link to="/accounts">{tr("Accounts & leads")}</Link></p><h1 className="title-sm">{tr("Company")}</h1>
+    {err ? <Err e={err} onRetry={reloadPage} /> : <Skeleton rows={4} label={tr("Loading the company")} />}
   </>;
   const a = d.account;
   const lp: Record<string, string> = d.list_profile ?? {};
@@ -884,7 +1066,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const decideCampaign = async (did: string, decision: string) => { try { await post(`/api/campaigns/${did}/decision`, { decision }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const runScan = async () => {
     setScan({ busy: true, msg: "", err: null });
-    try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? tr("Reading {} and searching the web. Verified findings appear under Activity.", r.website) : tr("Started. This account has no website on record, so we will only run the web search."), err: null }); }
+    try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? tr("Reading {} and searching the web. New findings appear under Findings & tenders.", r.website) : tr("Started. This company has no website on record, so we only search the web."), err: null }); }
     catch (e) { setScan({ busy: false, msg: "", err: e }); }
   };
   const goto = (t: Tab, s?: string) => {
@@ -896,11 +1078,13 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     .find((u: string) => /linkedin\.com\/company\//i.test(u));
   const hq = c?.footprint?.hq?.value ?? countryName(a.country_code);
   const sector = a.segment || lp["Industry"];
+  const size = c?.footprint?.size?.value ?? (a.employees_estimate != null ? staffCount(a.employees_estimate, a.employees_uncertain) : null);
+  const ownership = a.company_ownership && a.company_ownership !== "unknown" ? tr(OWNERSHIP[a.company_ownership]) : null;
   const peopleCount = people?.length ?? d.buyers?.length ?? 0;
   const live = (people ?? []).filter((p) => !p.suppressed);
   const deciders = live.filter((p) => p.committee === "decision").length;
   const good = fit.points.filter((p: any) => p.fit === "good").length;
-  const sig = d.buying_signal;
+  const ready = Boolean(research?.setup?.ready);
   return (
     <>
       <header className="ac-hero" data-mark={initials(a.display_name)}>
@@ -909,7 +1093,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           <Monogram name={a.display_name} size="lg" framed />
           <div className="ac-name">
             <h1>{a.display_name}</h1>
-            {(sector || hq) && <p className="ac-sub">{[sector, hq].filter(Boolean).join(", ")}</p>}
+            {(sector || hq || size) && <p className="ac-sub">{[sector, hq, size, ownership].filter(Boolean).map((x, i) => <span key={i}>{x}</span>)}</p>}
             <div className="ac-links">
               <RelBadge rel={rel} onNavy />
               {a.canonical_domain && <a href={`https://${a.canonical_domain}`} target="_blank" rel="noreferrer noopener"><Ic.web />{a.canonical_domain}</a>}
@@ -918,8 +1102,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
             </div>
           </div>
           <div className="ac-actions">
-            {canScan && research && <button type="button" className="primary" disabled={researchBusy || research.running || !research.setup?.ready}
-              title={research.setup?.ready ? undefined : tr("Research with Exa is not set up in this environment.")} onClick={startResearch}>{research.running ? tr("Researching…") : c ? tr("Research again") : tr("Research with Exa")}</button>}
+            {canScan && research && <button type="button" className={c || !ready ? "" : "primary"} disabled={researchBusy || research.running || !ready}
+              title={ready ? undefined : tr("Research is not switched on yet: an administrator can turn it on.")} onClick={startResearch}>{research.running ? tr("Researching…") : c ? tr("Research again") : tr("Research with Exa")}</button>}
             {canScan && <button type="button" disabled={scan.busy} onClick={runScan}>{tr("Check for news")}</button>}
             {canScan && a.entity_type !== "public_body" && <button type="button" aria-expanded={editing} onClick={() => setEditing(!editing)}>{editing ? tr("Close details") : tr("Edit details")}</button>}
           </div>
@@ -927,29 +1111,27 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         <div className="ac-glance">
           {fit.points.length > 0 && <button type="button" className="glance" onClick={() => jump("sec-fit")}>
             <FitCells points={fit.points} />
-            <span><b>{tr("{} of {} fit points in our favour", good, fit.points.length)}</b><small>{fit.fromRecords ? tr("Judged from our records") : tr("From Exa research")}</small></span></button>}
+            <span><b>{tr("{} of {} fit points in our favour", good, fit.points.length)}</b><small>{tr("How they fit us")}</small></span></button>}
           {canPeople && <button type="button" className="glance" onClick={() => goto("people")}>
-            {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 5).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" />)}{live.length > 5 && <span className="mono mono-sm more">+{live.length - 5}</span>}</span>
+            {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 4).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" />)}{live.length > 4 && <span className="mono mono-sm more">+{live.length - 4}</span>}</span>
               : <span className="glance-ic" aria-hidden="true"><Ic.people /></span>}
             <span><b>{peopleCount ? tr("{} people", number(peopleCount)) : tr("No people yet")}</b><small>{peopleCount ? tr("{} decision makers", deciders) : tr("Find decision makers with Exa")}</small></span></button>}
-          {sig && <button type="button" className="glance" onClick={() => jump("opp-h")}>
-            <span className="glance-ic is-sig" aria-hidden="true"><Ic.target /></span>
-            <span><b>{sig.rule_id && SHORT[sig.rule_id] ? tr(SHORT[sig.rule_id]) : sig.label}</b><small>{tr("Live buying signal, {}", fmtDate(sig.happened_at ?? sig.published_at))}</small></span></button>}
+          <button type="button" className="glance" onClick={() => jump(Object.keys(lp).length ? "sec-list" : "sec-fit")}>
+            <span className="glance-ic" aria-hidden="true">{a.list_priority ? <b className={`glance-p ${String(a.list_priority).toLowerCase()}`}>{a.list_priority}</b> : <Ic.list />}</span>
+            <span><b>{a.list_priority || a.list_score != null ? [a.list_score != null ? tr("Score {}", a.list_score) : null, a.list_eligibility].filter(Boolean).join(" · ") || tr("On your lead list") : tr("Not on your lead list")}</b>
+              <small>{tr("Your lead list")}</small></span></button>
+          <button type="button" className="glance" onClick={() => jump("relationship")}>
+            <span className="glance-ic" aria-hidden="true"><Ic.badge /></span>
+            <span><b>{rel?.owner?.name ?? tr("Nobody yet")}</b><small>{tr("Account owner")}</small></span></button>
         </div>
       </header>
-      <dl className="ac-facts">
-        <div><dt>{tr("Headquarters")}</dt><dd>{hq || tr("Not known")}</dd></div>
-        <div><dt>{tr("Size")}</dt><dd>{c?.footprint?.size?.value ?? staffCount(a.employees_estimate, a.employees_uncertain)}</dd></div>
-        <div><dt>{tr("Industry")}</dt><dd>{sector || tr("Not known")}{a.company_ownership && a.company_ownership !== "unknown" && <div className="small">{tr(OWNERSHIP[a.company_ownership])}</div>}</dd></div>
-        <div><dt>{tr("Lead list")}</dt><dd>{a.list_priority || a.list_score != null ? <>{a.list_priority && <span className={`ac-tag ${String(a.list_priority).toLowerCase()}`}>{a.list_priority}</span>} {a.list_score != null && tr("score {}", a.list_score)}<div className="small">{a.list_eligibility}</div></> : tr("Not on the list")}</dd></div>
-        <div><dt>{tr("Owner")}</dt><dd><OwnerControl rel={rel} orgId={a.id} onChange={(owner) => setRel({ ...rel, owner })} /></dd></div>
-      </dl>
       {scan.msg && <div className="okmsg mt-2 mb-2" role="status">{scan.msg}</div>}<Err e={scan.err} />
       {editing && canScan && a.entity_type !== "public_body" && <CompanyProfile account={a} onSave={(profile) => setD({ ...d, account: { ...a, ...profile } })} />}
       <Tabs items={[{ key: "overview", label: tr("Overview") }, { key: "people", label: <>{tr("People")}{canPeople && <span className="tabn">{number(peopleCount)}</span>}</> },
-        { key: "activity", label: tr("Activity") }, { key: "outreach", label: tr("Outreach") }]} value={tab} onChange={(k) => goto(k as Tab)} label={tr("Account sections")}>
+        { key: "activity", label: tr("Findings & tenders") }, { key: "outreach", label: tr("Outreach") }]} value={tab} onChange={(k) => goto(k as Tab)} label={tr("Company sections")}>
         {tab === "overview" && <Overview d={d} research={research} rel={rel} orgId={a.id} me={me} canRun={canScan} startResearch={startResearch} researchBusy={researchBusy}
-          researchErr={researchErr} reloadRel={loadRel} goto={goto} people={canPeople ? people : null} fit={fit} />}
+          researchErr={researchErr} reloadRel={loadRel} onOwner={(owner: any) => setRel({ ...rel, owner })} goto={goto} people={canPeople ? people : null} fit={fit}
+          scanBusy={scan.busy} runScan={runScan} />}
         {tab === "people" && <PeopleTab orgId={a.id} company={a.display_name} me={me} people={people} err={peopleErr} reload={() => { loadPeople(); loadRel(); }} />}
         {tab === "activity" && <Activity d={d} eps={eps} sub={sub} setSub={setSub} params={params} sigNames={sigNames} />}
         {tab === "outreach" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={a.id} make={makeCampaign} decide={decideCampaign} />}

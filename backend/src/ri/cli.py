@@ -72,6 +72,12 @@ def main(argv: list[str] | None = None) -> int:
             from .heartbeat import beat
             from .scheduler import schedule_discovery
             res = {"enqueued": schedule_due(conn), "discovery": schedule_discovery(conn, enabled=exa_budget_set(conn)), **run_maintenance(conn)}
+            try:      # missing company facts: an hourly Exa fill-in while companies wait (the run itself caps the work and the spend)
+                from .research.company_facts import schedule as schedule_company_facts
+                with conn.transaction():
+                    res["company_facts_queued"] = schedule_company_facts(conn)
+            except Exception as exc:  # noqa: BLE001  (never stops scheduling)
+                res["company_facts_error"] = f"{type(exc).__name__}: {exc}"[:200]
             res.update(crm_sync_step(conn, s))
             res.update(lemlist_sync_step(conn, s))
             conn.commit()
@@ -134,8 +140,10 @@ def main(argv: list[str] | None = None) -> int:
                     cc.commit()
                     return {"exa": ExaClient(None, s.exa_api_key), "max_searches": s.discovery_max_searches_per_run,
                             "max_new_requests": s.discovery_max_new_requests_per_run, "interval_days": s.discovery_interval_days, "est_cost": s.exa_est_cost_per_search}
-                return build_handlers(connector_factory=lambda sid: build_connector(c, sid), extractor_factory=extractor_factory, resolve_org_factory=resolve_factory,
-                                      fetch_factory=lambda: sync_fetch(lambda: None), discovery_factory=discovery_factory)
+                from .research import company_facts
+                return {**build_handlers(connector_factory=lambda sid: build_connector(c, sid), extractor_factory=extractor_factory, resolve_org_factory=resolve_factory,
+                                         fetch_factory=lambda: sync_fetch(lambda: None), discovery_factory=discovery_factory),
+                        company_facts.KIND: company_facts.job}      # background lane: fills in missing company facts with Exa
 
             # lanes: what a person is waiting for runs on its own worker; scheduled reading and maintenance run on the other
             INTERACTIVE = ["account_scan", "verify_url", "sheet_import_xlsx", "sheet_sync", "sources_validate_all", "evaluate_event", "add_company", "account_brief", "campaign_draft",

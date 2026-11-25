@@ -1,4 +1,7 @@
-"""Target-market rules apply consistently across the seller workspace."""
+"""Target-market rules apply consistently across the seller workspace.
+
+Round 33 (owner feedback): listed companies and mutuals are fine like privately held ones (only state-owned companies and public bodies are
+not targets), and a company whose country or headcount is missing is "still being filled in" (Exa looks it up) rather than dropped."""
 from fastapi.testclient import TestClient
 from test_r4_crm_notify import mk_user
 
@@ -58,11 +61,14 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
     db = Database(db_url)
     try:
         with TestClient(create_app(settings, db=db), headers=headers) as client:
-            expected = {record[0] for record in records[:6]}
+            expected = {record[0] for record in records[:6]} | {"Example Listed Bank"}         # listed is fine since round 33
             response = client.get("/api/leads?scope=target")
             assert response.status_code == 200
             assert {r["name"] for r in response.json()["items"]} == expected
-            assert response.json()["facets"]["region"] == dict.fromkeys(["uk", "dach", "nordics", "poland", "europe", "international"], 1)
+            assert response.json()["facets"]["region"] == {**dict.fromkeys(["dach", "nordics", "poland", "europe", "international"], 1), "uk": 2}
+            # one list, three states: the switch counts each of them for the same filters
+            filling = {"Example Unknown Ownership Bank", "Example Unknown Location Bank", "Example Unknown Size Bank"}
+            assert response.json()["counts"] == {"target": 7, "review": len(filling), "other": 5}
             assert [r["name"] for r in client.get("/api/leads?scope=target&region=international").json()["items"]] == ["Example International Lender"]
             export = client.get("/api/leads.csv?scope=target&q=Swiss%20payments").text
             assert "Example Swiss Payments" in export
@@ -74,7 +80,7 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
             assert [(r["organization"]["name"], r["target_fit"]) for r in workbook["items"]] == [
                 ("Example Nordic Insurance", True), ("Example Unknown Ownership Bank", False),
             ]
-            excluded = client.get("/api/prospects?workbook=true&q=Listed%20Bank").json()
+            excluded = client.get("/api/prospects?workbook=true&q=State-owned%20Bank").json()
             assert excluded["total"] == 0
             picked = client.post("/api/prospects/verify-batch", json={
                 "workbook": True, "lane": "all", "region": "nordics", "q": "Unknown Ownership",
@@ -83,11 +89,15 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
             assigned = client.get(f"/api/findings?scope=account&organization={ids['Example Swiss Payments']}").json()["leads"]
             assert [(r["url"], r["status"]) for r in assigned] == [("https://example.com/news/2", "not_checked")]
             review = client.get("/api/leads?scope=review").json()["items"]
-            assert [r["name"] for r in review] == ["Example Unknown Ownership Bank"]
+            assert {r["name"] for r in review} == filling                # missing country or headcount: being filled in, not dropped
+            assert {r["name"]: r["missing"] for r in review}["Example Unknown Size Bank"] == ["employees", "website"]
+            other = {r["name"]: r["not_fit"] for r in client.get("/api/leads?scope=other").json()["items"]}
+            assert other == {"Example Too Small UK Bank": "too_small", "Example Too Small International Bank": "too_small_outside_europe",
+                             "Example State-owned Bank": "state_owned", "Example Bank Software Vendor": "not_finance", "Example Retailer": "not_finance"}
             review_today = client.get("/api/review-companies")
             assert review_today.status_code == 200
-            assert review_today.json()["total"] == 1
-            candidate = review_today.json()["items"][0]
+            assert review_today.json()["total"] == len(filling)
+            candidate = next(r for r in review_today.json()["items"] if r["name"] == "Example Unknown Ownership Bank")
             assert candidate["name"] == "Example Unknown Ownership Bank"
             assert candidate["region"] == "nordics"
             assert candidate["signal"]["summary"] == "Replacing its payments platform"
@@ -95,20 +105,20 @@ def test_private_finance_target_and_workbook_leads(conn, db_url):
             assert candidate["signal"]["url"].startswith("https://example.com/news/")
             overview = client.get("/api/overview?target=true").json()
             assert overview["imported_accounts"] == len(records)
-            assert overview["accounts"] == 6
-            assert overview["ownership_to_check"] == len(review)
+            assert overview["accounts"] == 7
+            assert overview["ownership_to_check"] == overview["being_filled_in"] == len(review)
             profile = f"/api/accounts/{ids['Example Unknown Ownership Bank']}/company-profile"
             assert client.put(profile, json={"ownership": "private"}).status_code == 422
             assert client.put(profile, json={"ownership": "private", "source_url": "https://example.com/ownership"}).status_code == 200
             assert client.get("/api/leads?scope=target&region=nordics").json()["total"] == 2
             refreshed = client.get("/api/overview?target=true").json()
             assert refreshed["imported_accounts"] == len(records)
-            assert refreshed["accounts"] == 7
-            assert refreshed["ownership_to_check"] == 0
+            assert refreshed["accounts"] == 8
+            assert refreshed["ownership_to_check"] == len(filling) - 1
             assert client.get("/api/accounts/" + ids["ZUS Example"] + "?target=true").status_code == 404
             explorer = client.get("/api/explorer?target=true&entity=companies").json()
-            assert explorer["count"] == 7
-            search = client.get("/api/search?target=true&q=Example%20Listed%20Bank").json()
+            assert explorer["count"] == 8
+            search = client.get("/api/search?target=true&q=Example%20State-owned%20Bank").json()
             assert all(group["key"] != "accounts" for group in search["groups"])
             for path in ("/api/today", "/api/overview", "/api/feed", "/api/explorer?entity=events", "/api/explorer?entity=opportunities"):
                 delimiter = "&" if "?" in path else "?"

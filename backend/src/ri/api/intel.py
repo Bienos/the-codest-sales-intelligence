@@ -372,6 +372,57 @@ VIEWS = {
 }
 
 
+FINDING_DISMISS_REASONS = ("not_relevant", "wrong_entity", "stale", "duplicate")
+_HAPPENED = "coalesce(e.event_at,e.pub_at,e.first_observed_at)"
+
+
+class FindingDismissIn(BaseModel):
+    reason: str = Field(default="not_relevant", pattern="^(" + "|".join(FINDING_DISMISS_REASONS) + ")$")
+
+
+def finding_dismissals(conn, p: Principal) -> dict[str, str]:
+    """Findings this person marked "not relevant" (event id -> reason). The latest answer wins, so "show it again" undoes it."""
+    rows = qa(conn, "SELECT DISTINCT ON (target_id) target_id, judgement, reason FROM feedback WHERE target_type='finding' AND reviewer=%s "
+                    "ORDER BY target_id, created_at DESC, id", (p.email,))
+    return {r["target_id"]: r["reason"] or "not_relevant" for r in rows if r["judgement"] == "not_relevant"}
+
+
+def finding_kinds(conn, p: Principal, *, days: int, region: str, qualification: str, organizations: list[str] | None,
+                  hidden: list[str] | None = None) -> list[dict]:
+    """The buying signals behind the findings in this window, most frequent first, for the filter chips on All findings. It counts the
+    same checked, active news about the same companies as the list (one per story), leaving out tenders, which have their own page,
+    and the findings in `hidden` (the ones the person marked not relevant)."""
+    from ..events.classify import non_engineering_title_sql_pattern
+    from ..feed import STORY_KEY_SQL
+    from ..findings import _EVIDENCE, _SIGNAL
+    from ..market import REGIONS
+    where, args = org_scope_sql(p, "o.id")
+    members = {key: sorted(countries) for key, _, countries in REGIONS if key != "us"}
+    region_clause, region_args = "TRUE", []
+    if region == "international":
+        region_clause, region_args = "NOT (o.country_code=ANY(%s))", [sorted({c for countries in members.values() for c in countries})]
+    elif region:
+        region_clause, region_args = "o.country_code=ANY(%s)", [members[region]]
+    target, review = target_sql(), target_sql(review=True)
+    eligible = review if qualification == "review" else f"({target} OR {review})" if qualification == "all" else target
+    rows = qa(conn, f"""
+        SELECT s.rule_id, coalesce(max(ls.signal), s.rule_id) AS name, count(DISTINCT {STORY_KEY_SQL}) AS findings, max({_HAPPENED}) AS latest
+        FROM events e JOIN organizations o ON o.id=e.subject_org_id JOIN signals s ON {_SIGNAL}
+        LEFT JOIN legacy_signals ls ON ls.id=s.rule_id
+        WHERE ({where}) AND {eligible} AND ({region_clause}) AND (%s::uuid[] IS NULL OR o.id=ANY(%s::uuid[]))
+        AND e.verification_status='verified' AND e.lifecycle_status='active' AND NOT e.is_historical_replay
+        AND e.lane IS DISTINCT FROM 'public' AND e.event_type NOT LIKE 'procurement_%%'
+        AND e.event_type NOT IN ('crm_buyer_response','relationship_changed') AND s.rule_id NOT LIKE 'NEG-%%'
+        AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened')
+             OR (coalesce(e.attrs->>'title','') !~* %s AND (NOT (e.attrs ? 'job_id') OR EXISTS (SELECT 1 FROM job_postings j
+                 WHERE j.provider=e.attrs->>'provider' AND j.board=e.attrs->>'board' AND j.job_id=e.attrs->>'job_id' AND j.open_status='open'))))
+        AND NOT (e.id=ANY(%s::uuid[]))
+        AND {_HAPPENED} > now() - make_interval(days => %s) AND {_HAPPENED} <= now() AND {_EVIDENCE}
+        GROUP BY s.rule_id ORDER BY findings DESC, s.rule_id
+        """, [*args, *region_args, organizations, organizations, non_engineering_title_sql_pattern(), hidden or [], days])       # noqa: S608
+    return [{"rule_id": r["rule_id"], "name": r["name"], "findings": r["findings"], "latest": r["latest"]} for r in rows]
+
+
 def register_feed(app: FastAPI) -> None:
     from .. import feed as fd
     from ..market import sector_sql
@@ -389,7 +440,11 @@ def register_feed(app: FastAPI) -> None:
                           region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
                           qualification: str = Query("target", pattern="^(target|review|all)$"),
                           rule: str = Query("", pattern=r"^(|[A-Z]{3}-\d{2})$"),
+                          watched: bool = False, hidden: bool = False,
                           p: Principal = Depends(principal_dep)):
+        """Checked news about target companies, newest first. On Today and All findings, findings the person marked "not relevant" are
+        left out unless `hidden` is set (each item says `dismissed`); `watched` keeps the companies on their watchlist. All findings
+        (archive, no company) also gets `kinds`, the buying signals behind the findings in the window, for its filter chips."""
         from ..findings import account_leads, findings, rfp_research
 
         permission = {"today": "today.read", "archive": "explorer.read", "account": "accounts.read"}[scope]
@@ -407,11 +462,67 @@ def register_feed(app: FastAPI) -> None:
                 leads = account_leads(conn, organization)
             elif scope == "archive" and p.can("research.request"):
                 leads = rfp_research(conn, p)
-            items = findings(conn, p, scope=scope, days=365 if event else days, limit=limit, page=page, kind=kind, region=region,
-                             organization_id=organization, event=event, search=q, rule=rule,
-                             qualification="target" if scope == "today" else "all" if organization or event else qualification)
-            return {"items": items[:limit], "page": page, "has_more": len(items)>limit, "leads": leads,
-                    "coverage": coverage_health(conn, p)}
+            qualify = "target" if scope == "today" else "all" if organization or event else qualification
+            mine = [str(r["organization_id"]) for r in qa(conn, "SELECT organization_id FROM watchlist WHERE user_email=%s", (p.email,))]
+            only_watched = watched and organization is None and event is None
+            if only_watched:
+                # the watchlist holds at most 100 companies: read each one that has checked news in the window, then merge by date
+                active = [str(r["organization_id"]) for r in qa(conn, f"""SELECT DISTINCT e.subject_org_id AS organization_id FROM events e
+                          WHERE e.subject_org_id=ANY(%s::uuid[]) AND e.verification_status='verified' AND e.lifecycle_status='active'
+                          AND NOT e.is_historical_replay AND {_HAPPENED} > now() - make_interval(days => %s)""", (mine, days))]   # noqa: S608
+                merged: list[dict] = []
+                for org in active:
+                    merged += findings(conn, p, scope=scope, days=days, limit=page * limit, page=1, kind=kind, region=region,
+                                       organization_id=UUID(org), search=q, rule=rule, qualification=qualify)
+                merged.sort(key=lambda it: str(it["id"]))
+                merged.sort(key=lambda it: it["happened"], reverse=True)
+                items = merged[(page - 1) * limit:page * limit + 1]
+            else:
+                items = findings(conn, p, scope=scope, days=365 if event else days, limit=limit, page=page, kind=kind, region=region,
+                                 organization_id=organization, event=event, search=q, rule=rule, qualification=qualify)
+            has_more = len(items) > limit
+            items = items[:limit]
+            dismissed = finding_dismissals(conn, p) if scope != "account" else {}
+            watching = set(mine)
+            for it in items:
+                it["watched"] = str(it["organization"]["id"]) in watching
+                it["dismissed"] = next((dismissed[str(e)] for e in it["event_ids"] if str(e) in dismissed), None)
+            if scope != "account" and not hidden and event is None:
+                items = [it for it in items if not it["dismissed"]]
+            out = {"items": items, "page": page, "has_more": has_more, "leads": leads, "coverage": coverage_health(conn, p),
+                   "watchlist": len(mine), "hidden_count": len(dismissed)}
+            if scope == "archive" and organization is None:
+                out["kinds"] = finding_kinds(conn, p, days=days, region=region, qualification=qualify, organizations=mine if only_watched else None,
+                                             hidden=None if hidden else list(dismissed))
+            return out
+
+    @app.post("/api/findings/{event_id}/dismiss")
+    def dismiss_finding(event_id: UUID, body: FindingDismissIn, request: Request, p: Principal = Depends(principal_dep)):
+        """Mark a finding "not relevant" for this person: it leaves their Today and All findings. Kept as feedback, so it also shows
+        which sources and signals bring noise."""
+        return _finding_answer(request, p, event_id, "not_relevant", body.reason)
+
+    @app.delete("/api/findings/{event_id}/dismiss")
+    def restore_finding(event_id: UUID, request: Request, p: Principal = Depends(principal_dep)):
+        """Undo "not relevant": the finding shows again."""
+        return _finding_answer(request, p, event_id, "restored", None)
+
+    def _finding_answer(request: Request, p: Principal, event_id: UUID, judgement: str, reason: str | None) -> dict[str, Any]:
+        from ..db import jb
+        if not (p.can("explorer.read") or p.can("today.read")):
+            raise HTTPException(403, "missing permission explorer.read")
+        with tx(request) as conn:
+            where, args = org_scope_sql(p, "o.id")
+            found = q1(conn, f"SELECT e.id, e.subject_org_id FROM events e JOIN organizations o ON o.id=e.subject_org_id WHERE e.id=%s AND ({where})",   # noqa: S608
+                       [event_id, *args])
+            if not found:
+                raise HTTPException(404, "not found")       # 404, not 403: do not reveal findings outside the person's accounts
+            conn.execute("INSERT INTO feedback(target_type, target_id, reviewer, judgement, reason) VALUES ('finding',%s,%s,%s,%s)",
+                         (str(event_id), p.email, judgement, reason))
+            conn.execute("INSERT INTO product_events(user_id, event, organization_id, detail) VALUES (%s,%s,%s,%s)",
+                         (p.user_id, "finding_dismissed" if judgement == "not_relevant" else "finding_restored", found["subject_org_id"],
+                          jb({"event_id": str(event_id), "reason": reason})))
+        return {"dismissed": judgement == "not_relevant", "reason": reason}
 
     @app.get("/api/tenders")
     def tenders(request: Request, q: str = Query("", max_length=120), region: str = Query("", pattern="^(|core|uk|dach|nordics|poland|europe|international)$"),
@@ -420,20 +531,29 @@ def register_feed(app: FastAPI) -> None:
                 work_type: str = Query("", pattern="^(|software_development|maintenance_support|consulting|licences_products|infrastructure_hardware|data_ai|testing_qa|other)$"),
                 max_days: int = Query(0, ge=0, le=365), min_value: float = Query(0, ge=0, le=1e12), sort: str = Query("deadline", pattern="^(deadline|fit|value|newest)$"),
                 sector: str = Query("", pattern="^(|icp|finance|banking|financial_services|other_icp|not_icp)$"),
+                group: str = Query("", pattern="^(|icp|all|banks|insurers|payments|lending|markets|other)$"),
+                country: str = Query("", pattern="^(|[A-Z]{2})$"), status: str = Query("", pattern="^(|new|changed)$"),
                 p: Principal = Depends(principal_dep)):
         """Open tenders for software work from every official source, banks first, then other financial services, the other ICP sectors and
         everyone else; soonest deadline first within each. `sector=icp` keeps our ICP sectors (the app's default view); no sector means every
         buyer. `region=core` keeps our markets (UK, DACH, Nordics, Poland); no region means every region. Each ICP tender carries its plain
         English and Polish summary once the summary job has written it; `q` also searches the summaries. Values are also given in euros
         (`value_eur`, fixed rates in `eur_rates`); `min_value` is in euros. `fit`, `work_type`, `max_days`, `min_value`, `sort` and `sector`
-        are explained in ri.tenders.open_tenders."""
+        are explained in ri.tenders.open_tenders.
+        `group` (the page's buyer chips) replaces `sector`: icp (banks, insurers, payments, lenders, market institutions), all, or one chip;
+        with it come `country`, `status` (new, changed), CPV codes in `q`, and a live count for every chip and filter (ri.tender_sector.icp_view)."""
+        from ..tender_sector import icp_view
         from ..tender_summary import count_pending, job_waiting
         from ..tenders import TENDER_SOURCES, open_tenders
         if not (p.can("today.read") or p.can("explorer.read")):
             raise HTTPException(403, "missing permission today.read")
         with tx(request) as conn:
-            out = open_tenders(conn, p, q=q, region=region, buyer=buyer, min_days=min_days, limit=limit, offset=(page - 1) * limit,
-                               fit=fit, work_type=work_type, max_days=max_days, min_value=min_value, sort=sort, sector=sector)
+            if group:
+                out = icp_view(conn, p, q=q, view=group, region=region, country=country, min_days=min_days, max_days=max_days, min_value=min_value,
+                               fit=fit, work_type=work_type, status=status, sort=sort, page=page, limit=limit)
+            else:
+                out = open_tenders(conn, p, q=q, region=region, buyer=buyer, min_days=min_days, limit=limit, offset=(page - 1) * limit,
+                                   fit=fit, work_type=work_type, max_days=max_days, min_value=min_value, sort=sort, sector=sector)
             summaries = {"waiting": count_pending(conn), "running": job_waiting(conn)}
             sources = qa(conn, "SELECT s.source_id, s.display_name, s.status, h.last_success_at FROM sources s LEFT JOIN source_health h USING (source_id) "
                                "WHERE s.source_family='procurement' AND s.collection_method='official_api' AND s.source_id = ANY(%s) ORDER BY s.display_name",

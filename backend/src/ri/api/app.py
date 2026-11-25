@@ -282,6 +282,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
 
     @app.get("/api/accounts/{oid}")
     def account(oid: str, request: Request, target: bool = False, p: Principal = Depends(require("accounts.read"))):
+        from . import account_page as page          # the company page's "why now" and repeat-free opportunities
         try:
             uuid.UUID(oid)
         except ValueError:
@@ -293,17 +294,18 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
             if not o:
                 raise HTTPException(404, "not found")
             crm = q1(conn, "SELECT crm_id, owner_id, open_deals_count, synced_at FROM crm_organizations WHERE organization_id=%s AND link_status='linked'", (oid,))
-            hyps = qa(conn, "SELECT h.* FROM opportunity_hypotheses h WHERE h.organization_id=%s AND h.state NOT IN ('superseded') AND (NOT %s OR h.route_type <> 'procurement') ORDER BY h.score_total DESC", (oid, target))
+            hyps = qa(conn, "SELECT h.*, i.title AS initiative_title FROM opportunity_hypotheses h JOIN initiatives i ON i.id=h.initiative_id WHERE h.organization_id=%s AND h.state NOT IN ('superseded') AND (NOT %s OR h.route_type <> 'procurement') ORDER BY h.score_total DESC, h.created_at", (oid, target))
             inits = qa(conn, "SELECT id, title, title_is_official, stage, programme_domain, technology_tags, research_gaps, budget_verified, last_material_event_at, next_milestone_at FROM initiatives WHERE owner_org_id=%s AND status='active'", (oid,))
             sources = qa(conn, "SELECT sheet_title, source_file_id, row_number FROM account_source_links WHERE organization_id=%s", (oid,))
             # what the lead list itself says about the account (unverified, labelled as such on screen)
             lp = q1(conn, "SELECT original FROM legacy_account_research WHERE organization_id=%s AND kind='master_account' ORDER BY observed_at DESC LIMIT 1", (oid,))
             list_profile = {k: v for k, v in (lp["original"] if lp else {}).items() if k in LIST_PROFILE_KEYS and str(v or "").strip()}
-            list_signals = [{"event": r["original"].get("Verified event"), "date": r["original"].get("Event date"), "category": r["original"].get("Signal type"),
-                             "source_url": r["original"].get("Source URL") if str(r["original"].get("Source URL") or "").lower().startswith(("http://", "https://")) else None,
-                             "confidence": r["original"].get("Evidence confidence"), "implication": r["original"].get("Potential engineering relevance")}
-                            for r in qa(conn, "SELECT original FROM legacy_account_research WHERE organization_id=%s AND kind='buying_signal_log' "
-                                              "ORDER BY original->>'Event date' DESC NULLS LAST, observed_at DESC LIMIT 8", (oid,))]
+            list_signals = page.dedupe_list_signals([
+                {"event": r["original"].get("Verified event"), "date": r["original"].get("Event date"), "category": r["original"].get("Signal type"),
+                 "source_url": r["original"].get("Source URL") if str(r["original"].get("Source URL") or "").lower().startswith(("http://", "https://")) else None,
+                 "confidence": r["original"].get("Evidence confidence"), "implication": r["original"].get("Potential engineering relevance")}
+                for r in qa(conn, "SELECT original FROM legacy_account_research WHERE organization_id=%s AND kind='buying_signal_log' "
+                                  "ORDER BY original->>'Event date' DESC NULLS LAST, observed_at DESC LIMIT 40", (oid,))])     # the list logs one story several times
             signals = qa(conn, f"SELECT {STORY_KEY_SQL} AS story_key, s.rule_id, s.demand_tier, s.strength, CASE WHEN s.status='active' AND (s.expires_at IS NULL OR s.expires_at>now()) AND e.lifecycle_status='active' THEN 'active' ELSE 'historical' END AS status, s.effective_from, s.expires_at, e.id::text AS event_id, e.summary, e.event_at, e.pub_at, e.first_observed_at, e.verified_at, s.evidence_claim_ids FROM signals s JOIN events e ON e.id=s.event_id AND e.subject_org_id=s.organization_id WHERE s.organization_id=%s AND (NOT %s OR e.lane <> 'public') ORDER BY s.effective_from DESC", (oid, target))
             for signal in signals:
                 signal["evidence"] = evidence_for(conn, list(signal.pop("evidence_claim_ids") or []))
@@ -321,8 +323,15 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                 names = {x["id"]: x["signal"] for x in qa(conn, "SELECT id, signal FROM legacy_signals WHERE id = ANY(%s)", ([t["rule_id"] for t in score["top"]],))}
                 score["top"] = [{**t, "name": names.get(t["rule_id"])} for t in score["top"]]      # sellers see what the signal means, not just its code
             now = datetime.now(timezone.utc)
-            return {"account": dict(o, id=str(o["id"])), "list_profile": list_profile, "list_signals": list_signals, "buying_signal": leading_signals(conn, [oid], commercial_only=target).get(oid), "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
-                    "opportunities": [card(conn, h, now) for h in hyps], "initiatives": [dict(i, id=str(i["id"])) for i in inits], "signals": signals, "suppliers": suppliers,
+            lead = leading_signals(conn, [oid], commercial_only=target).get(oid)
+            opportunities = page.opportunity_cards(conn, hyps, now)          # one card per programme: its routes and same-kind repeats folded in
+            profile = q1(conn, "SELECT content FROM account_profiles WHERE organization_id=%s AND status='done' ORDER BY created_at DESC LIMIT 1", (oid,))
+            open_tenders = qa(conn, "SELECT title, deadline_at, published_at, official_url FROM procurement_notices WHERE buyer_org_id=%s AND status IN ('open','amended') "
+                                    "AND (deadline_at IS NULL OR deadline_at > now()) ORDER BY deadline_at NULLS LAST LIMIT 3", (oid,))
+            why = page.why_now(lead_signal=lead, signals=signals, list_signals=list_signals, recent=((profile or {}).get("content") or {}).get("recent") or [],
+                               tenders=open_tenders, list_profile=list_profile, opportunities=opportunities, now=now)
+            return {"account": dict(o, id=str(o["id"])), "list_profile": list_profile, "list_signals": list_signals, "buying_signal": lead, "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
+                    "opportunities": opportunities, "why_now": why, "initiatives": [dict(i, id=str(i["id"])) for i in inits], "signals": signals, "suppliers": suppliers,
                     "routes": routes, "buyers": buyers, "coverage": coverage, "source_coverage_note": "Only source families listed above are monitored; missing families mean visibility unknown, not 'no activity'."}
 
     @app.get("/api/hypotheses/{hid}")
@@ -539,9 +548,11 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                     "summary": qa(conn, "SELECT status, count(*) n FROM signal_rule_versions GROUP BY status")}
 
     @app.get("/api/admin/audit")
-    def admin_audit(request: Request, operation: str | None = None, limit: int = Query(100, le=500), p: Principal = Depends(require("audit.read"))):
+    def admin_audit(request: Request, operation: str | None = None, actor: str | None = None, record_type: str | None = None, view: str = "all", since: str = "",
+                    limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), p: Principal = Depends(require("audit.read"))):
+        from .admin_ops import audit_log          # filters, totals and record names (view=changes hides personal-data reads and bulk-load rows)
         with tx(request) as conn:
-            return {"items": qa(conn, "SELECT id, at, actor, operation, record_type, record_id, approval_id, detail FROM audit_events WHERE (%s::text IS NULL OR operation=%s) ORDER BY id DESC LIMIT %s", (operation, operation, limit))}
+            return audit_log(conn, view=view, operation=operation or "", actor=actor or "", record_type=record_type or "", since=since, limit=limit, offset=offset)
 
     @app.get("/api/admin/quality")
     def quality(request: Request, p: Principal = Depends(require("admin.rules"))):
@@ -582,4 +593,5 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from .buying_signals import register_buying_signals; register_buying_signals(app)      # noqa: E702
     from .profiles import register_profiles; register_profiles(app)      # noqa: E702  (company research, people, relationship, owner)
     from .admin_ops import register as register_admin_ops; register_admin_ops(app)      # noqa: E702  (automatic matching, source checks, failures, usage)
+    from .today import register_today; register_today(app)      # noqa: E702  (Today: who to contact today, and why)
     return app

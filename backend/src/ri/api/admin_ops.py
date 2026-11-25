@@ -13,13 +13,13 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from ..access import Principal
 from ..audit import audit
 from ..db import Conn, canonical_json, q1, qa
-from .auth import require
+from .auth import principal_dep, require
 
 
 class GroupIn(BaseModel):
@@ -448,11 +448,323 @@ def sources_overview(conn: Conn) -> dict[str, Any]:
             "last_run": {"status": last["status"], "at": last["updated_at"], "result": last["result"], "error": last["last_error"]} if last else None}
 
 
+# ====================================================================== tracking: job history, source checks, imports, the overview
+
+WINDOWS = {"24h": "24 hours", "7d": "7 days", "30d": "30 days", "90d": "90 days"}
+JOB_GROUPS: dict[str, tuple[str, ...]] = {
+    "waiting": ("scheduled", "requires_approval"),
+    "running": ("claimed", "fetching", "parsing", "verifying", "committing"),
+    "done": ("completed",),
+    "retrying": ("retryable_failed",),
+    "failed": ("permanent_failed", "quarantined"),
+    "cancelled": ("cancelled",),
+}
+STATUS_GROUP = {s: g for g, ss in JOB_GROUPS.items() for s in ss}
+_GROUP_SQL = "CASE " + " ".join(f"WHEN j.status IN ({', '.join(repr(s) for s in ss)}) THEN '{g}'" for g, ss in JOB_GROUPS.items()) + " ELSE 'other' END"
+
+
+def _window(since: str) -> str | None:
+    """A named window ('24h', '7d', '30d', '90d') as a Postgres interval; anything else means no limit."""
+    return WINDOWS.get(since)
+
+
+def _brief(result: Any) -> list[list[Any]]:
+    """Up to four numbers from a job's result, so a row can say what the job did without dumping its JSON."""
+    if not isinstance(result, dict):
+        return []
+    out: list[list[Any]] = []
+    for k, v in result.items():
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            continue
+        out.append([k, v])
+        if len(out) >= 4:
+            break
+    return out
+
+
+def job_history(conn: Conn, *, kind: str = "", status: str = "", since: str = "7d", sort: str = "newest", limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    """Every background job in a window (by last activity), filterable by kind and by plain status group, with counts for the filters."""
+    iv = _window(since)
+    statuses = list(JOB_GROUPS.get(status, ())) if status else None
+    base = "(%(iv)s::interval IS NULL OR j.updated_at > now() - %(iv)s::interval)"
+    params: dict[str, Any] = {"iv": iv, "kind": kind or None, "st": statuses, "limit": max(1, min(limit, 200)), "offset": max(0, offset)}
+    where = f"{base} AND (%(kind)s::text IS NULL OR j.kind = %(kind)s) AND (%(st)s::text[] IS NULL OR j.status = ANY(%(st)s))"
+    dur = ("CASE WHEN j.status IN ('completed','permanent_failed','quarantined','cancelled','retryable_failed') "
+           "THEN greatest(extract(epoch FROM j.updated_at - coalesce(j.claimed_at, j.created_at)), 0) END")
+    order = {"oldest": "j.updated_at ASC", "slowest": "duration_s DESC NULLS LAST, j.updated_at DESC"}.get(sort, "j.updated_at DESC")
+    rows = qa(conn, f"SELECT j.id, j.kind, j.status, {_GROUP_SQL} AS grp, j.attempts, j.max_attempts, j.payload, j.result, j.last_error, j.last_error_class, "  # noqa: S608 - fixed SQL pieces only
+                    f"j.created_at, j.updated_at, j.run_after, {dur} AS duration_s FROM jobs j WHERE {where} ORDER BY {order} LIMIT %(limit)s OFFSET %(offset)s", params)
+    total = (q1(conn, f"SELECT count(*) AS n FROM jobs j WHERE {where}", params) or {"n": 0})["n"]  # noqa: S608
+    kinds = qa(conn, f"SELECT j.kind, count(*) AS n FROM jobs j WHERE {base} AND (%(st)s::text[] IS NULL OR j.status = ANY(%(st)s)) GROUP BY 1 ORDER BY 2 DESC, 1", params)  # noqa: S608
+    groups = qa(conn, f"SELECT {_GROUP_SQL} AS grp, count(*) AS n FROM jobs j WHERE {base} AND (%(kind)s::text IS NULL OR j.kind = %(kind)s) GROUP BY 1", params)  # noqa: S608
+    subjects = _subjects(conn, rows)
+    items = []
+    for r in rows:
+        err = re.sub(r"\s+", " ", r["last_error"] or "")[:300] or None
+        items.append({"id": str(r["id"]), "kind": r["kind"], "status": r["status"], "group": r["grp"], "attempts": r["attempts"], "max_attempts": r["max_attempts"],
+                      "created_at": r["created_at"], "updated_at": r["updated_at"], "run_after": r["run_after"],
+                      "duration_s": round(float(r["duration_s"]), 1) if r["duration_s"] is not None else None,
+                      "subject": subjects.get(str(r["id"]), ""), "error": err, "error_class": r["last_error_class"],
+                      "cause": classify(r["kind"], r["last_error_class"] or "", err or "") if err and r["grp"] in ("failed", "retrying") else None,
+                      "result": _brief(r["result"])})
+    return {"items": items, "total": int(total), "since": since if iv else "all",
+            "kinds": [{"kind": k["kind"], "n": int(k["n"])} for k in kinds], "groups": {g["grp"]: int(g["n"]) for g in groups}}
+
+
+def source_checks(conn: Conn, *, source: str = "", status: str = "", since: str = "7d", limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    """Each time a source was read (monitoring runs), newest first, plus what the last 24 hours looked like per source."""
+    iv = _window(since)
+    params: dict[str, Any] = {"iv": iv, "src": source or None, "st": status or None, "limit": max(1, min(limit, 200)), "offset": max(0, offset)}
+    base = "(%(iv)s::interval IS NULL OR r.started_at > now() - %(iv)s::interval) AND (%(src)s::text IS NULL OR r.source_id = %(src)s)"
+    where = base + " AND (%(st)s::text IS NULL OR r.status = %(st)s)"
+    rows = qa(conn, f"SELECT r.id, r.source_id, s.display_name, r.status, r.started_at, r.finished_at, r.items_new, r.items_changed, r.items_unchanged, r.items_unavailable, "  # noqa: S608
+                    f"r.error_class, r.error, extract(epoch FROM r.finished_at - r.started_at) AS duration_s "
+                    f"FROM monitoring_runs r LEFT JOIN sources s ON s.source_id = r.source_id WHERE {where} ORDER BY r.started_at DESC LIMIT %(limit)s OFFSET %(offset)s", params)
+    total = (q1(conn, f"SELECT count(*) AS n FROM monitoring_runs r WHERE {where}", params) or {"n": 0})["n"]  # noqa: S608
+    by_status = {r["status"]: int(r["n"]) for r in qa(conn, f"SELECT r.status, count(*) AS n FROM monitoring_runs r WHERE {base} GROUP BY 1", params)}  # noqa: S608
+    sources = qa(conn, f"SELECT r.source_id, s.display_name, count(*) AS n FROM monitoring_runs r LEFT JOIN sources s ON s.source_id = r.source_id "  # noqa: S608
+                       f"WHERE (%(iv)s::interval IS NULL OR r.started_at > now() - %(iv)s::interval) GROUP BY 1, 2 ORDER BY 2 NULLS LAST, 1", params)
+    return {"items": [dict(r, id=str(r["id"]), error=(re.sub(r"\s+", " ", r["error"])[:300] if r["error"] else None),
+                           duration_s=round(float(r["duration_s"]), 1) if r["duration_s"] is not None else None) for r in rows],
+            "total": int(total), "since": since if iv else "all", "by_status": by_status,
+            "sources": [{"source_id": r["source_id"], "name": r["display_name"] or r["source_id"], "n": int(r["n"])} for r in sources],
+            "today": sources_today(conn)}
+
+
+def sources_today(conn: Conn) -> dict[str, Any]:
+    """Sources read in the last 24 hours (from the run log and the health record, so a deployment that only keeps one still counts)."""
+    r = q1(conn, "SELECT "
+                 "(SELECT count(*) FROM sources WHERE status='active' AND collection_method <> 'internal') AS live, "
+                 "(SELECT count(*) FROM (SELECT source_id FROM monitoring_runs WHERE started_at > now() - interval '24 hours' "
+                 "  UNION SELECT source_id FROM source_health WHERE greatest(last_attempt_at, last_success_at) > now() - interval '24 hours') x) AS checked, "
+                 "(SELECT count(*) FROM source_health WHERE last_success_at > now() - interval '24 hours') AS worked, "
+                 "(SELECT count(*) FROM source_health WHERE last_attempt_at > now() - interval '24 hours' "
+                 "  AND (last_success_at IS NULL OR last_success_at < last_attempt_at)) AS failing, "
+                 "(SELECT count(*) FROM monitoring_runs WHERE started_at > now() - interval '24 hours') AS runs, "
+                 "(SELECT coalesce(sum(items_new), 0) FROM monitoring_runs WHERE started_at > now() - interval '24 hours') AS items_new, "
+                 "(SELECT count(*) FROM account_endpoints WHERE last_scanned_at > now() - interval '24 hours') AS company_pages, "
+                 "(SELECT greatest((SELECT max(started_at) FROM monitoring_runs), (SELECT max(greatest(last_attempt_at, last_success_at)) FROM source_health))) AS last_at") or {}
+    return {k: (int(v) if isinstance(v, int) else v) for k, v in r.items()}
+
+
+def _tab_totals(stats: Any) -> dict[str, int]:
+    tabs = (stats or {}).get("tabs") if isinstance(stats, dict) else None
+    new = rows = 0
+    for t in (tabs or {}).values():
+        if isinstance(t, dict) and t.get("status") == "ok":
+            new += int(t.get("new") or 0)
+            rows += int(t.get("rows") or 0) - int(t.get("blank") or 0)
+    return {"new": new, "rows": rows}
+
+
+def import_history(conn: Conn, limit: int = 30) -> dict[str, Any]:
+    """Every workbook load, uploaded file or Google Sheets sync, newest first, with how many rows each brought in."""
+    uploads = qa(conn, "SELECT u.id, u.workbook_key, u.filename, u.status, u.uploaded_by, u.error, u.created_at, u.processed_at, u.import_run_id, r.stats "
+                       "FROM import_uploads u LEFT JOIN import_runs r ON r.id = u.import_run_id ORDER BY u.created_at DESC LIMIT %s", (limit,))
+    used = {str(u["import_run_id"]) for u in uploads if u["import_run_id"]}
+    runs = [r for r in qa(conn, "SELECT id, workbook_key, status, started_at, finished_at, error, stats FROM import_runs ORDER BY started_at DESC LIMIT %s", (limit,))
+            if str(r["id"]) not in used]
+    items = [{"id": str(u["id"]), "how": "upload", "workbook": u["workbook_key"], "name": u["filename"], "by": u["uploaded_by"], "status": u["status"],
+              "error": u["error"], "at": u["created_at"], "finished_at": u["processed_at"], "tabs": (u["stats"] or {}).get("tabs") if isinstance(u["stats"], dict) else None,
+              **_tab_totals(u["stats"])} for u in uploads]
+    items += [{"id": str(r["id"]), "how": "sync", "workbook": r["workbook_key"], "name": None, "by": None, "status": r["status"], "error": r["error"],
+               "at": r["started_at"], "finished_at": r["finished_at"], "tabs": (r["stats"] or {}).get("tabs") if isinstance(r["stats"], dict) else None,
+               **_tab_totals(r["stats"])} for r in runs]
+    items.sort(key=lambda x: x["at"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return {"items": items[:limit]}
+
+
+def spend_this_month(conn: Conn, settings: Any) -> dict[str, Any]:
+    """Each paid provider this month: the limit, what is used, the dollars, and how many calls the limit stopped."""
+    from .. import usage
+    period = usage.period_now()
+    rows = {(r["provider"], r["kind"]): r for r in qa(conn, "SELECT provider, kind, cap, reserved, spent, unit FROM provider_budgets WHERE period=%s", (period,))}
+    money = {r["provider"]: r for r in qa(conn, "SELECT provider, count(*) AS calls, count(*) FILTER (WHERE status <> 'ok') AS failed, coalesce(sum(cost_usd), 0) AS usd "
+                                               "FROM provider_usage WHERE period=%s GROUP BY 1", (period,))}
+    denied = {r["provider"]: int(r["n"]) for r in qa(conn, "SELECT provider, count(*) AS n FROM budget_ledger WHERE period=%s AND entry='denied' GROUP BY 1", (period,))}
+
+    def one(provider: str, kind: str, unit: str, fallback_cap: float | None) -> dict[str, Any]:
+        b = rows.get((provider, kind))
+        m = money.get(provider) or {}
+        cap = float(b["cap"]) if b else float(fallback_cap or 0)
+        used = float(b["spent"]) + float(b["reserved"]) if b else 0.0
+        return {"provider": provider, "unit": unit, "cap": cap, "used": round(used, 4), "pct": round(used / cap * 100, 1) if cap > 0 else None,
+                "cap_set": bool(b) or bool(fallback_cap), "usd": round(float(m.get("usd") or 0), 4), "calls": int(m.get("calls") or 0),
+                "failed": int(m.get("failed") or 0), "blocked_by_limit": denied.get(provider, 0)}
+    apollo = one("apollo", "contact_enrichment", "credits", None)
+    apollo["credits_per_reveal"] = getattr(settings, "apollo_credits_per_reveal", None)
+    return {"period": period, "ai": one("anthropic", "monthly", "tokens", getattr(settings, "anthropic_monthly_token_cap", 0.0)),
+            "exa": one("exa", "monthly", "usd", getattr(settings, "exa_monthly_cap_usd", 0.0)), "apollo": apollo}
+
+
+def overview(conn: Conn, can: Any, settings: Any) -> dict[str, Any]:
+    """The 'Is everything working?' figures, each part only for someone allowed to see it."""
+    out: dict[str, Any] = {"at": datetime.now(timezone.utc)}
+    if can("sources.read"):
+        out["sources"] = sources_today(conn)
+    if can("admin.jobs"):
+        out["jobs"] = q1(conn, "SELECT count(*) FILTER (WHERE status='completed' AND updated_at > now() - interval '24 hours') AS done_24h, "
+                               "count(*) FILTER (WHERE status IN ('permanent_failed','quarantined') AND updated_at > now() - interval '24 hours') AS failed_24h, "
+                               "count(*) FILTER (WHERE status='retryable_failed') AS retrying, "
+                               "count(*) FILTER (WHERE status='scheduled' AND run_after <= now()) AS waiting, "
+                               "count(*) FILTER (WHERE status IN ('claimed','fetching','parsing','verifying','committing')) AS running, "
+                               "max(updated_at) FILTER (WHERE status='completed') AS last_done FROM jobs")
+        out["workers"] = {r["component"]: r["at"] for r in qa(conn, "SELECT component, at FROM system_heartbeats")}
+    if can("admin.costs"):
+        out["spend"] = spend_this_month(conn, settings)
+    if can("admin.sources"):
+        last = import_history(conn, limit=1)["items"]
+        out["last_import"] = last[0] if last else None
+    if can("identity.manage"):
+        c = q1(conn, "SELECT count(*) FILTER (WHERE resolved_by='auto' AND resolved_at > now() - interval '7 days') AS auto_7d, "
+                     "count(*) FILTER (WHERE resolved_by='auto' AND resolved_at > now() - interval '24 hours') AS auto_24h, "
+                     "count(*) FILTER (WHERE status='open' AND (auto_hold OR auto_attempts > 0)) AS needs_person, "
+                     "count(*) FILTER (WHERE status='open' AND NOT auto_hold AND auto_attempts = 0) AS waiting FROM identity_reviews") or {}
+        run = q1(conn, "SELECT status, updated_at, result FROM jobs WHERE kind='identity_autoresolve' ORDER BY created_at DESC LIMIT 1")
+        out["matching"] = {**c, "last_run": {"status": run["status"], "at": run["updated_at"], "result": _brief(run["result"])} if run else None}
+    if can("audit.read"):
+        out["changes"] = q1(conn, "SELECT count(*) FILTER (WHERE operation <> ALL(%s)) AS changes_24h, count(*) AS all_24h FROM audit_events WHERE at > now() - interval '24 hours'",
+                            (list(AUDIT_NOISE),))
+    return out
+
+
+# Audit operations that record someone looking at data, or one row of a bulk load: kept, but hidden from the "changes" view.
+AUDIT_NOISE = ("pii_read", "reconcile_row")
+
+
+# What a record id names, per record type: (table, id column, name expression, link kind for the browser).
+_RECORD_NAMES: dict[str, tuple[str, str, str]] = {
+    "organization": ("organizations", "id", "display_name"), "organization_people": ("organizations", "id", "display_name"),
+    "people_candidates": ("organizations", "id", "display_name"), "crm_organization": ("organizations", "id", "display_name"),
+    "person": ("people", "id", "full_name"), "source": ("sources", "source_id", "display_name"), "user": ("users", "id", "email"),
+    "signal_campaign": ("signal_campaigns", "id", "name"), "identity_review": ("identity_reviews", "id", "raw_company_name"),
+    "initiative": ("initiatives", "id", "title"), "opportunity_hypothesis": ("opportunity_hypotheses", "id", "coalesce(counterparty_name, possible_service)"),
+    "discovery_plan": ("discovery_plans", "plan_id", "theme || ' · ' || geography"),
+}
+
+
+def _record_names(conn: Conn, rows: list[dict[str, Any]]) -> dict[tuple[str, str], str]:
+    want: dict[str, set[str]] = {}
+    for r in rows:
+        if r["record_type"] in _RECORD_NAMES and r["record_id"]:
+            want.setdefault(r["record_type"], set()).add(str(r["record_id"]))
+    out: dict[tuple[str, str], str] = {}
+    for rt, ids in want.items():
+        table, col, name = _RECORD_NAMES[rt]
+        try:
+            with conn.transaction():
+                for x in qa(conn, f"SELECT {col}::text AS id, {name} AS name FROM {table} WHERE {col}::text = ANY(%s)", (list(ids),)):  # noqa: S608 - fixed table names
+                    if x["name"]:
+                        out[(rt, x["id"])] = str(x["name"])[:120]
+        except Exception:  # noqa: BLE001 - a table this deployment lacks: the id is shown instead
+            continue
+    return out
+
+
+def audit_log(conn: Conn, *, view: str = "all", operation: str = "", actor: str = "", record_type: str = "", since: str = "", limit: int = 100, offset: int = 0) -> dict[str, Any]:
+    """The audit log with filters. view='changes' hides looking at personal data and the one-row-per-line records of a workbook load (both stay stored)."""
+    iv = _window(since)
+    params: dict[str, Any] = {"iv": iv, "noise": list(AUDIT_NOISE), "op": operation or None, "actor": actor or None, "rt": record_type or None,
+                              "limit": max(1, min(limit, 500)), "offset": max(0, offset)}
+    view_sql = {"changes": "a.operation <> ALL(%(noise)s)", "reads": "a.operation = 'pii_read'", "bulk": "a.operation = 'reconcile_row'"}.get(view, "TRUE")
+    base = f"(%(iv)s::interval IS NULL OR a.at > now() - %(iv)s::interval) AND {view_sql}"
+    where = base + " AND (%(op)s::text IS NULL OR a.operation = %(op)s) AND (%(actor)s::text IS NULL OR a.actor = %(actor)s) AND (%(rt)s::text IS NULL OR a.record_type = %(rt)s)"
+    rows = qa(conn, f"SELECT a.id, a.at, a.actor, a.operation, a.record_type, a.record_id, a.approval_id, a.detail FROM audit_events a WHERE {where} "  # noqa: S608
+                    "ORDER BY a.id DESC LIMIT %(limit)s OFFSET %(offset)s", params)
+    total = (q1(conn, f"SELECT count(*) AS n FROM audit_events a WHERE {where}", params) or {"n": 0})["n"]  # noqa: S608
+    ops = qa(conn, f"SELECT a.operation, count(*) AS n FROM audit_events a WHERE {base} AND (%(actor)s::text IS NULL OR a.actor = %(actor)s) GROUP BY 1 ORDER BY 2 DESC LIMIT 80", params)  # noqa: S608
+    actors = qa(conn, f"SELECT a.actor, count(*) AS n FROM audit_events a WHERE {base} AND (%(op)s::text IS NULL OR a.operation = %(op)s) GROUP BY 1 ORDER BY 2 DESC LIMIT 50", params)  # noqa: S608
+    hidden = (q1(conn, "SELECT count(*) AS n FROM audit_events a WHERE (%(iv)s::interval IS NULL OR a.at > now() - %(iv)s::interval) AND a.operation = ANY(%(noise)s)", params)
+              or {"n": 0})["n"] if view == "changes" else 0
+    names = _record_names(conn, rows)
+    return {"items": [dict(r, record_name=names.get((r["record_type"], str(r["record_id"])))) for r in rows], "total": int(total), "hidden": int(hidden),
+            "operations": [{"operation": o["operation"], "n": int(o["n"])} for o in ops], "actors": [{"actor": a["actor"], "n": int(a["n"])} for a in actors]}
+
+
+def _purpose_of(operation: str) -> tuple[str, str]:
+    return PURPOSES.get(operation, ("other", "Other"))
+
+
+def paid_calls(conn: Conn, *, provider: str = "", purpose: str = "", status: str = "", since: str = "30d", limit: int = 50, offset: int = 0) -> dict[str, Any]:
+    """Every paid AI or web search call, filterable by service, purpose, outcome and window, with the totals of what the filter matches."""
+    iv = _window(since)
+    ops = None
+    if purpose:
+        ops = [op for op, (k, _) in PURPOSES.items() if k == purpose]
+        if purpose == "other":
+            ops = None
+    params: dict[str, Any] = {"iv": iv, "prov": provider or None, "ops": ops, "other": purpose == "other", "known": list(PURPOSES),
+                              "st": status or None, "limit": max(1, min(limit, 200)), "offset": max(0, offset)}
+    base = "(%(iv)s::interval IS NULL OR u.at > now() - %(iv)s::interval) AND (%(prov)s::text IS NULL OR u.provider = %(prov)s)"
+    where = (base + " AND (%(ops)s::text[] IS NULL OR u.operation = ANY(%(ops)s)) AND (NOT %(other)s OR u.operation <> ALL(%(known)s))"
+             " AND (%(st)s::text IS NULL OR (%(st)s = 'ok' AND u.status = 'ok') OR (%(st)s = 'failed' AND u.status <> 'ok'))")
+    rows = qa(conn, f"SELECT u.id, u.at, u.provider, u.operation, u.units, u.unit, u.tokens_in, u.tokens_out, u.cost_usd, u.cost_basis, u.source_id, u.plan_id, u.query, u.status, "  # noqa: S608
+                    f"s.display_name AS source_name, o.display_name AS organization, u.organization_id, d.canonical_url AS document_url, d.title AS document_title "
+                    f"FROM provider_usage u LEFT JOIN organizations o ON o.id = u.organization_id LEFT JOIN source_documents d ON d.id = u.document_id "
+                    f"LEFT JOIN sources s ON s.source_id = u.source_id WHERE {where} ORDER BY u.at DESC LIMIT %(limit)s OFFSET %(offset)s", params)
+    tot = q1(conn, f"SELECT count(*) AS n, coalesce(sum(u.cost_usd), 0) AS usd, coalesce(sum(u.tokens_in + u.tokens_out) FILTER (WHERE u.provider='anthropic'), 0) AS tokens, "  # noqa: S608
+                   f"count(*) FILTER (WHERE u.status <> 'ok') AS failed FROM provider_usage u WHERE {where}", params) or {}
+    facets = qa(conn, f"SELECT u.operation, u.provider, count(*) AS n, coalesce(sum(u.cost_usd), 0) AS usd FROM provider_usage u WHERE {base} GROUP BY 1, 2", params)  # noqa: S608
+    purposes: dict[str, dict[str, Any]] = {}
+    for f in facets:
+        k, label = _purpose_of(f["operation"])
+        if f["provider"] == "exa" and f["operation"] == "search":
+            k, label = "web_search", "Web search"
+        pp = purposes.setdefault(k, {"key": k, "label": label, "n": 0, "usd": 0.0})
+        pp["n"] += int(f["n"]); pp["usd"] = round(pp["usd"] + float(f["usd"]), 4)
+    items = []
+    for r in rows:
+        k, label = _purpose_of(r["operation"])
+        items.append({**r, "purpose": k, "purpose_label": label, "units": float(r["units"]) if r["units"] is not None else None,
+                      "cost_usd": float(r["cost_usd"]) if r["cost_usd"] is not None else None,
+                      "organization_id": str(r["organization_id"]) if r["organization_id"] else None})
+    return {"items": items, "total": int(tot.get("n") or 0), "usd": round(float(tot.get("usd") or 0), 4), "tokens": int(tot.get("tokens") or 0),
+            "failed": int(tot.get("failed") or 0), "since": since if iv else "all", "purposes": sorted(purposes.values(), key=lambda x: -x["usd"])}
+
+
 # ====================================================================== routes
 
 def register(app: FastAPI) -> None:
     def tx(request: Request):
         return request.app.state.db.tx()
+
+    # ---- the overview and tracking views
+    @app.get("/api/admin/overview")
+    def admin_overview(request: Request, p: Principal = Depends(principal_dep)):
+        if not any(p.can(x) for x in ("sources.read", "admin.jobs", "admin.costs", "admin.sources", "identity.manage", "audit.read")):
+            raise HTTPException(403, "missing permission")
+        with tx(request) as conn:
+            return overview(conn, p.can, request.app.state.settings)
+
+    @app.get("/api/admin/jobs/history")
+    def jobs_history(request: Request, kind: str = "", status: str = "", since: str = "7d", sort: str = "newest",
+                     limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), p: Principal = Depends(require("admin.jobs"))):
+        if status and status not in JOB_GROUPS:
+            raise HTTPException(400, f"status must be one of {', '.join(JOB_GROUPS)}")
+        with tx(request) as conn:
+            return job_history(conn, kind=kind, status=status, since=since, sort=sort, limit=limit, offset=offset)
+
+    @app.get("/api/admin/sources/checks")
+    def sources_checks(request: Request, source: str = "", status: str = "", since: str = "7d",
+                       limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), p: Principal = Depends(require("sources.read"))):
+        with tx(request) as conn:
+            return source_checks(conn, source=source, status=status, since=since, limit=limit, offset=offset)
+
+    @app.get("/api/admin/imports/history")
+    def imports_history(request: Request, p: Principal = Depends(require("admin.sources"))):
+        with tx(request) as conn:
+            return import_history(conn)
+
+    @app.get("/api/admin/spend")
+    def spend(request: Request, p: Principal = Depends(require("admin.costs"))):
+        with tx(request) as conn:
+            return spend_this_month(conn, request.app.state.settings)
+
+    @app.get("/api/admin/usage/calls")
+    def usage_calls(request: Request, provider: str = "", purpose: str = "", status: str = "", since: str = "30d",
+                    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), p: Principal = Depends(require("admin.costs"))):
+        with tx(request) as conn:
+            return paid_calls(conn, provider=provider, purpose=purpose, status=status, since=since, limit=limit, offset=offset)
 
     # ---- company matches
     @app.get("/api/admin/identity/overview")
@@ -524,4 +836,5 @@ def register(app: FastAPI) -> None:
             return usage_insights(conn, request.app.state.settings)
 
 
-__all__ = ["register", "classify", "failure_groups", "retry_group", "dismiss_group", "usage_insights", "identity_overview", "sources_overview"]
+__all__ = ["register", "classify", "failure_groups", "retry_group", "dismiss_group", "usage_insights", "identity_overview", "sources_overview",
+           "job_history", "source_checks", "sources_today", "import_history", "spend_this_month", "overview", "paid_calls"]

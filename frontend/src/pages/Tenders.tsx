@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
 import { counted, number, tr, useLanguage } from "../locale";
 import { Empty, Err, PageHeader, Skeleton, safeHref } from "../components/ui";
-import { REGIONS, countryName } from "./targetMarket";
+import { countryName } from "./targetMarket";
 import "../styles/tenders.css";
 
 type FitLevel = "strong" | "possible" | "weak" | "none";
 type Sector = "banking" | "financial_services" | "other_icp" | "not_icp";
+type Group = "banks" | "insurers" | "payments" | "lending" | "markets" | "other";
+type Who = "icp" | "all" | Group;
 type Summary = {
   title_en: string; summary_en?: string; wants?: string[]; work_type?: string; technologies?: string[]; requirements?: string[];
   fit?: { level: FitLevel; reason?: string; reason_pl?: string }; title_pl?: string; summary_pl?: string; wants_pl?: string[]; requirements_pl?: string[];
@@ -22,35 +24,75 @@ type Worth = {
 type Tender = {
   id: string; notice_id: string; title: string; category: string | null; buyer: string; buyer_kind: "finance" | "public";
   sector: Sector; sector_kind: string | null; sector_public: boolean; sector_sure: boolean; sector_source?: string | null;
+  group: Group; is_new: boolean; cpv?: string[];
   account: { id: string; name: string } | null; country: string | null; region: string; deadline: string; deadline_tz: string | null;
   days_left: number; status: string; url: string; source: string; scope: string | null;
   value: number | null; currency?: string | null; value_eur?: number | null; value_basis?: string | null;
   checked_at: string | null; check_is_old: boolean; published?: string | null;
   summary?: Summary | null; summary_state?: "written" | "waiting" | "skipped" | "not_needed"; worth?: Worth;
 };
+type Facets = {
+  groups: Record<Who, number>; region: Record<string, number>; country: Record<string, number>; value: Record<string, number>;
+  within: Record<string, number>; status: Record<string, number>; fit: Record<string, number>; work_type: Record<string, number>;
+};
 type Result = {
-  items: Tender[]; has_more: boolean; page: number;
-  counts: { total: number; finance: number; closing_this_week: number; closing_too_soon: number; other_regions?: number; summarised?: number; waiting_summary?: number;
-    by_sector?: Record<Sector, number>; icp?: number; not_icp?: number };
-  facets?: { fit: Record<string, number>; work_type: Record<string, number> };
+  items: Tender[]; has_more: boolean; page: number; facets: Facets; search?: { words: string; cpv: string[] };
+  counts: { total: number; closing_this_week: number; closing_too_soon: number; other_regions: number; new: number; waiting_summary: number; icp: number };
   sources: { source_id: string; display_name: string; status: string; last_success_at: string | null }[]; last_updated?: string | null; refreshing?: boolean;
   summaries?: { waiting: number; running: boolean }; eur_rates?: { date: string; source: string };
 };
 type Refresh = { queued: string[]; already_waiting: string[]; not_switched_on: string[] };
 type Summarise = { queued: boolean; already_running: boolean; waiting: number; cap: number };
 
-const OUR_MARKETS = "core";      // the default: UK, DACH, Nordics and Poland. "all" in the address means every region.
-const ICP = "icp";               // the default buyers: our ICP sectors, banks first. "all" in the address means every buyer.
-const BUYERS: [string, string][] = [
-  [ICP, "Our ICP: banks first"], ["finance", "Banks and financial services"], ["banking", "Banks only"], ["other_icp", "Other ICP sectors"],
-  ["not_icp", "Public sector and other buyers"], ["all", "Every buyer"],
-];
-const SECTION: Record<Sector, [string, string]> = {
-  banking: ["Banks", "Commercial, savings, cooperative, central and state development banks."],
-  financial_services: ["Financial services", "Insurers, payments, exchanges and clearing, asset managers, pension funds, lenders and financial supervisors."],
-  other_icp: ["Other ICP sectors", "Digital commerce, enterprise software, AdTech and MarTech companies."],
-  not_icp: ["Public sector and other buyers", "Ministries, cities, hospitals, universities, utilities and other buyers outside our ICP."],
+/* ---------- who is buying: The Codest's ICP in its own words, banks first ---------- */
+const FINANCE: Group[] = ["banks", "insurers", "payments", "lending", "markets"];
+const WHO: Who[] = ["icp", ...FINANCE, "other", "all"];
+/** chip label, and one line on who is in it and why it matters to us */
+const GROUP: Record<Group, [string, string]> = {
+  banks: ["Banks", "Commercial, savings and cooperative banks, building societies and state development banks. Our first target."],
+  insurers: ["Insurers", "Life, property and health insurers and reinsurers. State social insurance is public sector, so it is not here."],
+  payments: ["Payments and fintech", "Payment companies, card and transfer schemes, and makers of banking software."],
+  lending: ["Lenders and investors", "Lenders, leasing companies, pension funds and asset managers."],
+  markets: ["Central banks and markets", "Central banks, financial supervisors, exchanges and clearing houses. Often state-owned, but they buy banking-grade software."],
+  other: ["Other sectors", "Public bodies, utilities, hospitals, universities and companies outside finance. Outside our ICP: worth it only as a reference project."],
 };
+const WHO_LINE = {
+  icp: "Our ICP: banks first, then insurers, payments and fintech, lenders and investors, central banks and markets.",
+  all: "Every open tender for software and IT work, from every buyer. Our ICP comes first, then everyone else.",
+};
+const LEGACY_SECTOR: Record<string, Who> = { icp: "icp", finance: "icp", banking: "banks", financial_services: "icp", other_icp: "other", not_icp: "other" };
+const GLYPH: Record<Who, ReactNode> = {
+  icp: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><path d="M12 11v2" /></>,
+  banks: <path d="M3 9l9-5 9 5M5.5 10.5v7M10 10.5v7M14 10.5v7M18.5 10.5v7M3 20h18" />,
+  insurers: <path d="M12 3l8 3v6c0 4.4-3.4 7.5-8 9-4.6-1.5-8-4.6-8-9V6z" />,
+  payments: <><rect x="3" y="6" width="18" height="12" /><path d="M3 10h18M7 14.5h4" /></>,
+  lending: <><circle cx="12" cy="12" r="8.5" /><path d="M15 9a4 4 0 100 6M7.5 11h6M7.5 13h6" /></>,
+  markets: <path d="M3 20h18M4.5 16l4.5-5.5 4 3L19.5 6M15.5 6h4v4" />,
+  other: <path d="M4 20V9l6-3v14M10 20v-9h10v9M2.5 20h19M13 14h4M13 17h4M6.5 11h1M6.5 14h1" />,
+  all: <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" />,
+};
+const Glyph = ({ k }: { k: Who }) => <svg className="tn-glyph" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">{GLYPH[k]}</svg>;
+
+/* ---------- the filters ---------- */
+const OUR_MARKETS = "core";
+const REGIONS: [string, string, string?][] = [
+  ["core", "Our markets", "UK, DACH, Nordics, Poland"], ["uk", "United Kingdom"], ["dach", "DACH", "Germany, Austria, Switzerland"],
+  ["nordics", "Nordics", "Sweden, Norway, Denmark, Finland, Iceland"], ["poland", "Poland"], ["europe", "Rest of Europe"], ["international", "Outside Europe"],
+  ["all", "Everywhere"],
+];
+const VALUES: [string, number, string, string][] = [["100k", 100000, "€100k or more", "€100k+"], ["500k", 500000, "€500k or more", "€500k+"], ["1m", 1000000, "€1M or more", "€1M+"]];
+const WITHIN = ["7", "14", "30", "60"];
+const STATUS: [string, string][] = [["new", "New this week"], ["changed", "Changed by the buyer"]];
+const SORTS: [string, string][] = [["fit", "Best fit first"], ["deadline", "Closing soonest"], ["value", "Biggest value"], ["newest", "Newest first"]];
+const WORK_TYPES: [string, string][] = [
+  ["software_development", "Software development"], ["maintenance_support", "Maintenance and support"], ["data_ai", "Data and AI"],
+  ["testing_qa", "Testing and QA"], ["consulting", "Consulting"], ["licences_products", "Licences and products"],
+  ["infrastructure_hardware", "Infrastructure and hardware"], ["other", "Other work"],
+];
+const SUGGESTIONS = ["core banking", "data platform", "Sparkasse", "test automation", "72262000"];
+const FILTER_KEYS = ["q", "region", "country", "value", "within", "soon", "status", "fit", "work_type"];
+const VIEW_KEY = "ri_tenders_layout";
+
 const KIND: Record<string, string> = {
   bank: "Bank", central_bank: "Central bank", development_bank: "State development bank", savings_bank: "Savings bank", cooperative_bank: "Cooperative bank",
   building_society: "Building society", insurance: "Insurer", payments: "Payments", market_infrastructure: "Exchange or clearing", asset_management: "Asset manager",
@@ -59,16 +101,8 @@ const KIND: Record<string, string> = {
   public_body: "Public body", social_insurance: "Social insurance", public_finance: "Public finance office", company: "Company",
 };
 const PUBLIC_BY_NAME = new Set(["central_bank", "development_bank", "financial_authority"]);     // "state-owned" would only repeat the label
-const VALUES: [string, number, string][] = [["100k", 100000, "€100k or more"], ["500k", 500000, "€500k or more"], ["1m", 1000000, "€1M or more"]];
-const WORK_TYPES: [string, string][] = [
-  ["software_development", "Software development"], ["maintenance_support", "Maintenance and support"], ["data_ai", "Data and AI"],
-  ["testing_qa", "Testing and QA"], ["consulting", "Consulting"], ["licences_products", "Licences and products"],
-  ["infrastructure_hardware", "Infrastructure and hardware"], ["other", "Other work"],
-];
 const FIT_LABEL: Record<FitLevel, string> = { strong: "Strong fit", possible: "Possible fit", weak: "Weak fit", none: "Not a fit" };
 const FIT_STEPS: Record<FitLevel, number> = { strong: 3, possible: 2, weak: 1, none: 0 };
-const WITHIN = ["7", "14", "30", "60"];
-const SORTS: [string, string][] = [["fit", "Best fit, then soonest deadline"], ["deadline", "Soonest deadline"], ["value", "Highest value (in euros)"], ["newest", "Newest first"]];
 const PROCEDURE: Record<string, string> = {
   open: "Open procedure", restricted: "Restricted procedure", "neg-w-call": "Negotiated procedure", "neg-wo-call": "Negotiated without a call for bids",
   "comp-dial": "Competitive dialogue", innovation: "Innovation partnership", "oth-single": "Single-stage procedure", "oth-mult": "Multi-stage procedure",
@@ -86,6 +120,9 @@ const workLabel = (key?: string) => tr(WORK_TYPES.find(([k]) => k === key)?.[1] 
 const locale = (language: string) => (language === "pl" ? "pl-PL" : "en-GB");
 const days = (n: number) => counted(n, ["day", "days"], ["dzień", "dni", "dni"]);
 const sentence = (parts: (string | null | undefined | false)[]) => { const t = parts.filter(Boolean).join(", "); return t.charAt(0).toUpperCase() + t.slice(1); };
+const regionLabel = (k: string) => tr(REGIONS.find(([r]) => r === k)?.[1] ?? "Our markets");
+const readLayout = () => { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } };
+const saveLayout = (v: string) => { try { localStorage.setItem(VIEW_KEY, v); } catch { /* the address still carries it */ } };
 
 /** The summary in the app's language: Polish when there is a Polish version, English otherwise. */
 function localised(s: Summary | null | undefined, language: string) {
@@ -97,6 +134,30 @@ function localised(s: Summary | null | undefined, language: string) {
     requirements: pick(s.requirements_pl, s.requirements) ?? [], reason: pick(s.fit?.reason_pl, s.fit?.reason), technologies: s.technologies ?? [],
     fit: s.fit?.level, work: s.work_type, note: pick(s.buyer_note_pl, s.buyer_note), lang: pl && s.title_pl ? "pl" : "en",
   };
+}
+type Local = ReturnType<typeof localised>;
+
+/** What kind of buyer, in words: "Savings bank", "Pension fund, state-owned", "Insurer, to be confirmed". */
+function kindText(t: Tender) {
+  const label = tr(KIND[t.sector_kind ?? ""] ?? "Company");
+  return `${label}${t.sector_public && t.sector !== "not_icp" && !PUBLIC_BY_NAME.has(t.sector_kind ?? "") ? `, ${tr("state-owned")}` : ""}${t.sector_sure ? "" : `, ${tr("to be confirmed")}`}`;
+}
+
+/** Why it matters to us, in one line: the summary's fit reason, or what the buyer's sector says until there is one. */
+function whyLine(t: Tender, s: Local) {
+  if (s?.reason) return s.reason;
+  const kind = tr(KIND[t.sector_kind ?? ""] ?? "Company");
+  if (t.group !== "other") return t.summary_state === "skipped" ? tr("{} in our ICP. No summary for this one: read the official notice.", kind) : tr("{} in our ICP: the summary is on its way.", kind);
+  if (t.sector === "other_icp") return tr("{}: close to our ICP, worth a look.", kind);
+  if (!t.sector_sure) return tr("A company we cannot place yet: check who the buyer is.");
+  return tr("{}: outside our ICP, only worth it as a reference project.", kind);
+}
+
+/** The list's second line: why it matters, then (until there is a summary) the notice's category in plain English. */
+function listLine(t: Tender, s: Local) {
+  if (s?.reason) return s.reason;
+  const why = t.group !== "other" ? whyLine(t, s) : t.sector === "other_icp" ? tr("Close to our ICP") : !t.sector_sure ? tr("Buyer not placed yet") : tr("Outside our ICP");
+  return [why, t.category].filter(Boolean).join(" · ");
 }
 
 /** An amount, short ("€1.25M", "1,25 mln €") or in full. */
@@ -139,6 +200,8 @@ function FitMeter({ level }: { level?: FitLevel }) {
   return <span className={`tn-meter tn-fit-${level ?? "unknown"}`} aria-hidden="true">{[1, 2, 3].map((i) => <i key={i} className={i <= on ? "on" : ""} />)}</span>;
 }
 
+const NewMark = () => <span className="tn-new">{tr("New")}</span>;
+
 function Due({ t }: { t: Tender }) {
   return <div className="tn-due" role="img" aria-label={tr("Closes in {}", days(t.days_left))}>
     <b>{t.days_left}</b>
@@ -146,24 +209,23 @@ function Due({ t }: { t: Tender }) {
   </div>;
 }
 
-/** What kind of buyer, as a tag: "Savings bank", "Pension fund, state-owned", "Insurer, to be confirmed". */
-function SectorTag({ t }: { t: Tender }) {
-  if (t.sector === "not_icp" && t.sector_sure) return null;
-  const label = tr(KIND[t.sector_kind ?? ""] ?? "Company");
-  return <span className={`tn-tag tn-tag-${t.sector}`} title={t.sector_sure ? undefined : tr("The buyer's sector is confirmed when the summary is written.")}>
-    {label}{t.sector_public && t.sector !== "not_icp" && !PUBLIC_BY_NAME.has(t.sector_kind ?? "") ? `, ${tr("state-owned")}` : ""}{t.sector_sure ? "" : `, ${tr("to be confirmed")}`}
+/** Days left, with a bar that shortens as the deadline nears (pink in the last week). */
+function DueBar({ t }: { t: Tender }) {
+  const share = Math.max(6, Math.min(100, (t.days_left / 60) * 100));
+  return <span className="tn-duebar" title={tr("Closes {}", fmtDateTime(t.deadline))}>
+    <b>{days(t.days_left)}</b>
+    <i aria-hidden="true"><i style={{ width: `${share}%` }} /></i>
   </span>;
 }
 
-function Buyer({ t, note }: { t: Tender; note?: string }) {
-  return <div className="tn-buyer">
-    <p>
-      <span className="tn-buyer-name">{t.account ? <Link to={`/accounts/${t.account.id}`}>{t.buyer}</Link> : t.buyer}</span>
-      <span className="tn-country">{countryName(t.country) ?? tr("Country not given")}</span>
-      <SectorTag t={t} />
-    </p>
-    {note && <p className="tn-note">{note}</p>}
-  </div>;
+/** What kind of buyer, as a tag on the cards. */
+function SectorTag({ t }: { t: Tender }) {
+  if (t.sector === "not_icp" && t.sector_sure) return null;
+  return <span className={`tn-tag tn-tag-${t.sector}`} title={t.sector_sure ? undefined : tr("The buyer's sector is confirmed when the summary is written.")}>{kindText(t)}</span>;
+}
+
+function BuyerName({ t }: { t: Tender }) {
+  return t.account ? <Link to={`/accounts/${t.account.id}`}>{t.buyer}</Link> : <>{t.buyer}</>;
 }
 
 function OfficialLink({ t, language }: { t: Tender; language: string }) {
@@ -173,12 +235,12 @@ function OfficialLink({ t, language }: { t: Tender; language: string }) {
 
 /** "≈ €1.25M" first, the notice's own amount under it. */
 function Value({ t, language, compact = false }: { t: Tender; language: string; compact?: boolean }) {
-  if (t.value == null) return compact ? null : <span className="tn-v tn-muted">{tr("Not stated in the notice")}</span>;
+  if (t.value == null) return compact ? <span className="tn-none">{tr("Not stated")}</span> : <span className="tn-v tn-muted">{tr("Not stated in the notice")}</span>;
   const cur = (t.currency ?? "").toUpperCase();
   const own = cur ? money(t.value, cur, language) : number(Math.round(t.value));
   const eur = t.value_eur != null ? money(t.value_eur, "EUR", language) : null;
   const approx = cur !== "EUR" && eur;
-  if (compact) return <span title={cur ? money(t.value, cur, language, false) : undefined}>{eur ? `${approx ? "≈ " : ""}${eur}` : own}{approx && <small>{own}</small>}</span>;
+  if (compact) return <span title={cur ? money(t.value, cur, language, false) : undefined}><b>{eur ? `${approx ? "≈ " : ""}${eur}` : own}</b>{approx && <small>{own}</small>}</span>;
   return <span className="tn-value">
     <span className="tn-money">{eur ? `${approx ? "≈ " : ""}${eur}` : own}</span>
     <span className="tn-value-own">
@@ -189,7 +251,7 @@ function Value({ t, language, compact = false }: { t: Tender; language: string; 
 }
 
 /** The facts someone needs to judge a bid without opening the notice. Rows the notice says nothing about are left out. */
-function WorthIt({ t, s, language }: { t: Tender; s: ReturnType<typeof localised>; language: string }) {
+function WorthIt({ t, s, language }: { t: Tender; s: Local; language: string }) {
   const w = t.worth ?? {};
   const rows: [string, ReactNode][] = [];
   const duration = [w.duration ? durationText(w.duration) : w.months ? counted(w.months, ["month", "months"], ["miesiąc", "miesiące", "miesięcy"]) : null,
@@ -235,8 +297,15 @@ function TenderCard({ t, language }: { t: Tender; language: string }) {
   return <li className={`tn-card${t.days_left <= 7 ? " is-soon" : ""}`}>
     <Due t={t} />
     <div className="tn-body">
-      <h3 className="tn-title" lang={s ? s.lang : undefined}>{s ? s.title : t.title}</h3>
-      <Buyer t={t} note={s?.note} />
+      <h3 className="tn-title" lang={s ? s.lang : undefined}>{t.is_new && <NewMark />}{s ? s.title : t.title}</h3>
+      <div className="tn-buyer">
+        <p>
+          <span className="tn-buyer-name"><BuyerName t={t} /></span>
+          <span className="tn-country">{countryName(t.country) ?? tr("Country not given")}</span>
+          <SectorTag t={t} />
+        </p>
+        {s?.note && <p className="tn-note">{s.note}</p>}
+      </div>
       {s ? <>
         {s.text && <p className="tn-summary" lang={s.lang}>{s.text}</p>}
         <WorthIt t={t} s={s} language={language} />
@@ -246,8 +315,7 @@ function TenderCard({ t, language }: { t: Tender; language: string }) {
         </ul>}
       </> : <>
         {t.category && <p className="tn-category">{t.category}</p>}
-        <p className="tn-pending">{t.summary_state === "skipped" ? tr("No summary for this one: read the official notice.")
-          : t.summary_state === "not_needed" ? tr("Not summarised: the buyer is outside our ICP.") : tr("Summary being written")}</p>
+        <p className={`tn-why-line${t.summary_state === "waiting" ? " is-waiting" : ""}`}>{whyLine(t, s)}</p>
         {t.scope && <p className="tn-scope">{t.scope}</p>}
         <WorthIt t={t} s={null} language={language} />
       </>}
@@ -278,68 +346,139 @@ function TenderCard({ t, language }: { t: Tender; language: string }) {
   </li>;
 }
 
-function TenderRow({ t, language }: { t: Tender; language: string }) {
-  const [open, setOpen] = useState(false);
+/** Arrow keys move between the rows of the compact list, Enter or Space opens one. */
+function moveBetweenRows(e: KeyboardEvent<HTMLButtonElement>) {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  const rows = Array.from(document.querySelectorAll<HTMLButtonElement>(".tn-li-what > button"));
+  const next = rows[rows.indexOf(e.currentTarget) + (e.key === "ArrowDown" ? 1 : -1)];
+  if (next) { e.preventDefault(); next.focus(); }
+}
+
+function TenderRow({ t, language, open, onToggle }: { t: Tender; language: string; open: boolean; onToggle: () => void }) {
   const s = localised(t.summary, language);
-  const id = `tn-row-${t.id}`;
-  return <li className={`tn-row${t.days_left <= 7 ? " is-soon" : ""}${open ? " is-open" : ""}`}>
-    <span className="tn-row-due" aria-label={tr("Closes in {}", days(t.days_left))}><b>{t.days_left}</b><span aria-hidden="true">{tr("d")}</span></span>
-    <div className="tn-row-main">
-      <button type="button" className="tn-row-title" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)} lang={s ? s.lang : undefined}>{s ? s.title : t.title}</button>
-      <span className="tn-row-sub">{t.buyer}, {countryName(t.country) ?? tr("Country not given")}<SectorTag t={t} /></span>
+  const id = `tn-li-${t.id}`;
+  const button = useRef<HTMLButtonElement>(null);
+  const why = listLine(t, s);
+  const close = (e: KeyboardEvent<HTMLDivElement>) => { if (e.key === "Escape") { e.stopPropagation(); onToggle(); button.current?.focus(); } };
+  return <li className={`tn-li${open ? " is-open" : ""}${t.days_left <= 7 ? " is-soon" : ""}`}
+    onClick={(e) => { if (!(e.target as HTMLElement).closest("a, button, .tn-li-more")) onToggle(); }}>
+    <div className="tn-li-buyer">
+      <span className="tn-li-name"><BuyerName t={t} /></span>
+      <span className="tn-li-kind">{kindText(t)}<span className="tn-li-where">, {countryName(t.country) ?? tr("Country not given")}</span></span>
     </div>
-    <span className="tn-row-fit"><FitMeter level={s?.fit} /> <span>{s?.fit ? tr(FIT_LABEL[s.fit]) : s || t.summary_state === "not_needed" ? "" : tr("Summary being written")}</span></span>
-    <span className="tn-row-value"><Value t={t} language={language} compact /></span>
-    <span className="tn-row-link"><OfficialLink t={t} language={language} /></span>
-    {open && <div className="tn-row-more" id={id}>
-      {s?.text ? <p lang={s.lang}>{s.text}</p> : <p className="tn-pending">{t.summary_state === "skipped" ? tr("No summary for this one: read the official notice.")
-        : t.summary_state === "not_needed" ? tr("Not summarised: the buyer is outside our ICP.") : tr("Summary being written")}</p>}
-      <WorthIt t={t} s={s} language={language} />
-      {s?.reason && <p className="small"><b>{tr(FIT_LABEL[s.fit ?? "none"])}:</b> {s.reason}</p>}
-      {s && !sameTitle(t.title, s.title) && <p className="tn-original small"><span>{tr("Original title")}</span> {t.title}</p>}
-      <p className="small muted">{tr("Closes {}", fmtDateTime(t.deadline))}{t.deadline_tz ? ` (${t.deadline_tz})` : ""}</p>
+    <div className="tn-li-what">
+      <button type="button" ref={button} aria-expanded={open} aria-controls={id} onClick={onToggle} onKeyDown={moveBetweenRows} lang={s ? s.lang : undefined}>
+        {t.is_new && <NewMark />}<span>{s ? s.title : t.title}</span>
+      </button>
+      <p className="tn-why" lang={s?.reason ? s.lang : undefined} title={why}>{why}</p>
+    </div>
+    <div className="tn-li-value"><Value t={t} language={language} compact /></div>
+    <div className="tn-li-due"><DueBar t={t} /></div>
+    <div className="tn-li-country">{countryName(t.country) ?? "–"}</div>
+    <span className="tn-li-chev" aria-hidden="true" />
+    {open && <div className="tn-li-more" id={id} onKeyDown={close}>
+      <div className="tn-li-main">
+        {s?.text ? <p className="tn-summary" lang={s.lang}>{s.text}</p> : t.scope ? <p className="tn-scope">{t.scope}</p> : null}
+        {s?.note && <p className="tn-note">{s.note}</p>}
+        <WorthIt t={t} s={s} language={language} />
+        {!s?.wants.length && !t.worth && !t.scope && !s?.text && <p className="tn-why-line">{tr("The notice says little more: open it for the documents.")}</p>}
+      </div>
+      <dl className="tn-li-facts">
+        <div><dt>{tr("Closes")}</dt><dd>{fmtDateTime(t.deadline)}{t.deadline_tz ? ` (${t.deadline_tz})` : ""}</dd></div>
+        <div><dt>{tr("Value")}</dt><dd><Value t={t} language={language} /></dd></div>
+        <div><dt>{tr("Fit for us")}</dt><dd><FitMeter level={s?.fit} /> {s?.fit ? tr(FIT_LABEL[s.fit]) : tr("Fit not judged yet")}</dd></div>
+        {s?.work && <div><dt>{tr("Kind of work")}</dt><dd>{workLabel(s.work)}{s.technologies.length ? `: ${s.technologies.join(", ")}` : ""}</dd></div>}
+        {t.category && <div><dt>{tr("Category")}</dt><dd>{t.category}</dd></div>}
+        {t.cpv && t.cpv.length > 0 && <div><dt>{tr("CPV codes")}</dt><dd>{t.cpv.join(", ")}</dd></div>}
+        {s && !sameTitle(t.title, s.title) && <div><dt>{tr("Original title")}</dt><dd lang="und">{t.title}</dd></div>}
+        <div><dt>{tr("Source")}</dt><dd>{t.source}, {tr("Notice {}", t.notice_id)}</dd></div>
+        <div className="tn-li-link"><OfficialLink t={t} language={language} /></div>
+      </dl>
     </div>}
   </li>;
 }
 
-/** The tenders of one page, in runs of the same sector (the list comes banks first, then financial services, other ICP sectors, everyone else). */
-function bySector(items: Tender[]) {
-  const runs: { sector: Sector; items: Tender[] }[] = [];
+/** The tenders of one page, in runs of the same buyer chip (the list comes banks first). */
+function byGroup(items: Tender[]) {
+  const runs: { group: Group; items: Tender[] }[] = [];
   for (const t of items) {
     const last = runs[runs.length - 1];
-    if (last && last.sector === t.sector) last.items.push(t); else runs.push({ sector: t.sector, items: [t] });
+    if (last && last.group === t.group) last.items.push(t); else runs.push({ group: t.group, items: [t] });
   }
   return runs;
+}
+
+function Count({ n }: { n?: number }) {
+  return <span className="tn-n">{n == null ? "…" : number(n)}</span>;
+}
+
+/** One choice in a filter panel, with how many tenders it would show. */
+function Choice({ on, count, hint, onPick, children }: { on: boolean; count?: number; hint?: string; onPick: () => void; children: ReactNode }) {
+  return <button type="button" className={`tn-choice${count === 0 && !on ? " is-zero" : ""}`} aria-pressed={on} onClick={onPick}>
+    <span className="tn-choice-l">{children}{hint && <small>{hint}</small>}</span>
+    {count !== undefined && <Count n={count} />}
+  </button>;
+}
+
+/** A filter as a small button that opens a panel of choices: compact, and every choice says how many tenders it would show. */
+function Pill({ id, label, value, on, open, onOpen, wide = false, children }: { id: string; label: string; value: string; on: boolean; open: boolean;
+  onOpen: (id: string | null) => void; wide?: boolean; children: ReactNode }) {
+  return <div className={`tn-pill${on ? " is-on" : ""}${open ? " is-open" : ""}`} data-pill={id}>
+    <button type="button" id={`tn-pill-${id}`} aria-expanded={open} aria-controls={`tn-pop-${id}`} onClick={() => onOpen(open ? null : id)}>
+      <span className="tn-pill-k">{label}</span><span className="tn-pill-v">{value}</span>
+      <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.8" /></svg>
+    </button>
+    {open && <div className={`tn-pop${wide ? " is-wide" : ""}`} id={`tn-pop-${id}`} role="group" aria-labelledby={`tn-pill-${id}`}>{children}</div>}
+  </div>;
 }
 
 /** Open tenders for software work from TED, UK Find a Tender, UK Contracts Finder and e-Zamówienia: our ICP by default, banks first. */
 export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }) {
   const language = useLanguage();
   const [params, setParams] = useSearchParams();
-  const [search, setSearch] = useState(params.get("q") ?? "");
+  const qParam = params.get("q") ?? "";
+  const [search, setSearch] = useState(qParam);
   const [data, setData] = useState<Result | null>(null);
   const [err, setErr] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
   const [refresh, setRefresh] = useState<{ busy: boolean; done: Refresh | null; err: unknown }>({ busy: false, done: null, err: null });
   const [writing, setWriting] = useState<{ busy: boolean; done: Summarise | null; err: unknown }>({ busy: false, done: null, err: null });
+  const [pill, setPill] = useState<string | null>(null);
+  const [opened, setOpened] = useState<Set<string>>(new Set());
+  const searchBox = useRef<HTMLInputElement>(null);
+
+  const legacy = LEGACY_SECTOR[params.get("sector") ?? ""] ?? (params.get("sector") === "all" ? "all" : null);
+  const who: Who = WHO.includes(params.get("who") as Who) ? params.get("who") as Who : legacy ?? "icp";
   const page = Math.max(1, Number(params.get("page")) || 1);
-  const region = params.get("region") || OUR_MARKETS;
-  const buyers = BUYERS.some(([k]) => k === params.get("sector")) ? params.get("sector")! : ICP;
-  const sort = params.get("sort") || "fit";
+  const region = REGIONS.some(([k]) => k === params.get("region")) ? params.get("region")! : OUR_MARKETS;
+  const country = /^[A-Z]{2}$/.test(params.get("country") ?? "") ? params.get("country")! : "";
+  const sort = SORTS.some(([k]) => k === params.get("sort")) ? params.get("sort")! : "fit";
   const value = VALUES.find(([k]) => k === params.get("value"));
-  const view = params.get("view") === "list" ? "list" : "cards";
-  const query = new URLSearchParams({ page: String(page), limit: "30", min_days: params.get("soon") === "1" ? "0" : "3", sort });
+  const within = WITHIN.includes(params.get("within") ?? "") ? params.get("within")! : "";
+  const soon = params.get("soon") === "1";
+  const status = STATUS.some(([k]) => k === params.get("status")) ? params.get("status")! : "";
+  const fit = ["strong", "possible"].includes(params.get("fit") ?? "") ? params.get("fit")! : "";
+  const work = WORK_TYPES.some(([k]) => k === params.get("work_type")) ? params.get("work_type")! : "";
+  const view = params.get("view") === "list" || (params.get("view") !== "cards" && readLayout() === "list") ? "list" : "cards";
+  const limit = view === "list" ? 50 : 30;
+
+  const query = new URLSearchParams({ group: who, page: String(page), limit: String(limit), min_days: soon ? "0" : "3", sort });
   if (region !== "all") query.set("region", region);
-  if (buyers !== "all") query.set("sector", buyers);
+  if (country) query.set("country", country);
   if (value) query.set("min_value", String(value[1]));
-  ["q", "buyer", "fit", "work_type"].forEach((k) => { const v = params.get(k); if (v) query.set(k, v); });
-  if (WITHIN.includes(params.get("within") ?? "")) query.set("max_days", params.get("within")!);
+  if (within) query.set("max_days", within);
+  if (status) query.set("status", status);
+  if (fit) query.set("fit", fit);
+  if (work) query.set("work_type", work);
+  if (qParam) query.set("q", qParam);
   const qs = query.toString();
-  const qParam = params.get("q") ?? "";
+
   useEffect(() => { setSearch(qParam); }, [qParam]);
   useEffect(() => {
     const request = new AbortController();
-    setErr(null); setData(null);
-    api<Result>(`/api/tenders?${qs}`, { signal: request.signal }).then(setData).catch((e) => { if (!request.signal.aborted) setErr(e); });
+    setErr(null); setLoading(true);
+    api<Result>(`/api/tenders?${qs}`, { signal: request.signal }).then((d) => { setData(d); setOpened(new Set()); setLoading(false); })
+      .catch((e) => { if (!request.signal.aborted) { setErr(e); setLoading(false); } });
     return () => request.abort();
   }, [qs]);
   // While the sources are being checked or summaries written, read the list again every 30 seconds without blanking it.
@@ -350,8 +489,41 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
     const timer = window.setTimeout(() => { void reload(request.signal); }, 30000);
     return () => { window.clearTimeout(timer); request.abort(); };
   }, [data, reload]);
-  const set = (k: string, v: string) => { const n = new URLSearchParams(params); if (v) n.set(k, v); else n.delete(k); if (k !== "page") n.delete("page"); setParams(n); };
-  const clearFilters = () => { const n = new URLSearchParams(); if (params.get("view")) n.set("view", params.get("view")!); setParams(n); setSearch(""); };
+
+  const update = useCallback((changes: Record<string, string>) => {
+    setParams((prev) => {
+      const n = new URLSearchParams(prev);
+      for (const [k, v] of Object.entries(changes)) { if (v) n.set(k, v); else n.delete(k); }
+      if (!("page" in changes)) n.delete("page");
+      n.delete("sector");
+      return n;
+    });
+  }, [setParams]);
+  const set = (k: string, v: string) => update({ [k]: v });
+  const pick = (changes: Record<string, string>) => { update(changes); setPill(null); };
+  const choose = (next: Who) => update({ who: next === "icp" ? "" : next });
+  const clearFilters = () => { update(Object.fromEntries(FILTER_KEYS.map((k) => [k, ""]))); setSearch(""); setPill(null); };
+
+  // Search as you type (a short pause first), and at once on Enter.
+  useEffect(() => {
+    const next = search.trim();
+    if (next === qParam) return;
+    const timer = window.setTimeout(() => update({ q: next }), 450);
+    return () => window.clearTimeout(timer);
+  }, [search, qParam, update]);
+
+  // A filter panel closes on Escape (focus goes back to its button) and on a click anywhere else; when it opens, focus moves to the current choice.
+  useEffect(() => {
+    if (!pill) return;
+    const panel = document.getElementById(`tn-pop-${pill}`);
+    (panel?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? panel?.querySelector<HTMLElement>("button, input"))?.focus();
+    const away = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest(`[data-pill="${pill}"]`)) setPill(null); };
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === "Escape") { document.getElementById(`tn-pill-${pill}`)?.focus(); setPill(null); } };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [pill]);
+
   const checkNow = async () => {
     setRefresh({ busy: true, done: null, err: null });
     try { const done = await post<Refresh>("/api/tenders/refresh"); setRefresh({ busy: false, done, err: null }); void reload(); }
@@ -362,20 +534,24 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
     try { const done = await post<Summarise>("/api/tenders/summarise"); setWriting({ busy: false, done, err: null }); void reload(); }
     catch (e) { setWriting({ busy: false, done: null, err: e }); }
   };
+  const toggleRow = (id: string) => setOpened((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const setLayout = (v: "cards" | "list") => { saveLayout(v); set("view", v); };
+
+  const f = data?.facets;
+  const g = f?.groups;
   const live = data?.sources.filter((s) => s.status === "active").length ?? 0;
-  const elsewhere = data?.counts.other_regions ?? 0;
-  const facets = data?.facets;
-  const fitCount = (k: "strong" | "possible") => facets ? (facets.fit.strong ?? 0) + (k === "possible" ? facets.fit.possible ?? 0 : 0) : null;
-  const filtered = ["q", "buyer", "fit", "work_type", "within", "soon", "value", "sector"].some((k) => params.get(k)) || region !== OUR_MARKETS;
   const done = refresh.done;
   const waitingSummaries = data?.summaries?.waiting ?? 0;
-  const sectors = data?.counts.by_sector;
-  const finance = sectors ? sectors.banking + sectors.financial_services : 0;
-  const otherIcp = sectors?.other_icp ?? 0;
-  const publicCount = sectors?.not_icp ?? 0;
-  const icpView = buyers === ICP || buyers === "finance" || buyers === "banking" || buyers === "other_icp";
+  const activeCount = [qParam, region !== OUR_MARKETS, country, value, within, soon, status, fit, work].filter(Boolean).length;
+  const whoLine = who === "icp" || who === "all" ? WHO_LINE[who] : GROUP[who][1];
+  const fitCount = (k: string) => f ? (f.fit.strong ?? 0) + (k === "possible" ? f.fit.possible ?? 0 : 0) : undefined;
+  const countries = f ? Object.entries(f.country).filter(([c]) => c).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])) : [];
+  const whereValue = country ? countryName(country) ?? country : regionLabel(region);
+  const total = data?.counts.total ?? 0;
+  const from = (page - 1) * limit + 1;
+
   return <div className="tn-page">
-    <PageHeader title="Open tenders" sub="Tenders for software and IT work from banks, insurers and the rest of our ICP, from the official procurement sites. Each one says what is bought, how big it is and whether it fits us."
+    <PageHeader title="Open tenders" sub="Public tenders for software and IT work, from the official procurement sites. Our ICP comes first, banks at the top; every other buyer is one click away. Each tender says what is bought, how big it is and whether it fits us."
       right={data && <div className="tn-head-actions">
         <span className="small muted">{data.last_updated ? tr("Last updated {}", fmtDateTime(data.last_updated)) : tr("Not checked yet")}
           {data.refreshing && <>, {tr("checking the sources now")}</>}</span>
@@ -394,102 +570,157 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
         : tr("Every open tender from our ICP already has a summary.")}</div>}
     <Err e={refresh.err} />
     <Err e={writing.err} />
-    {data && !err && sectors && <section className="tn-scope-bar" aria-live="polite">
-      {icpView ? <>
-        <p className="tn-scope-head">
-          <b>{counted(finance, ["open tender from banks and financial services", "open tenders from banks and financial services"],
-            ["otwarty przetarg od banków i firm finansowych", "otwarte przetargi od banków i firm finansowych", "otwartych przetargów od banków i firm finansowych"])}</b>
-          <span>{counted(otherIcp, ["from another ICP sector", "from other ICP sectors"], ["z innego sektora ICP", "z innych sektorów ICP", "z innych sektorów ICP"])}</span>
+
+    <section className="tn-finder" aria-label={tr("Find a tender")}>
+      <form className="tn-search" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }); }}>
+        <svg className="tn-search-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L21 21" /></svg>
+        <label className="sr" htmlFor="tn-q">{tr("Search tenders")}</label>
+        <input id="tn-q" ref={searchBox} type="search" placeholder={tr("Buyer, what they buy, or a CPV code")} maxLength={120} value={search}
+          onChange={(e) => setSearch(e.target.value)} autoComplete="off" />
+        {search && <button type="button" className="tn-search-clear" aria-label={tr("Clear the search")} onClick={() => { setSearch(""); update({ q: "" }); searchBox.current?.focus(); }}>×</button>}
+      </form>
+      <p className="tn-try">
+        {data?.search?.cpv.length ? <span>{tr("CPV codes starting {}", data.search.cpv.join(", "))}{data.search.words ? ` + “${data.search.words}”` : ""}</span>
+          : <><span>{tr("Try")}</span>{SUGGESTIONS.map((x) => <button key={x} type="button" className="tn-try-b" onClick={() => { setSearch(x); update({ q: x }); }}>{x}</button>)}</>}
+      </p>
+
+      <div className="tn-who" role="group" aria-labelledby="tn-who-h">
+        <h2 id="tn-who-h" className="tn-label">{tr("Who is buying")}</h2>
+        <div className="tn-who-row">
+          <div className={`tn-icp${who === "icp" ? " is-on" : FINANCE.includes(who as Group) ? " is-part" : ""}`}>
+            <button type="button" className="tn-icp-all" aria-pressed={who === "icp"} onClick={() => choose("icp")}>
+              <Glyph k="icp" /><span className="tn-icp-name">{tr("Our ICP")}</span><Count n={g?.icp} />
+            </button>
+            <div className="tn-icp-chips">
+              {FINANCE.map((k) => <button key={k} type="button" className={`tn-chipb${g && g[k] === 0 ? " is-zero" : ""}`} aria-pressed={who === k} data-in={who === "icp" || undefined}
+                onClick={() => choose(k)}><Glyph k={k} /><span>{tr(GROUP[k][0])}</span><Count n={g?.[k]} /></button>)}
+            </div>
+          </div>
+          <div className="tn-rest">
+            <button type="button" className="tn-chipb tn-chip-out" aria-pressed={who === "other"} onClick={() => choose("other")}><Glyph k="other" /><span>{tr("Other sectors")}</span><Count n={g?.other} /></button>
+            <button type="button" className="tn-chipb tn-chip-out" aria-pressed={who === "all"} onClick={() => choose("all")}><Glyph k="all" /><span>{tr("All tenders")}</span><Count n={g?.all} /></button>
+          </div>
+        </div>
+        <p className="tn-who-line">{tr(whoLine)}
+          {who === "icp" && g && g.icp < 25 && <> {tr("Banks and insurers rarely have to publish public tenders, so most notices come from public bodies: they are under Other sectors.")}</>}
         </p>
-        {finance + otherIcp < 25 && <p className="tn-scope-why">{tr("That is all there is right now. Banks and insurers rarely have to publish public tenders, so almost every notice on TED, Find a Tender, Contracts Finder and e-Zamówienia comes from a public body. Those are hidden here, not lost.")}</p>}
-        {publicCount > 0 && <button type="button" className="linkish" onClick={() => set("sector", "not_icp")}>{tr("Show all public-sector tenders ({})", number(publicCount))}</button>}
-      </> : <>
-        <p className="tn-scope-head"><b>{buyers === "not_icp" ? counted(publicCount, ["open tender from the public sector and other buyers", "open tenders from the public sector and other buyers"],
-          ["otwarty przetarg od sektora publicznego i innych", "otwarte przetargi od sektora publicznego i innych", "otwartych przetargów od sektora publicznego i innych"])
-          : counted(finance + otherIcp + publicCount, ["open tender from every buyer", "open tenders from every buyer"], ["otwarty przetarg od wszystkich kupujących", "otwarte przetargi od wszystkich kupujących", "otwartych przetargów od wszystkich kupujących"])}</b></p>
-        <button type="button" className="linkish" onClick={() => set("sector", "")}>{tr("Back to our ICP ({})", number(finance + otherIcp))}</button>
-      </>}
-    </section>}
-    <form className="tn-filters" role="search" onSubmit={(e) => { e.preventDefault(); set("q", search.trim()); }}>
-      <div className="tn-search">
-        <input type="search" aria-label={tr("Search tenders")} placeholder={tr("What they buy, buyer or technology")} maxLength={120} value={search} onChange={(e) => setSearch(e.target.value)} />
-        <button type="submit" className="primary">{tr("Search")}</button>
       </div>
-      <div className="tn-selects">
-        <label><span>{tr("Buyers")}</span>
-          <select value={buyers} onChange={(e) => set("sector", e.target.value === ICP ? "" : e.target.value)}>
-            {BUYERS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
-          </select></label>
-        <label><span>{tr("Region")}</span>
-          <select value={region} onChange={(e) => set("region", e.target.value === OUR_MARKETS ? "" : e.target.value)}>
-            <option value={OUR_MARKETS}>{tr("Our markets (UK, DACH, Nordics, Poland)")}</option>
-            <option value="all">{tr("All regions")}</option>{REGIONS.map(([id, label]) => <option key={id} value={id}>{tr(label)}</option>)}
-          </select></label>
-        <label><span>{tr("Value")}</span>
-          <select value={value?.[0] ?? ""} onChange={(e) => set("value", e.target.value)}>
-            <option value="">{tr("Any value")}</option>
-            {VALUES.map(([k, , label]) => <option key={k} value={k}>{tr(label)}</option>)}
-          </select></label>
-        <label><span>{tr("Fit for us")}</span>
-          <select value={params.get("fit") ?? ""} onChange={(e) => set("fit", e.target.value)}>
-            <option value="">{tr("Any fit")}</option>
-            <option value="strong">{tr("Strong fit only")}{fitCount("strong") != null ? ` (${number(fitCount("strong")!)})` : ""}</option>
-            <option value="possible">{tr("Possible or strong fit")}{fitCount("possible") != null ? ` (${number(fitCount("possible")!)})` : ""}</option>
-          </select></label>
-        <label><span>{tr("Kind of work")}</span>
-          <select value={params.get("work_type") ?? ""} onChange={(e) => set("work_type", e.target.value)}>
-            <option value="">{tr("Any kind of work")}</option>
-            {WORK_TYPES.map(([k, label]) => <option key={k} value={k}>{tr(label)}{facets ? ` (${number(facets.work_type[k] ?? 0)})` : ""}</option>)}
-          </select></label>
-        <label><span>{tr("Closing within")}</span>
-          <select value={params.get("within") ?? ""} onChange={(e) => set("within", e.target.value)}>
-            <option value="">{tr("Any time")}</option>
-            {WITHIN.map((d) => <option key={d} value={d}>{days(Number(d))}</option>)}
-          </select></label>
+
+      <div className="tn-pills">
+        <Pill id="where" label={tr("Where")} value={whereValue} on={region !== OUR_MARKETS || !!country} open={pill === "where"} onOpen={setPill} wide>
+          <p className="tn-pop-h">{tr("Region")}</p>
+          <div className="tn-choices tn-choices-2">
+            {REGIONS.map(([k, label, hint]) => <Choice key={k} on={region === k && !country} count={f?.region[k] ?? 0} hint={hint ? tr(hint) : undefined}
+              onPick={() => pick({ region: k === OUR_MARKETS ? "" : k, country: "" })}>{tr(label)}</Choice>)}
+          </div>
+          {countries.length > 0 && <>
+            <p className="tn-pop-h">{region === "all" ? tr("Country") : tr("Country, in {}", regionLabel(region))}</p>
+            <div className="tn-countries">
+              {countries.map(([c, n]) => <button key={c} type="button" className="tn-cty" aria-pressed={country === c} onClick={() => pick({ country: country === c ? "" : c })}>
+                {countryName(c) ?? c} <Count n={n} /></button>)}
+            </div>
+          </>}
+        </Pill>
+        <Pill id="value" label={tr("Value")} value={value ? tr(value[3]) : tr("Any")} on={!!value} open={pill === "value"} onOpen={setPill}>
+          <div className="tn-choices">
+            <Choice on={!value} count={f?.value.any} onPick={() => pick({ value: "" })}>{tr("Any value")}</Choice>
+            {VALUES.map(([k, , label]) => <Choice key={k} on={value?.[0] === k} count={f?.value[k]} onPick={() => pick({ value: k })}>{tr(label)}</Choice>)}
+          </div>
+          <p className="tn-pop-note">{tr("In euros, converted at fixed rates. Tenders that give no value are left out when a value is chosen.")}</p>
+        </Pill>
+        <Pill id="closes" label={tr("Closes")} value={within ? tr("within {}", days(Number(within))) : tr("Any time")} on={!!within || soon} open={pill === "closes"} onOpen={setPill}>
+          <div className="tn-choices">
+            <Choice on={!within} count={f?.within.any} onPick={() => pick({ within: "" })}>{tr("Any time")}</Choice>
+            {WITHIN.map((d) => <Choice key={d} on={within === d} count={f?.within[d]} onPick={() => pick({ within: d })}>{tr("Within {}", days(Number(d)))}</Choice>)}
+          </div>
+          <label className="tn-check"><input type="checkbox" checked={soon} onChange={(e) => set("soon", e.target.checked ? "1" : "")} />
+            <span>{tr("Also show tenders closing in the next 3 days")}{!soon && data && data.counts.closing_too_soon > 0 ? ` (${number(data.counts.closing_too_soon)})` : ""}
+              <small>{tr("Hidden by default: usually too late to prepare a bid.")}</small></span></label>
+        </Pill>
+        <Pill id="status" label={tr("Status")} value={status ? tr(STATUS.find(([k]) => k === status)![1]) : tr("All open")} on={!!status} open={pill === "status"} onOpen={setPill}>
+          <div className="tn-choices">
+            <Choice on={!status} count={f?.status.any} onPick={() => pick({ status: "" })}>{tr("All open tenders")}</Choice>
+            <Choice on={status === "new"} count={f?.status.new} hint={tr("Published in the last 7 days")} onPick={() => pick({ status: "new" })}>{tr("New this week")}</Choice>
+            <Choice on={status === "changed"} count={f?.status.changed} hint={tr("The buyer changed the notice: check the deadline and documents")} onPick={() => pick({ status: "changed" })}>{tr("Changed by the buyer")}</Choice>
+          </div>
+        </Pill>
+        <Pill id="fit" label={tr("Fit and work")} value={[fit ? tr(fit === "strong" ? "Strong fit" : "Possible or strong") : "", work ? workLabel(work) : ""].filter(Boolean).join(", ") || tr("Any")}
+          on={!!fit || !!work} open={pill === "fit"} onOpen={setPill} wide>
+          <p className="tn-pop-h">{tr("Fit for us")}</p>
+          <div className="tn-choices">
+            <Choice on={!fit} onPick={() => pick({ fit: "" })}>{tr("Any fit")}</Choice>
+            <Choice on={fit === "strong"} count={fitCount("strong")} onPick={() => pick({ fit: "strong" })}>{tr("Strong fit only")}</Choice>
+            <Choice on={fit === "possible"} count={fitCount("possible")} onPick={() => pick({ fit: "possible" })}>{tr("Possible or strong fit")}</Choice>
+          </div>
+          <p className="tn-pop-h">{tr("Kind of work")}</p>
+          <div className="tn-choices tn-choices-2">
+            <Choice on={!work} onPick={() => pick({ work_type: "" })}>{tr("Any kind of work")}</Choice>
+            {WORK_TYPES.map(([k, label]) => <Choice key={k} on={work === k} count={f?.work_type[k] ?? 0} onPick={() => pick({ work_type: k })}>{tr(label)}</Choice>)}
+          </div>
+          <p className="tn-pop-note">{tr("Judged from the AI summary, so only summarised tenders match these.")}</p>
+        </Pill>
+        <p className="tn-active" aria-live="polite">
+          {activeCount > 0 ? <><b>{counted(activeCount, ["active filter", "active filters"], ["aktywny filtr", "aktywne filtry", "aktywnych filtrów"])}</b>
+            <button type="button" className="linkish" onClick={clearFilters}>{tr("Clear")}</button></> : <span>{tr("No filters: our markets, any value, any closing date.")}</span>}
+        </p>
       </div>
-      <div className="tn-filter-foot">
-        <label className="check"><input type="checkbox" checked={params.get("soon") === "1"} onChange={(e) => set("soon", e.target.checked ? "1" : "")} /> {tr("Include tenders closing within 3 days")}</label>
-        {filtered && <button type="button" className="linkish" onClick={clearFilters}>{tr("Clear filters")}</button>}
-      </div>
-    </form>
+    </section>
+
     <div className="tn-resultbar">
-      {data && !err ? <p className="tn-counts">
-        <b>{tr("{} shown", number(data.counts.total))}</b>
-        <span>{tr("{} closing within a week", number(data.counts.closing_this_week))}</span>
-        {data.counts.closing_too_soon > 0 && params.get("soon") !== "1" && <span>{tr("{} more close within 3 days", number(data.counts.closing_too_soon))}</span>}
-        {elsewhere > 0 && <button type="button" className="linkish" onClick={() => set("region", "all")}>{tr("{} more in other regions", number(elsewhere))}</button>}
-        {(data.counts.waiting_summary ?? 0) > 0 && <span>{data.summaries?.running ? tr("{} summaries being written now", number(data.counts.waiting_summary ?? 0)) : tr("{} waiting for a summary", number(data.counts.waiting_summary ?? 0))}</span>}
-        <span className="muted">{tr("Read from {} of {} tender sources", live, data.sources.length)}</span>
+      {data && !err ? <p className="tn-counts" aria-live="polite">
+        <b>{counted(total, ["open tender", "open tenders"], ["otwarty przetarg", "otwarte przetargi", "otwartych przetargów"])}</b>
+        {data.counts.closing_this_week > 0 && <span className="tn-c-soon">{tr("{} close within a week", number(data.counts.closing_this_week))}</span>}
+        {data.counts.new > 0 && <span>{tr("{} new this week", number(data.counts.new))}</span>}
+        {data.counts.other_regions > 0 && <button type="button" className="linkish" onClick={() => update({ region: "all", country: "" })}>{region === OUR_MARKETS ? tr("{} more outside our markets", number(data.counts.other_regions)) : tr("{} more outside {}", number(data.counts.other_regions), regionLabel(region))}</button>}
+        {(data.counts.waiting_summary ?? 0) > 0 && <span className="muted">{data.summaries?.running ? tr("{} summaries being written now", number(data.counts.waiting_summary)) : tr("{} waiting for a summary", number(data.counts.waiting_summary))}</span>}
       </p> : <span />}
       <div className="tn-arrange">
-        <label className="tn-sort"><span>{tr("Sort by")}</span>
-          <select value={sort} onChange={(e) => set("sort", e.target.value === "fit" ? "" : e.target.value)}>
-            {SORTS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
-          </select></label>
+        <Pill id="sort" label={tr("Sort")} value={tr(SORTS.find(([k]) => k === sort)![1])} on={false} open={pill === "sort"} onOpen={setPill}>
+          <div className="tn-choices">{SORTS.map(([k, label]) => <Choice key={k} on={sort === k} onPick={() => pick({ sort: k === "fit" ? "" : k })}>{tr(label)}</Choice>)}</div>
+          <p className="tn-pop-note">{tr("Within each group of buyers: banks always come first.")}</p>
+        </Pill>
         <div className="tn-view" role="group" aria-label={tr("Layout")}>
-          <button type="button" aria-pressed={view === "cards"} onClick={() => set("view", "")}>{tr("Cards")}</button>
-          <button type="button" aria-pressed={view === "list"} onClick={() => set("view", "list")}>{tr("Compact list")}</button>
+          <button type="button" aria-pressed={view === "cards"} onClick={() => setLayout("cards")}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 2h12v5H2zM2 9h12v5H2z" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>{tr("Cards")}</button>
+          <button type="button" aria-pressed={view === "list"} onClick={() => setLayout("list")}>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 3h12M2 6.5h12M2 10h12M2 13.5h12" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>{tr("Compact list")}</button>
         </div>
       </div>
     </div>
+
     {err ? <Err e={err} /> : !data ? <Skeleton rows={6} label={tr("Loading tenders")} /> : <>
-      {data.items.length === 0 ? <Empty title="No open tender matches">{live === 0 ? tr("No tender source is switched on yet. An administrator switches them on in Administration, Sources.")
-        : icpView && publicCount > 0 && finance + otherIcp === 0 ? tr("No bank, insurer or other ICP company has an open software tender right now. The public-sector ones are one click away above.")
-          : tr("Clear a filter, or include tenders closing within 3 days.")}</Empty>
-        : bySector(data.items).map((run, i) => <section key={`${run.sector}-${i}`} className={`tn-section tn-section-${run.sector}`} aria-labelledby={`tn-sec-${run.sector}-${i}`}>
+      {data.items.length === 0 ? <Empty title="No open tender matches">
+        <p>{live === 0 ? tr("No tender source is switched on yet. An administrator switches them on in Administration, Sources.")
+          : who !== "all" && (g?.all ?? 0) > 0 ? tr("Nothing from these buyers right now. {} from other buyers match the same search and filters.", number(g?.all ?? 0))
+            : tr("Clear a filter, or include tenders closing within 3 days.")}</p>
+        <p className="tn-empty-acts">
+          {who !== "all" && (g?.all ?? 0) > 0 && <button type="button" onClick={() => choose("all")}>{tr("See all tenders ({})", number(g?.all ?? 0))}</button>}
+          {activeCount > 0 && <button type="button" onClick={clearFilters}>{tr("Clear filters")}</button>}
+        </p>
+      </Empty> : <div className={`tn-results${view === "list" ? " tn-table" : ""}${loading ? " is-loading" : ""}`} aria-busy={loading}>
+        {view === "list" && <div className="tn-cols">
+          <span>{tr("Buyer")}</span>
+          <span>{tr("What they want, and why it matters to us")}</span>
+          <button type="button" className="tn-col-sort" aria-pressed={sort === "value"} onClick={() => set("sort", "value")}>{tr("Value")}{sort === "value" && <span aria-hidden="true"> ↓</span>}</button>
+          <button type="button" className="tn-col-sort" aria-pressed={sort === "deadline"} onClick={() => set("sort", "deadline")}>{tr("Closes in")}{sort === "deadline" && <span aria-hidden="true"> ↑</span>}</button>
+          <span>{tr("Country")}</span>
+        </div>}
+        {byGroup(data.items).map((run, i) => <section key={`${run.group}-${i}`} className={`tn-section tn-section-${run.group}`} aria-labelledby={`tn-sec-${run.group}-${i}`}>
           <header className="tn-section-head">
-            <h2 id={`tn-sec-${run.sector}-${i}`}>{tr(SECTION[run.sector][0])} <span className="tn-section-count">{number(sectors?.[run.sector] ?? run.items.length)}</span></h2>
-            <p>{tr(SECTION[run.sector][1])}</p>
+            <h2 id={`tn-sec-${run.group}-${i}`}><Glyph k={run.group} />{tr(GROUP[run.group][0])} <span className="tn-section-count">{number(g?.[run.group] ?? run.items.length)}</span></h2>
+            <p>{tr(GROUP[run.group][1])}</p>
           </header>
           {view === "list"
-            ? <ol className="tn-list">{run.items.map((t) => <TenderRow key={t.id} t={t} language={language} />)}</ol>
+            ? <ol className="tn-list">{run.items.map((t) => <TenderRow key={t.id} t={t} language={language} open={opened.has(t.id)} onToggle={() => toggleRow(t.id)} />)}</ol>
             : <ol className="tn-cards">{run.items.map((t) => <TenderCard key={t.id} t={t} language={language} />)}</ol>}
         </section>)}
-      {(page > 1 || data.has_more) && <div className="row mt-2">
-        <button type="button" disabled={page <= 1} onClick={() => set("page", String(page - 1))}>{tr("Previous")}</button>
-        <span>{tr("Page {}", page)}</span>
-        <button type="button" disabled={!data.has_more} onClick={() => set("page", String(page + 1))}>{tr("Next")}</button>
+        {view === "list" && <p className="tn-keys small muted">{tr("Keyboard: Tab to a tender, ↑ and ↓ to move, Enter to open or close, Esc to close.")}</p>}
       </div>}
+      {(page > 1 || data.has_more) && <nav className="tn-pages" aria-label={tr("Pages")}>
+        <button type="button" disabled={page <= 1} onClick={() => set("page", String(page - 1))}>{tr("Previous")}</button>
+        <span>{tr("{} to {} of {}", number(from), number(Math.min(total, from + data.items.length - 1)), number(total))}</span>
+        <button type="button" disabled={!data.has_more} onClick={() => set("page", String(page + 1))}>{tr("Next")}</button>
+      </nav>}
       <p className="small muted mt-4">{tr("Summaries are written by AI from the notice text and can miss details. Always read the official notice before deciding to bid: deadlines and documents can change. A tender is only listed while the official source says it is open.")}</p>
       {data.eur_rates && <p className="small muted">{tr("Euro amounts are approximate: converted at fixed {} of {}.", tr(data.eur_rates.source), fmtDate(data.eur_rates.date))}</p>}
     </>}

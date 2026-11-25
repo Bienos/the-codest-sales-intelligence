@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, trackSourceOpened } from "../api";
 import { getLanguage, number, tr } from "../locale";
 import { countryName } from "../pages/targetMarket";
 import { Badge, Err, Skeleton, lab, safeHref } from "./ui";
-import { SignalRef, SignalTag } from "./Signals";
+import { SignalRef, SignalTag, signalName } from "./Signals";
 import "../styles/findings.css";
 
 type Source = { url: string; source: string | null; published_at?: string | null };
@@ -20,13 +20,26 @@ type Finding = {
   why?: { level: string; service: string; reason: string } | null;
   signals?: SignalRef[];
   next_action?: { hypothesis_id: string; action_type: string; has_owner: boolean; owner_name?: string; due_at?: string } | null;
+  first_seen?: string | null;
+  /** On the signed-in person's watchlist. */
+  watched?: boolean;
+  /** Why the person marked it not relevant, or null. Only sent when hidden findings are asked for. */
+  dismissed?: string | null;
 };
 type Lead = {
   id: string; url: string; origin: string; status: string; claimed_text: string | null;
   updated_at: string | null; event_id: string | null;
 };
-type Coverage = { monitored_sources: number; unhealthy: unknown[]; pending_validation_sources: number; extraction_waiting_for_credit?: boolean };
-type Result = { items: Finding[]; leads: Lead[]; has_more: boolean; coverage: Coverage };
+type Coverage = { monitored_sources: number; unhealthy: unknown[]; pending_validation_sources: number; extraction_waiting_for_credit?: boolean;
+  no_active_monitoring?: boolean; all_monitored_healthy?: boolean };
+/** A buying signal behind the findings in the window, with how many findings it has (All findings only). */
+type Kind = { rule_id: string; name: string; findings: number; latest: string | null };
+type Result = { items: Finding[]; leads: Lead[]; has_more: boolean; coverage: Coverage; kinds?: Kind[]; watchlist?: number; hidden_count?: number };
+export type FindingItem = Finding;
+export type FindingLead = Lead;
+export type FindingsCoverage = Coverage;
+export type FindingKind = Kind;
+export type FindingsData = Result;
 
 /** What each sales play means for us in one sentence. Used when the finding has no reason of its own. */
 const WHY: Record<string, string> = {
@@ -189,7 +202,6 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
     <div className="fd-tags">
       {!onAccount && (item.tender || signals.length === 0) && <span className={`fd-kind${item.tender ? " is-tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span>}
       {signals.map(sig => <SignalTag key={sig.rule_id} s={sig} />)}
-      {org.qualified === false && <Badge kind="warn">{tr("Ownership to check")}</Badge>}
     </div>
     {translated && <details className="fd-orig"><summary>{tr("Translated summary · view original")}</summary><p>{item.summary}</p></details>}
     {item.tender && <p className="fd-deadline"><b>{tr("Tender deadline")}</b> {deadline} UTC <span className="muted">{tr("Status checked {}.", fmtDateTime(item.tender.checked_at))}</span>
@@ -289,4 +301,151 @@ export function FindingsPagination({ page, hasMore, change }: { page: number; ha
     <span>{tr("Page {}", page)}</span>
     <button type="button" disabled={!hasMore} onClick={() => change(page + 1)}>{tr("Next")}</button>
   </nav>;
+}
+
+/* ------------------------------------------------------------------ the compact finding used by the All findings timeline */
+
+/** The summary often starts with the company's name, which the card already shows above it. */
+export function plainSummary(text: string, name: string): string {
+  const t = (text ?? "").trim();
+  if (name && t.startsWith(name + " ")) {
+    const rest = t.slice(name.length + 1);
+    if (/^[a-ząćęłńóśźż]/.test(rest)) return rest.charAt(0).toUpperCase() + rest.slice(1);
+  }
+  return t;
+}
+
+/** The colour family of a buying signal: the letters before the dash (hiring, new leader, funded project...). */
+export const signalFamily = (ruleId?: string | null) => (ruleId ? ruleId.slice(0, 3).toLowerCase() : "none");
+
+const DISMISS_REASONS = ["wrong_entity", "stale", "duplicate"] as const;
+
+export type DayGroup<T> = { key: string; label: string; span: string; items: T[] };
+/** Splits a newest-first list into Today, Yesterday, Earlier this week, Last week, Earlier this month, then one group per month. */
+export function groupByDay<T extends { happened: string }>(items: T[], now: Date = new Date()): DayGroup<T>[] {
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const today = day(now);
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const lastMonday = new Date(monday);
+  lastMonday.setDate(monday.getDate() - 7);
+  const locale = getLanguage() === "pl" ? "pl-PL" : "en-GB";
+  const short = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" });
+  const long = new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long" });
+  const month = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" });
+  const groups: (DayGroup<T> & { first: Date; last: Date })[] = [];
+  for (const item of items) {
+    const d = day(new Date(item.happened));
+    if (isNaN(d.getTime())) continue;
+    const diff = Math.round((today.getTime() - d.getTime()) / 86_400_000);
+    const [key, label] = diff <= 0 ? ["today", tr("Today")] : diff === 1 ? ["yesterday", tr("Yesterday")]
+      : d >= monday ? ["week", tr("Earlier this week")] : d >= lastMonday ? ["last-week", tr("Last week")]
+      : d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear() ? ["month", tr("Earlier this month")]
+      : [`${d.getFullYear()}-${d.getMonth() + 1}`, month.format(d).replace(/^./, (c) => c.toUpperCase())];
+    const open = groups[groups.length - 1];
+    if (open && open.key === key) {
+      open.items.push(item);
+      if (d < open.first) open.first = d;
+      if (d > open.last) open.last = d;
+    } else groups.push({ key, label, span: "", items: [item], first: d, last: d });
+  }
+  return groups.map(({ first, last, ...g }) => ({
+    ...g,
+    span: g.key === "today" || g.key === "yesterday" ? long.format(first)
+      : first.getTime() === last.getTime() ? short.format(first) : `${short.format(first)} – ${short.format(last)}`,
+  }));
+}
+
+/** One finding as a compact card: the company, what happened in one sentence, the buying signal, the source, and what to do.
+ * Details (the quote, why it matters, more sources) open in place. With onDismiss the person can mark it not relevant;
+ * a dismissed finding folds into one line with an undo. */
+export function FindingBrief({ item, onWatch, onDismiss, onRestore, canPeople = false, canCampaign = false }: {
+  item: Finding; onWatch?: () => void; onDismiss?: (reason: string) => void; onRestore?: () => void; canPeople?: boolean; canCampaign?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const panel = useId();
+  const language = getLanguage();
+  const org = item.organization;
+  const summary = (language === "pl" ? item.summary_pl : item.summary_en) || item.summary;
+  const sentence = plainSummary(summary, org.name);
+  const signals = (item.signals ?? []).filter(s => !s.rule_id.startsWith("NEG-"));
+  const family = item.tender ? "tender" : signalFamily(signals[0]?.rule_id);
+  const company = `/accounts/${org.id}?finding=${item.id}`;
+  const first = item.evidence[0];
+  const source = item.tender ? { url: item.tender.url, source: tr("Official notice"), published_at: null } : first ?? item.sources[0];
+  const href = safeHref(source?.url);
+  const host = href ? new URL(href).hostname.replace(/^www\./, "") : null;
+  const published = first?.published_at ?? item.sources[0]?.published_at ?? item.published ?? null;
+  // why it matters: the finding's own reason, else what its buying signal usually means, else what this kind of news means for us
+  const meaning = signals.find(s => s.meaning)?.meaning;
+  const reason = reasonFor(item);
+  const why = reason.specific || item.tender || !meaning ? reason.text : tr(meaning);
+  const showWhy = Boolean(item.tender || signals.length || reason.specific);
+  const showQuote = first && !same(first.claim, item.summary) && !same(first.claim, summary);
+  const others = item.sources.filter(s => !item.evidence.some(e => e.url === s.url) && s.url !== source?.url);
+  const rule = signals[0]?.rule_id;
+  const heading = `finding-${item.id}-h`;
+
+  if (item.dismissed) return <article className="fb is-dismissed" id={`finding-${item.id}`} aria-label={tr("{}: marked not relevant", org.name)}>
+    <span className="fb-node" aria-hidden="true" />
+    <p className="fb-gone"><span><b>{org.name}</b> · {sentence}</span>
+      {onRestore && <button type="button" className="fb-link" onClick={onRestore}>{tr("Undo")}</button>}</p>
+    {onDismiss && <p className="fb-reasons"><span>{tr("Why? It helps us tune the sources.")}</span>
+      {DISMISS_REASONS.map(r => <button key={r} type="button" className="fb-reason" aria-pressed={item.dismissed === r} onClick={() => onDismiss(r)}>{lab("dismiss", r)}</button>)}
+    </p>}
+  </article>;
+
+  return <article className={`fb fam-${family}`} id={`finding-${item.id}`} aria-labelledby={heading}>
+    <span className="fb-node" aria-hidden="true" />
+    <header className="fb-top">
+      <Link to={company} className="fb-co">
+        <CompanyAvatar name={org.name} small />
+        <span className="fb-co-text"><span className="fb-co-name">{org.name}</span>{org.country && <span className="fb-co-meta">{countryName(org.country)}</span>}</span>
+      </Link>
+      {onWatch && <button type="button" className="fb-star" aria-pressed={Boolean(item.watched)} onClick={onWatch}
+        aria-label={item.watched ? tr("Stop watching {}", org.name) : tr("Watch {}", org.name)} title={item.watched ? tr("On your watchlist") : tr("Add to your watchlist")}>
+        <span aria-hidden="true">{item.watched ? "★" : "☆"}</span></button>}
+      <span className="fb-when"><time dateTime={item.happened}>{fmtDate(item.happened)}</time><span>{ago(item.happened)}</span></span>
+    </header>
+    <h3 className="fb-what" id={heading}>{sentence}</h3>
+    <p className="fb-tags">
+      {item.tender && <span className="fb-tag fam-tender"><i aria-hidden="true" />{tr("Open tender")}<span className="fb-tag-x">{tr("closes {}", fmtDate(item.tender.deadline))}</span></span>}
+      {signals.map(s => <span key={s.rule_id} className={`fb-tag fam-${signalFamily(s.rule_id)}`} title={s.meaning ? tr(s.meaning) : undefined}>
+        <i aria-hidden="true" /><span className="fb-vh">{tr("Buying signal")}: </span>{signalName(s.rule_id, s.name)}</span>)}
+      {!item.tender && signals.length === 0 && <span className="fb-tag fam-none"><i aria-hidden="true" />{tr("Background news, no buying signal")}</span>}
+    </p>
+    {showWhy && <p className="fb-why"><b>{tr("Why it matters")}</b> {why}</p>}
+    <div className="fb-more" id={panel} hidden={!open}>
+      {open && <>
+        {showQuote && <blockquote className="fb-quote">“{first.claim}”
+          {language === "en" && first.translation && <span>{tr("English translation")}: “{first.translation}”</span>}</blockquote>}
+        {summary !== item.summary && <p className="fb-note">{tr("Translated summary. The original reads:")} {item.summary}</p>}
+        {item.tender && <p className="fb-note"><b>{tr("Tender deadline")}</b> {fmtDateTime(item.tender.deadline)}{item.tender.scope && <> · {item.tender.scope}</>}</p>}
+        <p className="fb-note">{item.tender ? tr("Confirmed by the official notice.") : tr("Checked against the original page.")}
+          {item.first_seen && fmtDate(item.first_seen) !== fmtDate(item.happened) && <> {tr("We found it {}.", ago(item.first_seen))}</>}</p>
+        {(item.evidence.length > 1 || others.length > 0) && <ul className="fb-also" aria-label={tr("More sources")}>
+          {item.evidence.slice(1).map(e => <li key={e.claim_id}>{safeHref(e.url) ? <a href={safeHref(e.url)} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a> : e.source}
+            {e.claim && !same(e.claim, item.summary) && <span> “{e.claim}”</span>}</li>)}
+          {others.map(s => <li key={s.url}>{safeHref(s.url) ? <a href={safeHref(s.url)} target="_blank" rel="noreferrer noopener">{s.source || new URL(safeHref(s.url)!).hostname} ↗</a> : s.source}
+            {s.published_at && <span className="muted"> {fmtDate(s.published_at)}</span>}</li>)}
+        </ul>}
+        {(canPeople || (canCampaign && rule) || item.next_action) && <p className="fb-next">
+          {canPeople && <Link to={`/people?q=${encodeURIComponent(org.name)}`}>{tr("People at this company")}</Link>}
+          {canCampaign && rule && <Link to={`/campaigns/new?rules=${rule}`}>{tr("Start a campaign with this signal")}</Link>}
+          {item.next_action && <Link to={`/opportunities/${item.next_action.hypothesis_id}`}>{tr("Open recommended action")}</Link>}
+        </p>}
+      </>}
+    </div>
+    <footer className="fb-foot">
+      <span className="fb-src" title={source?.source ?? undefined}>{host ?? source?.source ?? tr("Original source")}
+        {published && <span>{tr("published {}", fmtDate(published))}</span>}</span>
+      <span className="fb-acts">
+        <Link className="fb-btn is-main" to={company}>{tr("Open company")}</Link>
+        {href && <a className="fb-btn" href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>
+          {tr("See source")} <span aria-hidden="true">↗</span><span className="fb-vh"> {tr("(opens in a new tab)")}</span></a>}
+        <button type="button" className="fb-btn fb-toggle" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>{open ? tr("Less") : tr("Details")}</button>
+        {onDismiss && <button type="button" className="fb-btn is-quiet" onClick={() => onDismiss("not_relevant")}><span aria-hidden="true">✕</span> {tr("Not relevant")}</button>}
+      </span>
+    </footer>
+  </article>;
 }

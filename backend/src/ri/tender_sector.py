@@ -12,14 +12,19 @@ Decided by rules first, in this order (the first that applies wins):
   5. weaker hints (finance words, a fund, CPV 66 financial services, a company without a public or utility word in its name): not sure.
 A notice the rules are not sure about is summarised, and the model's answer (summary "buyer_sector") decides its sector. A notice the rules
 are sure is not ICP is never sent to the model. The rules are pure functions of the buyer name, the linked account and the CPV codes, and
-RULES_VERSION is part of the stored basis: raise it whenever a rule changes, and every open notice is reclassified on the next read."""
+RULES_VERSION is part of the stored basis: raise it whenever a rule changes, and every open notice is reclassified on the next read.
+
+The list's buyer chips (GROUPS, icp_view at the end) put The Codest's ICP in its own words: banks first, then insurers, payments and fintech,
+lenders, pension funds and asset managers, and the institutions that run the financial markets (central banks, supervisors, exchanges);
+every other buyer is "other sectors", and "all" really is every open notice."""
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
-RULES_VERSION = 1
+RULES_VERSION = 2
 SECTORS = ("banking", "financial_services", "other_icp", "not_icp")
 SECTOR_RANK = {"banking": 0, "financial_services": 1, "other_icp": 2, "not_icp": 3}
 ICP = ("banking", "financial_services", "other_icp")
@@ -73,6 +78,7 @@ CENTRAL_BANK = _rx(
 DEVELOPMENT_BANK = _rx(
     rf"{B}(kfw|kreditanstalt für wiederaufbau|\w*förderbank|\w*foerderbank|\w*investitionsbank|nrw\.?bank|l-bank|\w*rentenbank|bank gospodarstwa krajowego|bgk|"
     r"european investment (bank|fund)|eib|ebrd|european bank for reconstruction|nordic investment bank|\w*development bank|entwicklungsbank|razvojna banka|"
+    r"rozvojov\w* bank\w*|husbanken|"
     r"british business bank|national wealth fund|uk infrastructure bank|scottish national investment bank|caisse des d[ée]p[ôo]ts|bpifrance|cassa depositi|"
     r"instituto de cr[ée]dito oficial|finnvera|v[æa]kstfonden|polski fundusz rozwoju|austria wirtschaftsservice|kontrollbank|uk export finance|"
     rf"export credit\w*|exportkredit\w*|eksportkreditt\w*|eksfin|kuke|eifo|investeringsfonden for udviklingslande|swedfund|norfund|almi företagspartner){E}")
@@ -137,6 +143,8 @@ PENSION = _rx(
     rf"{B}(pension\w*|pensjon\w*|pensions?kass\w*|pensionsfonds|pensioenfonds|\w*versorgungswerk\w*|\w*versorgungskasse\w*|versorgungskammer|zusatzversorgung\w*|"
     r"versorgungsanstalt\w*|personalvorsorge|vorsorgestiftung|vorsorgeeinrichtung|superannuation|\w*eläke\w*|tillægspension|ap-fonden|ap7|"
     rf"fundusz\w* emerytaln\w*|powszechne towarzystwo emerytalne|pte|alecta|amf pension|caisse de retraite|caisse de prévoyance\w*|retraite\w*){E}")
+# pensioners' homes and clubs are not pension funds
+NOT_A_PENSION = _rx(rf"{B}(pensionist\w*|pensionär\w*|pensionat\w*|\w*wohnh[äa]user|seniorenheim\w*){E}")
 PENSION_PROVIDER = _rx(rf"{B}(fund|funds|scheme|partnership|plan|trust|pool|foundation|\w*(fonds?|fonden|kasse|kassa|werk|kammer|anstalt|stiftung)|tillægspension|eläkeyhtiö|työeläke\w*){E}")
 PAYMENTS = _rx(rf"{B}(payments?|zahlungsverkehr|zahlungsdienst\w*|p[łl]atno[śs]c\w*|e-money|card acquir\w*|visa europe|mastercard|klarna|adyen|worldline|nexi|nets|vipps|mobilepay|swish){E}")
 LENDING = _rx(rf"{B}(leasing|factoring|kredit\w*|credit\w*|crédit|kredyt\w*|lending|lender\w*|loans?|hypothek\w*|mortgage\w*){E}")
@@ -250,7 +258,7 @@ def _rules(n: str, *, segment: str | None, list_segment: str | None, list_eligib
         return Sector("banking", "bank", unsure_public, not unsure_public, "rules", w)
     if (w := _hit(INSURANCE, n)) and not _hit(QUALITY_ASSURANCE, n):
         return Sector("financial_services", "insurance", unsure_public, not unsure_public, "rules", w)
-    if w := _hit(PENSION, n):
+    if (w := _hit(PENSION, n)) and not _hit(NOT_A_PENSION, n):
         sure = bool(_hit(PENSION_PROVIDER, n)) or not unsure_public
         return Sector("financial_services", "pension", unsure_public, sure, "rules", w)
     for rx, kind in ((ASSET_MGMT, "asset_management"), (PAYMENTS, "payments"), (LENDING, "lending")):
@@ -295,3 +303,170 @@ def classify_open(conn: Any, *, limit: int = 5000) -> int:
                      "sector_sure=%(sector_sure)s, sector_source=%(sector_source)s, sector_why=%(sector_why)s, sector_basis=%(basis)s WHERE id=%(id)s",
                      {**row, "basis": r["basis"], "id": r["id"]})
     return len(rows)
+
+
+# ------------------------------------------------------------------------------------------------ the list's buyer chips
+# The Codest's ICP for tenders, in the order the list shows it. "icp" is the five financial groups; "other" is everyone else (public bodies,
+# utilities, digital and software companies...); "all" is every open notice.
+GROUPS = ("banks", "insurers", "payments", "lending", "markets", "other")
+FINANCE_GROUPS = GROUPS[:-1]
+GROUP_KINDS: dict[str, tuple[str, ...]] = {
+    "banks": ("bank", "savings_bank", "cooperative_bank", "building_society", "development_bank"),
+    "insurers": ("insurance",),
+    "payments": ("payments", "financial_software"),
+    "lending": ("lending", "asset_management", "pension"),
+    "markets": ("market_infrastructure", "central_bank", "financial_authority"),
+}
+_GROUP_OF_KIND = {k: g for g, kinds in GROUP_KINDS.items() for k in kinds}
+GROUP_RANK = {g: i for i, g in enumerate(GROUPS)}
+VIEWS = ("icp", "all", *GROUPS)
+VALUE_STEPS = {"100k": 100_000, "500k": 500_000, "1m": 1_000_000}
+WITHIN_STEPS = (7, 14, 30, 60)
+NEW_DAYS = 7                                   # "new": published in the last week
+CPV_TOKEN = re.compile(r"^\d{4,8}(-\d)?$")     # a CPV code (or its first digits) typed into the search
+
+
+def group_of(sector: str | None, kind: str | None) -> str:
+    """Which buyer chip a notice belongs to."""
+    if sector not in ("banking", "financial_services"):
+        return "other"
+    return _GROUP_OF_KIND.get(kind or "", "banks" if sector == "banking" else "lending")
+
+
+def cpv_prefix(token: str) -> str:
+    """A typed CPV code as a prefix: "72262000" is 72262 and everything under it, "72000000" the whole division 72."""
+    code = token.split("-")[0]
+    if len(code) == 8:
+        short = code.rstrip("0")
+        return short if len(short) >= 2 else code[:2]
+    return code
+
+
+def split_search(q: str) -> tuple[str, list[str]]:
+    """The words of a search, and the CPV codes in it (as prefixes)."""
+    parts = (q or "").split()
+    return " ".join(t for t in parts if not CPV_TOKEN.match(t)), [cpv_prefix(t) for t in parts if CPV_TOKEN.match(t)]
+
+
+def arrange(items: list[dict[str, Any]], *, view: str = "icp", region: str = "core", country: str = "", min_days: int = 3, max_days: int = 0,
+            min_value: float = 0, fit: str = "", work_type: str = "", status: str = "", sort: str = "fit",
+            now: datetime | None = None) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Filter the open notices (from ri.tenders.open_tenders, every region and sector) by the chips and filters, and count what each
+    choice would show: every count leaves out its own filter and applies all the others (choosing a region also clears the country).
+    Returns the shown notices (ICP groups in order, banks first; `sort` within each group, then soonest deadline), the counts and the facets."""
+    from .tenders import CORE_REGIONS, FIT_RANK, in_region
+    now = now or datetime.now(timezone.utc)
+    shown_groups = set(FINANCE_GROUPS) if view == "icp" else set(GROUPS) if view == "all" else {view}
+    allowed_fit = {"strong": {"strong"}, "possible": {"strong", "possible"}}.get(fit)
+    fresh = now - timedelta(days=NEW_DAYS)
+    groups = {g: 0 for g in GROUPS}
+    by_sector = {k: 0 for k in SECTOR_RANK}
+    regions: dict[str, int] = {}
+    countries: dict[str, int] = {}
+    values = {k: 0 for k in VALUE_STEPS}
+    within = {str(d): 0 for d in WITHIN_STEPS}
+    statuses = {"new": 0, "changed": 0}
+    fits: dict[str, int] = {}
+    works: dict[str, int] = {}
+    totals = {"value": 0, "within": 0, "status": 0, "region": 0}
+    too_soon = elsewhere = 0
+    shown = []
+    for i in items:
+        level = ((i.get("summary") or {}).get("fit") or {}).get("level")
+        wtype = (i.get("summary") or {}).get("work_type")
+        i["group"] = group_of(i.get("sector"), i.get("sector_kind"))
+        i["is_new"] = bool(i.get("published") and i["published"] >= fresh)
+        veur = i.get("value_eur")
+        fails = set()
+        if i["group"] not in shown_groups:
+            fails.add("view")
+        if not in_region(i.get("region") or "", region):
+            fails.add("region")
+        if country and i.get("country") != country:
+            fails.add("country")
+        if i["days_left"] < min_days:
+            fails.add("soon")
+        if max_days and i["days_left"] > max_days:
+            fails.add("within")
+        if min_value and not (veur is not None and veur >= min_value):
+            fails.add("value")
+        if allowed_fit and level not in allowed_fit:
+            fails.add("fit")
+        if work_type and wtype != work_type:
+            fails.add("work")
+        if (status == "new" and not i["is_new"]) or (status == "changed" and i.get("status") != "amended"):
+            fails.add("status")
+        if not fails:
+            shown.append(i)
+        if fails <= {"view"}:
+            groups[i["group"]] += 1
+            by_sector[i.get("sector") or "not_icp"] += 1
+        if fails <= {"region", "country"}:
+            regions[i.get("region") or "unknown"] = regions.get(i.get("region") or "unknown", 0) + 1
+            totals["region"] += 1
+            elsewhere += "region" in fails
+        if fails <= {"country"}:
+            countries[i.get("country") or ""] = countries.get(i.get("country") or "", 0) + 1
+        if fails <= {"value"}:
+            totals["value"] += 1
+            for k, step in VALUE_STEPS.items():
+                values[k] += veur is not None and veur >= step
+        if fails <= {"within"}:
+            totals["within"] += 1
+            for d in WITHIN_STEPS:
+                within[str(d)] += i["days_left"] <= d
+        if fails <= {"status"}:
+            totals["status"] += 1
+            statuses["new"] += i["is_new"]
+            statuses["changed"] += i.get("status") == "amended"
+        if fails <= {"fit"}:
+            fits[level or "waiting"] = fits.get(level or "waiting", 0) + 1
+        if fails <= {"work"}:
+            works[wtype or "waiting"] = works.get(wtype or "waiting", 0) + 1
+        too_soon += fails == {"soon"}
+
+    def key(i: dict[str, Any]) -> tuple:
+        level = ((i.get("summary") or {}).get("fit") or {}).get("level")
+        published = i.get("published") or datetime.min.replace(tzinfo=timezone.utc)
+        primary = {"fit": FIT_RANK.get(level or "", 4), "value": -i["value_eur"] if i.get("value_eur") is not None else 1,
+                   "newest": -published.timestamp()}.get(sort, 0)
+        return (GROUP_RANK[i["group"]], primary, i["deadline"], i["id"])
+    shown.sort(key=key)
+    regions["core"] = sum(regions.get(r, 0) for r in CORE_REGIONS)
+    regions["international"] = sum(n for r, n in regions.items() if r not in (*CORE_REGIONS, "europe", "core"))
+    regions["all"] = totals["region"]
+    counts = {"total": len(shown), "finance": sum(1 for i in shown if i["group"] != "other"),
+              "closing_this_week": sum(1 for i in shown if i["days_left"] <= 7), "closing_too_soon": too_soon, "other_regions": elsewhere,
+              "new": sum(1 for i in shown if i["is_new"]), "summarised": sum(1 for i in shown if i.get("summary")),
+              "waiting_summary": sum(1 for i in shown if i.get("summary_state") == "waiting"),
+              "by_sector": by_sector, "icp": sum(groups[g] for g in FINANCE_GROUPS), "not_icp": groups["other"]}
+    facets = {"groups": {**groups, "icp": counts["icp"], "all": sum(groups.values())}, "region": regions, "country": countries,
+              "value": {**values, "any": totals["value"]}, "within": {**within, "any": totals["within"]},
+              "status": {**statuses, "any": totals["status"]}, "fit": fits, "work_type": works}
+    return shown, counts, facets
+
+
+def icp_view(conn: Any, p: Any, *, q: str = "", view: str = "icp", region: str = "core", country: str = "", min_days: int = 3, max_days: int = 0,
+             min_value: float = 0, fit: str = "", work_type: str = "", status: str = "", sort: str = "fit", page: int = 1,
+             limit: int = 30) -> dict[str, Any]:
+    """The open tenders list by buyer chip (GET /api/tenders?group=...): every open software notice the person may see, matching the search
+    (words in the notice and its summary, or a CPV code), then `arrange`d. Each item also says its `group`, whether it `is_new` and its CPV codes."""
+    from .db import qa
+    from .tenders import open_tenders
+    words, prefixes = split_search(q)
+    out = open_tenders(conn, p, q=words, region="", min_days=0, limit=100_000, offset=0, sort="deadline", sector="")
+    items = out["items"]
+    codes = {r["id"]: list(dict.fromkeys(r["service_codes"] or [])) for r in qa(conn, "SELECT id::text AS id, service_codes FROM procurement_notices WHERE id = ANY(%s::uuid[])",
+                                                                    ([i["id"] for i in items],))} if items else {}
+    for i in items:
+        i["cpv"] = codes.get(i["id"], [])
+    if prefixes:
+        items = [i for i in items if any(c.startswith(pre) for c in i["cpv"] for pre in prefixes)]
+    shown, counts, facets = arrange(items, view=view, region=region, country=country, min_days=min_days, max_days=max_days, min_value=min_value,
+                                    fit=fit, work_type=work_type, status=status, sort=sort)
+    start = (page - 1) * limit
+    rows = shown[start: start + limit]
+    for i in rows:
+        i["cpv"] = i["cpv"][:4]
+    return {"items": rows, "has_more": start + limit < len(shown), "counts": counts, "facets": facets, "groups": facets["groups"], "view": view,
+            "search": {"words": words, "cpv": prefixes}, "eur_rates": out["eur_rates"]}

@@ -1,15 +1,16 @@
 import { getLanguage, number, tr } from "../locale";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, fmtDateTime } from "../api";
-import { Badge, Err, humanize, Skeleton, reloadPage, Tabs } from "../components/ui";
-import { Fold } from "./PipelineStatus";
+import { Link } from "react-router-dom";
+import { api } from "../api";
+import { Err, humanize, Skeleton, reloadPage, Tabs } from "../components/ui";
+import { Pager, Pick, useLoad, useQueryState, when, windows } from "./PipelineStatus";
 import "../styles/admin.css";
 
 /* Usage & cost: where the month's money goes, at a glance.
    - Two "month rulers" (AI reading, web search): spent so far, where the month ends at the recent pace, the even-pace mark and the limit.
    - A daily chart for the month: past days as stacked columns (AI / web search), days still to come as hatched columns at the recent pace.
    - Spend by purpose, with what each purpose produced and the cost of one useful result.
-   - The per-call log and the older tables are folded away. */
+   - Apollo contact credits beside them, and the per-call log and the totals on their own tabs. */
 
 const usd = (v: number | null | undefined, d = 2) => (v === null || v === undefined ? tr("Not known") : `$${Number(v).toFixed(d)}`);
 const usdShort = (v: number) => (Number.isInteger(v) || v >= 100 ? `$${Math.round(v)}` : v >= 10 ? `$${v.toFixed(1)}` : `$${v.toFixed(2)}`);
@@ -194,50 +195,104 @@ function Purposes({ items, total }: { items: any[]; total: number }) {
   );
 }
 
-/* ------------------------------------------------------------------ folded detail: every call, and the older tables */
+/* ------------------------------------------------------------------ every paid call, filterable */
 
-function Ledger() {
-  const [f, setF] = useState({ provider: "", status: "" });
-  const [d, setD] = useState<any>(null); const [off, setOff] = useState(0); const [err, setErr] = useState<unknown>(null);
-  useEffect(() => { api(`/api/admin/usage/ledger?provider=${f.provider}&status=${f.status}&limit=50&offset=${off}`).then(setD).catch(setErr); }, [f, off]);
+const SERVICE: Record<string, string> = { anthropic: "AI reading", exa: "Web search" };
+const cost = (v: number | null) => (v === null || v === undefined ? <span className="muted">{tr("Not known")}</span> : usd(v, v > 0 && v < 0.01 ? 4 : 2));
+
+/** One line per paid AI or web search call: when, what it was for, what it used and what it cost. Filters and totals at the top. */
+export function PaidCalls() {
+  const [f, setF] = useQueryState({ since: "30d", provider: "", purpose: "", status: "", page: "0" });
+  const LIMIT = 50; const off = Number(f.page) || 0;
+  const r = useLoad(`/api/admin/usage/calls?${new URLSearchParams({ since: f.since, provider: f.provider, purpose: f.purpose, status: f.status, limit: String(LIMIT), offset: String(off) })}`);
+  const d = r.d;
+  const set = (p: Partial<typeof f>) => setF({ ...p, page: "0" });
   return (
-    <>
-      <div className="row mb-3">
-        <select aria-label={tr("Service")} value={f.provider} onChange={(e) => { setOff(0); setF({ ...f, provider: e.target.value }); }}><option value="">{tr("All services")}</option><option value="anthropic">{tr("AI reading")}</option><option value="exa">{tr("Web search")}</option></select>
-        <select aria-label={tr("Status")} value={f.status} onChange={(e) => { setOff(0); setF({ ...f, status: e.target.value }); }}><option value="">{tr("Any status")}</option><option value="ok">{tr("Worked")}</option></select>
-        {d && <span className="small muted">{num(d.total)}{" " + tr("calls")}</span>}
+    <div className="hist">
+      <p className="adm-lead">{tr("Every paid call to the AI or to web search: when it ran, what it was for, what it used and what it cost. Apollo reveals are counted under Limits and totals.")}</p>
+      <div className="fbar">
+        <Pick label="When" value={f.since} onChange={(v) => set({ since: v })} options={windows()} />
+        <Pick label="Service" value={f.provider} onChange={(v) => set({ provider: v })} options={[["", tr("Both services")], ["anthropic", tr("AI reading")], ["exa", tr("Web search")]]} />
+        <Pick label="What for" value={f.purpose} onChange={(v) => set({ purpose: v })} options={[["", tr("Every purpose")], ...(d?.purposes ?? []).map((p: any) => [p.key, `${tr(p.label)} (${number(p.n)})`] as [string, string]),
+          ...(f.purpose && !(d?.purposes ?? []).some((p: any) => p.key === f.purpose) ? [[f.purpose, tr(humanize(f.purpose))] as [string, string]] : [])]} />
+        <Pick label="Result" value={f.status} onChange={(v) => set({ status: v })} options={[["", tr("Any result")], ["ok", tr("Worked")], ["failed", tr("Failed")]]} />
       </div>
-      <Err e={err} />
-      {d && d.items.length === 0 && <p className="quiet">{tr("No paid calls match.")}</p>}
-      {d && d.items.length > 0 && <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Every paid call")}><table><thead><tr><th>{tr("When")}</th><th>{tr("Call")}</th><th>{tr("Used")}</th><th>{tr("Cost")}</th><th>{tr("What it was for")}</th></tr></thead><tbody>
-        {d.items.map((u: any) => <tr key={u.id}><td>{fmtDateTime(u.at)}</td>
-          <td><b>{u.provider === "exa" ? tr("Web search") : tr("AI reading")}</b> {humanize(u.operation)}{u.status !== "ok" && <> <Badge kind="bad">{u.status}</Badge></>}</td>
-          <td>{num(u.units)} {tr(u.unit)}{u.tokens_in ? <div className="small muted">{num(u.tokens_in)}{" " + tr("in ·") + " "}{num(u.tokens_out)}{" " + tr("out")}</div> : null}</td>
-          <td>{u.cost_usd === null ? <span className="muted">{tr("unknown")}</span> : usd(u.cost_usd, 4)}</td>
-          <td className="small">{u.query ?? u.document_title ?? u.source_id ?? ""}{u.organization && <div className="muted">{u.organization}</div>}{u.document_url && <a href={u.document_url} target="_blank" rel="noreferrer noopener" className="small">{tr("source ↗")}</a>}</td></tr>)}
-      </tbody></table></div>}
-      {d && d.total > 50 && <div className="row mt-3"><button disabled={off === 0} onClick={() => setOff(Math.max(0, off - 50))}>{tr("Newer")}</button><button disabled={!d || off + 50 >= d.total} onClick={() => setOff(off + 50)}>{tr("Older")}</button></div>}
-    </>
+      {d && d.total > 0 && <dl className="glance-facts">
+        <div><dt>{tr("Calls")}</dt><dd>{number(d.total)}</dd></div>
+        <div><dt>{tr("Cost")}</dt><dd>{usd(d.usd)}</dd></div>
+        {d.tokens > 0 && <div><dt>{tr("AI tokens")}</dt><dd>{compact(d.tokens)}</dd></div>}
+        <div className={d.failed ? "bad" : ""}><dt>{tr("Failed")}</dt><dd>{number(d.failed)}</dd></div>
+      </dl>}
+      {r.err ? <Err e={r.err} onRetry={r.reload} /> : !d ? <Skeleton /> : d.items.length === 0 ? (
+        <p className="quiet">{f.provider || f.purpose || f.status ? tr("No paid call matches these filters. Choose a longer time or fewer filters.") : tr("No paid call in this time. Calls appear here as soon as the AI or web search is used.")}</p>
+      ) : <>
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Every paid call")}>
+          <table className="cards adm-t">
+            <thead><tr><th>{tr("When")}</th><th>{tr("Service")}</th><th>{tr("What for")}</th><th>{tr("About")}</th><th className="num">{tr("Used")}</th><th className="num">{tr("Cost")}</th><th>{tr("Result")}</th></tr></thead>
+            <tbody>{d.items.map((u: any) => {
+              const about = u.organization ? <Link to={`/accounts/${u.organization_id}`}>{u.organization}</Link>
+                : u.document_url ? <a href={u.document_url} target="_blank" rel="noreferrer noopener">{u.document_title || u.document_url.replace(/^https?:\/\/(www\.)?/, "").slice(0, 60)} ↗</a>
+                : u.source_name || u.query || null;
+              return <tr key={u.id}>
+                <td data-label={tr("When")} className="nowrap">{when(u.at)}</td>
+                <td data-label={tr("Service")}><span className={`svc ${u.provider}`}>{tr(SERVICE[u.provider] ?? humanize(u.provider))}</span></td>
+                <td data-label={tr("What for")}>{tr(u.purpose_label)}</td>
+                <td data-label={tr("About")} className="wide small">{about ?? <span className="muted">—</span>}</td>
+                <td data-label={tr("Used")} className="num">{u.provider === "anthropic" ? <>{tr("{} tokens", num(u.units))}{u.tokens_in ? <div className="small muted">{tr("{} read, {} written", num(u.tokens_in), num(u.tokens_out))}</div> : null}</> : tr(Number(u.units) === 1 ? "{} search" : "{} searches", num(u.units))}</td>
+                <td data-label={tr("Cost")} className="num">{cost(u.cost_usd)}</td>
+                <td data-label={tr("Result")}>{u.status === "ok" ? <span className="adot ok">{tr("Worked")}</span> : <span className="adot bad">{tr("Failed")}{u.status.startsWith("error:") ? `: ${humanize(u.status.slice(6)).toLowerCase()}` : ""}</span>}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+        </div>
+        <Pager total={d.total} offset={off} limit={LIMIT} onPage={(o) => setF({ page: String(o) })} label="Every paid call" />
+      </>}
+    </div>
   );
 }
 
-function Tables() {
+/* ------------------------------------------------------------------ totals by month, source and saved search */
+
+export function SpendTotals() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [tab, setTab] = useState("month");
   useEffect(() => { api("/api/admin/usage").then(setD).catch(setErr); }, []);
-  if (err) return <Err e={err} onRetry={reloadPage} />;
-  if (!d) return <Skeleton rows={2} />;
   return (
-    <Tabs items={[["month", "By month"], ["source", "By source"], ["plan", "By saved search"]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={setTab} label="Usage views">
-      {tab === "month" && (d.months.length === 0 ? <p className="quiet">{tr("No paid calls yet.")}</p> : <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Paid calls by month")}><table><thead><tr><th>{tr("Month")}</th><th>{tr("Service")}</th><th>{tr("Calls")}</th><th>{tr("Used")}</th><th>{tr("Cost")}</th><th>{tr("Failed")}</th></tr></thead><tbody>
-        {d.months.map((x: any, i: number) => <tr key={i}><td>{x.period}</td><td>{x.provider === "exa" ? tr("Web search") : tr("AI reading")}</td><td>{num(x.calls)}</td><td>{x.provider === "anthropic" ? tr("{} tokens ({} read, {} written)", num(x.units), num(x.tokens_in), num(x.tokens_out)) : tr("{} searches", num(x.units))}</td><td>{x.cost_usd === null ? <span className="muted">{tr("unknown")}</span> : usd(x.cost_usd)}</td><td>{x.errors}</td></tr>)}
-      </tbody></table></div>)}
-      {tab === "source" && (d.by_source.length === 0 ? <p className="quiet">{tr("Nothing recorded this month.")}</p> : <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Paid calls by source")}><table><thead><tr><th>{tr("Source")}</th><th>{tr("Service")}</th><th>{tr("Calls")}</th><th>{tr("Used")}</th><th>{tr("Cost")}</th></tr></thead><tbody>
-        {d.by_source.map((x: any, i: number) => <tr key={i}><td>{x.display_name ?? (x.source_id === "(unattributed)" ? tr("Not tied to a source") : x.source_id)}</td><td>{x.provider === "exa" ? tr("Web search") : tr("AI reading")}</td><td>{num(x.calls)}</td><td>{num(x.units)}</td><td>{x.cost_usd === null ? tr("unknown") : usd(x.cost_usd)}</td></tr>)}
-      </tbody></table></div>)}
-      {tab === "plan" && (d.by_plan.length === 0 ? <p className="quiet">{tr("No web searches yet.")}</p> : <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Web searches by saved search")}><table><thead><tr><th>{tr("Saved search")}</th><th>{tr("Searches")}</th><th>{tr("Results")}</th><th>{tr("Cost")}</th></tr></thead><tbody>
-        {d.by_plan.map((x: any) => <tr key={x.plan_id}><td><b>{humanize(x.theme)}</b> · {x.geography}<div className="small muted">{x.query}</div></td><td>{x.searches}</td><td>{x.results}</td><td>{usd(x.cost_usd)}</td></tr>)}
-      </tbody></table></div>)}
-    </Tabs>
+    <section aria-labelledby="tot-h" className="mt-4">
+      <h3 id="tot-h" className="adm-h4">{tr("Totals")}</h3>
+      <p className="adm-lead">{tr("The same spend added up by month, by source and by saved web search.")}</p>
+      {err ? <Err e={err} onRetry={reloadPage} /> : !d ? <Skeleton rows={2} /> :
+      <Tabs items={[["month", tr("By month")], ["source", tr("By source")], ["plan", tr("By saved search")]].map(([k, l]) => ({ key: k, label: l }))} value={tab} onChange={setTab} label={tr("Totals")}>
+        {tab === "month" && (d.months.length === 0 ? <p className="quiet">{tr("No paid calls yet.")}</p> : <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Paid calls by month")}><table className="cards adm-t"><thead><tr><th>{tr("Month")}</th><th>{tr("Service")}</th><th className="num">{tr("Calls")}</th><th className="num">{tr("Used")}</th><th className="num">{tr("Cost")}</th><th className="num">{tr("Failed")}</th></tr></thead><tbody>
+          {d.months.map((x: any, i: number) => <tr key={i}><td data-label={tr("Month")}>{monthName(x.period)} {x.period.slice(0, 4)}</td><td data-label={tr("Service")}>{tr(SERVICE[x.provider] ?? humanize(x.provider))}</td><td data-label={tr("Calls")} className="num">{num(x.calls)}</td>
+            <td data-label={tr("Used")} className="num">{x.provider === "anthropic" ? <>{tr("{} tokens", compact(Number(x.units)))}<div className="small muted">{tr("{} read, {} written", compact(Number(x.tokens_in)), compact(Number(x.tokens_out)))}</div></> : tr("{} searches", num(x.units))}</td>
+            <td data-label={tr("Cost")} className="num">{cost(x.cost_usd === null ? null : Number(x.cost_usd))}</td><td data-label={tr("Failed")} className="num">{num(x.errors)}</td></tr>)}
+        </tbody></table></div>)}
+        {tab === "source" && (d.by_source.length === 0 ? <p className="quiet">{tr("Nothing recorded this month.")}</p> : <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Paid calls by source")}><table className="cards adm-t"><thead><tr><th>{tr("Source")}</th><th>{tr("Service")}</th><th className="num">{tr("Calls")}</th><th className="num">{tr("Used")}</th><th className="num">{tr("Cost")}</th></tr></thead><tbody>
+          {d.by_source.map((x: any, i: number) => <tr key={i}><td data-label={tr("Source")} className="wide">{x.display_name ?? (x.source_id === "(unattributed)" ? tr("Not tied to a source (research, matching, searches)") : x.source_id)}</td><td data-label={tr("Service")}>{tr(SERVICE[x.provider] ?? humanize(x.provider))}</td><td data-label={tr("Calls")} className="num">{num(x.calls)}</td>
+            <td data-label={tr("Used")} className="num">{x.provider === "anthropic" ? tr("{} tokens", compact(Number(x.units))) : tr("{} searches", num(x.units))}</td><td data-label={tr("Cost")} className="num">{cost(x.cost_usd === null ? null : Number(x.cost_usd))}</td></tr>)}
+        </tbody></table></div>)}
+        {tab === "plan" && (d.by_plan.length === 0 ? <p className="quiet">{tr("No saved web search has run this month.")}</p> : <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Web searches by saved search")}><table className="cards adm-t"><thead><tr><th>{tr("Saved search")}</th><th className="num">{tr("Searches")}</th><th className="num">{tr("Results")}</th><th className="num">{tr("Cost")}</th></tr></thead><tbody>
+          {d.by_plan.map((x: any) => <tr key={x.plan_id}><td data-label={tr("Saved search")} className="wide"><b>{tr(humanize(x.theme))}</b> · {x.geography}<div className="small muted">{x.query}</div></td><td data-label={tr("Searches")} className="num">{num(x.searches)}</td><td data-label={tr("Results")} className="num">{num(x.results)}</td><td data-label={tr("Cost")} className="num">{cost(x.cost_usd === null ? null : Number(x.cost_usd))}</td></tr>)}
+        </tbody></table></div>)}
+      </Tabs>}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------ Apollo contact credits */
+
+function ApolloCard({ g }: { g: any }) {
+  const cap = Number(g.cap), used = Number(g.used);
+  const pct = cap > 0 ? Math.min(used / cap, 1) * 100 : 0;
+  const kind = cap <= 0 ? "off" : used >= cap ? "bad" : pct >= 80 ? "warn" : "ok";
+  return (
+    <section className={`ruler apollo ${kind}`} aria-label={tr("Apollo contact credits")}>
+      <div className="ruler-head"><h3>{tr("Apollo contact credits")}</h3><span className="ruler-pct">{cap > 0 ? tr("{}% used", Math.round(pct)) : ""}</span></div>
+      <p className="ruler-fig"><b>{num(used)}</b> <span>{cap > 0 ? tr("of {} credits this month", num(cap)) : tr("credits used this month")}</span></p>
+      {cap > 0 && <div className="ruler-track" role="img" aria-label={tr("{} of {} credits used", num(used), num(cap))}><i className="ruler-used" style={{ width: `${pct}%` }} /><i className="ruler-cap" style={{ left: "100%" }} /></div>}
+      <p className="ruler-say">{cap <= 0 ? tr("No credits are allowed this month, so no email address can be revealed.") : used >= cap ? tr("The limit is reached: no more reveals this month.") : tr("{} credits left this month.", num(cap - used))}</p>
+      <p className="small muted m-0">{tr("Apollo never spends beyond this limit, and each reveal needs an approval.")}{g.credits_per_reveal ? " " + tr("One reveal costs {} credits.", g.credits_per_reveal) : ""}{g.blocked_by_limit ? " " + tr("{} stopped by the limit this month.", num(g.blocked_by_limit)) : ""} <Link to="/admin/integrations">{tr("Change the limit")}</Link></p>
+    </section>
   );
 }
 
@@ -245,21 +300,23 @@ function Tables() {
 
 export default function Usage() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
+  const spend = useLoad("/api/admin/spend");
   useEffect(() => { api("/api/admin/usage/insights").then(setD).catch(setErr); }, []);
   if (err) return <Err e={err} onRetry={reloadPage} />;
   if (!d) return <Skeleton />;
   const prev = d.previous?.usd > 0 ? tr("{} last month", usd(d.previous.usd)) : null;
   const warn = [d.ai.will_exceed && tr("AI reading"), d.exa.will_exceed && tr("Web search")].filter(Boolean);
+  const daysLeft = Math.max(Math.ceil(d.days_left), 0);
   return (
     <div className="usage">
       <header className="usage-hero">
         <div>
-          <p className="usage-k">{tr("Spent in {} so far", monthName(d.period))}</p>
+          <p className="usage-k">{tr("Spent on AI and web search in {} so far", monthName(d.period))}</p>
           <p className="usage-big">{usd(d.total_usd)}</p>
         </div>
         <dl className="usage-facts">
           <div><dt>{tr("Expected for the whole month")}</dt><dd>{usd(d.forecast_usd)}</dd></div>
-          <div><dt>{tr("Days left")}</dt><dd>{tr("{} of {}", Math.max(Math.ceil(d.days_left), 0), d.days_in_month)}</dd></div>
+          <div><dt>{tr("Days left, today included")}</dt><dd>{tr("{} of {}", daysLeft, d.days_in_month)}</dd></div>
           {prev && <div><dt>{tr("For comparison")}</dt><dd>{prev}</dd></div>}
         </dl>
       </header>
@@ -267,14 +324,11 @@ export default function Usage() {
       <div className="rulers">
         <Ruler g={d.ai} title="AI reading" what="Claude reads pages, writes summaries and checks fit. Costs are tokens at list price." day={d.day} days={d.days_in_month} />
         <Ruler g={d.exa} title="Web search" what="Exa finds pages and people. Costs are what Exa reports on each answer." day={d.day} days={d.days_in_month} />
+        {spend.d?.apollo && <ApolloCard g={spend.d.apollo} />}
       </div>
       <DailyChart d={d} />
       <Purposes items={d.purposes} total={Number(d.total_usd)} />
-      <p className="small muted">{d.notes.map((n: string) => tr(n)).join(" ")}</p>
-      <div className="folds">
-        <Fold title="Every paid call" desc="One line per call: what it was for, what it used and what it cost."><Ledger /></Fold>
-        <Fold title="By month, source and saved search" desc="The same spend added up in other ways."><Tables /></Fold>
-      </div>
+      <p className="small muted">{d.notes.map((n: string) => tr(n)).join(" ")} <Link to="/admin/usage/calls">{tr("See every paid call")}</Link></p>
     </div>
   );
 }

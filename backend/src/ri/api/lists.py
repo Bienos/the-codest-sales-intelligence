@@ -168,7 +168,9 @@ def register(app: FastAPI) -> None:
             return {"accounts": c.get("orgs", 0), "master_accounts": c.get("master", 0), "contacts": people.get("n", 0), "shortlist": shortlist.get("n", 0),
                     "verified_opportunities": verified.get("n", 0), "sources_live": src.get("live", 0), "sources_total": src.get("total", 0),
                     "last_import": run, "verifications": vr, "budgets": bud,
-                    **({"imported_accounts": c.get("imported", 0), "ownership_to_check": c.get("ownership_to_check", 0)} if target else {})}
+                    # "ownership_to_check" is the old name of the same number, kept for pages that still read it
+                    **({"imported_accounts": c.get("imported", 0), "being_filled_in": c.get("ownership_to_check", 0),
+                        "ownership_to_check": c.get("ownership_to_check", 0)} if target else {})}
 
     @app.post("/api/admin/import/upload")
     async def upload(request: Request, file: UploadFile = File(...), p: Principal = Depends(require("admin.sources"))):

@@ -2,11 +2,11 @@ import { regionName } from "./targetMarket";
 import { getLanguage, number, tr } from "../locale";
 import { ReactNode, useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useParams } from "react-router-dom";
-import { api, fmtDateTime, post, put, upload, patch } from "../api";
+import { api, post, put, upload, patch } from "../api";
 import { Badge, Err, humanize, IconPeople, lab, Meter, Skeleton } from "../components/ui";
 import Library from "./Library";
-import { Fold, Health, HEALTH_PARTS, KnowledgeAdmin, Kind, MUST_BE_ZERO, Quiet, Say, useLoad } from "./PipelineStatus";
-import Usage from "./Usage";
+import { Fold, Health, HEALTH_PARTS, JobHistory, KnowledgeAdmin, Kind, MUST_BE_ZERO, Pager, Pick, Quiet, Say, SourceChecks, useLoad, useQueryState, when, windows } from "./PipelineStatus";
+import Usage, { PaidCalls, SpendTotals } from "./Usage";
 import { Discovery, Verification } from "./Pipeline";
 import "../styles/admin.css";
 
@@ -44,11 +44,11 @@ function sectionsFor(p: (x: string) => boolean, waiting: number): Section[] {
     { key: "review", label: "To review", Icon: IcoReview, badge: approvals ? waiting : 0, blurb: "Decisions only a person can make: requests to approve, the few company names the matcher could not decide, and pages we could not check by ourselves.",
       tabs: [{ path: "/admin/approvals", label: "Approvals", show: approvals, badge: waiting }, { path: "/admin/identity", label: "Company matches", show: p("identity.manage") }, { path: "/admin/verification", label: "Pages being checked", show: p("sources.read") }] },
     { key: "data", label: "Sources & data", Icon: IcoData, blurb: "Where our information comes from: the sources we read, your workbooks, saved web searches and internal documents.",
-      tabs: [{ path: "/admin/sources", label: "Sources", show: p("sources.read") }, { path: "/admin/imports", label: "Workbooks", show: p("admin.sources") }, { path: "/admin/discovery", label: "Web search", show: p("admin.costs") }, { path: "/admin/knowledge", label: "Knowledge base", show: p("admin.sources") }] },
-    { key: "usage", label: "Usage & cost", Icon: IcoUsage, blurb: "What AI reading and web search cost this month, measured against the monthly limits.",
-      tabs: [{ path: "/admin/usage", label: "Usage and cost", show: p("admin.costs") }] },
-    { key: "health", label: "System health", Icon: IcoHealth, blurb: "Whether the background work is running and finding things. Each check is one line; open it only when it shows a problem.",
-      tabs: [{ path: "/admin/health", label: "System health", show: p("admin.jobs") || p("admin.rules") }] },
+      tabs: [{ path: "/admin/sources", label: "Sources", show: p("sources.read") }, { path: "/admin/source-checks", label: "Source checks", show: p("sources.read") }, { path: "/admin/imports", label: "Workbooks", show: p("admin.sources") }, { path: "/admin/discovery", label: "Web search", show: p("admin.costs") }, { path: "/admin/knowledge", label: "Knowledge base", show: p("admin.sources") }] },
+    { key: "usage", label: "Usage & cost", Icon: IcoUsage, blurb: "What AI reading, web search and Apollo contact credits cost, measured against the monthly limits, down to every single paid call.",
+      tabs: [{ path: "/admin/usage", label: "This month", show: p("admin.costs") }, { path: "/admin/usage/calls", label: "Every paid call", show: p("admin.costs") }, { path: "/admin/usage/limits", label: "Limits and totals", show: p("admin.costs") }] },
+    { key: "health", label: "System health", Icon: IcoHealth, blurb: "Whether the background work is running and finding things, and a record of every job it ran.",
+      tabs: [{ path: "/admin/health", label: "Health checks", show: p("admin.jobs") || p("admin.rules") }, { path: "/admin/job-history", label: "Job history", show: p("admin.jobs") }] },
     { key: "team", label: "Team & access", Icon: IcoTeam, blurb: "Who can sign in, which outside services we are connected to, and a record of every change.",
       tabs: [{ path: "/admin/users", label: "People", show: p("admin.users") }, { path: "/admin/integrations", label: "Connected services", show: p("admin.costs") }, { path: "/admin/audit", label: "Audit log", show: p("audit.read") }] },
   ].map((s) => ({ ...s, tabs: s.tabs.filter((t) => t.show) })).filter((s) => s.tabs.length > 0);
@@ -102,6 +102,61 @@ const Row = ({ l }: { l: Line }) => (
   </Link></li>
 );
 
+const compactN = (v: number) => (v >= 1e6 ? `${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `${Math.round(v / 1e3)}K` : String(Math.round(v)));
+
+type Tile = { key: string; title: string; to: string; fig: string; unit?: string; line: string; kind: Kind };
+
+/** "Is everything working?" in five figures, each opening the list behind it. */
+function glanceTiles(d: any): Tile[] {
+  const tiles: Tile[] = [];
+  if (!d) return tiles;
+  if (d.sources) {
+    const s = d.sources;
+    tiles.push({ key: "src", title: "Sources read today", to: "/admin/source-checks?since=24h", fig: number(s.checked), unit: tr("of {} live", number(s.live)),
+      kind: s.failing ? "warn" : s.checked ? "ok" : s.live ? "warn" : "",
+      line: s.failing ? plural(s.failing, "One failed on its last read.", "{} failed on their last read.") : s.last_at ? tr("Last read: {}.", when(s.last_at)) + (s.company_pages ? " " + plural(s.company_pages, "One company page checked.", "{} company pages checked.") : "") : tr("No source has been read yet.") });
+  }
+  if (d.jobs) {
+    const j = d.jobs; const failed = Number(j.failed_24h);
+    tiles.push({ key: "jobs", title: "Jobs failed, last 24 hours", to: failed ? "/admin/job-history?since=24h&status=failed" : "/admin/job-history?since=24h", fig: number(failed), unit: plural(Number(j.done_24h), "one finished fine", "{} finished fine"),
+      kind: failed ? "bad" : Number(j.retrying) ? "warn" : "ok",
+      line: [Number(j.retrying) ? plural(Number(j.retrying), "One will retry by itself.", "{} will retry by themselves.") : "", Number(j.running) + Number(j.waiting) ? tr("{} running or waiting now.", number(Number(j.running) + Number(j.waiting))) : "",
+        j.last_done ? tr("Last finished: {}.", when(j.last_done)) : tr("No job has finished yet.")].filter(Boolean).join(" ") });
+  }
+  if ("last_import" in d) {
+    const i = d.last_import; const st = i?.status;
+    tiles.push({ key: "imp", title: "Last import", to: "/admin/imports", fig: i ? when(i.at, false) : "—", kind: !i ? "warn" : st === "failed" ? "bad" : st === "completed" ? "ok" : "info",
+      line: !i ? tr("No workbook loaded yet.") : st === "failed" ? tr("Workbook {} failed.", i.workbook) : st === "completed" ? tr("Workbook {}: {} new rows of {}.", i.workbook, number(i.new), number(i.rows)) : tr("Workbook {} is loading now.", i.workbook) });
+  }
+  if (d.matching) {
+    const m = d.matching;
+    tiles.push({ key: "match", title: "Automatic matching", to: "/admin/identity", fig: number(Number(m.auto_7d)), unit: tr("matched this week"), kind: Number(m.needs_person) ? "warn" : "ok",
+      line: [m.last_run ? tr("Last run: {}.", when(m.last_run.at)) : tr("Not run yet."), Number(m.needs_person) ? plural(Number(m.needs_person), "One name needs you.", "{} names need you.") : "", Number(m.waiting) ? plural(Number(m.waiting), "One waits for the next run.", "{} wait for the next run.") : ""].filter(Boolean).join(" ") });
+  }
+  if (d.changes) {
+    const c = d.changes; const reads = Number(c.all_24h) - Number(c.changes_24h);
+    tiles.push({ key: "audit", title: "Changes recorded today", to: "/admin/audit?since=24h", fig: number(Number(c.changes_24h)), unit: tr("in the audit log"), kind: "info",
+      line: reads > 0 ? plural(reads, "Also one view of contact details or import row, kept apart.", "Also {} views of contact details and import rows, kept apart.") : tr("Every change is kept with who made it.") });
+  }
+  return tiles;
+}
+
+function Glance({ tiles, d, err }: { tiles: Tile[]; d: any; err: unknown }) {
+  if (err) return <Err e={err} />;
+  if (!d) return <div className="glance-wrap" aria-busy="true"><Skeleton rows={1} /></div>;
+  if (!tiles.length) return null;
+  return (
+    <section className="glance-wrap" aria-labelledby="glance-h">
+      <h3 id="glance-h" className="ov-h">{tr("At a glance")}</h3>
+      <ul className="glance">{tiles.map((t) => <li key={t.key}><Link to={t.to} className={`glance-t ${t.kind}`}>
+        <span className="glance-k">{tr(t.title)}</span>
+        <span className="glance-f"><b>{t.fig}</b>{t.unit && <small>{t.unit}</small>}</span>
+        <span className="glance-l">{t.line}</span>
+      </Link></li>)}</ul>
+    </section>
+  );
+}
+
 function Overview({ can }: { can: (p: string) => boolean }) {
   const [tick, setTick] = useState(0); const [at, setAt] = useState(timeNow());
   const approvalsOn = can("approvals.read_own") || can("approvals.read_all");
@@ -111,10 +166,9 @@ function Overview({ can }: { can: (p: string) => boolean }) {
   const conn = useLoad("/api/admin/connections", can("sources.read"), tick);
   const pipe = useLoad("/api/admin/pipeline", can("admin.jobs"), tick);
   const jobs = useLoad("/api/admin/failures", can("admin.jobs"), tick);
-  const imp = useLoad("/api/admin/imports", can("admin.sources"), tick);
   const metrics = useLoad("/api/admin/metrics", can("admin.rules"), tick);
-  const usage = useLoad("/api/admin/usage", can("admin.costs"), tick);
   const integ = useLoad("/api/admin/integrations", can("admin.costs"), tick);
+  const ov = useLoad("/api/admin/overview", true, tick);
 
   /** One line per check. A check that could not load says so and is not counted. */
   const line = (key: string, title: string, to: string, r: ReturnType<typeof useLoad>, make: (d: any) => Omit<Line, "key" | "title" | "to">): Line =>
@@ -139,7 +193,7 @@ function Overview({ can }: { can: (p: string) => boolean }) {
     const tail = failed ? " " + plural(failed, "One page could not be checked.", "{} pages could not be checked.") : "";
     if (q.provider_billing > 0) return { kind: "bad", fig: number(q.pending), unit: tr("waiting"), text: plural(q.provider_billing, "One page check is blocked because the AI account is out of credit.", "{} page checks are blocked because the AI account is out of credit.") };
     const old = q.oldest_pending && Date.now() - Date.parse(q.oldest_pending) > 86400000;
-    if (q.pending > 0) return { kind: old ? "warn" : "info", fig: number(q.pending), unit: tr("waiting"), text: (old ? tr("Pages are waiting since {}. Checks may have stalled.", fmtDateTime(q.oldest_pending)) : plural(q.pending, "One page is being checked now.", "{} pages are being checked now.")) + tail };
+    if (q.pending > 0) return { kind: old ? "warn" : "info", fig: number(q.pending), unit: tr("waiting"), text: (old ? tr("Pages are waiting since {}. Checks may have stalled.", when(q.oldest_pending)) : plural(q.pending, "One page is being checked now.", "{} pages are being checked now.")) + tail };
     return { kind: "ok", fig: "0", unit: tr("waiting"), text: tr("No pages are waiting to be checked.") + tail };
   }));
 
@@ -152,14 +206,6 @@ function Overview({ can }: { can: (p: string) => boolean }) {
     const parts = [test && plural(test, "one waits for its daily test", "{} wait for their daily test"), setup && plural(setup, "one needs a person (an address, a key or a terms check)", "{} need a person (an address, a key or a terms check)"), blocked && plural(blocked, "one is blocked by its site", "{} are blocked by their site")].filter(Boolean).join(", ");
     const head = tr("{} of {} sources are reporting.", number(live), number(items.length)) + (stale ? " " + plural(stale, "One has stopped reporting on schedule.", "{} have stopped reporting on schedule.") : "");
     return { kind: stale ? "bad" : setup ? "warn" : "ok", fig: number(live), unit: tr("of {} live", number(items.length)), text: head + (parts ? ` ${parts.charAt(0).toUpperCase()}${parts.slice(1)}.` : "") };
-  }));
-  if (can("admin.sources")) dataIn.push(line("import", "Last workbook import", "/admin/imports", imp, (d) => {
-    const u = d.uploads?.[0], r = d.runs?.[0];
-    const last = u && (!r || Date.parse(u.created_at) >= Date.parse(r.started_at)) ? { what: u.filename, at: u.created_at, status: u.status, error: u.error } : r ? { what: tr("Sync of workbook {}", r.workbook_key), at: r.started_at, status: r.status, error: r.error } : null;
-    if (!last) return { kind: "warn", text: tr("No workbook loaded yet. Upload the two workbooks, or connect Google Sheets to sync them.") };
-    if (last.status === "failed") return { kind: "bad", text: tr("{} failed on {}.", last.what, fmtDateTime(last.at)) + (last.error ? ` ${last.error}` : "") };
-    if (last.status === "completed") return { kind: "ok", text: tr("{} was imported on {}.", last.what, fmtDateTime(last.at)) };
-    return { kind: "info", text: tr("{} is loading now (started {}).", last.what, fmtDateTime(last.at)) };
   }));
   if (can("admin.jobs")) dataIn.push(line("work", "Background work", "/admin/health/pipeline", pipe, (d) => {
     const st = (k: string) => d.stages.find((s: any) => s.key === k)?.state;
@@ -177,25 +223,24 @@ function Overview({ can }: { can: (p: string) => boolean }) {
     return bad.length ? { kind: "bad", text: tr("Something that should never happen was counted. Open the health checks.") } : { kind: "ok", text: tr("No unapproved changes, no duplicate alerts, and every urgent card cites a source.") };
   }));
 
-  /** Spend this month for one paid service. */
-  const spend = (name: string, label: string) => {
-    if (!usage.d) return null;
-    const b = usage.d.budgets?.[name]; const f = usage.d.forecast?.[name];
-    const cap = b ? Number(b.cap) : 0; const used = b ? Number(b.spent) + Number(b.reserved) : 0;
-    const month = usage.d.months.find((x: any) => x.period === usage.d.period && x.provider === name);
-    const money = name === "exa" ? `$${used.toFixed(2)}` : month?.cost_usd != null ? `$${Number(month.cost_usd).toFixed(2)}` : `$0.00`;
-    const capText = cap <= 0 ? "" : name === "exa" ? `$${cap.toFixed(0)}` : usage.d.anthropic_cap_usd_estimate ? tr("about ${}", Number(usage.d.anthropic_cap_usd_estimate).toFixed(0)) : "";
-    const kind: Kind = cap <= 0 ? "warn" : f?.will_exceed ? "warn" : "ok";
+  /** Spend this month for each paid service: AI reading, web search (Exa) and Apollo contact credits. */
+  const sp = ov.d?.spend;
+  const spends = can("admin.costs") && sp ? ([["ai", "AI reading"], ["exa", "Web search (Exa)"], ["apollo", "Apollo contact credits"]] as const).map(([k, label]) => {
+    const g = sp[k]; const cap = Number(g.cap), used = Number(g.used);
     const pct = cap > 0 ? Math.round(Math.min(used / cap, 1) * 100) : 0;
-    const say = cap <= 0 ? tr("No monthly limit is set, so these calls are blocked.") : f?.will_exceed ? tr("{}% of the limit used, and on pace to go over it this month.", pct) : tr("{}% of the limit used. Within the limit.", pct);
-    return { name, label, used, cap, money, capText, kind, say };
-  };
-  const spends = can("admin.costs") ? [spend("anthropic", "AI reading"), spend("exa", "Web search")].filter(Boolean) as NonNullable<ReturnType<typeof spend>>[] : [];
+    const money = k === "apollo" ? tr("{} credits", number(Math.round(used))) : `$${Number(g.usd).toFixed(2)}`;
+    const capText = cap <= 0 ? "" : k === "exa" ? `$${cap.toFixed(0)}` : k === "apollo" ? tr("{} credits", number(cap)) : tr("{} tokens", compactN(cap));
+    const kind: Kind = cap <= 0 ? (k === "apollo" ? "" : "warn") : used >= cap ? "bad" : pct >= 80 ? "warn" : "ok";
+    const say = cap <= 0 ? (k === "apollo" ? tr("No credits allowed this month, so no email can be revealed. Set a limit in Connected services.") : tr("No monthly limit is set, so these calls are blocked."))
+      : used >= cap ? tr("The limit is reached. These calls are blocked until next month.") : tr("{}% of the limit used.", pct) + (g.blocked_by_limit ? " " + plural(g.blocked_by_limit, "One call was stopped by the limit.", "{} calls were stopped by the limit.") : "");
+    return { name: k, label, used, cap, money, capText, kind, say, unit: k === "exa" ? "usd" : k === "apollo" ? tr("credits") : tr("tokens") };
+  }) : [];
   const services = (integ.d?.items ?? []).filter((r: any) => !HIDDEN_INTEGRATION.test(`${r.key} ${r.name}`));
 
   const lines = [...waitingForYou, ...dataIn];
-  const loading = lines.some((l) => l.loading) || (can("admin.costs") && usage.loading);
-  const attention = [...lines.filter((l) => l.kind === "warn" || l.kind === "bad").map((l) => l.title), ...spends.filter((s) => s.kind !== "ok").map((s) => s.label)];
+  const tiles = glanceTiles(ov.d);
+  const loading = lines.some((l) => l.loading) || ov.loading;
+  const attention = [...lines.filter((l) => l.kind === "warn" || l.kind === "bad").map((l) => l.title), ...tiles.filter((t) => t.key === "imp" && (t.kind === "warn" || t.kind === "bad")).map((t) => t.title), ...spends.filter((s) => s.kind === "warn" || s.kind === "bad").map((s) => s.label)];
   const verdictKind: Kind = loading ? "" : attention.length ? (lines.some((l) => l.kind === "bad") ? "bad" : "warn") : "ok";
   const verdict = loading ? tr("Checking everything") : attention.length === 0 ? tr("Everything is running") : attention.length === 1 ? tr("One thing needs you") : tr("{} things need you", number(attention.length));
   const refresh = () => { setTick((t) => t + 1); setAt(timeNow()); };
@@ -209,6 +254,7 @@ function Overview({ can }: { can: (p: string) => boolean }) {
         </div>
         <div className="ov-when"><span>{tr("Checked at {}", at)}</span><button type="button" className="ghost" onClick={refresh}>{tr("Check again")}</button></div>
       </div>
+      <Glance tiles={tiles} d={ov.d} err={ov.err} />
       <div className={`ov-grid${can("admin.costs") ? "" : " solo"}`}>
         <div className="ov-col">
           {waitingForYou.length > 0 && <section><h3 className="ov-h">{tr("Waiting for you")}</h3><ul className="ov-list">{waitingForYou.map((l) => <Row key={l.key} l={l} />)}</ul></section>}
@@ -218,10 +264,10 @@ function Overview({ can }: { can: (p: string) => boolean }) {
           <section>
             <h3 className="ov-h">{tr("Spend this month")}</h3>
             <div className="ov-box">
-              {usage.err ? <Err e={usage.err} onRetry={usage.reload} /> : !usage.d ? <Skeleton rows={2} /> : spends.map((s) => (
+              {ov.err ? <Err e={ov.err} onRetry={ov.reload} /> : !ov.d ? <Skeleton rows={2} /> : spends.map((s) => (
                 <div key={s.name} className="ov-spend">
                   <div className="ov-spend-head"><b>{tr(s.label)}</b><span><b>{s.money}</b>{s.capText && <span className="muted">{" " + tr("of {}", s.capText)}</span>}</span></div>
-                  <Meter used={s.used} cap={s.cap} unit={s.name === "exa" ? "usd" : "tokens"} />
+                  <Meter used={s.used} cap={s.cap} unit={s.unit} />
                   <Say k={s.kind}>{s.say}</Say>
                 </div>))}
               <Link className="ov-more" to="/admin/usage">{tr("See usage and cost")}</Link>
@@ -246,7 +292,7 @@ function Overview({ can }: { can: (p: string) => boolean }) {
 /* ------------------------------------------------------------------ To review */
 
 const TWO_PERSON = new Set(["signal_campaign_push", "contact_enrichment", "crm_write", "crm_activity", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"]);
-const APPROVAL_FIELDS: Record<string, string> = { subject: "Subject", type: "Activity type", note: "Note", due_date: "Due date", org_id: "Pipedrive organisation", person_id: "Contact ID", delay_days: "Days after the previous email" };
+const APPROVAL_FIELDS: Record<string, string> = { subject: "Subject", type: "Activity type", note: "Note", due_date: "Due date", org_id: "CRM organisation", person_id: "Contact ID", delay_days: "Days after the previous email" };
 
 function PayloadDetails({ payload }: { payload: Record<string, unknown> }) {
   const readable = (v: unknown): React.ReactNode => {
@@ -299,7 +345,7 @@ function ApprovalList({ d, reload, me }: { d: any; reload: () => void; me: Admin
     <ul className="adm-items">
     {d.items.map((a: any) => { const [k, l] = APPROVAL_STATUS[a.status] ?? ["", humanize(a.status)]; return <li id={`approval-${a.id}`} key={a.id} className={`adm-item ${k}`}>
       <div className="adm-item-head"><b>{lab("approval", a.operation === "create_activity" ? "crm_activity" : a.kind)}{a.payload?.subject ? `: ${a.payload.subject}` : ""}</b><Say k={k}>{tr(l)}</Say></div>
-      <div className="small muted">{tr("For {}, requested by {}, expires {}", a.target_system === "pipedrive" ? "Pipedrive" : humanize(a.target_system), a.requested_by, fmtDateTime(a.expires_at))}</div>
+      <div className="small muted">{tr("For {}, requested by {}, expires {}", a.target_system === "pipedrive" ? tr("the CRM") : humanize(a.target_system), a.requested_by, when(a.expires_at))}</div>
       {a.kind === "signal_campaign_push" ? <CampaignPayload p={a.payload ?? {}} /> : <PayloadDetails payload={a.payload ?? {}} />}
       {a.justification && <div className="small muted">{tr("Why:") + " "}{a.justification}</div>}
       {a.status === "pending" && TWO_PERSON.has(a.kind) && <p className="small muted m-0">{tr("Someone other than the requester must approve this.")}</p>}
@@ -399,7 +445,7 @@ function MatchedRow({ m, done, canUndo }: { m: any; done: () => void; canUndo: b
       <p className="idm-why">{matchReason(m)}{m.evidence_url && <> <a href={m.evidence_url} target="_blank" rel="noreferrer noopener" className="small">{tr("evidence")} ↗</a></>}</p>
       <div className="idm-meta">
         {m.confidence !== null && <span className="idm-conf" title={tr("How sure the matcher was")}><span className="idm-bar" aria-hidden="true"><i style={{ width: `${Math.round(m.confidence * 100)}%` }} /></span>{tr("{}% sure", Math.round(m.confidence * 100))}</span>}
-        <span className="small muted">{fmtDateTime(m.resolved_at)}</span>
+        <span className="small muted">{when(m.resolved_at)}</span>
         {canUndo && <button className="ghost" disabled={busy} onClick={undo}>{tr("Undo")}</button>}
       </div>
       <Err e={err} />
@@ -429,7 +475,7 @@ function Identity({ isAdmin }: { isAdmin: boolean }) {
       </div>
       <div className="adm-action idm-run">
         <div>
-          <b>{last ? tr("Last run {}", fmtDateTime(last.at)) : tr("Not run yet")}</b>
+          <b>{last ? tr("Last run {}", when(last.at)) : tr("Not run yet")}</b>
           <p className="small muted m-0">{last?.result ? tr("{} names checked: {} linked, {} added as companies, {} left for a person. {} web searches, {} AI checks.", last.result.checked ?? 0, last.result.linked ?? 0, last.result.separate ?? 0, last.result.unsure ?? 0, last.result.searches ?? 0, last.result.ai_checks ?? 0) : tr("The matcher looks at up to {} names per run and never uses the last 30% of the monthly web search or AI budget.", d.per_run)}
             {last?.result?.stopped && <> {tr(last.result.stopped)}</>}</p>
           {(!d.can.web_search || !d.can.ai) && <p className="small m-0 mt-2"><Say k="info">{!d.can.web_search && !d.can.ai ? tr("Web search and AI are not available on the worker right now, so only the free rules run.") : !d.can.web_search ? tr("Web search is not available on the worker right now.") : tr("The AI check is not available on the worker right now.")}</Say></p>}
@@ -480,7 +526,7 @@ function SourceControls({ s, can, reload }: { s: any; can: boolean; reload: () =
         <button disabled={!can || busy || url.length < 12} onClick={() => wrap(() => put(`/api/admin/sources/${s.source_id}/config`, { url }), () => tr("Address saved. Test it next."))}>{tr("Save URL")}</button>
         <button disabled={!can || busy || !s.url} onClick={() => wrap(() => post(`/api/admin/sources/${s.source_id}/validate`), (r) => (r.ok ? tr("Test passed.") : tr("Test failed: {}", r.detail)))}>{tr("Test from server")}</button>
       </div>
-      {v && <p className="small mt-2 mb-0"><Badge kind={v.ok ? "ok" : "bad"}>{v.ok ? tr("Test passed") : tr("Test failed")}</Badge> {v.detail} <span className="muted">· {fmtDateTime(v.at)}</span></p>}
+      {v && <p className="small mt-2 mb-0"><Badge kind={v.ok ? "ok" : "bad"}>{v.ok ? tr("Test passed") : tr("Test failed")}</Badge> {v.detail} <span className="muted">· {when(v.at)}</span></p>}
       {can && v?.ok && s.status !== "active" && (
         <div className="mt-3">
           <label className="small">{tr("Permission note: why we may read this page")}<br /><textarea value={licence} onChange={(e) => setLicence(e.target.value)} /></label>
@@ -526,9 +572,9 @@ function ScanTop() {
             })}</ul>
           </div>}
           {d.items.map((account: any) => <details key={account.id} className="adm-pilot">
-            <summary>{account.name} · {account.confirmed ? tr("Target account") : tr("Ownership to check")} · {tr("{} company sources", account.endpoints.length)} · {tr("{} recent findings", account.recent.length === 5 ? "5+" : account.recent.length)}</summary>
+            <summary>{account.name}{account.confirmed ? ` · ${tr("Target account")}` : ""} · {tr("{} company sources", account.endpoints.length)} · {tr("{} recent findings", account.recent.length === 5 ? "5+" : account.recent.length)}</summary>
             <p className="small"><Link to={`/accounts/${account.id}`}>{tr("Open company")}</Link></p>
-            <p className="small muted">{account.scan ? <>{tr("Scheduled check ·") + " "}{account.scan.status === "completed" ? tr(SCAN_OUTCOME[account.scan.outcome] ?? (account.scan.result?.endpoints === 0 ? "No sources found" : account.scan.result?.scanned === 0 ? "All source checks failed" : "Scan completed")) : humanize(account.scan.status)} · {fmtDateTime(account.scan.updated_at)}</> : tr("Waiting for the first scheduled check.")}</p>
+            <p className="small muted">{account.scan ? <>{tr("Scheduled check ·") + " "}{account.scan.status === "completed" ? tr(SCAN_OUTCOME[account.scan.outcome] ?? (account.scan.result?.endpoints === 0 ? "No sources found" : account.scan.result?.scanned === 0 ? "All source checks failed" : "Scan completed")) : humanize(account.scan.status)} · {when(account.scan.updated_at)}</> : tr("Waiting for the first scheduled check.")}</p>
             {account.scan?.status === "completed" && account.scan?.result && <p className="small">
               {tr("New or changed materials: {}", account.scan.result.documents ?? 0)} · {tr("New findings in this scan: {}", account.scan.result.processed?.events_created ?? 0)}
               {account.scan.result.error && <> · {humanize(account.scan.result.error)}</>}
@@ -539,11 +585,11 @@ function ScanTop() {
             {account.endpoints.length === 0 ? <p className="small muted">{tr("No company sources configured.")}</p> :
               <ul className="tight small">{account.endpoints.map((source: any) => <li key={source.url}>
                 <a href={source.url} target="_blank" rel="noreferrer noopener">{source.kind === "procurement" ? tr("Supplier page") : humanize(source.kind)}</a>
-                {source.last_scanned_at ? <> · {source.last_status === "ok" ? tr("Checked") : tr("Check failed")} {fmtDateTime(source.last_scanned_at)} · {tr("{} items read", source.docs_seen)}</> : <>{" " + tr("· waiting for first check")}</>}
-                {source.last_success_at && <> · {tr("Last successful check")} {fmtDateTime(source.last_success_at)}</>}{source.last_status !== "ok" && source.last_detail && <div className="muted">{source.last_detail}</div>}
+                {source.last_scanned_at ? <> · {source.last_status === "ok" ? tr("Checked") : tr("Check failed")} {when(source.last_scanned_at)} · {tr("{} items read", source.docs_seen)}</> : <>{" " + tr("· waiting for first check")}</>}
+                {source.last_success_at && <> · {tr("Last successful check")} {when(source.last_success_at)}</>}{source.last_status !== "ok" && source.last_detail && <div className="muted">{source.last_detail}</div>}
               </li>)}</ul>}
             {account.recent.map((finding: any) => <div className="mt-2" key={finding.event_id}>
-              <b>{finding.summary}</b> <span className="small muted">{fmtDateTime(finding.date)}</span>
+              <b>{finding.summary}</b> <span className="small muted">{when(finding.date)}</span>
               <div className="small">{finding.demand_tier ? tr(DEMAND[finding.demand_tier] ?? finding.demand_tier) : tr("Verified finding · no current buying signal")}</div>
               <ul className="tight small">{finding.sources.map((source: any) => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer noopener">{source.source}</a></li>)}</ul>
             </div>)}
@@ -596,7 +642,7 @@ function SourceSummary({ canEdit }: { canEdit: boolean }) {
       </div>
       <ul className="seg-key">{parts.map((p) => <li key={p.key}><i className={`seg-sw ${p.kind}`} /><b>{number(p.n)}</b> {tr(p.label)}</li>)}</ul>
       <div className="adm-action src-run">
-        <div><b>{last ? tr("Last daily test {}", fmtDateTime(last.at)) : tr("The daily test has not run yet")}</b>
+        <div><b>{last ? tr("Last daily test {}", when(last.at)) : tr("The daily test has not run yet")}</b>
           <p className="small muted m-0">{last?.status === "completed" ? (sw.length ? tr("{} switched on by themselves in that run.", sw.length) : tr("Nothing new switched on in that run.")) : last?.error ? tr("It failed: {}", last.error) : last ? tr("Running now.") : tr("It runs once a day.")}
             {d.auto_on.length > 0 && <> {tr("Switched on automatically so far: {}.", d.auto_on.slice(0, 6).map((x: any) => x.name).join(", ") + (d.auto_on.length > 6 ? ` ${tr("and {} more", d.auto_on.length - 6)}` : ""))}</>}</p></div>
         {canEdit && <button className="primary" disabled={busy} onClick={run}>{tr("Test every source now")}</button>}
@@ -641,11 +687,11 @@ function Sources({ canEdit }: { canEdit: boolean }) {
 }
 
 const TAB_STATUS: Record<string, string> = { ok: "imported", drift: "columns changed, paused", missing: "tab not found", failed: "failed" };
-const UPLOAD_STATUS: Record<string, [Kind, string]> = { completed: ["ok", "Imported"], failed: ["bad", "Failed"], running: ["info", "Loading"], queued: ["info", "Waiting"] };
 
 function Imports() {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
-  const load = () => api("/api/admin/imports").then(setD).catch(setErr);
+  const [tick, setTick] = useState(0);
+  const load = () => { setTick((n) => n + 1); return api("/api/admin/imports").then(setD).catch(setErr); };
   useEffect(() => { load(); const t = setInterval(() => { if (!document.hidden) load(); }, 8000); return () => clearInterval(t); }, []);
   const send = async (f: File | undefined) => {
     if (!f) return; setBusy(true); setErr(null); setMsg("");
@@ -683,30 +729,72 @@ function Imports() {
           <p className="small muted mb-0">{tr("Uploading the same file again changes nothing. We delete the file after loading it and keep only its fingerprint and the result.")}</p>
         </div>
       </div>
-      <h3 className="adm-h4">{tr("Recent uploads")}</h3>
-      {!d ? <Skeleton /> : d.uploads.length === 0 ? <Quiet>{tr("Nothing to show: no uploads yet.")}</Quiet> :
-        <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Recent uploads")}><table><thead><tr><th>{tr("When")}</th><th>{tr("File")}</th><th>{tr("Workbook")}</th><th>{tr("Status")}</th><th>{tr("Detail")}</th></tr></thead><tbody>{d.uploads.map((u: any) => {
-          const tabs = u.stats?.tabs ? Object.entries(u.stats.tabs) as [string, any][] : [];
-          const [k, l] = UPLOAD_STATUS[u.status] ?? ["", humanize(u.status)];
-          return <tr key={u.id}><td>{fmtDateTime(u.created_at)}</td><td>{u.filename}<div className="small muted">{u.uploaded_by}</div></td><td>{u.workbook_key}</td>
-            <td><Say k={k}>{tr(l)}</Say></td>
-            <td className="small">{u.error ?? <>{tabs.filter(([, v]) => v.status !== "unknown_tab").map(([k, v]) => `${k}: ${TAB_STATUS[v.status] ? tr(TAB_STATUS[v.status]) : v.status}${v.rows !== undefined ? ` (${number(v.new ?? 0) + " " + tr("new")}, ${number(v.rows - (v.blank ?? 0))} ${tr("rows")})` : ""}`).join(" · ")}
-              {tabs.some(([, v]) => v.status === "unknown_tab") && <div className="muted">{tr("{} other tabs not imported (archives and filtered views)", number(tabs.filter(([, v]) => v.status === "unknown_tab").length))}</div>}</>}</td></tr>; })}</tbody></table></div>}
+      <ImportHistory tick={tick} />
     </>
   );
 }
 
+const IMPORT_STATUS: Record<string, [Kind, string]> = { completed: ["ok", "Imported"], failed: ["bad", "Failed"], running: ["info", "Loading"], queued: ["info", "Waiting"],
+  paused_schema_drift: ["warn", "Paused: columns changed"] };
+
+/** Every workbook load, uploaded or synced, newest first: what came in, and why a tab was paused or failed. */
+function ImportHistory({ tick }: { tick: number }) {
+  const r = useLoad("/api/admin/imports/history", true, tick);
+  return <section aria-labelledby="imp-h">
+    <h3 id="imp-h" className="adm-h4">{tr("Import history")}</h3>
+    {r.err ? <Err e={r.err} onRetry={r.reload} /> : !r.d ? <Skeleton /> : r.d.items.length === 0 ? <Quiet>{tr("No workbook has been loaded yet. Upload the two exports above, or sync them from Google Sheets.")}</Quiet> :
+      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Import history")}><table className="cards adm-t">
+        <thead><tr><th>{tr("When")}</th><th>{tr("How")}</th><th>{tr("Workbook")}</th><th>{tr("Result")}</th><th className="num">{tr("New rows")}</th><th className="num">{tr("Rows read")}</th><th>{tr("Tabs")}</th></tr></thead>
+        <tbody>{r.d.items.map((u: any) => {
+          const tabs = u.tabs ? Object.entries(u.tabs) as [string, any][] : [];
+          const known = tabs.filter(([, v]) => v.status !== "unknown_tab"), other = tabs.length - known.length;
+          const [k, l] = IMPORT_STATUS[u.status] ?? ["", humanize(u.status)];
+          return <tr key={u.id}>
+            <td data-label={tr("When")} className="nowrap">{when(u.at)}</td>
+            <td data-label={tr("How")} className="wide">{u.how === "upload" ? <><b>{u.name}</b><div className="small muted">{tr("Uploaded by {}", u.by ?? tr("someone"))}</div></> : <b>{tr("Google Sheets sync")}</b>}</td>
+            <td data-label={tr("Workbook")}>{u.workbook ? tr("Workbook {}", u.workbook) : "—"}</td>
+            <td data-label={tr("Result")}><Say k={k}>{tr(l)}</Say>{u.error && <div className="small">{u.error}</div>}</td>
+            <td data-label={tr("New rows")} className="num">{number(u.new)}</td>
+            <td data-label={tr("Rows read")} className="num">{number(u.rows)}</td>
+            <td data-label={tr("Tabs")} className="small">{known.length === 0 ? <span className="muted">—</span> : <details><summary>{plural(known.length, "One tab read", "{} tabs read")}</summary>
+              <ul className="tight">{known.map(([name, v]) => <li key={name}><b>{name}</b>: {TAB_STATUS[v.status] ? tr(TAB_STATUS[v.status]) : humanize(v.status)}{v.rows !== undefined ? ` · ${tr("{} new of {} rows", number(v.new ?? 0), number(v.rows - (v.blank ?? 0)))}` : ""}</li>)}</ul>
+              {other > 0 && <p className="muted m-0">{tr("{} other tabs not imported (archives and filtered views)", number(other))}</p>}</details>}</td>
+          </tr>; })}</tbody></table></div>}
+  </section>;
+}
+
 /* ------------------------------------------------------------------ Usage & cost */
 
+const PROVIDER: Record<string, string> = { anthropic: "AI reading (Anthropic)", exa: "Web search (Exa)", apollo: "Apollo contact credits" };
+const UNIT: Record<string, string> = { tokens: "tokens", usd: "dollars", credits: "credits" };
+const amount = (v: any, unit: string) => unit === "usd" ? `$${Number(v).toFixed(2)}` : number(Math.round(Number(v)));
+const monthOf = (period: string) => /^\d{4}-\d{2}$/.test(period) ? new Date(`${period}-15T12:00:00Z`).toLocaleDateString(getLanguage() === "pl" ? "pl-PL" : "en-GB", { month: "long", year: "numeric" }) : period;
+
+/** Every monthly limit: what it allows, what is set aside for calls in progress, what is used and what is left. */
 function BudgetDetails() {
-  return <Load path="/api/admin/costs">{(d) => <>
-    <p className="small muted mt-0">{tr(d.note)}</p>
-    {d.budgets.length === 0 ? <Quiet>{tr("Nothing to show: no budgets are configured.")}</Quiet> :
-      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Provider budgets")}>
-        <table><thead><tr><th>{tr("Provider")}</th><th>{tr("Kind")}</th><th>{tr("Period")}</th><th>{tr("Limit")}</th><th>{tr("Set aside")}</th><th>{tr("Spent")}</th></tr></thead>
-          <tbody>{d.budgets.map((b: any) => <tr key={`${b.provider}-${b.kind}-${b.period}`}><td>{humanize(b.provider)}</td><td>{humanize(b.kind)}</td><td>{b.period}</td><td>{b.cap}</td><td>{b.reserved}</td><td>{b.spent}</td></tr>)}</tbody></table>
-      </div>}
-  </>}</Load>;
+  return <Load path="/api/admin/costs">{(d) => {
+    const rows = [...d.budgets].sort((a: any, b: any) => String(b.period).localeCompare(String(a.period)) || String(a.provider).localeCompare(String(b.provider)));
+    return <section aria-labelledby="lim-h">
+      <h3 id="lim-h" className="adm-h4 mt-0">{tr("Monthly limits")}</h3>
+      <p className="adm-lead">{tr("A paid call only runs if it fits in what is left of its limit. At zero, nothing runs. Apollo can never spend more credits than the limit set in Connected services.")}</p>
+      {rows.length === 0 ? <Quiet>{tr("No limits are set yet, so no paid call can run. Limits are set on the server; the Apollo limit is set in Connected services.")}</Quiet> :
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Monthly limits")}>
+          <table className="cards adm-t"><thead><tr><th>{tr("Service")}</th><th>{tr("Month")}</th><th className="num">{tr("Limit")}</th><th className="num">{tr("Used")}</th><th className="num">{tr("Set aside now")}</th><th className="num">{tr("Left")}</th><th>{tr("Counted in")}</th></tr></thead>
+            <tbody>{rows.map((b: any) => {
+              const left = Math.max(Number(b.cap) - Number(b.spent) - Number(b.reserved), 0);
+              const full = Number(b.cap) > 0 && left <= 0;
+              return <tr key={`${b.provider}-${b.kind}-${b.period}`}>
+                <td data-label={tr("Service")} className="wide"><b>{tr(PROVIDER[b.provider] ?? humanize(b.provider))}</b>{b.kind !== "monthly" && <div className="small muted">{tr(humanize(b.kind))}</div>}</td>
+                <td data-label={tr("Month")}>{monthOf(b.period)}</td>
+                <td data-label={tr("Limit")} className="num">{amount(b.cap, b.unit)}</td>
+                <td data-label={tr("Used")} className="num">{amount(b.spent, b.unit)}</td>
+                <td data-label={tr("Set aside now")} className="num">{amount(b.reserved, b.unit)}</td>
+                <td data-label={tr("Left")} className="num">{full ? <Say k="bad">{tr("None")}</Say> : amount(left, b.unit)}</td>
+                <td data-label={tr("Counted in")}>{tr(UNIT[b.unit] ?? humanize(b.unit))}</td>
+              </tr>; })}</tbody></table>
+        </div>}
+    </section>;
+  }}</Load>;
 }
 
 /* ------------------------------------------------------------------ Team & access */
@@ -769,23 +857,93 @@ function Users() {
   );
 }
 
+/** What each recorded action means, in words. Anything not listed is spelled out from its name. */
+const OPS: Record<string, string> = {
+  pii_read: "Looked at contact details", reconcile_row: "Loaded a workbook row", sheet_import: "Loaded a workbook", sheet_upload: "Uploaded a workbook", sheet_sync_requested: "Asked for a workbook sync",
+  activate_source: "Switched a source on", pause_source: "Paused a source", source_set_url: "Set a source's page address", source_validate: "Tested a source", sources_switched_on_automatically: "Sources switched on by the daily test",
+  sources_auto_check_requested: "Asked for a test of every source", sources_validate_all_requested: "Asked for a test of every source", source_run_failed: "A source failed",
+  opportunity_transition: "Moved an opportunity", evaluate_hypothesis: "Scored an opportunity", create_initiative: "Created a programme", outcome_recorded: "Recorded an outcome",
+  identity_review_resolved: "Decided a company match", identity_review_undone: "Undid a company match", identity_auto_requested: "Started automatic matching", identity_match: "Checked a company match",
+  approval_requested: "Asked for an approval", approval_approved: "Approved a request", approval_rejected: "Rejected a request", approval_executed: "Carried out an approved request",
+  dead_letters_retried: "Retried failed jobs", dead_letters_dismissed: "Dismissed failed jobs", dlq_replay: "Retried a failed job",
+  user_add: "Added a person", user_edit: "Changed a person's access", apollo_cap_set: "Set the Apollo credit limit", integration_tested: "Tested a connected service", kb_upload: "Uploaded a knowledge base document",
+  discovery_plan_toggle: "Switched a saved web search on or off", discovery_run_requested: "Ran saved web searches", account_scan_requested: "Asked to check a company", account_scan_batch_requested: "Asked to check priority companies",
+  tenders_refresh_requested: "Asked for new tenders", tender_summaries_requested: "Asked for tender summaries", tender_summary: "Summarised a tender",
+  account_owner_set: "Set a company's owner", account_relationship_set: "Set our relationship with a company", company_added: "Added a company", company_profile_updated: "Updated a company profile",
+  person_added_from_exa: "Added a person from a web search", buyer_role_added: "Added a buyer role", enrich_person: "Looked up a person", people_search: "Searched for people", exa_people_search: "Searched the web for people",
+  contact_search: "Searched for contacts", contact_revealed: "Revealed an email address", leads_exported: "Exported leads", watch_added: "Added a company to the watch list",
+  signal_campaign_created: "Created a campaign", signal_campaign_copy_changed: "Changed a campaign's emails", signal_campaign_push_requested: "Asked to send a campaign to Lemlist",
+  signal_campaign_pushed: "Sent a campaign to Lemlist", signal_campaign_withdrawn: "Withdrew a campaign", lemlist_enrolment_created: "Added someone to a Lemlist sequence",
+  campaign_draft: "Drafted campaign emails", account_brief: "Wrote a company brief", verification_requested: "Asked to check a page", verification_batch_requested: "Asked to check pages",
+  miss_reported: "Reported a page we missed", deadline_proposed: "Proposed a deadline", proof_asset_created: "Added a proof asset", schema_drift: "A workbook's columns changed",
+  record_hard_block: "Blocked a record", create_activity: "Logged a CRM activity", create_deal: "Created a CRM deal", canary_failed: "A safety check failed", delivery_validation: "Checked a delivery",
+};
+const opName = (op: string) => tr(OPS[op] ?? humanize(op));
+const RECORD: Record<string, string> = { organization: "Company", organization_people: "People at a company", people_candidates: "People found for a company", crm_organization: "Company",
+  person: "Person", people_list: "People list", source: "Source", source_family: "Group of sources", user: "Person with access", signal_campaign: "Campaign", identity_review: "Company match",
+  initiative: "Programme", opportunity_hypothesis: "Opportunity", discovery_plan: "Saved web search", import_run: "Workbook load", import_upload: "Workbook upload", account_source_link: "Workbook row",
+  approval: "Approval", dead_letter: "Failed job", dead_letter_group: "Failed jobs", job: "Background job", integration: "Connected service", kb_document: "Knowledge base document",
+  verification_request: "Page check", regulatory_deadline: "Deadline", proof_asset: "Proof asset", campaign_draft: "Email draft", platform: "Platform", sheet: "Workbook" };
+const recordLink = (t: string, id: string) => (["organization", "organization_people", "people_candidates", "crm_organization"].includes(t) ? `/accounts/${id}` : t === "person" ? `/people/${id}`
+  : t === "opportunity_hypothesis" ? `/opportunities/${id}` : t === "signal_campaign" ? `/campaigns/${id}` : null);
+/** Who did it: a person's address, or the automatic job that did it. */
+const actorName = (a: string) => (a === "auto" ? tr("Automatic matcher") : a.startsWith("system:") ? tr("Automatic ({})", humanize(a.slice(7)).toLowerCase()) : a);
+
+/** A short line from the recorded detail: counts, names and notes, never raw JSON. */
+function detailLine(d: any): string {
+  if (!d || typeof d !== "object") return "";
+  const out: string[] = [];
+  for (const [k, v] of Object.entries(d)) {
+    if (v === null || v === undefined || v === "") continue;
+    if (Array.isArray(v)) out.push(`${tr(humanize(k))}: ${number(v.length)}`);
+    else if (typeof v === "boolean") out.push(`${tr(humanize(k))}: ${v ? tr("yes") : tr("no")}`);
+    else if (typeof v === "number") out.push(`${tr(humanize(k))}: ${number(v)}`);
+    else if (typeof v === "string" && v.length <= 120) out.push(`${tr(humanize(k))}: ${v}`);
+    if (out.length >= 3) break;
+  }
+  return out.join(" · ");
+}
+
+const AUDIT_VIEWS: [string, string][] = [["changes", "Changes only"], ["all", "Everything"], ["reads", "Views of contact details"], ["bulk", "Rows from workbook loads"]];
+
 function Audit() {
-  const [limit, setLimit] = useState(100);
-  return <Load path={`/api/admin/audit?limit=${limit}`}>{(d) => <>
-    <p className="adm-lead">{tr("Every change anyone made, newest first, with the approval behind it when one was needed.")}</p>
-    {d.items.length === 0 ? <Quiet>{tr("Nothing to show: no changes recorded yet.")}</Quiet> :
-      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Audit log")}><table><thead><tr><th>{tr("When")}</th><th>{tr("Who")}</th><th>{tr("What they did")}</th><th>{tr("About")}</th><th>{tr("Approval")}</th></tr></thead>
+  const [f, setF] = useQueryState({ view: "changes", since: "30d", actor: "", operation: "", page: "0" });
+  const LIMIT = 50; const off = Number(f.page) || 0;
+  const q = new URLSearchParams({ view: f.view, since: f.since === "all" ? "" : f.since, limit: String(LIMIT), offset: String(off) });
+  if (f.actor) q.set("actor", f.actor);
+  if (f.operation) q.set("operation", f.operation);
+  const r = useLoad(`/api/admin/audit?${q}`);
+  const d = r.d;
+  const set = (p: Partial<typeof f>) => setF({ ...p, page: "0" });
+  return <>
+    <p className="adm-lead">{tr("Every change anyone made, and every automatic change, newest first, with the approval behind it when one was needed. Looking at contact details and the rows of a workbook load are recorded too, and kept apart.")}</p>
+    <div className="fbar">
+      <Pick label="Show" value={f.view} onChange={(v) => set({ view: v, operation: "" })} options={AUDIT_VIEWS.map(([k, l]) => [k, tr(l)])} />
+      <Pick label="When" value={f.since} onChange={(v) => set({ since: v })} options={windows()} />
+      <Pick label="Who" value={f.actor} onChange={(v) => set({ actor: v })} options={[["", tr("Anyone")], ...(d?.actors ?? []).map((a: any) => [a.actor, `${actorName(a.actor)} (${number(a.n)})`] as [string, string]),
+        ...(f.actor && !(d?.actors ?? []).some((a: any) => a.actor === f.actor) ? [[f.actor, actorName(f.actor)] as [string, string]] : [])]} />
+      <Pick label="What" value={f.operation} onChange={(v) => set({ operation: v })} options={[["", tr("Any action")], ...(d?.operations ?? []).map((o: any) => [o.operation, `${opName(o.operation)} (${number(o.n)})`] as [string, string]),
+        ...(f.operation && !(d?.operations ?? []).some((o: any) => o.operation === f.operation) ? [[f.operation, opName(f.operation)] as [string, string]] : [])]} />
+    </div>
+    {d && d.hidden > 0 && <p className="small muted">{plural(d.hidden, "One view of contact details or workbook row is hidden here. Choose Everything to see it.", "{} views of contact details and workbook rows are hidden here. Choose Everything to see them.")}</p>}
+    {r.err ? <Err e={r.err} onRetry={r.reload} /> : !d ? <Skeleton /> : d.items.length === 0 ? <Quiet>{f.actor || f.operation ? tr("Nothing matches these filters. Choose Anyone and Any action, or a longer time.") : tr("Nothing recorded in this time. Choose a longer time.")}</Quiet> : <>
+      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Audit log")}><table className="cards adm-t">
+        <thead><tr><th>{tr("When")}</th><th>{tr("Who")}</th><th>{tr("What they did")}</th><th>{tr("About")}</th><th>{tr("Detail")}</th><th>{tr("Approval")}</th></tr></thead>
         <tbody>{d.items.map((a: any) => {
-          const type = a.record_type;
-          const link = type === "opportunity_hypothesis" ? "/opportunities/" : type === "organization" ? "/accounts/" : null;
-          const name = type === "opportunity_hypothesis" ? tr("Opportunity") : type === "organization" ? tr("Account") : humanize(type);
-          return <tr key={a.id}><td>{fmtDateTime(a.at)}</td><td>{a.actor}</td><td>{a.operation === "evaluate_hypothesis" ? tr("Scored opportunity") : humanize(a.operation)}</td>
-            <td>{link && a.record_id ? <Link to={link + a.record_id}>{name}</Link> : name} <span className="small muted">{a.record_id?.slice(0, 8)}</span></td>
-            <td>{a.approval_id ? a.approval_id.slice(0, 8) : tr("None")}</td></tr>;
-        })}</tbody></table></div>}
-    {d.items.length >= limit && limit < 500 && <button className="mt-3" onClick={() => setLimit((n) => n + 100)}>{tr("Show older entries")}</button>}
-    {d.items.length >= 500 && <p className="small muted">{tr("Showing the latest 500 entries.")}</p>}
-  </>}</Load>;
+          const link = a.record_id ? recordLink(a.record_type, a.record_id) : null;
+          const what = tr(RECORD[a.record_type] ?? humanize(a.record_type));
+          const name = a.record_name ?? (a.record_id && !/^[0-9a-f-]{20,}$/i.test(a.record_id) ? a.record_id : null);
+          return <tr key={a.id}>
+            <td data-label={tr("When")} className="nowrap">{when(a.at)}</td>
+            <td data-label={tr("Who")}>{actorName(a.actor)}</td>
+            <td data-label={tr("What they did")}><b>{opName(a.operation)}</b></td>
+            <td data-label={tr("About")} className="wide">{name ? (link ? <Link to={link}>{name}</Link> : <span>{name}</span>) : link ? <Link to={link}>{tr("Open the {}", what.toLowerCase())}</Link> : null}<div className="small muted">{what}</div></td>
+            <td data-label={tr("Detail")} className="small">{detailLine(a.detail) || <span className="muted">—</span>}</td>
+            <td data-label={tr("Approval")}>{a.approval_id ? <Link to={`/admin/approvals#approval-${a.approval_id}`}>{tr("Approved")}</Link> : <span className="muted">{tr("Not needed")}</span>}</td>
+          </tr>; })}</tbody></table></div>
+      <Pager total={d.total} offset={off} limit={LIMIT} onPage={(o) => setF({ page: String(o) })} label="Audit log" />
+    </>}
+  </>;
 }
 
 /* ------------------------------------------------------------------ the page */
@@ -815,13 +973,18 @@ export default function Admin({ me, waiting, refreshApprovals }: { me: AdminUser
         <Route path="verification" element={<Sec s={review}><Gate ok={p("sources.read")}><Verification /></Gate></Sec>} />
         <Route path="data" element={<Navigate to={first("data")} replace />} />
         <Route path="sources" element={<Sec s={data}><Gate ok={p("sources.read")}><Sources canEdit={p("admin.sources")} /></Gate></Sec>} />
+        <Route path="source-checks" element={<Sec s={data}><Gate ok={p("sources.read")}><SourceChecks /></Gate></Sec>} />
         <Route path="connections" element={<Navigate to="/admin/sources" replace />} />
         <Route path="imports" element={<Sec s={data}><Gate ok={p("admin.sources")}><Imports /></Gate></Sec>} />
         <Route path="discovery" element={<Sec s={data}><Gate ok={p("admin.costs")}><Discovery /></Gate></Sec>} />
         <Route path="knowledge" element={<Sec s={data}><Gate ok={p("admin.sources")}><KnowledgeAdmin /></Gate></Sec>} />
-        <Route path="usage" element={<Sec s={usage}><Usage /><Fold title="All provider budgets" desc="Every limit, what is set aside for calls in progress, and what is spent."><BudgetDetails /></Fold></Sec>} />
+        <Route path="usage" element={<Sec s={usage}><Usage /></Sec>} />
+        <Route path="usage/calls" element={<Sec s={usage}><PaidCalls /></Sec>} />
+        <Route path="usage/limits" element={<Sec s={usage}><BudgetDetails /><SpendTotals /></Sec>} />
+        <Route path="budgets" element={<Navigate to="/admin/usage/limits" replace />} />
         <Route path="costs" element={<Navigate to="/admin/usage" replace />} />
         <Route path="health/:part?" element={<HealthRoute s={health} can={p} />} />
+        <Route path="job-history" element={<Sec s={health}><Gate ok={p("admin.jobs")}><JobHistory /></Gate></Sec>} />
         {HEALTH_PARTS.map((k) => <Route key={k} path={k} element={<Navigate to={`/admin/health/${k}`} replace />} />)}
         <Route path="team" element={<Navigate to={first("team")} replace />} />
         <Route path="users" element={<Sec s={team}><Gate ok={p("admin.users")}><Users /></Gate></Sec>} />
