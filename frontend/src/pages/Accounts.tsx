@@ -206,7 +206,7 @@ function CompanyDirectory({ q, region, research, review, clearSearch }: { q: str
                 <span className="small muted">{r.shortlist ? tr("On your shortlist") : tr(ORIGIN[r.origin] ?? "")}</span>
               </td>
               <td data-label={tr("Headquarters")}>{countryName(r.country_code)}</td>
-              <td data-label={tr("Size")}>{staffCount(r.employees, r.employees_uncertain)}</td>
+              <td data-label={tr("Size")} className="nw">{staffCount(r.employees, r.employees_uncertain)}</td>
               <td data-label={tr("People")}>{r.people ? <Link to={`/accounts/${r.id}`}>{counted(r.people, ["person", "people"], ["osoba", "osoby", "osób"])}</Link> : <span className="small muted">{tr("None yet")}</span>}
                 {r.people > 0 && <span className="small muted block">{tr("{} with email", number(r.people_with_email))}</span>}</td>
               <td data-label={review ? tr("Ownership") : tr("Buying signal and source")}>
@@ -338,6 +338,27 @@ function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; can
       </>}
     </div>
   );
+}
+
+/** What the lead list says about the account: who they are, what we could do for them and what to do next. Not checked by the platform. */
+function ListProfile({ p, signals }: { p: Record<string, string>; signals: any[] }) {
+  if (!Object.keys(p).length && !signals.length) return null;
+  const facts: [string, string | undefined][] = [["Industry", p["Industry"]], ["Segment", p["ICP Segment"]], ["Priority", p["Account Priority"]],
+    ["List score", p["Opportunity Score"]], ["Buying stage", p["Buying Stage"]], ["How they buy", p["Procurement Route"]]];
+  const text: [string, string | undefined][] = [["Possible work for us", p["Potential Opportunity"]], ["How The Codest fits", p["The Codest Service Fit"]],
+    ["Next step", p["Next Action"]], ["Still missing", p["Coverage Gap"]]];
+  return <section aria-labelledby="list-profile-h">
+    <h2 className="h-sub" id="list-profile-h">{tr("About this account")}</h2>
+    <div className="card">
+      <p className="small muted mt-0">{tr("From your lead list. Not checked by the platform yet: open the source before you rely on it.")}</p>
+      {facts.some(([, v]) => v) && <dl className="account-profile-facts">{facts.filter(([, v]) => v).map(([k, v]) => <div key={k}><dt>{tr(k)}</dt><dd>{v}</dd></div>)}</dl>}
+      {text.filter(([, v]) => v).map(([k, v]) => <p key={k} className={k === "Still missing" ? "small muted" : ""}><b>{tr(k)}:</b> {v}</p>)}
+      {signals.length > 0 && <><span className="eyebrow">{tr("Signals in your list")}</span>
+        <ul className="tight list-signals">{signals.slice(0, 5).map((x, i) => <li key={i}>
+          <span className="small muted">{[x.date, x.category].filter(Boolean).join(" · ")}</span><br />{x.event}
+          {x.source_url && <> <a className="small" href={x.source_url} target="_blank" rel="noreferrer noopener">{tr("Source")} ↗</a></>}</li>)}</ul></>}
+    </div>
+  </section>;
 }
 
 const TABS = ["Overview", "Findings timeline", "Assigned leads", "Signals & sources", "Research brief", "People", "Outreach"];
@@ -513,10 +534,14 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         }
       }} label={tr("Account sections")}>
       {tab === "Overview" && (<>
-        <div className="account-shortcuts">
-          <button onClick={() => setTab("Assigned leads")}>{tr("Assigned leads")} →</button>
-          <button onClick={() => setTab("Findings timeline")}>{tr("Findings timeline")} →</button>
-        </div>
+        <ListProfile p={d.list_profile ?? {}} signals={d.list_signals ?? []} />
+        {me.permissions.includes("contacts.read") && d.buyers.length > 0 && <>
+          <H>{tr("Who to contact")}</H>
+          <div className="card">
+            <ul className="tight contact-short">{[...d.buyers].sort((x: any, y: any) => Number(y.email_status === "Verified") - Number(x.email_status === "Verified")).slice(0, 5).map((b: any) =>
+              <li key={b.id}><b>{b.name}</b>{b.title ? `, ${b.title}` : ""} <span className="small muted">· {b.suppressed ? tr("Opted out") : b.email_status === "Verified" ? tr("Verified email") : b.email_status && !["Missing", "Not Found"].includes(b.email_status) ? tr("Email not verified") : tr("No email")}</span></li>)}</ul>
+            {d.buyers.length > 5 && <button type="button" className="linkish small" onClick={() => setTab("People")}>{tr("See all {} people", number(d.buyers.length))} →</button>}
+          </div></>}
         <H>{tr("Strongest current buying signal")}</H>
         <div className="card"><SignalSummary signal={d.buying_signal} detailed />
           {d.buying_signal?.rule_id && me.permissions.includes("draft.create") && <p className="small mt-2 mb-0"><Link to={`/campaigns/new?rules=${d.buying_signal.rule_id}`}>{tr("Start a campaign to every company with this signal")} →</Link></p>}</div>

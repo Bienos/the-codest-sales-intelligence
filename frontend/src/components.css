@@ -289,3 +289,7 @@ table.audience td { white-space: normal; overflow-wrap: anywhere; }
   .feeds-table td.feeds-name { min-width: 0; }
   table.cards.feeds-table td.feeds-tier, table.cards.feeds-table td.feeds-status { grid-column: auto; margin-right: var(--space-4); }
 }
+
+/* account overview: what the lead list says, and who to contact */
+.list-signals li { margin-bottom: var(--space-2); }
+.contact-short li { margin-bottom: 4px; }

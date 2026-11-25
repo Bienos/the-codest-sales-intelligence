@@ -1,5 +1,5 @@
 import { regionName } from "./targetMarket";
-import { tr } from "../locale";
+import { number, tr } from "../locale";
 import { useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes } from "react-router-dom";
 import { api, fmtDateTime, post, put, upload, patch } from "../api";
@@ -377,10 +377,13 @@ function Imports() {
           const tabs = u.stats?.tabs ? Object.entries(u.stats.tabs) as [string, any][] : [];
           return <tr key={u.id}><td>{fmtDateTime(u.created_at)}</td><td>{u.filename}<div className="small muted">{u.uploaded_by}</div></td><td>{u.workbook_key}</td>
             <td><Badge kind={u.status === "completed" ? "ok" : u.status === "failed" ? "bad" : "info"}>{({ completed: "Imported", failed: tr("Failed"), running: tr("Loading"), queued: tr("Waiting") } as Record<string, string>)[u.status] ?? humanize(u.status)}</Badge></td>
-            <td className="small">{u.error ?? tabs.map(([k, v]) => `${k}: ${v.status}${v.rows !== undefined ? ` (${v.rows} rows)` : ""}`).join(" · ")}</td></tr>; })}</tbody></table></div>}
+            <td className="small">{u.error ?? <>{tabs.filter(([, v]) => v.status !== "unknown_tab").map(([k, v]) => `${k}: ${TAB_STATUS[v.status] ? tr(TAB_STATUS[v.status]) : v.status}${v.rows !== undefined ? ` (${number(v.new ?? 0) + " " + tr("new")}, ${number(v.rows - (v.blank ?? 0))} ${tr("rows")})` : ""}`).join(" · ")}
+              {tabs.some(([, v]) => v.status === "unknown_tab") && <div className="muted">{tr("{} other tabs not imported (archives and filtered views)", number(tabs.filter(([, v]) => v.status === "unknown_tab").length))}</div>}</>}</td></tr>; })}</tbody></table></div>}
     </>
   );
 }
+
+const TAB_STATUS: Record<string, string> = { ok: "imported", drift: "columns changed, paused", missing: "tab not found", failed: "failed" };
 
 const ROLES = ["bdm", "sales_manager", "research_analyst", "marketing", "delivery_expert", "admin", "compliance"];
 function Users() {
