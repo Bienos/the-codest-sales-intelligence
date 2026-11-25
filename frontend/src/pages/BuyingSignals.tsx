@@ -360,7 +360,10 @@ function Freshness({ state, updated }: { state: ReturnType<typeof useFreshness>;
   const { fresh: f, error } = state;
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const started = useRef(false);
   const noteId = useId();
+  const running = Boolean(f?.running);
+  useEffect(() => { if (!running && started.current) { started.current = false; setNote(null); } }, [running]);      // the "checking now" note goes when the check is done
   if (!f) return <aside className="bs-fresh-box" aria-label={tr("How fresh the signals are")}>
     <p className="bs-fresh-line">{error ? tr("Could not read when sources were last checked.") : tr("Reading when sources were last checked")}</p></aside>;
 
@@ -368,11 +371,12 @@ function Freshness({ state, updated }: { state: ReturnType<typeof useFreshness>;
   const healthy = f.automatic && f.worker;
   const dot = !f.sources.watched ? "off" : f.running ? "run" : healthy ? "ok" : "warn";
   const press = async () => {
-    setBusy(true); setNote(null);
+    setBusy(true); setNote(null); started.current = false;
     try {
       const r = await post<{ queued: number; skipped: { recent: number; queued: number; limit: number }; freshness: Fresh }>("/api/signals/refresh");
       state.set(r.freshness);
       state.restart();
+      started.current = r.queued > 0 && r.freshness.running;
       setNote(r.queued ? tr("Checking {} sources now. The list updates by itself when they are done.", number(r.queued))
         : tr("Every source was checked in the last {} minutes or is already being checked. Nothing to add.", f.recent_minutes));
     } catch (e) {
@@ -385,10 +389,10 @@ function Freshness({ state, updated }: { state: ReturnType<typeof useFreshness>;
   if (manual) status = <>{tr("Checking sources now")} · <b>{tr("{} of {} done", number(manual.done), number(manual.jobs))}</b></>;
   else if (f.running) status = <>{tr("Checking sources now")}</>;
   else if (f.last_checked_at) status = <>{tr("Last checked")} <b><time dateTime={f.last_checked_at} title={fmtDateTime(f.last_checked_at)}>{since(f.last_checked_at, now)}</time></b></>;
-  else status = <>{f.sources.watched ? tr("Not checked yet") : tr("No sources are checked yet")}</>;
+  else status = <>{f.sources.watched ? tr("Not checked yet") : tr("No sources switched on yet")}</>;
   const next = !f.running && f.next_check_at ? <> · {tr("next automatic check")} <b><time dateTime={f.next_check_at} title={fmtDateTime(f.next_check_at)}>{when(f.next_check_at, now)}</time></b></> : null;
 
-  const reason = f.blocked === "no_sources" ? tr("No sources are switched on yet, so nothing is checked. An administrator can switch them on in Administration.")
+  const reason = f.blocked === "no_sources" ? tr("New signals appear once an administrator switches sources on in Administration.")
     : f.blocked === "worker" ? tr("Checks are paused: the background worker is not running. Automatic checks start again by themselves when it is back.")
     : f.blocked === "cooldown" && f.cooldown_until ? tr("Checked by hand at {}. You can check again at {}: at most once every {} minutes, so the sources are not overloaded.",
       clock(f.manual?.at ?? f.cooldown_until), clock(f.cooldown_until), f.cooldown_minutes)
