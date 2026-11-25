@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtDate } from "../api";
-import { number, tr } from "../locale";
+import { counted, number, tr } from "../locale";
 import { Err, Skeleton, Strength, groupName } from "./ui";
 
 /** Short, plain names for the signals that can fire. The full rule text stays one click away. */
@@ -58,7 +58,7 @@ export function SignalBoard({ days = 30, target = false, active, onPick, canCamp
           <button type="button" className="sigtile-pick" aria-pressed={active === s.rule_id} onClick={() => onPick(active === s.rule_id ? "" : s.rule_id)}>
             <span className="sigtile-g">{groupName(s.rule_id.slice(0, 3))} <Strength n={s.strength} /></span>
             <span className="sigtile-n">{signalName(s.rule_id, s.name)}</span>
-            <span className="sigtile-c"><b>{number(s.accounts)}</b> {s.accounts === 1 ? tr("company") : tr("companies")}
+            <span className="sigtile-c"><b>{number(s.accounts)}</b> {counted(s.accounts, ["company", "companies"], ["firma", "firmy", "firm"]).replace(/^[\d\s.,\u00a0]+/, "")}
               {s.latest && <span className="muted"> · {tr("latest {}", fmtDate(s.latest))}</span>}</span>
             <span className="sigtile-m">{tr(s.what_it_means)}</span>
           </button>

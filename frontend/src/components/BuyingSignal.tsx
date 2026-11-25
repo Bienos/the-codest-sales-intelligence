@@ -1,7 +1,10 @@
 import { tr } from "../locale";
 import { fmtDate } from "../api";
+import { SHORT } from "./Signals";
 
 export type BuyingSignal = {
+  rule_id?: string;
+  meaning?: string;
   label: string;
   demand_tier: string;
   summary: string;
@@ -25,9 +28,12 @@ export function SignalSummary({ signal, detailed = false }: { signal?: BuyingSig
   let source: URL;
   try { source = new URL(signal.source_url); } catch { return <span className="small muted">{tr("Source link unavailable.")}</span>; }
   if (!["http:", "https:"].includes(source.protocol)) return <span className="small muted">{tr("Source link unavailable.")}</span>;
+  const short = signal.rule_id && SHORT[signal.rule_id] ? tr(SHORT[signal.rule_id]) : null;
   return <div className="buying-signal">
-    <strong>{signal.label}</strong>
+    <strong>{short ?? signal.label}</strong>
+    {short && detailed && <div className="small muted">{tr("Rule {}: {}", signal.rule_id, signal.label)}</div>}
     <div className="small muted">{demandLabel(signal.demand_tier)}</div>
+    {detailed && signal.meaning && <p className="small mt-1 mb-1"><b>{tr("Why this is a buying signal")}:</b> {tr(signal.meaning)}</p>}
     <p className="small mt-1 mb-1">{signal.summary}</p>
     <div className="small">
       {signal.happened_at ? fmtDate(signal.happened_at) + " · " : signal.published_at ? "Published " + fmtDate(signal.published_at) + " · " : ""}

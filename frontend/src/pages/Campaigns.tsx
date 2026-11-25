@@ -64,7 +64,7 @@ export function NewCampaign() {
   const chosen = useMemo(() => (opts ?? []).filter((o) => picked.includes(o.rule_id)), [opts, picked]);
   const create = async () => {
     setBusy(true); setErr(null);
-    try { const r = await post("/api/signal-campaigns", { rule_ids: picked, days, region, per_account: per, name: name.trim() || undefined }); nav(`/campaigns/${r.id}`); }
+    try { const r = await post("/api/signal-campaigns", { rule_ids: picked, days, region, per_account: per, name: name.trim() || picked.map((id) => signalName(id)).join(" + ") }); nav(`/campaigns/${r.id}`); }
     catch (e) { setErr(e); setBusy(false); }
   };
   const sorted = (opts ?? []).slice().sort((a, b) => b.reachable_accounts - a.reachable_accounts || b.accounts - a.accounts);

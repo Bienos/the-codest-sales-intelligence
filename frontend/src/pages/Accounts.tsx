@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { api, fmtDate, fmtDateTime, post, put } from "../api";
 import { AccountFindings } from "../components/Findings";
 import { SignalSummary } from "../components/BuyingSignal";
+import { SHORT } from "../components/Signals";
 import Prospects from "./Prospects";
 import { REGIONS, countryName, regionName, staffCount } from "./targetMarket";
 import { Badge, Err, Evidence, groupName, humanize, lab, priorityKind, Skeleton, reloadPage, whyShort, Tabs } from "../components/ui";
@@ -485,6 +486,10 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           {a.target_qualification && <div><dt>{tr("Target qualification")}</dt><dd>{tr(a.target_qualification === "target" ? "Confirmed target account" : a.target_qualification === "review" ? "Ownership to check" : "Outside confirmed targets")}</dd></div>}
           <div><dt>{tr("Ownership")}</dt><dd>{tr(OWNERSHIP[a.company_ownership] ?? OWNERSHIP.unknown)}{a.company_profile_source_url && <> · <a href={a.company_profile_source_url} target="_blank" rel="noreferrer noopener">{tr("View source ↗")}</a></>}</dd></div>
           <div><dt>{tr("Current signals")}</dt><dd>{number(activeSignals)}</dd></div>
+          <div><dt>{tr("Owner in Pipedrive")}</dt><dd>{!d.crm ? tr("Not linked to Pipedrive") : !d.crm.owner_id ? tr("No owner yet") : d.crm.owner_id === (me as any).pipedrive_user_id ? tr("You") : tr("Another seller")}
+            {d.crm?.open_deals_count > 0 && <> · {tr("{} open deal(s)", d.crm.open_deals_count)}</>}</dd></div>
+          {me.permissions.includes("contacts.read") && (() => { const ok = d.buyers.filter((b: any) => b.email_status === "Verified" && !b.suppressed).length;
+            return <div><dt>{tr("People to contact")}</dt><dd><button type="button" className="linkish" onClick={() => setTab("People")}>{tr("{} of {} with a verified email", number(ok), number(d.buyers.length))}</button></dd></div>; })()}
           <div><dt>{tr("Monitored company pages")}</dt><dd>{number(eps.length)}</dd></div>
         </dl>
       </div>
@@ -493,7 +498,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       {editing && canScan && a.entity_type !== "public_body" && <CompanyProfile account={a} onSave={(profile) => setD({ ...d, account: { ...a, ...profile } })} />}
       {d.score && <div className="card"><div className="row spread"><div><span className="eyebrow" title={tr("Adds up this account's recent checked signals. Different kinds count for more than repeats, and each signal fades as it ages. Hot is 9 or more, warm 4 or more. It is not a probability.")}>{tr("Signal score")}</span><div className="kpi-n mt-1 mb-1">{d.score.stopped ? tr("On hold") : d.score.score}<span className="kpi-u"> {tr(BAND[d.score.band][1])}</span></div></div>
         <div className="small measure-sm">{d.score.stopped ? "Something we found says not to pursue this account now, so the score is held at zero until it expires." : `${d.score.signal_count} ${d.score.signal_count === 1 ? "signal" : "signals"} (${d.score.groups.map(groupName).join(", ")}). Recent signals carry more weight. A mix of signals raises the score more than repeated signals of the same kind.`}
-          {d.score.top?.length > 0 && <div className="chips mt-2">{d.score.top.map((t: any) => <Badge key={t.rule_id}>{sigNames[t.rule_id] ?? t.name ?? t.rule_id}</Badge>)}</div>}</div></div></div>}
+          {d.score.top?.length > 0 && <div className="chips mt-2">{d.score.top.map((t: any) => <Badge key={t.rule_id}>{SHORT[t.rule_id] ? tr(SHORT[t.rule_id]) : sigNames[t.rule_id] ?? t.name ?? t.rule_id}</Badge>)}</div>}</div></div></div>}
       <Tabs items={TABS.map((t) => ({ key: t, label: tr(t) }))} value={tab} onChange={next => {
         setTab(next);
         if (linkedTab && linkedTab !== next) {
@@ -510,7 +515,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
           <button onClick={() => setTab("Findings timeline")}>{tr("Findings timeline")} →</button>
         </div>
         <H>{tr("Strongest current buying signal")}</H>
-        <div className="card"><SignalSummary signal={d.buying_signal} detailed /></div>
+        <div className="card"><SignalSummary signal={d.buying_signal} detailed />
+          {d.buying_signal?.rule_id && me.permissions.includes("draft.create") && <p className="small mt-2 mb-0"><Link to={`/campaigns/new?rules=${d.buying_signal.rule_id}`}>{tr("Start a campaign to every company with this signal")} →</Link></p>}</div>
         <H>{tr("Opportunities")}</H>
         {d.opportunities.length === 0 && <div className="empty"><b>{tr("No opportunities yet")}</b>{tr("Opportunities appear when a checked source points to work this company might hire for.")}</div>}
         {d.opportunities.map((o: any) => (

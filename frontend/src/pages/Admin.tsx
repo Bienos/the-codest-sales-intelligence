@@ -246,7 +246,7 @@ function IdentityList({ d, reload }: { d: any; reload: () => void }) {
         <button disabled={note.length < 3} onClick={() => act(r.id, "new")}>{tr("It is a new company")}</button><button disabled={note.length < 3} onClick={() => act(r.id, "reject")}>{tr("Ignore this row")}</button></div></div>)}</>;
 }
 
-const TWO_PERSON = new Set(["contact_enrichment", "crm_write", "crm_activity", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"]);
+const TWO_PERSON = new Set(["signal_campaign_push", "contact_enrichment", "crm_write", "crm_activity", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"]);
 const APPROVAL_FIELDS: Record<string, string> = { subject: "Subject", type: "Activity type", note: "Note", due_date: "Due date", org_id: "Pipedrive organisation", person_id: "Contact ID", delay_days: "Days after the previous email" };
 
 function PayloadDetails({ payload }: { payload: Record<string, unknown> }) {
@@ -260,6 +260,19 @@ function PayloadDetails({ payload }: { payload: Record<string, unknown> }) {
   return <dl className="approval-payload">{values.map(([k, v]) => <div key={k}>
     <dt>{APPROVAL_FIELDS[k] ?? humanize(k)}</dt><dd>{readable(v)}</dd>
   </div>)}</dl>;
+}
+
+/** A signal campaign approval: who gets it and the exact emails, without dumping every lead's variables. */
+function CampaignPayload({ p }: { p: any }) {
+  const members: any[] = p.members ?? [];
+  const companies = new Set(members.map((m) => m.organization_id)).size;
+  return <div className="approval-payload">
+    <p className="m-0"><b>{p.campaign_name}</b>: {tr("{} people at {} companies", members.length, companies)} · <Link to={`/campaigns/${p.campaign_id}`}>{tr("Review the people and copy")}</Link></p>
+    <details className="mt-2"><summary>{tr("The emails ({})", (p.steps ?? []).length)}</summary>
+      {(p.steps ?? []).map((st: any, i: number) => <div key={i} className="mail"><div className="small muted">{i === 0 ? tr("First email") : tr("Follow-up after {} days", st.delay_days)}</div><b>{st.subject}</b><div className="mail-body">{st.body}</div></div>)}</details>
+    <details className="mt-2"><summary>{tr("Who gets it ({})", members.length)}</summary>
+      <ul className="tight small">{members.map((m) => <li key={m.member_id}>{m.variables?.firstName} {m.variables?.lastName}, {m.variables?.jobTitle} · {m.variables?.companyName} · {m.email}</li>)}</ul></details>
+  </div>;
 }
 
 function Approvals({ me, refresh }: { me: AdminUser; refresh: () => void }) {
@@ -280,10 +293,10 @@ function ApprovalList({ d, reload, me }: { d: any; reload: () => void; me: Admin
     finally { setBusy(false); }
   };
   const canDecide = me.permissions.includes("approvals.decide");
-  return <><Err e={err} />{msg && <div className="okmsg" role="status">{tr(msg)}</div>}{d.items.length === 0 && <div className="empty"><b>{tr("Nothing waiting")}</b>{tr("Requests for Pipedrive changes, outreach and email reveals will appear here.")}</div>}
+  return <><Err e={err} />{msg && <div className="okmsg" role="status">{tr(msg)}</div>}{d.items.length === 0 && <div className="empty"><b>{tr("Nothing waiting")}</b>{tr("Requests for Pipedrive changes, signal campaigns, outreach and email reveals will appear here.")}</div>}
     {d.items.map((a: any) => <div id={`approval-${a.id}`} key={a.id} className="card"><div className="row spread"><b>{lab("approval", a.operation === "create_activity" ? "crm_activity" : a.kind)}{a.payload?.subject ? `: ${a.payload.subject}` : ""}</b><Badge kind={a.status === "approved" ? "ok" : a.status === "pending" ? "warn" : a.status === "executed" ? "info" : ""}>{({ pending: tr("Waiting for approval"), approved: tr("Approved, not run yet"), executed: tr("Done"), rejected: tr("Rejected"), expired: tr("Expired") } as Record<string, string>)[a.status] ?? humanize(a.status)}</Badge></div>
       <div className="small">{tr("For") + " "}{a.target_system === "pipedrive" ? "Pipedrive" : humanize(a.target_system)}{" " + tr("· requested by") + " "}{a.requested_by}{" " + tr("· expires") + " "}{fmtDateTime(a.expires_at)}</div>
-      <PayloadDetails payload={a.payload ?? {}} />
+      {a.kind === "signal_campaign_push" ? <CampaignPayload p={a.payload ?? {}} /> : <PayloadDetails payload={a.payload ?? {}} />}
       {a.justification && <div className="small muted">{tr("Why:") + " "}{a.justification}</div>}
       {a.status === "pending" && TWO_PERSON.has(a.kind) && <p className="small muted">{tr("Someone other than the requester must approve this.")}</p>}
       {canDecide && <div className="row mt-2">

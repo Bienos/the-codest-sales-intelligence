@@ -31,3 +31,8 @@ src = ["src"]
 [tool.ruff.lint]
 select = ["E","F","I","B","UP"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# pytest fixtures are shared by importing them from other test modules, which looks unused (F401) or redefined (F811) to the linter;
+# tests also keep results they only inspect in a debugger (F841) and assert broad exceptions on purpose (B017). Source code stays strict.
+"tests/**" = ["F401", "F811", "F841", "B017"]

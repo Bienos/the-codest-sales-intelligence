@@ -46,4 +46,7 @@ def leading_signals(conn: Conn, organization_ids: list[str], *, initiative_id: s
                  CASE src.source_tier WHEN 'S1' THEN 1 WHEN 'S2' THEN 2 WHEN 'S3' THEN 3
                                       WHEN 'S4' THEN 4 ELSE 5 END, s.id, c.id
         """, (organization_ids, commercial_only, initiative_id, initiative_id))
+    from ..outbound.signal_campaigns import ANGLES, DEFAULT_ANGLE
+    for row in rows:
+        row["meaning"] = ANGLES.get(row["rule_id"], DEFAULT_ANGLE)        # why this kind of news tends to mean engineering work
     return {row.pop("organization_id"): row for row in rows}
