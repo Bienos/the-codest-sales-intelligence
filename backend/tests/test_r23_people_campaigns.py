@@ -133,7 +133,8 @@ def test_people_api_unifies_sources_signals_and_never_returns_addresses(conn, ma
     names = lambda who, q="": {i["name"] for i in c.get(f"/api/people?size=200&q={q}", headers=h(who)).json()["items"]}  # noqa: E731
     assert "Fay Dahl" not in names("bdm") and "Fay Dahl" in names("bdm2")                                                # another seller's account stays hidden
     assert "Eve Berg" not in names("bdm")                                                                                # suppressed people are hidden unless asked for
-    assert c.get("/api/people", headers=h("admin")).status_code == 403                                                    # contact data needs contacts.read
+    assert c.get("/api/people", headers=h("admin")).status_code == 200                                                    # administrators see the people database too
+    assert c.get("/api/people", headers=h("mkt")).status_code == 403                                                      # contact data needs contacts.read
     assert c.get("/api/people?engagement=replied", headers=h("bdm")).json()["total"] == 1
     assert c.post("/api/people/sync/pipedrive", headers=h("bdm")).status_code == 403
 

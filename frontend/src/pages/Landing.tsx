@@ -6,17 +6,18 @@ import { Brand } from "../components/ui";
 export type Notice = { kind: "denied" | "expired"; email?: string } | null;
 declare global { interface Window { google?: any } }
 
-function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
+type Cfg = { google_client_id?: string | null; env?: string; allowed_domain?: string | null } | null;
+
+function AuthCard({ onDone, notice, cfg, cfgErr }: { onDone: () => void; notice: Notice; cfg: Cfg; cfgErr: string }) {
   const locale = useLanguage();
   const initializedClient = useRef<string>();
-  const [cfg, setCfg] = useState<any>(null);
   const [t, setT] = useState("");
-  const [err, setErr] = useState("");
+  const [err, setErr] = useState(cfgErr);
+  useEffect(() => setErr(cfgErr), [cfgErr]);
   const [ready, setReady] = useState(false);
   const [signing, setSigning] = useState(false);
   const [slow, setSlow] = useState(false);
   useEffect(() => { const timer = setTimeout(() => setSlow(true), 6000); return () => clearTimeout(timer); }, []);
-  useEffect(() => { fetch("/api/config").then((r) => r.json()).then(setCfg).catch(() => setErr(tr("Cannot reach the server."))); }, []);
   useEffect(() => {
     if (!cfg?.google_client_id) return;
     let active = true;
@@ -26,11 +27,16 @@ function AuthCard({ onDone, notice }: { onDone: () => void; notice: Notice }) {
       if (initializedClient.current !== cfg.google_client_id) {
         window.google.accounts.id.initialize({ client_id: cfg.google_client_id, ...(cfg.allowed_domain ? { hd: cfg.allowed_domain } : {}), ux_mode: "popup", itp_support: true,
           callback: async (r: any) => { setSigning(true); setToken(r.credential); await startSession(); onDone(); } });
-        initializedClient.current = cfg.google_client_id;
+        initializedClient.current = cfg.google_client_id ?? undefined;
       }
       googleButton.replaceChildren();
       const width = Math.max(200, Math.min(380, Math.floor(googleButton.getBoundingClientRect().width || 300)));      // fill the card, within Google's limits
       window.google.accounts.id.renderButton(googleButton, { theme: "filled_blue", size: "large", text: "continue_with", shape: "rectangular", logo_alignment: "left", width, locale });
+      const top = document.getElementById("g-btn-top");             // the same sign-in at the top of the page: one click, no scrolling
+      if (top) {
+        top.replaceChildren();
+        window.google.accounts.id.renderButton(top, { theme: "outline", size: "large", text: "signin", shape: "rectangular", logo_alignment: "left", locale });
+      }
       setReady(true);
     };
     if (window.google?.accounts?.id) {
@@ -108,20 +114,9 @@ function Ticker() {
   );
 }
 
+/** The real number is always in the page: nothing here waits for a scroll event to appear. */
 function CountUp({ to, label }: { to: number; label: string }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [n, setN] = useState(reducedMotion() ? to : 0);
-  useEffect(() => {
-    const el = ref.current; if (!el || n === to) return;
-    const io = new IntersectionObserver((es) => {
-      if (!es[0].isIntersecting) return; io.disconnect();
-      const t0 = performance.now(); const step = (t: number) => { const p = Math.min(1, (t - t0) / 1100); setN(Math.round(to * (1 - Math.pow(1 - p, 3)))); if (p < 1) requestAnimationFrame(step); };
-      requestAnimationFrame(step);
-    }, { threshold: 0.6 });
-    io.observe(el); return () => io.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [to]);
-  return <div ref={ref} className="fact-c"><b>{n}</b><span>{label}</span></div>;
+  return <div className="fact-c"><b>{to}</b><span>{label}</span></div>;
 }
 
 /* ---------- the live demo: made-up signals get checked, tested and turned into one next step ---------- */
@@ -214,21 +209,10 @@ function Timeline() {
   );
 }
 
-function useReveal() {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    const items = el.querySelectorAll<HTMLElement>("[data-reveal]");
-    if (!("IntersectionObserver" in window)) { items.forEach((i) => i.classList.add("in")); return; }
-    const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: 0.2 });
-    items.forEach((i) => io.observe(i));
-    return () => io.disconnect();
-  }, []);
-  return ref;
-}
-
 export default function Landing({ onDone, notice }: { onDone: () => void; notice: Notice }) {
-  const root = useReveal();
+  const [cfg, setCfg] = useState<Cfg>(null);
+  const [cfgErr, setCfgErr] = useState("");
+  useEffect(() => { fetch("/api/config").then((r) => r.json()).then(setCfg).catch(() => setCfgErr(tr("Cannot reach the server."))); }, []);
   const hero = useRef<HTMLElement>(null);
   const onMove = (e: React.PointerEvent) => {
     const el = hero.current; if (!el || e.pointerType === "touch") return;
@@ -236,8 +220,9 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
     el.style.setProperty("--mx", `${e.clientX - r.left}px`); el.style.setProperty("--my", `${e.clientY - r.top}px`);
   };
   return (
-    <div className="land" ref={root}>
-      <div className="land-top"><header className="land-nav"><Brand /><div className="land-nav-actions"><LanguageSwitcher /><a className="land-jump land-signin" href="#signin" onClick={() => setTimeout(() => (document.querySelector("#g-btn [role=button], #g-btn iframe, #signin input, #signin button") as HTMLElement | null)?.focus(), 400)}>{tr("Sign in")}</a></div></header>
+    <div className="land">
+      <div className="land-top"><header className="land-nav"><Brand /><div className="land-nav-actions"><LanguageSwitcher />{cfg?.google_client_id ? <div id="g-btn-top" className="g-btn-top" />
+            : <a className="land-signin" href="#signin" onClick={() => setTimeout(() => (document.querySelector("#signin input, #signin button") as HTMLElement | null)?.focus(), 300)}>{tr("Sign in")}</a>}</div></header>
 
       <section className="land-hero" ref={hero} onPointerMove={onMove}>
         <div className="dots" aria-hidden="true" /><div className="dots lit" aria-hidden="true" />
@@ -250,7 +235,7 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
             <div className="land-copy-actions"><a href="#demo">{tr("See how it works")} ↓</a></div>
             <Watching />
           </div>
-          <AuthCard onDone={onDone} notice={notice} />
+          <AuthCard onDone={onDone} notice={notice} cfg={cfg} cfgErr={cfgErr} />
         </div>
       </section></div>
 
@@ -258,8 +243,8 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
 
       <section className="land-sec land-tint" id="demo" aria-labelledby="demo-h">
         <div className="land-wrap">
-          <div className="eyebrow" data-reveal>{tr("Watch it work")}</div>
-          <h2 id="demo-h" data-reveal>{tr("A signal gets checked, tested and turned into one next step")}</h2>
+          <div className="eyebrow">{tr("Watch it work")}</div>
+          <h2 id="demo-h">{tr("A signal gets checked, tested and turned into one next step")}</h2>
           <Demo />
         </div>
       </section>
@@ -287,7 +272,7 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
             {[[tr("It will not guess"), tr("A source that fails to load shows as degraded coverage. A quiet screen does not mean nothing happened.")],
               [tr("It will not send"), tr("Drafts only. A second person approves any CRM change, and the exact change is shown first.")],
               [tr("It will not hide the limits"), tr("Scores are provisional weights, not win probabilities. Missing facts are listed, not filled in.")]].map(([t, d], i) => (
-              <div key={t} className="land-col" data-reveal style={{ transitionDelay: `${i * 90}ms` }}><span className="no" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span><h3>{t}</h3><p>{d}</p></div>))}
+              <div key={t} className="land-col"><span className="no" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span><h3>{t}</h3><p>{d}</p></div>))}
           </div>
         </div>
       </section>
@@ -295,8 +280,8 @@ export default function Landing({ onDone, notice }: { onDone: () => void; notice
       <section className="land-cta" aria-labelledby="cta">
         <SignalField uid="b" target={false} />
         <div className="land-wrap">
-          <h2 id="cta" data-reveal>{tr("Ready for your next step?")}</h2>
-          <a className="btn-pink" href="#signin" data-reveal>{tr("Sign in")}</a>
+          <h2 id="cta">{tr("Ready for your next step?")}</h2>
+          <a className="btn-pink" href="#signin">{tr("Sign in")}</a>
         </div>
       </section>
 

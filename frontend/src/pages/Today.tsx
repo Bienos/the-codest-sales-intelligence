@@ -153,6 +153,8 @@ export default function Today({ canReview, canCampaign = false }: { canReview: b
   const [d, setD] = useState<any>(null);
   const [rule, setRule] = useState("");
   const findings = useFindings(`scope=today&days=${rule ? 30 : 14}&limit=12${rule ? `&rule=${rule}` : ""}`);
+  const [tenders, setTenders] = useState<number | null>(null);
+  useEffect(() => { api("/api/tenders?limit=1").then((d) => setTenders(d.counts.total)).catch(() => setTenders(null)); }, []);
   const [err, setErr] = useState<unknown>(null);
   const [revision, setRevision] = useState(0);
   const load = () => setRevision((n) => n + 1);
@@ -173,14 +175,14 @@ export default function Today({ canReview, canCampaign = false }: { canReview: b
             <p className="today-intro">{tr("Open tenders and buying signals for banking and financial services.")}</p>
           </div>
           <div className="today-actions">
-            <Link to="/feed?kind=tender">{tr("Open RFPs and tenders")} →</Link>
+            <Link to="/tenders">{tr("Open RFPs and tenders")} →</Link>
             <Link to="/accounts?view=leads">{tr("Workbook leads")} →</Link>
           </div>
         </div>
       </header>
       <div className="page today-page">
         {findings.data && <div className="today-summary" aria-label={tr("Daily overview")}>
-          <Link to="/feed?kind=tender"><span>{tr("Open RFPs in this view")}</span><b>{number(findings.data.items.filter(item => item.tender).length)}</b></Link>
+          <Link to="/tenders"><span>{tr("Open tenders for software work")}</span><b>{tenders == null ? "…" : number(tenders)}</b></Link>
           <Link to="/feed?kind=signal&days=14"><span>{tr("Buying signals in this view")}</span><b>{number(findings.data.items.filter(item => !item.tender).length)}</b></Link>
           <Link to="/library?tab=sources"><span>{tr("Sources reporting successfully")}</span><b>{number(findings.data.coverage.monitored_sources - findings.data.coverage.unhealthy.length)} <small>/ {number(findings.data.coverage.monitored_sources)}</small></b></Link>
         </div>}

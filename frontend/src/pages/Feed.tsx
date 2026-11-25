@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
+import { Navigate, useSearchParams, Link } from "react-router-dom";
 import { post } from "../api";
 import { tr } from "../locale";
 import { Err } from "../components/ui";
@@ -7,7 +7,13 @@ import { FindingCard, FindingsPagination, FindingsResult, ResearchLeads, SourceC
 import { REGIONS } from "./targetMarket";
 import { SHORT, signalName } from "../components/Signals";
 
+/** Tenders have their own page, covering every buyer; old links to the tender view of the findings land there. */
 export default function Feed() {
+  const [params] = useSearchParams();
+  return params.get("kind") === "tender" ? <Navigate to="/tenders" replace /> : <Findings />;
+}
+
+function Findings() {
   const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState(params.get("q") ?? "");
   const page = Math.max(1, Number(params.get("page")) || 1);

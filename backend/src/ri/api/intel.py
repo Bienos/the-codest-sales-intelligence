@@ -412,6 +412,21 @@ def register_feed(app: FastAPI) -> None:
             return {"items": items[:limit], "page": page, "has_more": len(items)>limit, "leads": leads,
                     "coverage": coverage_health(conn, p)}
 
+    @app.get("/api/tenders")
+    def tenders(request: Request, q: str = Query("", max_length=120), region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
+                buyer: str = Query("", pattern="^(|finance|public)$"), min_days: int = Query(3, ge=0, le=60), page: int = Query(1, ge=1, le=200), limit: int = Query(30, ge=1, le=100),
+                p: Principal = Depends(principal_dep)):
+        """Open tenders for software work from every official source, whoever the buyer is (public bodies included), soonest deadline first."""
+        from ..tenders import open_tenders
+        if not (p.can("today.read") or p.can("explorer.read")):
+            raise HTTPException(403, "missing permission today.read")
+        with tx(request) as conn:
+            out = open_tenders(conn, p, q=q, region=region, buyer=buyer, min_days=min_days, limit=limit, offset=(page - 1) * limit)
+            sources = qa(conn, "SELECT s.source_id, s.display_name, s.status, h.last_success_at FROM sources s LEFT JOIN source_health h USING (source_id) "
+                               "WHERE s.source_family='procurement' AND s.collection_method='official_api' AND s.source_id = ANY(%s) ORDER BY s.display_name",
+                         (["procurement-ted", "procurement-uk-fts", "procurement-uk-contracts-finder", "procurement-ezamowienia"],))
+        return {**out, "page": page, "sources": sources}
+
     @app.get("/api/feed")
     def market_feed(request: Request, q: str = Query("", max_length=120), days: int = Query(60, ge=1, le=365), play: str = Query("", max_length=8), rule: str = Query("", max_length=8),
                     market: str = Query("", pattern="^(|core)$"), accounts_only: bool = True, view: str = Query("accounts", pattern="^(accounts|market|rest|public)$"), limit: int = Query(40, ge=1, le=100), fit_only: bool = False, focus: str = Query("", pattern="^(|finance|other|unclassified)$"), target: bool = False, p: Principal = Depends(require("explorer.read"))):

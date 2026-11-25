@@ -2,8 +2,10 @@ import { tr } from "../locale";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, post } from "../api";
-import { Err, Skeleton, Tabs } from "../components/ui";
+import { Err, Skeleton } from "../components/ui";
 
+/** The two internal documents are complete web pages of their own, so they get the whole content area instead of a small window inside a padded page.
+ *  They still open through short-lived signed links in a sandboxed frame, and "Open full page" shows the same document in its own browser tab. */
 export default function Knowledge() {
   const { doc } = useParams();
   const nav = useNavigate();
@@ -25,15 +27,25 @@ export default function Knowledge() {
   const meta = docs.find((d) => d.id === current);
   const missing = docs.length > 0 && !meta?.available;
   return (
-    <>
-      <div className="page-head"><div className="eyebrow">{tr("Internal only")}</div><h1>{tr("Knowledge base")}</h1></div>
-      <Tabs items={docs.map((d) => ({ key: d.id, label: d.title }))} value={current ?? ""} onChange={(k) => nav(`/knowledge/${k}`)} label="Documents">
-
-      {meta && <p className="small muted mt-0">{meta.blurb}{" " + tr("Internal only: do not share with prospects. This is a copy of the") + " "}<a href={meta.source} target="_blank" rel="noreferrer noopener">{tr("original document")}</a>{tr(". Ask an administrator to refresh it when the original changes.")}</p>}
-      {missing ? <div className="empty"><b>{tr("This document is not loaded yet")}</b>{tr("An administrator can upload it in Administration, Knowledge.")}</div> : src ? <iframe className="kb-frame" title={meta?.title ?? tr("Knowledge base")} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" /> : <Skeleton />}
-      </Tabs>
-      <Err e={err} onRetry={load} />
-      {!docs.length && !err && <Skeleton label="Loading knowledge base" />}
-    </>
+    <div className="kb-reader">
+      <header className="kb-bar">
+        <div className="kb-bar-l">
+          <h1 className="kb-title">{tr("Knowledge base")}</h1>
+          <nav className="kb-tabs" aria-label={tr("Documents")}>
+            {docs.map((d) => <button key={d.id} type="button" aria-current={d.id === current ? "page" : undefined} onClick={() => nav(`/knowledge/${d.id}`)}>{d.title}</button>)}
+          </nav>
+        </div>
+        <div className="kb-bar-r">
+          <span className="small muted">{tr("Internal only. Do not share with prospects.")}</span>
+          {src && <a className="btn primary" href={src} target="_blank" rel="noopener noreferrer">{tr("Open full page")}</a>}
+        </div>
+      </header>
+      {meta && <p className="kb-blurb small muted">{meta.blurb} <a href={meta.source} target="_blank" rel="noreferrer noopener">{tr("Original document")}</a>{" · " + tr("an administrator refreshes this copy when the original changes")}</p>}
+      {missing ? <div className="page"><div className="empty"><b>{tr("This document is not loaded yet")}</b>{tr("An administrator can upload it in Administration, Knowledge.")}</div></div>
+        : src ? <iframe className="kb-frame2" title={meta?.title ?? tr("Knowledge base")} src={src} sandbox="allow-scripts allow-popups allow-modals allow-downloads" referrerPolicy="no-referrer" />
+        : <div className="page"><Skeleton rows={4} /></div>}
+      <div className="page"><Err e={err} onRetry={load} /></div>
+      {!docs.length && !err && <div className="page"><Skeleton label="Loading knowledge base" /></div>}
+    </div>
   );
 }
