@@ -42,7 +42,7 @@ RULES
 - how_we_help: 2 or 3 concrete angles for The Codest (which service, for what situation), each based on cited pages. No invented numbers, no client names.
 - open_questions: what a seller still needs to find out (max 5). No source needed.
 - Plain British English, short sentences. No marketing language.
-Return ONLY JSON:
+Return ONLY valid JSON. Inside strings never use a raw double quote: write a single quote or escape it as \\".
 {{"about":{{"text":"2-3 sentences: what the company does","sources":["W1"]}},
  "products":[{{"name":"..","detail":"one short sentence","source":"W2"}}],
  "footprint":{{"hq":{{"value":"..","source":"W1"}},"markets":{{"value":"..","source":"W2"}},"size":{{"value":"..","source":"R"}}}},
@@ -73,6 +73,21 @@ def parse_json(text: str) -> dict[str, Any]:
     if not isinstance(out, dict):
         raise ValueError("model output is not an object")
     return out
+
+
+def ask_json(call: Call, run: Callable[[Any], Any], system: str, user: str) -> tuple[dict[str, Any], int, int, str]:
+    """One model call whose answer must be JSON. Small models sometimes leave a raw double quote inside a copied excerpt, which breaks the
+    JSON; the first time that happens the model is shown its own answer and the parser's complaint and asked for the same content as valid
+    JSON (a cheap call). A second failure is raised."""
+    text, tin, tout, model = run(call(system, user))
+    try:
+        return parse_json(text), tin, tout, model
+    except (ValueError, json.JSONDecodeError) as exc:
+        fix = (f"{user}\n\nYour previous answer was not valid JSON ({exc}). Here it is:\n{text[:12000]}\n\n"
+               "Return the SAME content again as ONE valid JSON object and nothing else. Inside every string, escape each double quote as \\\" "
+               "or use a single quote instead; never leave a raw double quote inside a string.")
+        text2, tin2, tout2, model2 = run(call(system, fix))
+        return parse_json(text2), tin + tin2, tout + tout2, model2
 
 
 def _s(v: Any, cap: int) -> str | None:
@@ -244,6 +259,6 @@ def research_company(conn: Conn, org_id: str, *, searcher: ExaSearcher, call: Ca
         return {"content": {**base, "about": None, "products": [], "footprint": {}, "icp_points": [], "recent": [], "vendors": [], "how_we_help": [], "open_questions": [],
                             "empty": "Exa found no pages about this company. Check the website on record, then try again."},
                 "sources": [], "dropped": 0, "model": None, "tokens_in": 0, "tokens_out": 0}
-    text, tin, tout, model = run(call(SYSTEM, user_prompt(src, rec, now)))
-    content, dropped = verify_profile(parse_json(text), src)
+    parsed, tin, tout, model = ask_json(call, run, SYSTEM, user_prompt(src, rec, now))
+    content, dropped = verify_profile(parsed, src)
     return {"content": {**base, **content}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout}

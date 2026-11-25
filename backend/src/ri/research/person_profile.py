@@ -14,7 +14,7 @@ from typing import Any, Awaitable, Callable
 
 from ..db import Conn, q1
 from ..sources.base import BudgetExceeded
-from .company_profile import CODEST, Verifier, _date, _s, parse_json
+from .company_profile import CODEST, Verifier, _date, _s, ask_json
 from .exa_search import ExaSearcher, ExaStopped, number_sources, since, source_list, text_contents
 
 Call = Callable[[str, str], Awaitable[tuple[str, int, int, str]]]
@@ -158,6 +158,6 @@ def research_person(conn: Conn, person_id: str, *, searcher: ExaSearcher, call: 
         return {"content": {**base, "identity": {"confident": False, "note": None}, "current_role": None, "previous_roles": [], "focus_areas": [], "recent_activity": [],
                             "talking_points": [], "open_questions": [], "empty": "Exa found no public pages about this person at this company."},
                 "sources": [], "dropped": 0, "model": None, "tokens_in": 0, "tokens_out": 0}
-    text, tin, tout, model = run(call(SYSTEM, user_prompt(src, rec, now)))
-    content, dropped = verify_person(parse_json(text), src)
+    parsed, tin, tout, model = ask_json(call, run, SYSTEM, user_prompt(src, rec, now))
+    content, dropped = verify_person(parsed, src)
     return {"content": {**base, **content}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout}

@@ -364,3 +364,28 @@ def test_relationship_is_computed_recorded_and_owner_assignment_respects_roles(c
     team = c.get(f"/api/accounts/{oid}/relationship", headers=h("bdm")).json()["team"]
     assert {t["role"] for t in team} <= {"bdm", "sales_manager", "admin"}
     assert c.get(f"/api/accounts/{oid}/tenders", headers=h("bdm")).json() == {"notices": [], "awards": []}
+
+
+def test_a_broken_json_answer_is_repaired_once_then_raised():
+    """Production run on 25 Nov 2026: the model left a raw double quote inside a copied excerpt, so the profile failed after Exa had been paid for."""
+    import asyncio
+
+    from ri.research.company_profile import ask_json
+
+    calls = []
+    good = '{"about": {"text": "A payments company.", "sources": ["W1"]}}'
+
+    async def call(system, user):
+        calls.append(user)
+        if len(calls) == 1:
+            return '{"about": {"text": "He said "hello" to us", "sources": ["W1"]}}', 100, 50, "fake"
+        return good, 10, 5, "fake"
+    out, tin, tout, _ = ask_json(call, lambda c: asyncio.run(c), "sys", "user text")
+    assert out["about"]["text"] == "A payments company." and (tin, tout) == (110, 55) and len(calls) == 2
+    assert "not valid JSON" in calls[1] and "hello" in calls[1]
+
+    async def always_bad(system, user):
+        return '{"about": ', 1, 1, "fake"
+    import pytest
+    with pytest.raises(ValueError):
+        ask_json(always_bad, lambda c: asyncio.run(c), "sys", "u")
