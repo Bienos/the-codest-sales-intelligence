@@ -40,6 +40,7 @@ RULES
 - icp_points: 4 to 8 points such as Sector, Size, Region, Ownership, Tech stack, Engineering team, Change programmes, Outsourcing. {ICP}
   "fit" is "good", "neutral" or "bad" for The Codest.
 - how_we_help: 2 or 3 concrete angles for The Codest (which service, for what situation), each based on cited pages. No invented numbers, no client names.
+  "service" is the one that fits best: "team_extension", "delivery_team", "ai_data" or "qa".
 - open_questions: what a seller still needs to find out (max 5). No source needed.
 - Plain British English, short sentences. No marketing language.
 Return ONLY valid JSON. Inside strings never use a raw double quote: write a single quote or escape it as \\".
@@ -49,10 +50,11 @@ Return ONLY valid JSON. Inside strings never use a raw double quote: write a sin
  "icp_points":[{{"label":"Sector","value":"..","fit":"good","source":"R"}}],
  "recent":[{{"date":"2026-09-14","headline":"..","detail":"one sentence","source":"W4","quote":".."}}],
  "vendors":[{{"name":"..","role":"what they provide","source":"W5","quote":".."}}],
- "how_we_help":[{{"angle":"..","why":"one sentence","sources":["W4"]}}],
+ "how_we_help":[{{"angle":"..","why":"one sentence","service":"delivery_team","sources":["W4"]}}],
  "open_questions":[".."]}}"""
 
 FIT = {"good", "neutral", "bad"}
+SERVICES = {"team_extension", "delivery_team", "ai_data", "qa"}
 MAX = {"products": 6, "icp_points": 8, "recent": 8, "vendors": 10, "how_we_help": 3, "open_questions": 5}
 TEXT_CAP = 2200
 
@@ -236,7 +238,8 @@ def verify_profile(raw: dict[str, Any], src: dict[str, dict[str, Any]]) -> tuple
             continue
         cites = [c for c in (v.cite(s) for s in (it.get("sources") or [])[:4]) if c] if isinstance(it.get("sources"), list) else []
         if v.keep(cites or None):
-            out["how_we_help"].append({"angle": _s(it.get("angle"), 200), "why": _s(it.get("why"), 400), "sources": cites})
+            out["how_we_help"].append({"angle": _s(it.get("angle"), 200), "why": _s(it.get("why"), 400),
+                                       "service": it["service"] if isinstance(it.get("service"), str) and it["service"] in SERVICES else None, "sources": cites})
     out["open_questions"] = [q for q in (_s(x, 300) for x in (raw.get("open_questions") or [])[:MAX["open_questions"]]) if q] if isinstance(raw.get("open_questions"), list) else []
     return out, v.dropped
 

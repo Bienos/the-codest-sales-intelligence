@@ -1,4 +1,4 @@
-"""Buying signals: only the high-intent news, the things happening now that suggest a company on the list needs engineering help.
+"""Buying signals: the companies on the list where something is happening now that suggests they need engineering help, and why.
 
 A signal counts as high intent when it is live and checked (an active, verified signal on a verified event, backed by a supported,
 anchored claim with a web source, inside the window) at a target-market company the person may see, and at least one of these holds:
@@ -12,6 +12,16 @@ anchored claim with a web source, inside the window) at a target-market company 
 Open tenders for software work at target companies come from the same read model as the findings archive. Accounts with a stop signal
 (a hiring freeze, an exclusive supplier) are held back and only counted. Context-only news (a market launch, a new product line, a
 partnership) stays in the findings archive.
+
+The answer is organised by company, not by kind of signal: one entry per company with every high-intent signal it has (one per kind,
+the strongest and newest first, older news of the same kind folded into ``more``). Each company gets a strength from 1 to 3:
+
+* 3 (strong) when they asked for outside help or it is likely (an open tender, demand tier D1 or D2);
+* otherwise the strongest rule's strength (1 to 3), one step higher when two or more different kinds of signal are live at once.
+
+``kinds`` counts companies per kind of signal for the current search, region and window but before the ``rule`` filter, so the page can
+show every kind as a filter with its count. ``sort`` orders the companies: strongest first (the default), newest first, or by the lead
+list's own priority and score.
 """
 from __future__ import annotations
 
@@ -36,8 +46,10 @@ HIGH_INTENT_RULES = (
     "COM-01", "COM-02",                                               # funding raised for a stated build, an acquisition with integration work
     "REL-01", "REL-03", "REL-05", "REL-07",                           # someone who knows us moves or asks
 )
-_TIER_RANK = {"D1": 0, "D2": 1, "D3": 2, "D4": 3}
+SORTS = ("strength", "newest", "priority")
+FRESH_DAYS = 14
 _GROUP_INTENT = {"SRC": "route", "CAP": "capacity", "PRG": "programme", "MAN": "leader", "COM": "business", "REL": "relationship", "REG": "deadline"}
+_PRIORITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
 
 
 def _intent(rule_id: str, tier: str, strength: int) -> str:
@@ -57,18 +69,36 @@ def _rank(item: dict[str, Any]) -> int:
     return {"outside_demand": 0, "need_likely": 1, "strong": 2}.get(item["intent"], 3)
 
 
-def _signals(conn: Conn, p: Principal, *, days: int, q: str, rule: str) -> list[dict[str, Any]]:
+def _ts(v: Any) -> float:
+    return v.timestamp() if isinstance(v, datetime) else 0.0
+
+
+def _strength(signals: list[dict[str, Any]]) -> tuple[int, str]:
+    """How strongly one company's signals point to a need right now (1 to 3), and the main reason, as a code the page turns into words."""
+    kinds = len({s["rule_id"] for s in signals})
+    top = max((s["strength"] for s in signals), default=1)
+    if any(s["tender"] or s["intent"] == "outside_demand" for s in signals):
+        return 3, "outside_demand"
+    if any(s["intent"] == "need_likely" for s in signals):
+        return 3, "need_likely"
+    level = max(1, min(3, top + (1 if kinds > 1 else 0)))
+    if kinds > 1:
+        return level, "several"
+    return level, "strong_kind" if top >= 3 else "clear" if level == 2 else "early"
+
+
+def _signals(conn: Conn, p: Principal, *, days: int, q: str) -> list[dict[str, Any]]:
     from .search import all_like, tokens
 
     where, args = org_scope_sql(p, "o.id")
     terms = tokens(q) or ([q.strip()] if q.strip() else [])
     match, search_args = all_like("concat_ws(' ', o.display_name, o.canonical_domain, e.summary, l.signal)", terms) if terms else ("TRUE", [])
     return qa(conn, f"""
-        SELECT s.id::text AS signal_id, s.rule_id, s.strength, s.demand_tier, s.commercial_questions,
+        SELECT s.id::text AS signal_id, s.rule_id, s.strength, s.demand_tier,
                l.signal AS rule_name, l.grp AS rule_group, l.ordinal, l.who_to_contact,
                e.id::text AS event_id, e.event_type, e.summary, e.attrs->'fit' AS fit,
                e.attrs->>'summary_en' AS summary_en, e.attrs->>'summary_pl' AS summary_pl,
-               coalesce(e.event_at, e.pub_at, s.effective_from) AS happened, e.first_observed_at AS first_seen,
+               coalesce(e.event_at, e.pub_at, s.effective_from) AS happened,
                o.id::text AS organization_id, o.country_code, coalesce(st.stopped, false) AS stopped,
                ev.excerpt, ev.translation, ev.url, ev.source_name, ev.published_at
         FROM signals s
@@ -94,7 +124,6 @@ def _signals(conn: Conn, p: Principal, *, days: int, q: str, rule: str) -> list[
           AND e.verification_status='verified' AND e.lifecycle_status='active' AND NOT e.is_historical_replay
           AND e.lane IS DISTINCT FROM 'public' AND s.rule_id NOT LIKE 'NEG-%%'
           AND (s.demand_tier IN ('D1','D2') OR s.strength >= 3 OR s.rule_id = ANY(%s))
-          AND (%s = '' OR s.rule_id = %s)
           AND coalesce(e.event_at, e.pub_at, s.effective_from) > now() - make_interval(days => %s)
           AND coalesce(e.event_at, e.pub_at, s.effective_from) <= now()
           AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened')
@@ -104,7 +133,7 @@ def _signals(conn: Conn, p: Principal, *, days: int, q: str, rule: str) -> list[
           AND ({where}) AND {target_sql()} AND ({match})
         ORDER BY s.demand_tier, s.strength DESC, coalesce(e.event_at, e.pub_at, s.effective_from) DESC, s.id
         LIMIT 600
-        """, [list(HIGH_INTENT_RULES), rule, rule, days, non_engineering_title_sql_pattern(), *args, *search_args])      # noqa: S608
+        """, [list(HIGH_INTENT_RULES), days, non_engineering_title_sql_pattern(), *args, *search_args])      # noqa: S608
 
 
 def _companies(conn: Conn, p: Principal, ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -124,7 +153,17 @@ def _companies(conn: Conn, p: Principal, ids: list[str]) -> dict[str, dict[str, 
     return {r["id"]: {**r, "region": target_region(r["country"]), "list_score": float(r["list_score"]) if r["list_score"] is not None else None} for r in rows}
 
 
-def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = "", q: str = "", rule: str = "") -> dict[str, Any]:
+def _sort_key(sort: str):
+    if sort == "newest":
+        return lambda c: (-_ts(c["latest"]), -c["strength"], c["organization"]["name"].lower())
+    if sort == "priority":
+        return lambda c: (_PRIORITY_RANK.get(c["organization"]["list_priority"] or "", 9), -(c["organization"]["list_score"] or -1),
+                          -c["strength"], -_ts(c["latest"]), c["organization"]["name"].lower())
+    return lambda c: (-c["strength"], -c["kinds"], min(_rank(s) for s in c["signals"]), -_ts(c["latest"]),
+                      _PRIORITY_RANK.get(c["organization"]["list_priority"] or "", 9), c["organization"]["name"].lower())
+
+
+def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = "", q: str = "", rule: str = "", sort: str = "strength") -> dict[str, Any]:
     from ..findings import findings
     from ..outbound.signal_campaigns import ANGLES, DEFAULT_ANGLE
 
@@ -134,29 +173,27 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
     tender_events: set[str] = set()
 
     # Open tenders for software work at target companies (the same checks as the findings archive and Today).
-    if rule in ("", "SRC-01"):
-        for t in findings(conn, p, scope="archive", days=days, limit=50, kind="tender", region=region, search=q, qualification="target"):
-            tender_events.update(str(x) for x in t["event_ids"])
-            key = (str(t["organization"]["id"]), "SRC-01")
-            ev = t["evidence"][0] if t["evidence"] else None
-            item = {"id": str(t["id"]), "rule_id": "SRC-01", "strength": 3, "demand_tier": "D1", "intent": "outside_demand",
-                    "event_id": str(t["id"]), "event_type": t["type"], "summary": t["tender"].get("title") or t["summary"],
-                    "summary_en": t.get("summary_en"), "summary_pl": t.get("summary_pl"),
-                    "happened": t["happened"], "first_seen": t.get("first_seen"), "fit": t.get("why"),
-                    "tender": {k: t["tender"].get(k) for k in ("deadline", "url", "title", "scope", "notice_id", "checked_at")},
-                    "evidence": {"quote": ev["claim"], "translation": ev.get("translation"), "url": ev["url"], "source": ev["source"],
-                                 "published_at": ev["published_at"]} if ev else {"quote": None, "translation": None, "url": t["tender"]["url"],
-                                                                                 "source": None, "published_at": None},
-                    "organization_id": str(t["organization"]["id"]), "more": 0, "questions": []}
-            if key in seen:
-                seen[key]["more"] += 1
-                continue
-            seen[key] = item
-            items.append(item)
+    for t in findings(conn, p, scope="archive", days=days, limit=50, kind="tender", region=region, search=q, qualification="target"):
+        tender_events.update(str(x) for x in t["event_ids"])
+        key = (str(t["organization"]["id"]), "SRC-01")
+        ev = t["evidence"][0] if t["evidence"] else None
+        item = {"id": str(t["id"]), "rule_id": "SRC-01", "strength": 3, "demand_tier": "D1", "intent": "outside_demand",
+                "event_id": str(t["id"]), "event_type": t["type"], "summary": t["tender"].get("title") or t["summary"],
+                "summary_en": t.get("summary_en"), "summary_pl": t.get("summary_pl"), "happened": t["happened"], "fit": t.get("why"),
+                "tender": {k: t["tender"].get(k) for k in ("deadline", "url", "title", "scope", "notice_id", "checked_at")},
+                "evidence": {"quote": ev["claim"], "translation": ev.get("translation"), "url": ev["url"], "source": ev["source"],
+                             "published_at": ev["published_at"]} if ev else {"quote": None, "translation": None, "url": t["tender"]["url"],
+                                                                             "source": None, "published_at": None},
+                "organization_id": str(t["organization"]["id"]), "more": 0}
+        if key in seen:
+            seen[key]["more"] += 1
+            continue
+        seen[key] = item
+        items.append(item)
 
     held_back: set[str] = set()
     meta: dict[str, dict[str, Any]] = {}
-    for r in _signals(conn, p, days=days, q=q, rule=rule):
+    for r in _signals(conn, p, days=days, q=q):
         if region and target_region(r["country_code"]) != region:
             continue
         if r["stopped"]:
@@ -167,15 +204,14 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
             continue        # already listed as an open tender
         key = (r["organization_id"], r["rule_id"])
         if key in seen:
-            seen[key]["more"] += 1
+            seen[key]["more"] += 1      # older news of the same kind at the same company: one line, with a count
             continue
         item = {"id": r["signal_id"], "rule_id": r["rule_id"], "strength": int(r["strength"]), "demand_tier": r["demand_tier"],
                 "intent": _intent(r["rule_id"], r["demand_tier"], int(r["strength"])),
                 "event_id": r["event_id"], "event_type": r["event_type"], "summary": r["summary"],
-                "summary_en": r["summary_en"], "summary_pl": r["summary_pl"],
-                "happened": r["happened"], "first_seen": r["first_seen"], "fit": r["fit"], "tender": None,
+                "summary_en": r["summary_en"], "summary_pl": r["summary_pl"], "happened": r["happened"], "fit": r["fit"], "tender": None,
                 "evidence": {"quote": r["excerpt"], "translation": r["translation"], "url": r["url"], "source": r["source_name"], "published_at": r["published_at"]},
-                "organization_id": r["organization_id"], "more": 0, "questions": list(r["commercial_questions"] or [])[:2]}
+                "organization_id": r["organization_id"], "more": 0}
         seen[key] = item
         items.append(item)
 
@@ -184,41 +220,55 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
         if rows:
             meta["SRC-01"] = {"name": rows[0]["signal"], "group": rows[0]["grp"], "ordinal": rows[0]["ordinal"], "who_to_contact": rows[0]["who_to_contact"]}
 
-    companies = _companies(conn, p, sorted({i["organization_id"] for i in items}))
-    groups: dict[str, dict[str, Any]] = {}
+    # One entry per company, with every kind of signal it has.
+    orgs = _companies(conn, p, sorted({i["organization_id"] for i in items}))
+    by_org: dict[str, dict[str, Any]] = {}
     for item in items:
-        org = companies.get(item.pop("organization_id"))
+        org = orgs.get(item.pop("organization_id"))
         if not org:
             continue
-        item["organization"] = org
-        happened = item["happened"]
-        item["age_days"] = max(0, (now - happened).days) if isinstance(happened, datetime) else None
-        info = meta.get(item["rule_id"], {})
-        g = groups.setdefault(item["rule_id"], {
-            "rule_id": item["rule_id"], "name": info.get("name") or item["rule_id"], "group": info.get("group"), "strength": item["strength"],
-            "meaning": ANGLES.get(item["rule_id"], DEFAULT_ANGLE), "who_to_contact": info.get("who_to_contact"),
-            "ordinal": info.get("ordinal") or 999, "items": []})
-        g["items"].append(item)
+        item["age_days"] = max(0, (now - item["happened"]).days) if isinstance(item["happened"], datetime) else None
+        by_org.setdefault(org["id"], {"organization": org, "signals": []})["signals"].append(item)
+    companies: list[dict[str, Any]] = []
+    for c in by_org.values():
+        c["signals"].sort(key=lambda s: (_rank(s), -s["strength"], -_ts(s["happened"])))
+        c["strength"], c["strength_reason"] = _strength(c["signals"])
+        c["kinds"] = len({s["rule_id"] for s in c["signals"]})
+        c["latest"] = max((s["happened"] for s in c["signals"] if s["happened"]), default=None)
+        c["age_days"] = min((s["age_days"] for s in c["signals"] if s["age_days"] is not None), default=None)
+        companies.append(c)
 
-    out = []
-    for g in groups.values():
-        g["items"].sort(key=lambda i: (_rank(i), -(i["happened"].timestamp() if isinstance(i["happened"], datetime) else 0)))
-        g["rank"] = min(_rank(i) for i in g["items"])
-        g["companies"] = len({i["organization"]["id"] for i in g["items"]})
-        g["reachable"] = len({i["organization"]["id"] for i in g["items"] if i["organization"]["people_with_email"]})
-        g["latest"] = max((i["happened"] for i in g["items"] if i["happened"]), default=None)
-        out.append(g)
-    out.sort(key=lambda g: (g["rank"], -g["companies"], g["ordinal"]))
-    for g in out:
-        g.pop("ordinal", None)
-    all_items = [i for g in out for i in g["items"]]
-    orgs = {i["organization"]["id"] for i in all_items}
-    return {"days": days, "groups": out,
-            "totals": {"signals": len(all_items), "companies": len(orgs),
-                       "reachable": len({i["organization"]["id"] for i in all_items if i["organization"]["people_with_email"]}),
-                       "fresh": sum(1 for i in all_items if i["age_days"] is not None and i["age_days"] <= 14),
-                       "held_back": len(held_back - orgs)},
-            "high_intent_rules": list(HIGH_INTENT_RULES)}
+    # Every kind of signal in this view, with how many companies have it: the page's filter, before the kind is picked.
+    kinds: dict[str, dict[str, Any]] = {}
+    for c in companies:
+        for s in c["signals"]:
+            info = meta.get(s["rule_id"], {})
+            k = kinds.setdefault(s["rule_id"], {
+                "rule_id": s["rule_id"], "name": info.get("name") or s["rule_id"], "group": info.get("group"), "strength": s["strength"],
+                "meaning": ANGLES.get(s["rule_id"], DEFAULT_ANGLE), "who_to_contact": info.get("who_to_contact"),
+                "ordinal": info.get("ordinal") or 999, "companies": 0, "fresh": 0, "latest": None})
+            k["companies"] += 1
+            k["fresh"] += 1 if s["age_days"] is not None and s["age_days"] <= FRESH_DAYS else 0
+            k["latest"] = max(filter(None, (k["latest"], s["happened"])), default=None)
+            k["strength"] = max(k["strength"], s["strength"])
+    kind_list = sorted(kinds.values(), key=lambda k: (-k["companies"], -k["strength"], k["ordinal"]))
+    for k in kind_list:
+        k.pop("ordinal", None)
+    everything = {"companies": len(companies), "signals": sum(len(c["signals"]) for c in companies)}
+
+    if rule:
+        companies = [c for c in companies if any(s["rule_id"] == rule for s in c["signals"])]
+        for c in companies:      # the picked kind first, the rest of the company's signals after it
+            c["signals"].sort(key=lambda s: s["rule_id"] != rule)
+    companies.sort(key=_sort_key(sort))
+    signals = [s for c in companies for s in c["signals"]]
+    return {"days": days, "sort": sort, "rule": rule, "companies": companies, "kinds": kind_list, "all": everything,
+            "totals": {"companies": len(companies), "signals": len(signals),
+                       "reachable": sum(1 for c in companies if c["organization"]["people_with_email"]),
+                       "fresh": sum(1 for c in companies if c["age_days"] is not None and c["age_days"] <= FRESH_DAYS),
+                       "strong": sum(1 for c in companies if c["strength"] >= 3),
+                       "held_back": len(held_back - set(by_org))},
+            "fresh_days": FRESH_DAYS, "high_intent_rules": list(HIGH_INTENT_RULES)}
 
 
 def register_buying_signals(app: FastAPI) -> None:
@@ -226,6 +276,7 @@ def register_buying_signals(app: FastAPI) -> None:
     def list_buying_signals(request: Request, days: int = Query(90, ge=7, le=365),
                             region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
                             q: str = Query("", max_length=120), rule: str = Query("", pattern=r"^(|[A-Z]{3}-\d{2})$"),
+                            sort: str = Query("strength", pattern=f"^({'|'.join(SORTS)})$"),
                             p: Principal = Depends(require("accounts.read"))):
         with request.app.state.db.tx() as conn:
-            return buying_signals(conn, p, days=days, region=region, q=q, rule=rule)
+            return buying_signals(conn, p, days=days, region=region, q=q, rule=rule, sort=sort)

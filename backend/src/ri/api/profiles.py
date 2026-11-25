@@ -7,6 +7,7 @@ starting it needs `research.request`, one run at a time per subject, a short coo
 """
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Any, Literal
 
@@ -28,6 +29,27 @@ RELATIONSHIP = ("none", "prospect", "in_talks", "past_client", "client")
 ASSIGNABLE_ROLES = ("bdm", "sales_manager", "admin")
 SENIORITY_ORDER = {"Executive": 0, "C-level": 0, "VP": 1, "Director / Head": 2, "Head / Director": 2, "Manager": 3, "Manager / Lead": 3, "Specialist / Lead": 4}
 LIST_KEYS = ("seniority", "committee_role", "persona", "priority", "angle", "signal")
+# Where someone sits in the buying committee, for grouping people on the company page. Read from the lead list's committee role and persona,
+# the seniority and the job title; procurement first (a procurement director is not the budget holder), then the top of the organisation.
+COMMITTEE = ("decision", "technical", "procurement", "influencer")
+_PROC = re.compile(r"procure|purchas|sourcing|supplier|vendor|tprm|contracting|category manag", re.I)
+_TOP = re.compile(r"\b(chief|c[etiodfsx]o|ciso|founder|president|managing director|board|vorstand|prezes|vp|vice[- ]president|svp|evp|general manager)\b", re.I)
+_TECH = re.compile(r"engineer|technolog|technical|architect|develop|software|platform|delivery|\bit\b|data|\bai\b|cloud|devops|infrastructure|security|\bqa\b|test", re.I)
+
+
+def committee_group(title: str | None, seniority: str | None = None, persona: str | None = None, committee_role: str | None = None) -> str:
+    role, per, t = committee_role or "", persona or "", title or ""
+    if _PROC.search(role) or _PROC.search(per) or _PROC.search(t):
+        return "procurement"
+    if seniority in ("Executive", "C-level", "VP") or _TOP.search(t):
+        return "decision"
+    if re.search(r"influenc", role, re.I) and not re.search(r"sponsor", role, re.I):
+        return "influencer"
+    if _TECH.search(role) or _TECH.search(per) or _TECH.search(t):
+        return "technical"
+    return "influencer"
+
+
 ENGAGEMENT_LABEL = {"unsubscribed": "Unsubscribed", "bounced": "Bounced", "interested": "Interested", "replied": "Replied", "not_interested": "Not interested",
                     "clicked": "Clicked", "opened": "Opened", "sent": "Emailed", "pushed": "In a campaign", None: "Not contacted"}
 
@@ -202,15 +224,17 @@ def account_people(conn, oid: str) -> list[dict[str, Any]]:
         eng = engagement([*(r["enrol_statuses"] or []), *(ACTIVITY_STATUS.get(t) for t in (r["activity_types"] or []))])
         if r["enrol_statuses"] or r["activity_types"]:
             systems.add("lemlist")
+        seniority, persona = lead.get("seniority") or ((exa or {}).get("seniority")), lead.get("persona") or ((exa or {}).get("persona"))
         out.append({"id": str(r["id"]), "name": r["full_name"], "title": r["title"], "lane": r["buyer_lane"], "role_confirmed": r["role_status"] == "verified",
-                    "linkedin_url": r["linkedin_url"], "email": email_state(r["work_email"], r["email_verification_status"]),
+                    "linkedin_url": r["linkedin_url"], "email": email_state(r["work_email"], r["email_verification_status"]), "has_email": bool(r["work_email"]),
                     "suppressed": bool(r["suppressed"]), "suppression_reason": r["suppression_reason"] if r["suppressed"] else None,
-                    "lead_list": lead or None, "seniority": lead.get("seniority") or ((exa or {}).get("seniority")), "persona": lead.get("persona") or ((exa or {}).get("persona")),
+                    "lead_list": lead or None, "seniority": seniority, "persona": persona,
+                    "committee": committee_group(r["title"], seniority, persona, lead.get("committee_role")),
                     "sources": sorted(systems, key=lambda s: list(SYSTEM_LABEL).index(s) if s in SYSTEM_LABEL else 99),
                     "engagement": eng, "engagement_label": ENGAGEMENT_LABEL.get(eng, eng), "last_activity_at": r["last_activity_at"], "researched_at": r["researched_at"]})
     prio = {"P1": 0, "P2": 1, "P3": 2}
     out.sort(key=lambda x: (x["suppressed"], prio.get((x["lead_list"] or {}).get("priority", ""), 5), SENIORITY_ORDER.get(x["seniority"] or "", 6),
-                            {"verified": 0, "unverified": 1, "none": 2}[x["email"]], x["name"].casefold()))
+                            0 if x["has_email"] else 1, x["name"].casefold()))      # every address we hold is usable: having one is what counts
     return out
 
 
@@ -252,7 +276,8 @@ def register_profiles(app: FastAPI) -> None:
             if items:
                 audit(conn, actor=p.email, operation="pii_read", record_type="people_candidates", record_id=str(o["id"]), detail={"count": len(items)})
             ready = _setup(request, conn)["exa"]
-            return {"search": _run_row(s), "running": bool(s and s["status"] in ("queued", "running")), "items": [_run_row(i) for i in items],
+            return {"search": _run_row(s), "running": bool(s and s["status"] in ("queued", "running")),
+                    "items": [{**_run_row(i), "committee": committee_group(i["title"], i["seniority"], i["persona"])} for i in items],
                     "setup": {"ready": ready,
                               "note": None if ready else "Finding people with Exa is not set up in this environment. It needs EXA_API_KEY and RI_EXA_MONTHLY_CAP_USD on the worker."},
                     "can_run": p.can("research.request")}
@@ -323,11 +348,28 @@ def register_profiles(app: FastAPI) -> None:
             members = qa(conn, "SELECT sc.id, sc.name, sc.status, m.included, m.exclusion, m.status AS member_status FROM signal_campaign_members m "
                                "JOIN signal_campaigns sc ON sc.id=m.campaign_id WHERE m.person_id=%s ORDER BY sc.created_at DESC LIMIT 20", (pid,))
             research = _research_state(conn, "person_profiles", "person_id", pid, _setup(request, conn))
+            company, colleagues = None, []
+            if jobs:
+                oid = str(jobs[0]["org_id"])
+                o = q1(conn, "SELECT employees_estimate, employees_uncertain, list_priority, relationship FROM organizations WHERE id=%s", (oid,)) or {}
+                about = q1(conn, "SELECT content->'about'->>'text' AS about, finished_at FROM account_profiles WHERE organization_id=%s AND status='done' "
+                                 "ORDER BY created_at DESC LIMIT 1", (oid,))
+                from ..signals.seller import leading_signals
+                sig = leading_signals(conn, [oid]).get(oid)
+                company = {"id": oid, "about": about["about"] if about else None, "researched_at": about["finished_at"] if about else None,
+                           "employees": o.get("employees_estimate"), "employees_uncertain": bool(o.get("employees_uncertain")), "list_priority": o.get("list_priority"),
+                           "relationship": o.get("relationship"),
+                           "signal": {"rule_id": sig["rule_id"], "label": sig["label"], "summary": sig["summary"], "date": sig["happened_at"] or sig["published_at"],
+                                      "source_url": sig["source_url"]} if sig else None}
+                colleagues = [{k: x[k] for k in ("id", "name", "title", "committee", "has_email", "seniority", "suppressed")}
+                              for x in account_people(conn, oid) if x["id"] != pid][:12]
+            ll_lead = lead or {}
             eng = engagement([*(e["status"] for e in enrol), *(ACTIVITY_STATUS.get(a["type"]) for a in activity)])
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=pid, detail={"view": "profile"})
             return {
                 "person": {"id": pid, "name": pe["full_name"], "linkedin_url": pe["linkedin_url"], "email": email_state(pe["work_email"], pe["email_verification_status"]),
-                           "email_status_label": pe["email_verification_status"] if pe["work_email"] else None,
+                           "has_email": bool(pe["work_email"]),
+                           "committee": committee_group(jobs[0]["title"] if jobs else None, ll_lead.get("seniority"), ll_lead.get("persona"), ll_lead.get("committee_role")),
                            "suppressed": bool(pe["suppressed"]), "suppression_reason": pe["suppression_reason"] if pe["suppressed"] else None, "created_at": pe["created_at"]},
                 "employment": [{"title": j["title"], "lane": j["buyer_lane"], "role_confirmed": j["verification_status"] == "verified", "evidence_url": j["evidence_url"],
                                 "current": j["valid_to"] is None, "valid_from": j["valid_from"], "valid_to": j["valid_to"],
@@ -337,7 +379,7 @@ def register_profiles(app: FastAPI) -> None:
                 "outreach": {"engagement": eng, "engagement_label": ENGAGEMENT_LABEL.get(eng, eng), "activity": activity,
                              "enrolments": [{k: (str(x) if k.endswith("_id") and x else x) for k, x in e.items()} for e in enrol],
                              "campaigns": [dict(m, id=str(m["id"])) for m in members]},
-                "research": research, "can_research": p.can("research.request"),
+                "research": research, "can_research": p.can("research.request"), "company": company, "colleagues": colleagues,
             }
 
     @app.post("/api/people/{pid}/research")

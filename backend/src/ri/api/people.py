@@ -72,7 +72,9 @@ def _filter(rows, *, source: str, email: str, eng: str, region: str, signal: str
             continue
         if source and source not in r["sources"]:
             continue
-        if email and r["email"] != email:
+        if email == "any" and r["email"] == "none":            # every address we hold is usable; "any" means "has an email"
+            continue
+        if email and email != "any" and r["email"] != email:
             continue
         if eng == "not_contacted" and r["engagement"]:
             continue
@@ -100,7 +102,7 @@ def register_people(app: FastAPI) -> None:
 
     @app.get("/api/people")
     def people(request: Request, q: str = Query("", max_length=120), source: str = Query("", pattern="^(|sheets|apollo|pipedrive|lemlist|manual|exa)$"),
-               email: str = Query("", pattern="^(|verified|unverified|none)$"),
+               email: str = Query("", pattern="^(|any|verified|unverified|none)$"),
                engagement_: str = Query("", alias="engagement", pattern="^(|not_contacted|pushed|sent|opened|clicked|replied|interested|not_interested|bounced|unsubscribed)$"),
                region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|us|other|unknown)$"), signal: str = Query("", pattern="^(|yes|no)$"),
                rule: str = Query("", max_length=8), owner: str = Query("", pattern="^(|mine|unowned)$"), suppressed: bool = False,
@@ -123,6 +125,7 @@ def register_people(app: FastAPI) -> None:
             items = filtered[(page - 1) * size: page * size]
             counts = {"total": len(rows), "with_signal": sum(1 for r in rows if r["signal"] and not r["suppressed"]),
                       "verified_email": sum(1 for r in rows if r["email"] == "verified" and not r["suppressed"]),
+                      "with_email": sum(1 for r in rows if r["email"] != "none" and not r["suppressed"]),
                       "by_source": {k: sum(1 for r in rows if k in r["sources"]) for k in SYSTEM_LABEL},
                       "engaged": sum(1 for r in rows if r["engagement"] in ("replied", "interested")), "suppressed": sum(1 for r in rows if r["suppressed"])}
             audit(conn, actor=p.email, operation="pii_read", record_type="people_list", record_id=None, detail={"count": len(items), "q": q[:60]})
