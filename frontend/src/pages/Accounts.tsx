@@ -77,7 +77,7 @@ const TOGGLES: [string, string, string, string][] = [
 ];
 const ORIGIN: Record<string, string> = { added: "Added by the team", discovered: "Found by research" };
 const PRIORITY = /^P[123]$/;
-const MISSING: Record<string, string> = { ownership: "Owned by", employees: "Headcount", country: "Country", sector: "Sector", website: "Website" };
+const MISSING: Record<string, string> = { ownership: "Who owns it", employees: "Headcount", country: "Country", sector: "Sector", website: "Website" };
 const WHY_NOT: Record<string, string> = {
   list_out_of_scope: "Lead list: out of scope",
   state_owned: "State-owned",
@@ -296,7 +296,7 @@ function CompanyDirectory({ view, research, params, update, counts, setCounts }:
       <div className="acc-tools-panel" role="search" aria-label={tr("Filter companies")}>
         <div className="acc-bar">
           <label className="acc-ctl acc-q">{Ico.search}<span className="sr">{tr("Search companies")}</span>
-            <input type="search" maxLength={120} placeholder={tr("Search by company, website, sector or signal")} value={q} onChange={(e) => update({ q: e.target.value })} />
+            <input type="search" maxLength={120} placeholder={tr("Search company, website or signal")} value={q} onChange={(e) => update({ q: e.target.value })} />
           </label>
           <label className="acc-ctl">{Ico.globe}<span className="sr">{tr("Region")}</span>
             <select value={region} onChange={(e) => update({ region: e.target.value })}>
