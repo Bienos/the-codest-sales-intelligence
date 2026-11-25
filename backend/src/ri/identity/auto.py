@@ -159,7 +159,7 @@ def deterministic(conn: Conn, review: dict[str, Any], cands: list[dict[str, Any]
                 return Verdict("link", c["id"], 0.9, f"The same name once legal forms are removed ({c['display_name']}); the country does not contradict it.", "same_core_name")
 
     def obviously_other(c: dict[str, Any]) -> bool:
-        if country and c["country_code"] and country != c["country_code"] and domain and c["canonical_domain"] and _brand(domain) != _brand(c["canonical_domain"]):
+        if country and c["country_code"] and country != c["country_code"] and domain and c["canonical_domain"] and domain != c["canonical_domain"]:
             return True
         return all(_regional_pair(a, n) for a in alts for n in _names(c))
 

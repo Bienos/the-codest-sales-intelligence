@@ -107,7 +107,7 @@ export const COMMITTEE_ICON: Record<string, typeof Ic.mail> = { decision: Ic.sta
 
 /** Every address we hold is usable: we show only whether we have one. */
 export function EmailMark({ has, onNavy = false }: { has: boolean; onNavy?: boolean }) {
-  return <span className={`mail${has ? " on" : ""}${onNavy ? " nav" : ""}`}><Ic.mail />{has ? tr("Email ✓") : tr("No email")}</span>;
+  return <span className={`ac-mail${has ? " on" : ""}${onNavy ? " on-navy" : ""}`}><Ic.mail />{has ? tr("Email ✓") : tr("No email")}</span>;
 }
 
 /* ------------------------------------------------------------------ dates as calendar tiles, on a timeline */
@@ -158,6 +158,7 @@ export function ResearchState({ r, kind, name, canRun, start, busy, err }: { r: 
     <div className="rs-main">
       <h2><span className="ac-pulse" />{tr("Researching {} with Exa", name)}</h2>
       <p>{tr("Started {}. It takes about a minute; this page fills in by itself.", ago(last?.created_at))}</p>
+      <div className="rs-bar" aria-hidden="true"><i /></div>
     </div>
     <ol className="rs-steps run">{steps.map(([icon, label], i) => { const Icon = Ic[icon]; return <li key={label} style={{ animationDelay: `${i * 0.6}s` }}><Icon />{tr(label)}</li>; })}</ol>
   </section>;
@@ -251,8 +252,8 @@ function FitBoard({ points, fromRecords }: { points: any[]; fromRecords: boolean
     <ul className="fit-tiles">{sortFit(points).map((p, i) => {
       const Icon = fitIcon(p.label), Glyph = FIT_GLYPH[p.fit] ?? Ic.dash;
       return <li key={i} className={`fit-tile ${p.fit}`}>
-        <div className="fit-tile-top"><span className="fit-ic"><Icon /></span><b>{tr(p.label)}</b>
-          <span className={`fit-verdict ${p.fit}`}><Glyph />{tr(FIT_WORD[p.fit] ?? "Neutral")}</span></div>
+        <div className="fit-tile-top"><span className="fit-ic"><Icon /></span>
+          <span className="fit-name"><b>{tr(p.label)}</b><span className={`fit-verdict ${p.fit}`}><Glyph />{tr(FIT_WORD[p.fit] ?? "Neutral")}</span></span></div>
         <p>{p.value}</p>
         <Cite c={p} />
       </li>;
@@ -332,7 +333,7 @@ function OwnerControl({ rel, orgId, onChange }: { rel: any; orgId: string; onCha
 export function RelBadge({ rel, onNavy = false }: { rel: any; onNavy?: boolean }) {
   if (!rel) return null;
   const s = rel.recorded?.status;
-  return <span className={`rel-badge ${s ?? "unset"}${onNavy ? " nav" : ""}`} title={s ? undefined : tr("Our data suggests: {}.", tr(REL_LABEL[rel.suggested]))}>
+  return <span className={`rel-badge ${s ?? "unset"}${onNavy ? " on-navy" : ""}`} title={s ? undefined : tr("Our data suggests: {}.", tr(REL_LABEL[rel.suggested]))}>
     <i aria-hidden="true" />{s ? tr(REL_LABEL[s]) : tr("Relationship not recorded")}</span>;
 }
 
@@ -435,26 +436,26 @@ function fitPoints(a: any, lp: Record<string, string>, c: any): { points: any[];
 /** The reason to call now: the strongest buying signal next to our best angle. */
 function Opportunity({ d, help, me, goto }: { d: any; help?: any[]; me: { permissions: string[] }; goto: (t: Tab, s?: string) => void }) {
   const s = d.buying_signal, h = help?.[0];
-  if (!s && !h) return <section className="opp quiet" aria-label={tr("Why talk to them now")}>
+  if (!s && !h) return <section className="why-now is-quiet" aria-label={tr("Why talk to them now")}>
     <p className="m-0"><Ic.target /> {tr("No live buying signal yet. “Check for news” reads their pages and searches the web; research with Exa suggests angles.")}</p>
   </section>;
   const [label, Icon] = SERVICE[h ? serviceOf(h) : "team_extension"];
-  return <section className="opp" aria-labelledby="opp-h">
+  return <section className="why-now" aria-labelledby="opp-h">
     <h2 id="opp-h"><Ic.target />{tr("Why talk to them now")}</h2>
-    <div className={`opp-cols${s && h ? " two" : ""}`}>
-      {s && <div className="opp-sig">
+    <div className={`wn-cols${s && h ? " two" : ""}`}>
+      {s && <div className="wn-sig">
         <h3>{tr("Strongest buying signal")}</h3>
         <SignalSummary signal={s} />
         {s.commercial_questions?.[0] && <p className="small mt-2 mb-0"><b>{tr("Qualify next:")}</b> {s.commercial_questions[0]}</p>}
         {d.score && !d.score.stopped && <p className="ac-note mt-2 mb-0">{tr("Signal score {} ({}) from {} signals: {}.", d.score.score, tr(BAND[d.score.band]?.[1] ?? d.score.band), d.score.signal_count, d.score.groups.map(groupName).join(", "))}</p>}
         {d.score?.stopped && <p className="small mt-2 mb-0">{tr("On hold: something we found says not to pursue this account now.")}</p>}
-        <p className="opp-links"><button type="button" className="linkish" onClick={() => goto("activity", "signals")}>{tr("All signals, findings and tenders")}</button>
+        <p className="wn-links"><button type="button" className="linkish" onClick={() => goto("activity", "signals")}>{tr("All signals, findings and tenders")}</button>
           {s.rule_id && me.permissions.includes("draft.create") && <Link to={`/campaigns/new?rules=${s.rule_id}`}>{tr("Start a campaign to every company with this signal")}</Link>}</p>
       </div>}
-      {h && <div className="opp-help">
+      {h && <div className="wn-help">
         <h3>{tr("Our best angle")}</h3>
         <span className="svc-tag"><Icon />{tr(label)}</span>
-        <p className="opp-angle">{h.angle}</p>
+        <p className="wn-angle">{h.angle}</p>
         {h.why && <p className="small">{h.why}</p>}
         {me.permissions.includes("draft.create") && <button type="button" className="primary" onClick={() => goto("outreach")}>{tr("Write outreach")}</button>}
       </div>}
@@ -464,7 +465,7 @@ function Opportunity({ d, help, me, goto }: { d: any; help?: any[]; me: { permis
 
 /** Who we know in each part of the buying committee: a filled square per group with people, a dashed one for a gap. */
 function Coverage({ people }: { people: any[] }) {
-  return <ul className="cov" aria-label={tr("Buying committee coverage")}>{COMMITTEE_ORDER.map((k) => {
+  return <ul className="ac-cov" aria-label={tr("Buying committee coverage")}>{COMMITTEE_ORDER.map((k) => {
     const n = people.filter((p) => group(p.committee) === k && !p.suppressed).length;
     const Icon = COMMITTEE_ICON[k];
     return <li key={k} className={n ? "on" : "gap"} style={{ ["--g" as string]: COMMITTEE[k].color }} title={n ? tr("{}: {}", tr(COMMITTEE[k].label), n) : tr("No one in {} yet", tr(COMMITTEE[k].label))}>
@@ -535,7 +536,7 @@ function Overview({ d, research, rel, orgId, me, canRun, startResearch, research
       <aside className="ac-rail" aria-label={tr("People, relationship and research")}>
         <KeyPeople people={people} goto={goto} canSee={me.permissions.includes("contacts.read")} />
         <RelationshipPanel rel={rel} orgId={orgId} onSaved={reloadRel} />
-        <ResearchPanel r={research} canRun={canRun} start={startResearch} busy={researchBusy} err={researchErr} />
+        <ResearchPanel r={research} canRun={false} start={startResearch} busy={researchBusy} err={researchErr} />
       </aside>
     </div>
   </>;
@@ -653,7 +654,7 @@ function PeopleTab({ orgId, company, me, people, err, reload }: { orgId: string;
           const Icon = COMMITTEE_ICON[k];
           return <section key={k} className="pp-lane" style={{ ["--g" as string]: COMMITTEE[k].color }} aria-labelledby={`lane-${k}`}>
             <header className="pp-lane-head"><span className="pp-lane-ic" aria-hidden="true"><Icon /></span>
-              <div><h3 id={`lane-${k}`}>{tr(COMMITTEE[k].label)} <span className="n">{list.length}</span></h3><p>{tr(COMMITTEE[k].hint)}</p></div></header>
+              <div><h3 id={`lane-${k}`}>{tr(COMMITTEE[k].label)} <span className="pp-n">{list.length}</span></h3><p>{tr(COMMITTEE[k].hint)}</p></div></header>
             <ul className="pp-grid">{list.map((p) => <PersonCard key={p.id} p={p} />)}</ul>
           </section>;
         })}</div>}
@@ -928,11 +929,11 @@ export function Account({ me }: { me: { permissions: string[] } }) {
             <FitCells points={fit.points} />
             <span><b>{tr("{} of {} fit points in our favour", good, fit.points.length)}</b><small>{fit.fromRecords ? tr("Judged from our records") : tr("From Exa research")}</small></span></button>}
           {canPeople && <button type="button" className="glance" onClick={() => goto("people")}>
-            {live.length > 0 ? <span className="stack" aria-hidden="true">{live.slice(0, 5).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" />)}{live.length > 5 && <span className="mono mono-sm more">+{live.length - 5}</span>}</span>
+            {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 5).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" />)}{live.length > 5 && <span className="mono mono-sm more">+{live.length - 5}</span>}</span>
               : <span className="glance-ic" aria-hidden="true"><Ic.people /></span>}
             <span><b>{peopleCount ? tr("{} people", number(peopleCount)) : tr("No people yet")}</b><small>{peopleCount ? tr("{} decision makers", deciders) : tr("Find decision makers with Exa")}</small></span></button>}
           {sig && <button type="button" className="glance" onClick={() => jump("opp-h")}>
-            <span className="glance-ic sig" aria-hidden="true"><Ic.target /></span>
+            <span className="glance-ic is-sig" aria-hidden="true"><Ic.target /></span>
             <span><b>{sig.rule_id && SHORT[sig.rule_id] ? tr(SHORT[sig.rule_id]) : sig.label}</b><small>{tr("Live buying signal, {}", fmtDate(sig.happened_at ?? sig.published_at))}</small></span></button>}
         </div>
       </header>

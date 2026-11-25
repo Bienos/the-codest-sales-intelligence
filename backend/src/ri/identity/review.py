@@ -52,6 +52,10 @@ def _contract_for(conn: Conn, st: dict[str, Any]):
     return ct, list(snap["headers"])
 
 
+def _aliases(conn: Conn, org_id: str) -> set[str]:
+    return {r["alias_norm"] for r in qa(conn, "SELECT alias_norm FROM organization_aliases WHERE organization_id=%s", (org_id,))}
+
+
 def reapply_row(conn: Conn, link_id: str) -> dict[str, Any]:
     """Reconcile the latest staged copy of this row again, now that it has a company. Never raises: the decision stands either way."""
     from ..sheets.reconcile import Counters, reconcile_staged_row
@@ -65,16 +69,14 @@ def reapply_row(conn: Conn, link_id: str) -> dict[str, Any]:
     ct, headers = _contract_for(conn, st)
     if ct is None:
         return {"reapplied": False, "why": "the tab's layout is not known"}
-    before = {r["alias_norm"] for r in qa(conn, "SELECT alias_norm FROM organization_aliases WHERE organization_id=%s", (link["organization_id"],))}
     c = Counters()
     try:
         with conn.transaction():                  # savepoint: a row that cannot be applied leaves the decision itself intact
-            conn.execute("UPDATE account_source_links SET imported_hash=NULL WHERE id=%s", (link_id,))   # otherwise the row reads as unchanged
+            conn.execute("UPDATE account_source_links SET imported_hash='' WHERE id=%s", (link_id,))   # otherwise the row reads as unchanged
             reconcile_staged_row(conn, ct, st, headers, c)
     except Exception as exc:  # noqa: BLE001
         return {"reapplied": False, "why": f"{type(exc).__name__}: {exc}"[:200]}
-    after = {r["alias_norm"] for r in qa(conn, "SELECT alias_norm FROM organization_aliases WHERE organization_id=%s", (link["organization_id"],))}
-    return {"reapplied": True, "tab": ct.title, "aliases_added": sorted(after - before), "contacts_added": c.contacts, "conflicts": c.conflicts}
+    return {"reapplied": True, "tab": ct.title, "contacts_added": c.contacts, "conflicts": c.conflicts}
 
 
 def apply_decision(conn: Conn, rid: str, decision: str, *, actor: str, note: str | None = None, organization_id: str | None = None,
@@ -108,9 +110,19 @@ def apply_decision(conn: Conn, rid: str, decision: str, *, actor: str, note: str
         applied["org_created"] = org_id
     else:
         org_id = None
-    if org_id and link_id:
-        conn.execute("UPDATE account_source_links SET organization_id=%s WHERE id=%s", (org_id, link_id))
-        applied.update(reapply_row(conn, link_id))
+    if org_id:
+        before = _aliases(conn, org_id)
+        if link_id:
+            conn.execute("UPDATE account_source_links SET organization_id=%s WHERE id=%s", (org_id, link_id))
+            applied.update(reapply_row(conn, link_id))
+        # the decision teaches the resolver: this spelling means this company, so the next import links it by itself
+        from ..sheets.parsers import normalize_name, split_alternatives
+        for alt in split_alternatives(r["raw_company_name"]) or [r["raw_company_name"]]:
+            n = normalize_name(alt)
+            if n:
+                conn.execute("INSERT INTO organization_aliases(organization_id, alias, alias_norm, source_ref) VALUES (%s,%s,%s,'identity_review') ON CONFLICT DO NOTHING",
+                             (org_id, alt, n))
+        applied["aliases_added"] = sorted(_aliases(conn, org_id) - before)
     status = STATUS[decision]
     ev = dict(evidence or {})
     ev["applied"] = applied
@@ -150,6 +162,7 @@ def undo_decision(conn: Conn, rid: str, *, actor: str, note: str | None = None) 
     if org and applied.get("aliases_added"):
         # only the spellings this decision added (computed when it was applied); spellings the company already had stay
         conn.execute("DELETE FROM organization_aliases WHERE organization_id=%s AND alias_norm = ANY(%s)", (org, applied["aliases_added"]))
+    conn.execute("UPDATE identity_reviews SET resolved_org_id=NULL WHERE id=%s", (r["id"],))      # the review no longer points at the company
     if org and applied.get("org_created") == org:
         done["company_removed"] = _drop_created_org(conn, org)
     conn.execute("UPDATE identity_reviews SET status='open', resolved_org_id=NULL, resolved_at=NULL, reviewer=NULL, reviewer_note=NULL, resolved_by=NULL, "

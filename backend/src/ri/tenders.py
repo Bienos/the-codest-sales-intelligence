@@ -107,8 +107,10 @@ def worth(r: dict[str, Any], detail: dict[str, Any], summary: dict[str, Any] | N
     """The facts that decide whether a bid is worth it, from the official fields first and the summary where the notice gives no field."""
     s = summary or {}
     out: dict[str, Any] = {}
-    for key in ("lots", "duration", "start", "end", "renewals", "framework", "languages", "place", "award", "recurring", "contact", "legal_type", "lot_titles"):
-        v = detail.get("lot_count" if key == "lots" else key)
+    for key, field in (("lots", "lot_count"), ("lot_titles", "lots"), ("duration", "duration"), ("start", "start"), ("end", "end"), ("renewals", "renewals"),
+                       ("framework", "framework"), ("languages", "languages"), ("place", "place"), ("award", "award"), ("recurring", "recurring"),
+                       ("contact", "contact"), ("legal_type", "legal_type")):
+        v = detail.get(field)
         if v not in (None, "", [], {}):
             out[key] = v
     proc = detail.get("procedure") or r.get("procedure")

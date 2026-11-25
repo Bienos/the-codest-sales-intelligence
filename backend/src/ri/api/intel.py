@@ -419,18 +419,21 @@ def register_feed(app: FastAPI) -> None:
                 fit: str = Query("", pattern="^(|strong|possible)$"),
                 work_type: str = Query("", pattern="^(|software_development|maintenance_support|consulting|licences_products|infrastructure_hardware|data_ai|testing_qa|other)$"),
                 max_days: int = Query(0, ge=0, le=365), min_value: float = Query(0, ge=0, le=1e12), sort: str = Query("deadline", pattern="^(deadline|fit|value|newest)$"),
+                sector: str = Query("", pattern="^(|icp|finance|banking|financial_services|other_icp|not_icp)$"),
                 p: Principal = Depends(principal_dep)):
-        """Open tenders for software work from every official source, whoever the buyer is (public bodies included), soonest deadline first.
-        `region=core` keeps our markets (UK, DACH, Nordics, Poland); no region means every region. Each tender carries its plain English and
-        Polish summary once the summary job has written it; `q` also searches the summaries. `fit`, `work_type`, `max_days`, `min_value` and
-        `sort` are explained in ri.tenders.open_tenders."""
+        """Open tenders for software work from every official source, banks first, then other financial services, the other ICP sectors and
+        everyone else; soonest deadline first within each. `sector=icp` keeps our ICP sectors (the app's default view); no sector means every
+        buyer. `region=core` keeps our markets (UK, DACH, Nordics, Poland); no region means every region. Each ICP tender carries its plain
+        English and Polish summary once the summary job has written it; `q` also searches the summaries. Values are also given in euros
+        (`value_eur`, fixed rates in `eur_rates`); `min_value` is in euros. `fit`, `work_type`, `max_days`, `min_value`, `sort` and `sector`
+        are explained in ri.tenders.open_tenders."""
         from ..tender_summary import count_pending, job_waiting
         from ..tenders import TENDER_SOURCES, open_tenders
         if not (p.can("today.read") or p.can("explorer.read")):
             raise HTTPException(403, "missing permission today.read")
         with tx(request) as conn:
             out = open_tenders(conn, p, q=q, region=region, buyer=buyer, min_days=min_days, limit=limit, offset=(page - 1) * limit,
-                               fit=fit, work_type=work_type, max_days=max_days, min_value=min_value, sort=sort)
+                               fit=fit, work_type=work_type, max_days=max_days, min_value=min_value, sort=sort, sector=sector)
             summaries = {"waiting": count_pending(conn), "running": job_waiting(conn)}
             sources = qa(conn, "SELECT s.source_id, s.display_name, s.status, h.last_success_at FROM sources s LEFT JOIN source_health h USING (source_id) "
                                "WHERE s.source_family='procurement' AND s.collection_method='official_api' AND s.source_id = ANY(%s) ORDER BY s.display_name",
@@ -446,10 +449,12 @@ def register_feed(app: FastAPI) -> None:
         """Write the plain-language summaries for waiting tenders now instead of waiting for the two-hourly run. The run is capped and
         budget-gated like the scheduled one; while a run is waiting or running nothing new is queued, and repeated clicks within the same
         five minutes queue nothing new."""
+        from ..tender_sector import classify_open
         from ..tender_summary import RUN_CAP, WAITING_JOB, count_pending
         now = datetime.now(timezone.utc)
         window = f"{now:%Y%m%d%H}{now.minute // 5:02d}"
         with tx(request) as conn:
+            classify_open(conn)             # only ICP notices (and the ones the rules cannot tell) wait for a summary
             waiting = count_pending(conn)
             running = q1(conn, "SELECT id FROM jobs WHERE kind='tender_summaries' AND status = ANY(%s) ORDER BY created_at LIMIT 1", (list(WAITING_JOB),))
             if running:

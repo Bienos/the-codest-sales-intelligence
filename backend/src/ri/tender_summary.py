@@ -212,9 +212,9 @@ def ted_detail(n: dict[str, Any]) -> dict[str, Any]:
                                      ("lots_total", "estimated-value-lot", "estimated-value-cur-lot", True),
                                      ("framework_estimate", "framework-estimated-value", "framework-estimated-value-cur", False),
                                      ("framework_max", "framework-maximum-value-lot", "framework-maximum-value-cur-lot", True)):
-        nums = [_num(x) for x in (n.get(vkey) if isinstance(n.get(vkey), list) else [n.get(vkey)])]
-        nums = [x for x in nums if x is not None and x >= 100]
-        value = sum(nums) if total else (nums[0] if nums else 0.0)
+        raw = n.get(vkey)
+        found = [x for x in (_num(y) for y in (raw if isinstance(raw, list) else [raw])) if x is not None and x >= 100]
+        value = sum(found) if total else (found[0] if found else 0.0)
         if value >= 100:
             d["value"], d["value_basis"] = value, basis
             cur = first(n.get(ckey))
@@ -278,7 +278,7 @@ def ted_facts(n: dict[str, Any]) -> dict[str, Any]:
     if types:
         shares: dict[str, float] = {}
         if nums and len(nums) == len(types) and all(x is not None for x in nums) and (not kinds or all(k in _WEIGHTS for k in kinds)):
-            for t, x in zip(types, nums):
+            for t, x in zip(types, nums, strict=True):
                 shares[t] = shares.get(t, 0.0) + float(x or 0)
         whole = sum(shares.values())
         if whole > 0:
@@ -405,7 +405,8 @@ def clean_summary(g: dict[str, Any]) -> dict[str, Any] | None:
     wt = wt if wt in WORK_TYPES else _WORK_ALIASES.get(wt, "other")
     out: dict[str, Any] = {"title_en": title_en, "summary_en": summary_en, "wants": _lines(g.get("wants"), 5, 160), "work_type": wt,
                            "technologies": _lines(g.get("technologies"), 8, 40), "requirements": _lines(g.get("requirements"), 6, 160)}
-    fit = g.get("fit") if isinstance(g.get("fit"), dict) else {}
+    raw_fit = g.get("fit")
+    fit: dict[str, Any] = raw_fit if isinstance(raw_fit, dict) else {}
     level = str(fit.get("level") or "").strip().lower()
     if level in FIT_LEVELS:
         out["fit"] = {"level": level, "reason": _line(fit.get("reason"), 300)}
@@ -460,7 +461,8 @@ def clean_facts(g: dict[str, Any]) -> dict[str, Any]:
     for key in ("framework", "renewal"):
         if isinstance(g.get(key), bool):
             out[key] = g[key]
-    langs = [str(x).strip().lower() for x in (g.get("languages") if isinstance(g.get("languages"), list) else [])]
+    raw = g.get("languages")
+    langs = [str(x).strip().lower() for x in (raw if isinstance(raw, list) else [])]
     langs = list(dict.fromkeys(x for x in langs if re.fullmatch(r"[a-z]{2}", x)))[:6]
     if langs:
         out["languages"] = langs

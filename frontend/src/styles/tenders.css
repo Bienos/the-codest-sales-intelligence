@@ -1,5 +1,8 @@
-/* Open tenders: cards to scan, a compact list, and the filter panel. Brand tokens only (design-system/tokens.css).
-   The one loud element is the deadline rail on each card (navy, pink within a week): the deadline decides whether a bid is possible. */
+/* Open tenders: our ICP first, in sections by who is buying (banks, financial services, other ICP sectors, everyone else), cards to scan,
+   a compact list, and the filter panel. Brand tokens only (design-system/tokens.css).
+   The one loud element is the deadline rail on each card (navy, pink within a week): the deadline decides whether a bid is possible.
+   The rule over each section carries the sector's colour (navy banks, purple financial services, line grey for the rest), and the buyer
+   tag on each card repeats it, so a card read on its own still says which section it belongs to. */
 
 /* ---------- header and filters ---------- */
 .tn-head-actions { display: grid; justify-items: end; gap: var(--space-2); text-align: right; }
@@ -7,11 +10,19 @@
 .tn-search { display: flex; gap: var(--space-3); align-items: stretch; }
 .tn-search input { flex: 1 1 auto; min-width: 0; font-size: var(--fs-md); }
 .tn-search button.primary { margin-bottom: var(--offset); }
-.tn-selects { display: grid; grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+.tn-selects { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.6fr) repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
 .tn-selects label { display: grid; gap: 4px; min-width: 0; font: 600 var(--fs-xs)/1.3 var(--font-body); color: var(--muted); }
 .tn-selects select { width: 100%; min-width: 0; }
 .tn-filter-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2) var(--space-4); }
 .tn-filter-foot .check { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+
+/* ---------- what the list holds: our ICP, and the rest one click away ---------- */
+.tn-scope-bar { display: grid; gap: 6px; margin: 0 0 var(--space-4); max-width: 88ch; }
+.tn-scope-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin: 0; }
+.tn-scope-head b { font: 800 var(--fs-xl)/1.25 var(--font-head); color: var(--navy); letter-spacing: -.01em; }
+.tn-scope-head span { font-size: var(--fs-md); color: var(--muted); }
+.tn-scope-why { margin: 0; max-width: 78ch; font-size: var(--fs-sm); color: var(--body); }
+.tn-scope-bar button.linkish { justify-self: start; }
 
 /* ---------- result bar and layout switch ---------- */
 .tn-resultbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); }
@@ -25,6 +36,16 @@
 .tn-view button + button { border-left-width: 0; }
 .tn-view button[aria-pressed="true"] { background: var(--navy); color: var(--white); }
 
+/* ---------- sections by sector ---------- */
+.tn-section { margin: 0 0 var(--space-6); }
+.tn-section-head { display: grid; gap: 2px; padding: 10px 0 var(--space-3); border-top: 4px solid var(--line); }
+.tn-section-banking .tn-section-head { border-top-color: var(--navy); }
+.tn-section-financial_services .tn-section-head { border-top-color: var(--purple); }
+.tn-section-not_icp .tn-section-head { border-top-color: var(--off); }
+.tn-section-head h2 { display: flex; align-items: baseline; gap: 10px; margin: 0; font: 800 var(--fs-xl)/1.2 var(--font-head); color: var(--navy); text-transform: none; letter-spacing: 0; }
+.tn-section-count { font: 600 var(--fs-md)/1 var(--font-body); color: var(--muted); }
+.tn-section-head p { margin: 0; font-size: var(--fs-sm); color: var(--muted); }
+
 /* ---------- cards ---------- */
 .tn-cards, .tn-list { list-style: none; margin: 0; padding: 0; }
 .tn-cards { display: grid; gap: var(--space-3); }
@@ -37,24 +58,35 @@
 
 .tn-body { padding: var(--space-4) var(--space-5) var(--space-3); min-width: 0; }
 .tn-title { margin: 0 0 6px; font: 800 var(--fs-lg)/1.3 var(--font-head); color: var(--navy); text-transform: none; letter-spacing: 0; overflow-wrap: anywhere; }
-.tn-buyer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
+.tn-buyer { margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
+.tn-buyer p { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0; }
+.tn-buyer p.tn-note { display: block; margin-top: 2px; color: var(--muted); }
 .tn-buyer-name { font-weight: 600; color: var(--navy); overflow-wrap: anywhere; }
 .tn-buyer-name a { color: var(--navy); }
 .tn-country { color: var(--muted); }
-.tn-tag { display: inline-block; padding: 2px 7px; font: 700 var(--fs-xs)/1.3 var(--font-body); background: var(--tint-2); border: 1px solid var(--purple); color: var(--navy); }
+.tn-tag { display: inline-block; padding: 2px 7px; font: 700 var(--fs-xs)/1.3 var(--font-body); background: var(--white); border: 1px solid var(--line); color: var(--navy); }
+.tn-tag-banking { background: var(--navy); border-color: var(--navy); color: var(--white); }
+.tn-tag-financial_services { background: var(--tint-2); border-color: var(--purple); }
+.tn-tag-not_icp { border-style: dashed; color: var(--muted); }
 .tn-summary { margin: 0 0 var(--space-3); max-width: 72ch; color: var(--body); }
 
-.tn-wants { max-width: 72ch; margin: 0 0 var(--space-3); padding: 10px 14px 11px; background: var(--tint-2); border-left: 3px solid var(--purple); }
-.tn-wants h4 { margin: 0 0 4px; font: 700 var(--fs-sm)/1.3 var(--font-body); color: var(--navy); text-transform: none; letter-spacing: 0; }
-.tn-wants ul, .tn-row-more ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: var(--fs-md); }
+/* "Is it worth it?": what they want, then the facts that decide a bid, in one tinted block */
+.tn-worth { max-width: 80ch; margin: 0 0 var(--space-3); padding: 10px 14px 12px; background: var(--tint-2); border-left: 3px solid var(--purple); }
+.tn-worth h4 { margin: 0 0 6px; font: 700 var(--fs-sm)/1.3 var(--font-body); color: var(--navy); text-transform: none; letter-spacing: 0; }
+.tn-wants { margin: 0 0 var(--space-2); }
+.tn-wk, .tn-facts dt { display: block; font: 600 var(--fs-xs)/1.3 var(--font-body); color: var(--muted); }
+.tn-wants ul, .tn-row-more ul { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 3px; font-size: var(--fs-md); }
 .tn-wants li, .tn-row-more li { position: relative; padding-left: 16px; }
 .tn-wants li::before, .tn-row-more li::before { content: ""; position: absolute; left: 0; top: .6em; width: 6px; height: 6px; background: var(--navy); }
+.tn-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-5); margin: 0; padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.tn-facts > div { min-width: 0; }
+.tn-facts dd { margin: 1px 0 0; font-size: var(--fs-sm); color: var(--navy); overflow-wrap: anywhere; }
+.tn-facts dd a { color: var(--navy); }
+.tn-facts .tn-sub { display: block; color: var(--body); font-size: var(--fs-xs); }
 
 .tn-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 var(--space-3); padding: 0; list-style: none; }
 .tn-chip { padding: 4px 8px; font: 600 var(--fs-xs)/1.25 var(--font-body); color: var(--navy); background: var(--tint-1); border: 1px solid var(--line); overflow-wrap: anywhere; }
 .tn-chip-work { background: var(--white); border-color: var(--navy); }
-.tn-req { max-width: 72ch; margin: 0 0 var(--space-3); font-size: var(--fs-sm); }
-.tn-req b { color: var(--navy); margin-right: 4px; }
 .tn-category { margin: 0 0 6px; font-size: var(--fs-sm); color: var(--muted); }
 .tn-pending { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 var(--space-3); font-size: var(--fs-sm); color: var(--muted); }
 .tn-pending::before { content: ""; flex: none; width: 8px; height: 8px; border: 2px solid var(--purple); }
@@ -74,7 +106,11 @@ a.tn-official:focus-visible, .tn-row-title:focus-visible { outline: 3px solid va
 .tn-side > div { display: grid; gap: 3px; min-width: 0; }
 .tn-k { display: inline-flex; align-items: center; gap: 8px; font: 600 var(--fs-xs)/1.3 var(--font-body); color: var(--muted); }
 .tn-v { color: var(--navy); font-weight: 600; overflow-wrap: anywhere; }
-.tn-money { font: 800 var(--fs-lg)/1.2 var(--font-head); }
+.tn-value { display: grid; gap: 2px; }
+.tn-money { font: 800 var(--fs-xl)/1.15 var(--font-head); color: var(--navy); }
+.tn-value-own { display: grid; font-size: var(--fs-xs); color: var(--muted); }
+.tn-value-own span::first-letter { text-transform: uppercase; }
+.tn-muted { color: var(--muted); font-weight: 400; }
 .tn-fit .tn-k { font-size: var(--fs-sm); font-weight: 700; color: var(--navy); }
 .tn-fit.is-empty .tn-k { color: var(--muted); font-weight: 600; }
 .tn-reason { color: var(--body); }
@@ -99,16 +135,18 @@ button.tn-row-title:hover { text-decoration: underline; text-decoration-color: v
 .tn-row-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 2px; font-size: var(--fs-xs); color: var(--muted); overflow-wrap: anywhere; }
 .tn-row-fit { grid-area: fit; display: inline-flex; align-items: center; gap: 8px; font: 600 var(--fs-xs)/1.3 var(--font-body); color: var(--navy); }
 .tn-row-value { grid-area: value; text-align: right; font-weight: 700; font-size: var(--fs-sm); color: var(--navy); }
+.tn-row-value small { display: block; font-weight: 400; font-size: var(--fs-xs); color: var(--muted); }
 .tn-row-link { grid-area: link; text-align: right; }
 .tn-row-link a.tn-official { font-size: var(--fs-xs); }
-.tn-row-more { grid-area: more; padding: var(--space-2) 0 var(--space-1); font-size: var(--fs-sm); max-width: 80ch; }
+.tn-row-more { grid-area: more; padding: var(--space-2) 0 var(--space-1); font-size: var(--fs-sm); max-width: 84ch; }
+.tn-row-more .tn-worth { margin-top: var(--space-2); }
 .tn-row-more p { margin: 0 0 var(--space-2); }
 .tn-row-more ul { margin-bottom: var(--space-2); font-size: var(--fs-sm); }
 .tn-row.is-open { background: var(--tint-1); }
 
 /* ---------- narrower screens ---------- */
 @media (max-width: 1180px) {
-  .tn-selects { grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr)); }
+  .tn-selects { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .tn-card { grid-template-columns: 84px minmax(0, 1fr) 200px; }
   .tn-body { padding: var(--space-4); }
   .tn-row { grid-template-columns: 52px minmax(0, 1fr) 140px 110px; grid-template-areas: "due main fit value" "due link link link" ". more more more"; }
@@ -123,12 +161,14 @@ button.tn-row-title:hover { text-decoration: underline; text-decoration-color: v
   .tn-side { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); border-left: 0; border-top: 1px solid var(--line); padding: var(--space-3) var(--space-4) var(--space-4); }
   .tn-side .tn-fit, .tn-side .tn-closes { grid-column: 1 / -1; }
   .tn-selects { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2) var(--space-3); }
-  .tn-selects label:first-child { grid-column: 1 / -1; }
+  .tn-facts { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .tn-scope-head b { font-size: var(--fs-lg); }
   .tn-search input { font-size: var(--fs-input); }
   .tn-view button { min-height: 40px; }
   .tn-arrange { margin-left: 0; width: 100%; justify-content: space-between; gap: var(--space-2); }
   .tn-view button { padding: 8px 10px; }
-  .tn-sort select { min-height: 40px; }
+  .tn-sort { flex: 1 1 100%; min-width: 0; }
+  .tn-sort select { min-height: 40px; flex: 1 1 auto; min-width: 0; max-width: 100%; }
   .tn-row { grid-template-columns: 48px minmax(0, 1fr) auto; grid-template-areas: "due main main" "due fit value" "due link link" ". more more"; gap: 4px var(--space-3); padding-right: 12px; }
   .tn-row-fit, .tn-row-link { padding-top: 2px; }
 }

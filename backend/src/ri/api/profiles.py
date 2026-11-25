@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from ..access import Principal, org_scope_sql
 from ..audit import audit
 from ..db import q1, qa
+from ..enrichment.exa_people import seniority as seniority_from_title
 from ..jobs.queue import enqueue
 from ..people import ACTIVITY_STATUS, SYSTEM_LABEL, email_state, engagement
 from ..research.exa_search import configured
@@ -35,6 +36,11 @@ COMMITTEE = ("decision", "technical", "procurement", "influencer")
 _PROC = re.compile(r"procure|purchas|sourcing|supplier|vendor|tprm|contracting|category manag", re.I)
 _TOP = re.compile(r"\b(chief|c[etiodfsx]o|ciso|founder|president|managing director|board|vorstand|prezes|vp|vice[- ]president|svp|evp|general manager)\b", re.I)
 _TECH = re.compile(r"engineer|technolog|technical|architect|develop|software|platform|delivery|\bit\b|data|\bai\b|cloud|devops|infrastructure|security|\bqa\b|test", re.I)
+
+
+def title_seniority(title: str | None) -> str | None:
+    """Seniority read from a job title (C-level, VP, Head / Director, Manager / Lead), when the lead list does not give one."""
+    return seniority_from_title(title)
 
 
 def committee_group(title: str | None, seniority: str | None = None, persona: str | None = None, committee_role: str | None = None) -> str:
@@ -224,7 +230,8 @@ def account_people(conn, oid: str) -> list[dict[str, Any]]:
         eng = engagement([*(r["enrol_statuses"] or []), *(ACTIVITY_STATUS.get(t) for t in (r["activity_types"] or []))])
         if r["enrol_statuses"] or r["activity_types"]:
             systems.add("lemlist")
-        seniority, persona = lead.get("seniority") or ((exa or {}).get("seniority")), lead.get("persona") or ((exa or {}).get("persona"))
+        seniority = lead.get("seniority") or (exa or {}).get("seniority") or title_seniority(r["title"])
+        persona = lead.get("persona") or (exa or {}).get("persona")
         out.append({"id": str(r["id"]), "name": r["full_name"], "title": r["title"], "lane": r["buyer_lane"], "role_confirmed": r["role_status"] == "verified",
                     "linkedin_url": r["linkedin_url"], "email": email_state(r["work_email"], r["email_verification_status"]), "has_email": bool(r["work_email"]),
                     "suppressed": bool(r["suppressed"]), "suppression_reason": r["suppression_reason"] if r["suppressed"] else None,
@@ -368,7 +375,7 @@ def register_profiles(app: FastAPI) -> None:
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=pid, detail={"view": "profile"})
             return {
                 "person": {"id": pid, "name": pe["full_name"], "linkedin_url": pe["linkedin_url"], "email": email_state(pe["work_email"], pe["email_verification_status"]),
-                           "has_email": bool(pe["work_email"]),
+                           "has_email": bool(pe["work_email"]), "seniority": ll_lead.get("seniority") or title_seniority(jobs[0]["title"] if jobs else None),
                            "committee": committee_group(jobs[0]["title"] if jobs else None, ll_lead.get("seniority"), ll_lead.get("persona"), ll_lead.get("committee_role")),
                            "suppressed": bool(pe["suppressed"]), "suppression_reason": pe["suppression_reason"] if pe["suppressed"] else None, "created_at": pe["created_at"]},
                 "employment": [{"title": j["title"], "lane": j["buyer_lane"], "role_confirmed": j["verification_status"] == "verified", "evidence_url": j["evidence_url"],

@@ -95,8 +95,15 @@ NAMED_BANK = _rx(
     rf"{B}(girozentrale|pko bank polski|pko bp|bank pekao|pekao|mbank|santander bank|ing bank|alior bank|bnp paribas bank|bank millennium|credit agricole bank|bank ochrony środowiska|"
     r"handelsbanken|nordea|danske bank|dnb bank|swedbank|seb|landesbank\w*|helaba|bayernlb|nord/lb|lbbw|dekabank|deka|aareal|commerzbank|deutsche bank|"
     r"hypovereinsbank|unicredit|erste (bank|group)|bawag|bank austria|\w*kantonalbank|postbank|postfinance|ubs|credit suisse|julius b[äa]r|vontobel|"
-    r"lloyds banking|barclays|hsbc|natwest|tsb bank|metro bank|starling bank|monzo|revolut|national savings and investments|ns&i|nationwide building society|"
+    r"lloyds banking|barclays|hsbc|natwest|tsb bank|metro bank|starling bank|monzo|revolut|national savings and investments|ns&i|"
     rf"op financial|op ryhmä|aktia|jyske bank|nykredit|sydbank|arion|íslandsbanki|landsbankinn){E}")
+NAMED_INSURER = _rx(
+    rf"{B}(powszechny zakład ubezpieczeń|pzu|warta|ergo hestia|allianz (se|ag|versicherung\w*|lebensversicherung\w*|insurance|partners|trade|suisse|polska|deutschland)|allianz-\w*versicherung\w*|assicurazioni generali|generali (versicherung\w*|deutschland|polska|insurance|österreich)|axa|zurich insurance|aviva|legal & general|munich re|swiss re|hannover r(e|ück)|"
+    r"talanx|uniqa|vienna insurance|wiener städtische|helvetia|baloise|die mobiliar|signal iduna|huk-coburg|debeka|provinzial|tryg|gjensidige|storebrand|"
+    rf"sampo|lähitapiola|fennia|folksam|länsförsäkringar|skandia|topdanmark|alm\. brand|phoenix group|lloyd's|admiral group|direct line){E}")
+NAMED_PENSION = _rx(
+    rf"{B}(nest corporation|national employment savings trust|railpen|universities superannuation|pension protection fund|local pensions partnership|"
+    rf"lgps central|brunel pension|london civ|keva|varma|ilmarinen|elo mutual|pfa pension|pensam|sampension|atp|kommunal landspensjonskasse|klp){E}")
 FIN_SOFTWARE = _rx(rf"{B}(finanz informatik|atruvia|fiducia|core banking|banking software|fintech\w*){E}")
 
 # ---- 2. public bodies that only look financial
@@ -113,7 +120,8 @@ PUBLIC_FINANCE = _rx(
     r"\w*finanzamt\w*|\w*finanzverwaltung|\w*finanzdirektion|landesamt für finanzen|bundesamt für finanzen|zentrale beschaffungsstelle der bundesfinanzverwaltung|"
     r"\w*finanzbehörde|senatsverwaltung für finanzen|inspection générale des finances|centrum informatyki resortu finansów|krajow\w* administracj\w* skarbow\w*|"
     r"izb\w* administracji skarbowej|\w*skarbow\w*|tax|taxes|hmrc|revenue|skatteverket|skatteetaten|skattestyrelsen|verohallinto|valstybinė mokesčių|"
-    rf"customs|\w*zoll\w*|tullverket|muitin\w*|kammarkollegiet|ekonomistyrningsverket|dezernat finanzen|finanzabteilung|rechenzentrum der finanzverwaltung){E}")
+    rf"customs|\w*zoll\w*|tullverket|muitin\w*|kammarkollegiet|ekonomistyrningsverket|dezernat finanzen|finanzabteilung|rechenzentrum der finanzverwaltung|"
+    rf"rural payments|paying agency|agencja restrukturyzacji\w*|zahlstelle){E}")
 NOT_A_FINANCE_BANK = _rx(
     rf"{B}((blood|food|tissue|milk|data|seed|gene|sperm|skin|eye|bone|image|time|land|bio|cord)\s?-?bank\w*|bank\w* (krwi|tkanek|żywności|mleka|komórek|danych)|"
     r"\w*datenbank\w*|\w*blutbank\w*|\w*bildbank\w*|\w*samenbank\w*|\w*genbank\w*|\w*biobank\w*|bankside|banksia|bank holiday|bankstown|fairbanks|"
@@ -128,7 +136,7 @@ INSURANCE = _rx(
 PENSION = _rx(
     rf"{B}(pension\w*|pensjon\w*|pensions?kass\w*|pensionsfonds|pensioenfonds|\w*versorgungswerk\w*|\w*versorgungskasse\w*|versorgungskammer|zusatzversorgung\w*|"
     r"versorgungsanstalt\w*|personalvorsorge|vorsorgestiftung|vorsorgeeinrichtung|superannuation|\w*eläke\w*|tillægspension|ap-fonden|ap7|"
-    rf"fundusz\w* emerytaln\w*|powszechne towarzystwo emerytalne|pte|alecta|folksam|amf pension|caisse de retraite|caisse de prévoyance\w*|retraite\w*){E}")
+    rf"fundusz\w* emerytaln\w*|powszechne towarzystwo emerytalne|pte|alecta|amf pension|caisse de retraite|caisse de prévoyance\w*|retraite\w*){E}")
 PENSION_PROVIDER = _rx(rf"{B}(fund|funds|scheme|partnership|plan|trust|pool|foundation|\w*(fonds?|fonden|kasse|kassa|werk|kammer|anstalt|stiftung)|tillægspension|eläkeyhtiö|työeläke\w*){E}")
 PAYMENTS = _rx(rf"{B}(payments?|zahlungsverkehr|zahlungsdienst\w*|p[łl]atno[śs]c\w*|e-money|card acquir\w*|visa europe|mastercard|klarna|adyen|worldline|nexi|nets|vipps|mobilepay|swish){E}")
 LENDING = _rx(rf"{B}(leasing|factoring|kredit\w*|credit\w*|crédit|kredyt\w*|lending|lender\w*|loans?|hypothek\w*|mortgage\w*){E}")
@@ -146,6 +154,7 @@ PUBLIC = _rx(
     rf"{B}(ministry|ministerium|\w*ministerium|ministerie|ministerstw\w*|minist[èe]re|ministerio|ministarstvo|ministrstvo|ministerstvo|ministeri\w*|departement\w*|"
     r"department (of|for)|home office|cabinet office|\w*council|municipal\w*|borough|city of|county|gemeinde\w*|\w*stadt|stadt\w*|landkreis|landratsamt|bezirk\w*|"
     r"kommun\w*|kommune|region\w*|landsting|gmina|powiat\w*|starostwo|miasto|miasta|województw\w*|urząd\w*|urzad\w*|nhs|hospital\w*|\w*krankenhaus\w*|\w*klinik\w*|"
+    r"savivaldyb\w*|pašvaldīb\w*|omavalitsus|občina|obec|město|commune\w*|mairie|ville de|comune|ayuntamiento|câmara municipal|"
     r"sjukhus\w*|sykehus\w*|szpital\w*|universit\w*|uniwersytet\w*|politechnik\w*|hochschule\w*|college|school\w*|schule\w*|szkoł\w*|akademi\w*|academy|"
     r"police|polizei\w*|polis\w*|policj\w*|fire (and rescue )?service|feuerwehr|bundesamt|landesamt|\w*amt|amt\w*|agency|agentur\w*|agencj\w*|aģentūra|agentūra|"
     r"\w*myndighet\w*|\w*verket|\w*etaten|\w*direktoratet|\w*styrelsen|\w*tilsynet|virasto|keskus|government|regierung|regering\w*|rząd\w*|parliament|bundestag|landtag|"
@@ -223,8 +232,9 @@ def _rules(n: str, *, segment: str | None, list_segment: str | None, list_eligib
         for rx, kind in ((NAMED_BANK, "bank"), (SAVINGS_BANK, "savings_bank"), (COOP_BANK, "cooperative_bank"), (BUILDING_SOCIETY, "building_society")):
             if w := _hit(rx, n):
                 return Sector("banking", kind, False, True, "rules", w)
-        if w := _hit(FIN_SOFTWARE, n):
-            return Sector("financial_services", "financial_software", False, True, "rules", w)
+        for rx, kind in ((NAMED_INSURER, "insurance"), (NAMED_PENSION, "pension"), (FIN_SOFTWARE, "financial_software")):
+            if w := _hit(rx, n):
+                return Sector("financial_services", kind, False, True, "rules", w)
     # 2. public bodies that only look financial
     if social:
         return Sector("not_icp", "social_insurance", True, True, "rules", social)

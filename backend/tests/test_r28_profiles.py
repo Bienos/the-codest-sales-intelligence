@@ -414,3 +414,76 @@ def test_research_is_ready_when_the_worker_has_the_keys(conn):
     assert configured(web, conn)["missing"] == ["EXA_API_KEY", "RI_EXA_MONTHLY_CAP_USD"]
     conn.execute("update system_heartbeats set at = now() - interval '1 hour' where component='worker-interactive'")
     assert configured(SimpleNamespace(exa_api_key=None, exa_monthly_cap_usd=0, anthropic_api_key="k"), conn)["ready"] is False      # a stale beat counts for nothing
+
+
+# ------------------------------------------------------------------ the redesigned pages: committee groups, emails, career years, connections
+def test_people_are_grouped_by_buying_committee():
+    from ri.api.profiles import committee_group, title_seniority
+    assert committee_group("Chief Technology Officer") == "decision"
+    assert committee_group("VP Engineering") == "decision"
+    assert committee_group("Head of Platform", "Director / Head", "Engineering Leadership", "Technical sponsor candidate") == "technical"
+    assert committee_group("Director, IT Procurement", "Director / Head") == "procurement"                     # procurement before seniority
+    assert committee_group("Chief Procurement Officer", "Executive") == "procurement"
+    assert committee_group("Head of Strategy", "Director / Head", None, "Technical influencer") == "influencer"
+    assert committee_group("Head of Strategy", "Director / Head", None, "Technology sponsor / potential influencer") == "technical"      # a sponsor is not only an influencer
+    assert committee_group("Head of Payments", "Director / Head", "Payments & digital") == "influencer"
+    assert committee_group("Head of Delivery & PMO", None, "Engineering & delivery") == "technical"
+    assert committee_group(None) == "influencer"
+    assert title_seniority("Head of Engineering") == "Head / Director" and title_seniority("Analyst") is None
+
+
+def test_person_profile_keeps_a_cited_summary_and_career_years():
+    from datetime import datetime, timezone
+    src = {"W1": {"url": "https://www.linkedin.com/in/ada-clarke", "title": "Ada Clarke - CTO - Kestrel Pay", "published": None, "purpose": "linkedin",
+                  "text": "CTO at Kestrel Pay since 2023. Previously Head of Engineering at Northbridge Bank 2018-2023 and Lead Engineer at Fenwick 2014-2018."}}
+    raw = {"summary": {"text": "CTO at Kestrel Pay, previously ran engineering at Northbridge Bank.", "sources": ["W1", "W9"]},
+           "current_role": {"title": "CTO", "since": "2023", "source": "W1"},
+           "previous_roles": [{"title": "Head of Engineering", "company": "Northbridge Bank", "from": "2018", "to": 2023, "source": "W1"},
+                              {"title": "Lead Engineer", "company": "Fenwick", "period": "2014 - 2018", "source": "W1"},
+                              {"title": "Intern", "company": "Old Co", "from": "around 2010", "to": "2031", "source": "W1"},
+                              {"title": "Backwards", "company": "X", "from": "2020", "to": "2016", "source": "W1"}]}
+    out, dropped = verify_person(raw, src, datetime(2026, 11, 25, tzinfo=timezone.utc))
+    assert out["summary"]["text"].startswith("CTO at Kestrel Pay") and [s["source"] for s in out["summary"]["sources"]] == ["W1"]
+    assert out["current_role"]["since_year"] == 2023 and out["current_role"]["since"] == "2023"
+    years = {r["title"]: (r["from"], r["to"]) for r in out["previous_roles"]}
+    assert years == {"Head of Engineering": (2018, 2023), "Lead Engineer": (2014, 2018), "Intern": (None, None), "Backwards": (None, None)}
+    assert out["previous_roles"][0]["period"] == "2018-2023" and dropped == 0
+    # a summary with no returned page, or with a phone number, is dropped
+    out, dropped = verify_person({"summary": {"text": "Call +44 20 7946 0000", "sources": ["W1"]}}, src)
+    assert out["summary"] is None and dropped == 1
+    out, dropped = verify_person({"summary": {"text": "Runs engineering.", "sources": ["W7"]}}, src)
+    assert out["summary"] is None and dropped == 1
+
+
+def test_company_profile_angles_name_one_of_our_services():
+    raw = {"how_we_help": [{"angle": "QA for the payouts rollout", "service": "qa", "sources": ["W2"]},
+                           {"angle": "Engineers for the app", "service": "body_shopping", "sources": ["W1"]},
+                           {"angle": "Data platform team", "service": ["ai_data"], "sources": ["W1"]}]}
+    out, _ = verify_profile(raw, SRC)
+    assert [h["service"] for h in out["how_we_help"]] == ["qa", None, None]
+
+
+def test_every_email_counts_and_the_pages_connect(conn, env):
+    c, h, o, p = env["c"], env["h"], env["o"], env["p"]
+    oid = o["open"]
+    nomail = person(conn, oid, "Eve Lund", "Director of IT Procurement")
+    conn.commit()
+    # the people list: "any" means has an email, whatever its verification; the old values still work
+    r = c.get("/api/people?email=any", headers=h("bdm")).json()
+    assert {x["name"] for x in r["items"]} == {"Ada Clarke", "Dan Nowak"} and r["counts"]["with_email"] == 2
+    assert {x["name"] for x in c.get("/api/people?email=none", headers=h("bdm")).json()["items"]} == {"Eve Lund"}
+    assert {x["name"] for x in c.get("/api/people?email=verified", headers=h("bdm")).json()["items"]} == {"Ada Clarke"}
+    assert c.get("/api/people?email=maybe", headers=h("bdm")).status_code == 422
+    # people at the account: grouped by buying committee, an address is an address
+    people = c.get(f"/api/accounts/{oid}/people", headers=h("bdm"))
+    by = {x["name"]: x for x in people.json()["items"]}
+    assert "@kestrel.example" not in people.text
+    assert (by["Ada Clarke"]["committee"], by["Dan Nowak"]["committee"], by["Eve Lund"]["committee"]) == ("decision", "influencer", "procurement")
+    assert by["Dan Nowak"]["has_email"] is True and by["Eve Lund"]["has_email"] is False and by["Eve Lund"]["seniority"] == "Head / Director"
+    # the person page links back to the company and its other people
+    r = c.get(f"/api/people/{p['dan']}/profile", headers=h("bdm"))
+    d = r.json()
+    assert "@kestrel.example" not in r.text and d["person"]["has_email"] is True and d["person"]["seniority"] == "Head / Director"
+    assert d["company"]["id"] == oid and d["company"]["employees"] == 1800 and d["company"]["signal"] is None
+    assert {x["name"] for x in d["colleagues"]} == {"Ada Clarke", "Eve Lund"} and all(set(x) == {"id", "name", "title", "committee", "has_email", "seniority", "suppressed"} for x in d["colleagues"])
+    assert nomail in {x["id"] for x in d["colleagues"]}

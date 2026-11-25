@@ -101,7 +101,7 @@ def _key(cause: str, kind: str, payload: dict[str, Any]) -> str:
     return f"{cause}:{src}" if src else cause
 
 
-def _state(conn: Conn, cause: str, kinds: set[str], source: str | None, last_at: datetime) -> tuple[str, str]:
+def _state(conn: Conn, cause: str, kinds: set[str], source: str | None, last_at: datetime) -> tuple[str, str, datetime | None]:
     """resolved (the cause is gone), ongoing (failed in the last two days), quiet (not seen for a while)."""
     def worked_since(kind_list: list[str]) -> datetime | None:
         r = q1(conn, "SELECT max(updated_at) AS t FROM jobs WHERE kind = ANY(%s) AND status='completed' AND updated_at > %s "
@@ -110,27 +110,25 @@ def _state(conn: Conn, cause: str, kinds: set[str], source: str | None, last_at:
     if cause == "ai_credit":
         r = q1(conn, "SELECT min(at) AS t FROM provider_usage WHERE provider='anthropic' AND status='ok' AND at > %s", (last_at,))
         if r and r["t"]:
-            return "resolved", f"AI calls have worked again since {r['t']:%d %b %Y %H:%M} UTC."
+            return "resolved", "ai_ok", r["t"]
     elif cause == "budget":
         if last_at.strftime("%Y-%m") != datetime.now(timezone.utc).strftime("%Y-%m"):
-            return "resolved", "A new month's budget is available."
+            return "resolved", "new_month", None
     elif cause == "fit_bug":
         t = worked_since(["assess_fit"])
         if t:
-            return "resolved", f"The fit check has run fine since {t:%d %b %Y}."
+            return "resolved", "job_ok", t
     else:
-        kl = sorted(kinds)
         if "extract_document" in kinds:
-            r = q1(conn, "SELECT max(at) AS t FROM provider_usage WHERE provider='anthropic' AND operation='extract' AND status='ok' AND at > %s", (last_at,))
+            r = q1(conn, "SELECT min(at) AS t FROM provider_usage WHERE provider='anthropic' AND operation='extract' AND status='ok' AND at > %s", (last_at,))
             if r and r["t"]:
-                return "resolved", f"Pages have been read fine since {r['t']:%d %b %Y}."
-        t = worked_since(kl)
+                return "resolved", "pages_ok", r["t"]
+        t = worked_since(sorted(kinds))
         if t:
-            return "resolved", f"The same work has succeeded since {t:%d %b %Y}."
-    age = datetime.now(timezone.utc) - last_at
-    if age < timedelta(hours=48):
-        return "ongoing", "Still happening: the last failure was recent."
-    return "quiet", f"Not seen since {last_at:%d %b %Y}."
+            return "resolved", "job_ok", t
+    if datetime.now(timezone.utc) - last_at < timedelta(hours=48):
+        return "ongoing", "recent", last_at
+    return "quiet", "quiet", last_at
 
 
 def _subjects(conn: Conn, letters: list[dict[str, Any]]) -> dict[str, str]:
@@ -181,13 +179,13 @@ def failure_groups(conn: Conn) -> dict[str, Any]:
         title_t, explain = CAUSE[g["cause"]]
         kind0 = sorted(g["kinds"])[0]
         title = title_t.format(source=names.get(g["source"] or "", g["source"] or "The service"), kind=kind0, error_class=sorted(g["error_classes"])[0].replace("_", " "))
-        state, state_note = _state(conn, g["cause"], g["kinds"], g["source"], last) if g["open"] else ("handled", "")
+        state, basis, since = _state(conn, g["cause"], g["kinds"], g["source"], last) if g["open"] else ("handled", "handled", None)
         retried = sum(1 for x in allx if x["replayed_at"])
         dismissed = sum(1 for x in allx if x["dismissed_at"])
         samples = list(dict.fromkeys(re.sub(r"\s+", " ", x["error"])[:220] for x in (g["open"] or allx)))[:3]
         out.append({"key": g["key"], "cause": g["cause"], "title": title, "explain": explain, "kinds": sorted(g["kinds"]), "source": g["source"],
                     "open": len(g["open"]), "total": len(allx), "retried": retried, "dismissed": dismissed, "first_at": first, "last_at": last, "when": _span(first, last),
-                    "state": state, "state_note": state_note, "samples": samples,
+                    "source_name": names.get(g["source"] or "") if g["source"] else None, "state": state, "state_basis": basis, "state_since": since, "samples": samples,
                     "retryable": bool(g["open"]) and not (g["kinds"] <= NOT_RETRYABLE_KINDS) and g["cause"] not in ("no_handler",),
                     "items": [{"id": str(x["id"]), "kind": x["kind"], "subject": subjects.get(str(x["id"]), ""), "error": re.sub(r"\s+", " ", x["error"])[:300],
                                "error_class": x["error_class"], "created_at": x["created_at"]} for x in g["open"][:30]]})

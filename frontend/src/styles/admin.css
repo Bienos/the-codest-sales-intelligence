@@ -147,12 +147,92 @@
 .checks p { margin: 4px 0 0; font-size: var(--fs-xs); color: var(--muted); }
 .grid-table td, .grid-table th { white-space: nowrap; }
 
-/* ---------- Usage & cost ---------- */
-.spend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: var(--space-4); margin: 0 0 var(--space-3); }
-.spend-card { display: grid; align-content: start; gap: 10px; padding: 18px 20px; background: var(--white); border: 1px solid var(--line); min-width: 0; }
-.spend-t { margin: 0; font: 800 var(--fs-sm)/1.2 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--navy); }
-.spend-n { font: 900 var(--fs-2xl)/1.05 var(--font-head); color: var(--navy); }
-.spend-n span { font: 600 var(--fs-md)/1.3 var(--font-body); color: var(--body); }
+/* ---------- Usage & cost ----------
+   Two series everywhere, always the same colours: AI reading = indigo (a lighter step of the navy family, so it can sit beside text),
+   web search = brand purple (below 3:1 on white, so every chart also has a table or printed values). What has not happened yet is hatched. */
+.usage { --c-ai: #3D44B8; --c-exa: #B87DFF; --c-fut: repeating-linear-gradient(135deg, rgba(61,68,184,.28) 0 2px, transparent 2px 6px); display: grid; gap: var(--space-5); min-width: 0; }
+.usage-hero { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: var(--space-4) var(--space-6); padding: 22px 24px; background: var(--navy); color: var(--white); }
+.usage-k { margin: 0 0 4px; color: var(--on-navy); font-size: var(--fs-md); }
+.usage-big { margin: 0; font: 900 clamp(40px, 6vw, 64px)/.95 var(--font-head); letter-spacing: -.01em; color: var(--white); }
+.usage-facts { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); margin: 0; }
+.usage-facts div { display: grid; gap: 2px; padding-left: 14px; border-left: 2px solid var(--pink); }
+.usage-facts dt { font-size: var(--fs-sm); color: var(--on-navy-muted); }
+.usage-facts dd { margin: 0; font: 800 var(--fs-xl)/1.1 var(--font-head); color: var(--white); }
+.rulers { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: var(--space-4); }
+.ruler { display: grid; align-content: start; gap: 10px; padding: 20px 22px; background: var(--white); border: 1px solid var(--line); border-top: 4px solid var(--c-ai); min-width: 0; }
+.ruler:nth-child(2) { border-top-color: var(--c-exa); }
+.ruler.warn { box-shadow: inset 5px 0 0 var(--orange); } .ruler.bad { box-shadow: inset 5px 0 0 var(--pink); } .ruler.off { border-top-color: var(--off); }
+.ruler-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.ruler-head h3 { margin: 0; font: 800 var(--fs-md)/1.2 var(--font-head); letter-spacing: .06em; text-transform: uppercase; color: var(--navy); }
+.ruler-pct { font: 800 var(--fs-md)/1 var(--font-head); color: var(--muted); }
+.ruler-fig { margin: 0; color: var(--body); }
+.ruler-fig b { font: 900 var(--fs-3xl)/1 var(--font-head); color: var(--navy); }
+.ruler-track { position: relative; height: 22px; margin-top: 6px; background: var(--tint-1); box-shadow: inset 0 0 0 1px var(--line); }
+.ruler-track i { position: absolute; top: 0; bottom: 0; }
+.ruler-used { left: 0; background: var(--c-ai); }
+.ruler:nth-child(2) .ruler-used { background: var(--c-exa); }
+.ruler-ahead { background: var(--c-fut); box-shadow: inset 0 0 0 1px rgba(61,68,184,.35); }
+.ruler:nth-child(2) .ruler-ahead { background: repeating-linear-gradient(135deg, rgba(184,125,255,.45) 0 2px, transparent 2px 6px); box-shadow: inset 0 0 0 1px rgba(184,125,255,.6); }
+.ruler-over { background: repeating-linear-gradient(135deg, var(--pink) 0 2px, transparent 2px 6px); box-shadow: inset 0 0 0 1px var(--pink); }
+.ruler-pace { width: 2px; margin-left: -1px; top: -5px !important; bottom: -5px !important; background: var(--navy); }
+.ruler-cap { width: 3px; margin-left: -3px; top: -8px !important; bottom: -8px !important; background: var(--pink); }
+.ruler-scale { position: relative; height: 16px; font-size: var(--fs-xs); color: var(--muted); }
+.ruler-scale span { position: absolute; top: 0; white-space: nowrap; }
+.ruler-scale span + span { transform: translateX(-100%); }
+.ruler-key { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-xs); color: var(--muted); }
+.ruler-key li { display: inline-flex; align-items: center; gap: 6px; }
+.ruler-key i { width: 14px; height: 10px; flex: none; }
+.ruler-key .k-used { background: var(--c-ai); } .ruler:nth-child(2) .ruler-key .k-used { background: var(--c-exa); }
+.ruler-key .k-ahead { background: var(--c-fut); box-shadow: inset 0 0 0 1px rgba(61,68,184,.35); }
+.ruler-key .k-pace { width: 2px; height: 12px; background: var(--navy); }
+.ruler-say { margin: 4px 0 0; font-weight: 600; color: var(--navy); }
+
+.daily, .purposes { padding: 20px 22px; background: var(--white); border: 1px solid var(--line); min-width: 0; }
+.daily-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px 20px; margin-bottom: var(--space-3); }
+.daily-head h3 { margin: 0; font: 800 var(--fs-md)/1.2 var(--font-head); letter-spacing: .06em; text-transform: uppercase; color: var(--navy); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); color: var(--body); }
+.legend li { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; flex: none; }
+.sw.ai { background: var(--c-ai); } .sw.exa { background: var(--c-exa); } .sw.fut { background: var(--c-fut); box-shadow: inset 0 0 0 1px rgba(61,68,184,.35); }
+.daily-plot { position: relative; min-width: 0; }
+.daily-plot svg { display: block; overflow: visible; }
+.daily-plot .grid { stroke: var(--line); stroke-width: 1; }
+.daily-plot .base { stroke: var(--off); stroke-width: 1; }
+.daily-plot .ax { font: 400 var(--fs-xs) var(--font-body); fill: var(--muted); letter-spacing: 0; text-transform: none; }
+.daily-plot .m-ai { fill: var(--c-ai); } .daily-plot .m-exa { fill: var(--c-exa); }
+.daily-plot .m-fut { fill: rgba(61,68,184,.07); stroke: rgba(61,68,184,.45); stroke-width: 1; stroke-dasharray: 0; }
+.daily-plot .m-fut.on { fill: rgba(61,68,184,.16); }
+.daily-plot .col.on rect { filter: brightness(1.18); }
+.daily-plot .today { stroke: var(--pink); stroke-width: 1.5; }
+.daily-plot .hit { fill: transparent; cursor: default; outline: none; }
+.daily-plot .hit:focus-visible { fill: rgba(13,18,76,.06); }
+.chart-tip { position: absolute; top: -6px; transform: translate(-50%, -100%); display: grid; gap: 2px; min-width: 150px; padding: 8px 10px; background: var(--navy); color: var(--on-navy); font-size: var(--fs-xs); pointer-events: none; z-index: 3; }
+.chart-tip b { color: var(--white); font-size: var(--fs-sm); }
+.chart-tip span { display: flex; justify-content: space-between; gap: 12px; }
+.chart-tip em { order: 2; font-style: normal; font-weight: 700; color: var(--white); }
+.daily-table { margin-top: var(--space-3); }
+.daily-table > summary { font-size: var(--fs-sm); font-weight: 600; color: var(--navy); cursor: pointer; }
+.daily-table .table-wrap { margin-top: var(--space-2); max-height: 320px; overflow: auto; }
+
+.pp-list { list-style: none; margin: 0; padding: 0; }
+.pp { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.6fr) minmax(150px, .8fr); gap: 6px 24px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.pp:first-child { border-top: 0; }
+.pp-name { display: grid; gap: 2px; min-width: 0; }
+.pp-name b { color: var(--navy); }
+.pp-bar { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pp-track { display: flex; gap: 2px; height: 14px; min-width: 3px; }
+.pp-track i { display: block; min-width: 2px; }
+.pp-track .m-ai { background: var(--c-ai); } .pp-track .m-exa { background: var(--c-exa); }
+.pp-val { white-space: nowrap; font-size: var(--fs-sm); color: var(--navy); }
+.pp-per { display: grid; justify-items: end; text-align: right; color: var(--navy); }
+.pp-per b { font: 800 var(--fs-lg)/1.1 var(--font-head); }
+@media (max-width: 760px) {
+  .pp { grid-template-columns: minmax(0, 1fr) auto; }
+  .pp-bar { grid-column: 1 / -1; grid-row: 2; }
+  .pp-per { grid-column: 2; grid-row: 1; }
+  .usage-hero { padding: 18px 16px; }
+  .ruler, .daily, .purposes { padding: 16px; }
+}
 .adm-sec .fold { margin-top: var(--space-5); }
 .adm-sec .folds .fold, .adm-actions .fold { margin-top: 0; }
 

@@ -18,7 +18,8 @@ NOW = datetime.now(timezone.utc)
 
 
 def notice(conn, nid, title, *, days=20, country="DEU", source="procurement-ted", cpv=("72000000",), scope=None, value=None, published_days_ago=5,
-           buyer="Buyer", status="open"):
+           buyer="Beispiel Sparkasse", status="open"):
+    """An open notice; the buyer is a savings bank unless said otherwise, because only ICP notices are summarised (see test_r31_tender_sector)."""
     return str(conn.execute(
         "insert into procurement_notices(source_id, notice_id, buyer_name, title, scope, status, deadline_at, official_url, country, service_codes, "
         "value_if_reported, published_at, last_status_check_at) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now()) returning id",
@@ -133,7 +134,7 @@ def test_batches_go_our_markets_first_then_soonest_deadline_capped_per_run(conn,
     assert conn.execute("select count(*) n from procurement_notices where summary->>'title_en' like 'Ignore%%'").fetchone()["n"] == 0     # unknown id ignored
     assert [str(r["id"]) for r in ts.pending(conn)] == [ids["gr_mid"]]
     prompt = model.batches[0][0]
-    assert prompt["country"] == "PL" and prompt["cpv"] == ["72000000"] and prompt["source"] == "EU tenders (TED)" and prompt["buyer"] == "Buyer"
+    assert prompt["country"] == "PL" and prompt["cpv"] == ["72000000"] and prompt["source"] == "EU tenders (TED)" and prompt["buyer"] == "Beispiel Sparkasse"
     assert prompt["title"] == "Polska – Usługi IT – System informacji" and prompt["deadline"] == (NOW + timedelta(days=6, hours=1)).date().isoformat()
     again = ts.summarise(conn, FakeModel(), run)                                   # the next run picks up only what is left
     assert again["summarised"] == 1 and again["waiting"] == 0
@@ -279,7 +280,7 @@ def summarised(conn, nid, *, title_en, fit="strong", work_type="software_develop
                detail=None):
     conn.execute("update procurement_notices set summary=%s, summary_at=now(), summary_basis=md5(concat_ws('|', title, scope)), source_detail=%s where id=%s",
                  (json.dumps({"title_en": title_en, "summary_en": summary_en, "wants": ["A team"], "work_type": work_type, "technologies": list(technologies),
-                              "fit": {"level": fit, "reason": "Because."}, "title_pl": title_pl, "summary_pl": "Kupują oprogramowanie.", "secret": "not shown"}),
+                              "fit": {"level": fit, "reason": "Because."}, "title_pl": title_pl, "summary_pl": "Kupują oprogramowanie.", "secret": "not shown", "v": 2}),
                   json.dumps(detail) if detail else None, nid))
 
 

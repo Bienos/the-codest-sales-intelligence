@@ -59,25 +59,26 @@ def policy(src: dict[str, Any], note: dict[str, Any] | None, *, paused_by_person
         state = note.get("state") if note.get("state") in NOT_SCHEDULED else "built_in"
         return {"eligible": False, "state": state, "reason": NOT_SCHEDULED[state], "todo": note.get("todo")}
     if note.get("state") == "blocked_by_site":
-        return {"eligible": False, "state": "blocked_by_site", "reason": "Blocked by the site." + (" " + note["todo"] if note.get("todo") else ""), "todo": note.get("where")}
+        return {"eligible": False, "state": "blocked_by_site", "code": "note", "reason": note.get("todo") or "Blocked by the site.", "todo": note.get("where")}
     notes = " ".join(str(x) for x in (src.get("licence_notes"), (src.get("cost_profile") or {}).get("note")) if x)
     if src.get("auth_mode") and src["auth_mode"] != "none":
         if note.get("state") == "needs_credential" and re.search(r"commercial|entitlement|paid", f"{notes} {note.get('todo', '')}", re.I):
-            return {"eligible": False, "state": "needs_credential", "reason": "Commercial service: it needs a paid entitlement before any use.",
-                    "todo": note.get("where") or "Agree a contract with the provider first."}
+            return {"eligible": False, "state": "needs_credential", "code": "commercial", "reason": "Commercial service: it needs a paid entitlement before any use.",
+                    "todo": "Agree a contract with the provider first."}
         env = src.get("credential_ref") or "the provider's key"
-        return {"eligible": False, "state": "needs_credential", "reason": f"Needs an API key: add {env} on the worker.",
-                "todo": (note.get("where") and f"Get it from: {note['where']}. Then switch the source on here.") or "Then switch the source on here."}
+        return {"eligible": False, "state": "needs_credential", "code": "needs_key", "param": env, "reason": f"Needs an API key: add {env} on the worker.",
+                "todo": "Then switch the source on here."}
     if note.get("state") == "needs_credential":
         return {"eligible": False, "state": "needs_credential", "reason": note.get("todo") or "Needs a key or a contract.", "todo": note.get("where")}
     m = TERMS_CHECK.search(notes)
     if m:
-        return {"eligible": False, "state": "needs_terms", "reason": f"Needs a person to check the reuse terms. The registry note says: “{src.get('licence_notes')}”.",
+        return {"eligible": False, "state": "needs_terms", "code": "needs_terms", "param": src.get("licence_notes"),
+                "reason": f"Needs a person to check the reuse terms. The registry note says: “{src.get('licence_notes')}”.",
                 "todo": "Read the provider's terms. If reuse is allowed, test it and switch it on below."}
     if src["collection_method"] in ("feed", "change_monitor") and not cfg.get("url"):
         return {"eligible": False, "state": "needs_address", "reason": "Address not found: no feed or page address is set.", "todo": "Find the feed or newsroom address and save it below."}
     if st not in ("pending_connector_validation", "paused"):
-        return {"eligible": False, "state": "needs_retest", "reason": f"Marked {st.replace('_', ' ')} by an earlier check, so it is not switched on automatically.",
+        return {"eligible": False, "state": "needs_retest", "code": "marked", "param": st, "reason": f"Marked {st.replace('_', ' ')} by an earlier check, so it is not switched on automatically.",
                 "todo": "Test it below; if the test passes, switch it on by hand."}
     return {"eligible": True, "state": "testing", "reason": "Public and keyless: switched on by itself once the daily test passes.", "todo": None}
 

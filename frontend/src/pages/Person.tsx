@@ -25,7 +25,7 @@ function CareerPath({ roles }: { roles: Role[] }) {
   const undated = roles.filter((r) => !r.from);
   const min = dated.length ? Math.min(...dated.map((r) => r.from!)) : now;
   const max = now + 1, span = Math.max(1, max - min);
-  const step = span > 16 ? 5 : span > 8 ? 2 : 1;
+  const step = [1, 2, 5, 10].find((x) => span / x <= 5) ?? 10;           // at most five year labels
   const ticks: number[] = [];
   for (let y = Math.ceil(min / step) * step; y <= now; y += step) ticks.push(y);
   const pos = (y: number) => `${((y - min) / span) * 100}%`;
@@ -105,7 +105,7 @@ export default function Person() {
         </div>}
       </div>
       <dl className="ps-facts">
-        <div><dt>{tr("Seniority")}</dt><dd>{ll.seniority ? tr(ll.seniority) : tr("Not known")}</dd></div>
+        <div><dt>{tr("Seniority")}</dt><dd>{p.seniority ? tr(p.seniority) : tr("Not known")}</dd></div>
         <div><dt>{tr("Buying committee")}</dt><dd>{ll.committee_role ? tr(ll.committee_role) : tr(COMMITTEE[g].one)}</dd></div>
         <div><dt>{tr("Lead list priority")}</dt><dd>{ll.priority ? <span className={`ac-tag ${ll.priority.toLowerCase()}`}>{ll.priority}</span> : tr("Not on the list")}</dd></div>
         <div><dt>{tr("Outreach")}</dt><dd>{tr(out.engagement_label)}</dd></div>
