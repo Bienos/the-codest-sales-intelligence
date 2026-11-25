@@ -520,6 +520,7 @@ const serviceOf = (h: any): string => (h.service && SERVICE[h.service] ? h.servi
   : /delivery team|dedicated team|squad|project team/i.test(h.angle ?? "") ? "delivery_team" : "team_extension");
 const ROUTE_WORDS: Record<string, string> = { direct: "Directly with {}", vendor: "Through {}, their platform vendor", prime_subcontract: "Through {}, their integrator",
   procurement: "Public tender run by {}", relationship: "Through {}" };
+const urlKey = (u?: string | null) => String(u ?? "").trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, "").split("#")[0].replace(/\/+$/, "");
 const plainTitle = (t?: string | null) => String(t ?? "").replace(/\s*\((analyst )?working title\)\s*$/i, "").trim();
 
 /** One card per programme. The API already folds routes and same-kind repeats together; this keeps the page safe if it ever does not. */
@@ -591,11 +592,16 @@ function AboutSection({ c, research, canRun, startResearch, researchBusy, resear
   </Part>;
 }
 
-function NowSection({ c }: { c: any }) {
-  const [shown, more] = useFew<any>(c.recent ?? [], 3);
+/** Their news, minus what "Why talk to them now" already shows (said once is enough). */
+function NowSection({ c, above }: { c: any; above: Set<string> }) {
+  const all: any[] = c.recent ?? [];
+  const rest = all.filter((x) => !above.has(urlKey(x.source_url)));
+  const [shown, more] = useFew<any>(rest, 3);
+  const moved = all.length - rest.length;
   return <Part title="What they're doing now" purpose="Their news from the last 12 months: good openers for a first message." id="sec-now">
-    {shown.length ? <Timeline items={shown.map((x: any) => ({ date: x.date, title: x.headline, detail: x.detail, extra: <Cite c={x} /> }))} />
-      : <p className="small m-0">{tr("Exa found no dated news about this company in the last 12 months.")}</p>}
+    {shown.length > 0 && <Timeline items={shown.map((x: any) => ({ date: x.date, title: x.headline, detail: x.detail, extra: <Cite c={x} /> }))} />}
+    {!all.length && <p className="small m-0">{tr("Exa found no dated news about this company in the last 12 months.")}</p>}
+    {moved > 0 && <p className={`ac-note mb-0${shown.length ? " mt-2" : " mt-0"}`}>{moved === 1 ? tr("One more news item is above, under “Why talk to them now”.") : tr("{} more news items are above, under “Why talk to them now”.", moved)}</p>}
     {more}
   </Part>;
 }
@@ -688,7 +694,7 @@ function Overview({ d, research, rel, orgId, me, canRun, startResearch, research
         <Part title="How they fit us" purpose="How close they are to the companies we sell to best." id="sec-fit">
           {fit.points.length ? <FitList points={fit.points} fromRecords={fit.fromRecords} /> : <p className="small m-0">{tr("We hold too little about this company to judge its fit. Edit the company details or research it with Exa.")}</p>}
         </Part>
-        {c && <NowSection c={c} />}
+        {c && <NowSection c={c} above={new Set((why.reasons ?? []).map((r: any) => urlKey(r.url)).filter(Boolean))} />}
         <VendorSection c={c} d={d} />
         <ListSection lp={lp} skip={skip} />
         {c?.open_questions?.length > 0 && <Part title="Still to find out" purpose="Questions to answer in the first call." id="sec-q"><ul className="tight m-0">{c.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></Part>}
@@ -1111,7 +1117,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         <div className="ac-glance">
           {fit.points.length > 0 && <button type="button" className="glance" onClick={() => jump("sec-fit")}>
             <FitCells points={fit.points} />
-            <span><b>{tr("{} of {} fit points in our favour", good, fit.points.length)}</b><small>{tr("How they fit us")}</small></span></button>}
+            <span><b>{tr("{} of {} points in our favour", good, fit.points.length)}</b><small>{tr("How they fit us")}</small></span></button>}
           {canPeople && <button type="button" className="glance" onClick={() => goto("people")}>
             {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 4).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" />)}{live.length > 4 && <span className="mono mono-sm more">+{live.length - 4}</span>}</span>
               : <span className="glance-ic" aria-hidden="true"><Ic.people /></span>}

@@ -41,7 +41,7 @@ function where(c: { status: string; stage: Stage; review_passed?: boolean; issue
 /** The four stages as one strip. `small` is the version on a campaign card. */
 function StageStrip({ stage, tone, caption, dates, small }: { stage: Stage; tone: Tone; caption: string; dates?: (string | null)[]; small?: boolean }) {
   const at = stageAt(stage);
-  return <ol className={`cg-strip${small ? " cg-strip-s" : ""}`} aria-label={tr("Stage: {}", caption)}>
+  const strip = <ol className={`cg-strip${small ? " cg-strip-s" : ""}`} aria-label={tr("Stage: {}", caption)}>
     {STAGES.map((s, i) => {
       const state = i < at || stage === "done" ? "done" : i === at ? `at t-${tone || "none"}` : "todo";
       return <li key={s.key} className={`cg-st ${state}`} aria-current={i === at ? "step" : undefined}>
@@ -51,6 +51,7 @@ function StageStrip({ stage, tone, caption, dates, small }: { stage: Stage; tone
       </li>;
     })}
   </ol>;
+  return small ? strip : <div className="cg-stagebox">{strip}<p className="cg-strip-cap" aria-hidden="true">{caption}</p></div>;
 }
 
 /** "company" or "companies" (and the Polish forms) for a count shown in bold next to it. */
@@ -169,7 +170,7 @@ function StartFromSignals() {
   return <div className="cg-empty">
     <b>{tr("No campaigns yet")}</b>
     <p>{tr("Start from a buying signal. The app finds the companies that show it and the people there you can email.")}</p>
-    {!opts ? <Skeleton rows={1} /> : live.length === 0 ? <p className="small muted">{tr("No company has a buying signal from the last 90 days with someone to email yet. Signals appear as news is read and checked.")}</p> :
+    {!opts ? <Skeleton rows={1} /> : live.length === 0 ? <p className="small muted">{tr("No company has a buying signal from the last 90 days with someone to email yet. Signals appear as news is read and checked.")} <Link to="/signals">{tr("See buying signals")}</Link></p> :
       <ul className="cg-empty-sigs">{live.map((o) => <li key={o.rule_id}>
         <Link to={`/campaigns/new?rules=${o.rule_id}`}><SigChip id={o.rule_id} /><span className="small">{tr("{} companies with someone to email", number(o.reachable_accounts))}</span><span aria-hidden="true">→</span></Link>
       </li>)}</ul>}
@@ -257,7 +258,7 @@ export function NewCampaign() {
         .then(setPv).catch((e) => { if (!ctl.signal.aborted) setPvErr(e); }).finally(() => { if (!ctl.signal.aborted) setPvBusy(false); });
     }, 250);
     return () => { window.clearTimeout(t); ctl.abort(); };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]);
 
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const sorted = (opts ?? []).slice().sort((a, b) => b.reachable_accounts - a.reachable_accounts || b.accounts - a.accounts || b.strength - a.strength);
@@ -430,7 +431,7 @@ export function CampaignDetail({ canDecide }: { canDecide: boolean }) {
     <div className="page-head cg-head">
       <div className="eyebrow">{tr("Campaign")}</div>
       <h1>{c.name}</h1>
-      <p className="sub">{tr("Emails to {} people at {} companies, written because of recent news: {}. News from the last {} days, {}.", number(s.people_in), number(s.companies_in), sigNames, f.days ?? 90, regionName(f.region).toLowerCase())}</p>
+      <p className="sub">{tr("Emails to {} at {}, written because of recent news: {}. News from the last {} days, {}.", counted(s.people_in, ...PERSON), counted(s.companies_in, ...COMPANY), sigNames, f.days ?? 90, regionName(f.region).toLowerCase())}</p>
     </div>
     <StageStrip stage={c.stage} tone={w.tone} caption={w.caption} dates={dates} />
     {msg && <div className="okmsg" role="status">{msg}</div>}
@@ -443,10 +444,11 @@ export function CampaignDetail({ canDecide }: { canDecide: boolean }) {
     {["draft", "pending_approval", "approved", "rejected", "expired"].includes(c.status) && <OutboundNotice configured={d.lemlist_configured} enabled={d.outbound_enabled} />}
 
     {c.status === "pushed" && <section id="results" className="cg-sec" aria-labelledby="cg-res-h">
-      <h2 id="cg-res-h">{tr("Results")}</h2>
-      <p className="cg-lede">{tr("Counts of people, read from Lemlist every hour. Bounces and opt-outs stop any further email to that address, here and in Lemlist.")}</p>
-      <div className="cg-results">
-        <Funnel r={r} />
+      <h2 id="cg-res-h">{r.sent > 0 ? tr("Results") : tr("What went to Lemlist")}</h2>
+      <p className="cg-lede">{r.sent > 0 ? tr("Counts of people, read from Lemlist every hour. Bounces and opt-outs stop any further email to that address, here and in Lemlist.")
+        : tr("No email has gone out yet. Results appear here within an hour of the first emails, once someone presses Launch in Lemlist.")}</p>
+      <div className={`cg-results${r.sent > 0 ? "" : " one"}`}>
+        {r.sent > 0 && <Funnel r={r} />}
         {d.lemlist && <dl className="cg-facts">
           <div><dt>{tr("Campaign in Lemlist")}</dt><dd>{d.lemlist.campaign_name}</dd></div>
           <div><dt>{tr("Sent to Lemlist")}</dt><dd>{fmtDateTime(d.lemlist.pushed_at)}</dd></div>
@@ -502,14 +504,14 @@ function NextStep({ d, issueCount, canDecide, busy, act }: { d: any; issueCount:
         <p className="cg-next-say">{s.people_in === 0 ? tr("Nobody can be emailed yet. Add people with an email address to these companies, then refresh the list.")
           : passed ? tr("Everything is checked. Send it for approval: a manager who is not you checks the exact people and emails.") : tr("Fix the emails first. The problems are listed under The emails.")}</p>
         <ul className="cg-check">
-          <li className={s.people_in ? "ok" : "bad"}>{s.people_in ? tr("The list: {} people at {} companies", number(s.people_in), number(s.companies_in)) : tr("The list: nobody to write to yet")}</li>
+          <li className={s.people_in ? "ok" : "bad"}>{s.people_in ? tr("The list: {} at {}", counted(s.people_in, ...PERSON), counted(s.companies_in, ...COMPANY)) : tr("The list: nobody to write to yet")}</li>
           <li className={passed ? "ok" : "bad"}>{passed ? tr("The emails pass the writing check") : <a href="#emails">{tr("Problems in the emails: {}", issueCount || 1)}</a>}</li>
           <li className="todo">{tr("Send for approval")}</li>
         </ul>
         <div className="row mt-2">
           <button type="button" className="primary" disabled={busy || !passed || !s.people_in || !d.can_edit}
-            onClick={() => act(() => post(`/api/signal-campaigns/${id}/request-approval`), (x) => tr("Sent for approval: {} people at {} companies.", x.members, x.accounts))}>{tr("Send for approval")}</button>
-          <button type="button" disabled={busy || !d.can_edit} onClick={() => act(() => post(`/api/signal-campaigns/${id}/rebuild`), (x) => tr("List refreshed: {} people.", x.included))}>{tr("Refresh the list")}</button>
+            onClick={() => act(() => post(`/api/signal-campaigns/${id}/request-approval`), (x) => tr("Sent for approval: {} at {}.", counted(x.members, ...PERSON), counted(x.accounts, ...COMPANY)))}>{tr("Send for approval")}</button>
+          <button type="button" disabled={busy || !d.can_edit} onClick={() => act(() => post(`/api/signal-campaigns/${id}/rebuild`), (x) => tr("List refreshed: {}.", counted(x.included, ...PERSON)))}>{tr("Refresh the list")}</button>
           {archive}
         </div>
         <p className="small muted m-0">{tr("Refresh the list picks up new signals and new contacts, and keeps the people you left out.")}</p>
@@ -532,7 +534,7 @@ function NextStep({ d, issueCount, canDecide, busy, act }: { d: any; issueCount:
       <div className="row mt-2">{d.can_change && <button type="button" className="primary" disabled={busy} onClick={() => act(() => post(`/api/signal-campaigns/${id}/withdraw`), () => tr("Back to draft. You can change it now."))}>{tr("Move it back to draft")}</button>}</div>
     </>;
     case "approved": return <>
-      <p className="cg-next-say">{tr("Approved by {} on {}. Sending creates the campaign in Lemlist with its {} people. Nobody gets an email until you press Launch in Lemlist.", a?.approver ?? "", fmtDate(a?.approved_at), number(a?.approved_people ?? s.people_in))}</p>
+      <p className="cg-next-say">{tr("Approved by {} on {}. Sending creates the campaign in Lemlist with {}. Nobody gets an email until you press Launch in Lemlist.", a?.approver ?? "", fmtDate(a?.approved_at), counted(a?.approved_people ?? s.people_in, ...PERSON))}</p>
       <div className="row mt-2">
         <button type="button" className="primary" disabled={busy || !d.can_send || !d.lemlist_configured || !d.outbound_enabled}
           onClick={() => act(() => post(`/api/approvals/${a.id}/execute`), (x) => tr("{} people are in the Lemlist campaign. Open Lemlist and press Launch when you are ready.", x.leads))}>{tr("Send to Lemlist")}</button>

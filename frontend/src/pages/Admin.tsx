@@ -887,7 +887,7 @@ const RECORD: Record<string, string> = { organization: "Company", organization_p
 const recordLink = (t: string, id: string) => (["organization", "organization_people", "people_candidates", "crm_organization"].includes(t) ? `/accounts/${id}` : t === "person" ? `/people/${id}`
   : t === "opportunity_hypothesis" ? `/opportunities/${id}` : t === "signal_campaign" ? `/campaigns/${id}` : null);
 /** Who did it: a person's address, or the automatic job that did it. */
-const actorName = (a: string) => (a === "auto" ? tr("Automatic matcher") : a.startsWith("system:") ? tr("Automatic ({})", humanize(a.slice(7)).toLowerCase()) : a);
+const actorName = (a: string) => (a === "auto" ? tr("Automatic matcher") : a.startsWith("system:") ? tr("Automatic ({})", tr(humanize(a.slice(7).replace(/-/g, "_"))).toLowerCase()) : a);
 
 /** A short line from the recorded detail: counts, names and notes, never raw JSON. */
 function detailLine(d: any): string {
@@ -939,7 +939,7 @@ function Audit() {
             <td data-label={tr("What they did")}><b>{opName(a.operation)}</b></td>
             <td data-label={tr("About")} className="wide">{name ? (link ? <Link to={link}>{name}</Link> : <span>{name}</span>) : link ? <Link to={link}>{tr("Open the {}", what.toLowerCase())}</Link> : null}<div className="small muted">{what}</div></td>
             <td data-label={tr("Detail")} className="small">{detailLine(a.detail) || <span className="muted">—</span>}</td>
-            <td data-label={tr("Approval")}>{a.approval_id ? <Link to={`/admin/approvals#approval-${a.approval_id}`}>{tr("Approved")}</Link> : <span className="muted">{tr("Not needed")}</span>}</td>
+            <td data-label={tr("Approval")} className="nowrap">{a.approval_id ? <Link to={`/admin/approvals#approval-${a.approval_id}`}>{tr("Approved")}</Link> : <span className="muted" aria-label={tr("Not needed")}>—</span>}</td>
           </tr>; })}</tbody></table></div>
       <Pager total={d.total} offset={off} limit={LIMIT} onPage={(o) => setF({ page: String(o) })} label="Audit log" />
     </>}

@@ -24,7 +24,7 @@ type NewItem = {
 };
 type Brief = {
   generated_at: string; name: string | null; since: string; last_visit: string | null; actions: Action[]; queue: Action[]; more_actions: number;
-  new: NewItem[]; new_total: number; next_up: { organization: Org; next_step: string | null; signal: string | null }[];
+  hidden: number; new: NewItem[]; new_total: number; next_up: { organization: Org; next_step: string | null; signal: string | null }[];
   glance: { targets: number; with_news: number; people_with_email: number | null; accounts_with_email: number | null; campaigns_live: number; open_tenders: number };
 };
 type Mark = "done" | "later";
@@ -208,7 +208,9 @@ function Glance({ g }: { g: Brief["glance"] }) {
 function NothingUrgent({ d }: { d: Brief }) {
   return <div className="td-empty">
     <p className="td-empty-t">{tr("Nothing urgent today.")}</p>
-    <p>{tr("No tender closes soon, nobody is waiting for an answer and no strong new signal came in. Here is what to look at next.")}</p>
+    <p>{d.hidden > 0
+      ? tr("You have dealt with everything on today's list. Here is what to look at next.")
+      : tr("No tender closes soon, nobody is waiting for an answer and no strong new signal came in. Here is what to look at next.")}</p>
     {d.next_up.length > 0 && <ol className="td-next">
       {d.next_up.map((x) => <li key={x.organization.id}>
         <Link to={`/accounts/${x.organization.id}`}><b>{x.organization.name}</b></Link>
@@ -267,7 +269,7 @@ export default function Today({ canCampaign = false }: { canReview?: boolean; ca
           {open.length
             ? <>{counted(open.length, ["thing to do today", "things to do today"], ["sprawa na dziś", "sprawy na dziś", "spraw na dziś"])}.<br />
                 <span>{tr("Start with {}.", first.organization?.name ?? first.buyer ?? "")}</span></>
-            : tr("Nothing urgent today.")}
+            : <>{tr("A quiet day.")}<br /><span>{tr("Nothing urgent. See below for what to look at next.")}</span></>}
         </p>}
       </div>
     </header>

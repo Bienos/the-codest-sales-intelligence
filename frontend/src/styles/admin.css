@@ -413,7 +413,7 @@
 .pager-b { display: inline-flex; gap: 8px; }
 
 /* ---------- tables in Administration: numbers line up on the right, long text wraps, dates never break ---------- */
-.adm-t td { white-space: normal; overflow-wrap: anywhere; }
+.adm-t td { white-space: normal; overflow-wrap: break-word; word-break: normal; }
 .adm-t th.num, .adm-t td.num, .grid-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .adm-t td.nowrap { white-space: nowrap; }
 .adm-t td.wide { min-width: 200px; }

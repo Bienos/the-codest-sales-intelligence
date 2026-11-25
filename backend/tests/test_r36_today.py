@@ -4,6 +4,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
+from test_r4_crm_notify import mk_user
+from test_r29_buying_signals import company, event, person
 
 from ri.api import today as td
 from ri.api.app import create_app
@@ -15,8 +17,6 @@ from ri.scoring import recompute_scores
 from ri.signals.baseline import import_baseline
 from ri.signals.persist import sync_rule_versions
 from ri.sources.registry import seed_registry
-from test_r29_buying_signals import company, event, person
-from test_r4_crm_notify import mk_user
 
 SECRET = "t" * 40
 NOW = datetime.now(timezone.utc)
@@ -47,8 +47,12 @@ def list_signal(conn, oid, sid, text, *, days_ago=3, strength="High", status="Re
 
 @pytest.fixture()
 def world(conn, db_url):
-    import_baseline(conn); sync_rule_versions(conn); seed_registry(conn)
-    mk_user(conn, "bdm@x", "bdm", 555); mk_user(conn, "analyst@x", "research_analyst"); mk_user(conn, "mkt@x", "marketing")
+    import_baseline(conn)
+    sync_rule_versions(conn)
+    seed_registry(conn)
+    mk_user(conn, "bdm@x", "bdm", 555)
+    mk_user(conn, "analyst@x", "research_analyst")
+    mk_user(conn, "mkt@x", "marketing")
     o = {
         "tender": company(conn, "Tender Bank", segment="Banking", priority="P2", score=60),
         "p1": company(conn, "Prime Insurer", country="DE", segment="Insurance", priority="P1", score=90),
@@ -222,7 +226,9 @@ def test_at_most_three_tenders_in_the_first_seven_and_the_rest_wait_in_the_queue
 
 
 def test_nothing_urgent_points_to_the_top_of_the_lead_list(world, conn):
-    conn.execute("delete from legacy_account_research"); conn.execute("delete from signals"); conn.commit()
+    conn.execute("delete from legacy_account_research")
+    conn.execute("delete from signals")
+    conn.commit()
     b = _brief(world)
     assert b["actions"] == [] and b["queue"] == []
     assert [x["organization"]["name"] for x in b["next_up"]][:2] == ["Quiet Bank", "Old News Bank"]

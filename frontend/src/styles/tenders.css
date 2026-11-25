@@ -248,10 +248,13 @@ a.tn-official:focus-visible, .tn-li-what > button:focus-visible, .tn-col-sort:fo
 @media (max-width: 1180px) {
   .tn-card { grid-template-columns: 84px minmax(0, 1fr) 200px; }
   .tn-body { padding: var(--space-4); }
-  .tn-table { --cols: minmax(150px, 1fr) minmax(0, 2.2fr) 96px 104px 18px; }
-  .tn-li { grid-template-areas: "buyer what value due chev" "more more more more more"; }
-  .tn-li-country, .tn-cols > :nth-child(5) { display: none; }
+  .tn-table { --cols: minmax(0, 1fr) 100px 108px 18px; }
+  .tn-li { grid-template-areas: "what value due chev" "buyer value due chev" "more more more more"; row-gap: 4px; }
+  .tn-li-country, .tn-cols > :nth-child(1), .tn-cols > :nth-child(5) { display: none; }
   .tn-li-where { display: inline; }
+  .tn-li-buyer { display: block; font-size: var(--fs-xs); }
+  .tn-li-name { display: inline; font-size: var(--fs-sm); }
+  .tn-li-kind::before { content: " · "; }
   .tn-li-more { grid-template-columns: minmax(0, 1fr) 240px; }
 }
 @media (max-width: 860px) {
@@ -289,9 +292,6 @@ a.tn-official:focus-visible, .tn-li-what > button:focus-visible, .tn-col-sort:fo
   .tn-li-chev { display: none; }
   .tn-li-what > button { font-size: var(--fs-base); }
   .tn-why { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .tn-li-buyer { display: block; font-size: var(--fs-xs); }
-  .tn-li-name { display: inline; font-size: var(--fs-sm); }
-  .tn-li-kind::before { content: " · "; }
   .tn-li-value { text-align: left; align-self: end; }
   .tn-li-value small { display: inline; margin-left: 6px; }
   .tn-li-due { min-width: 110px; align-self: end; }

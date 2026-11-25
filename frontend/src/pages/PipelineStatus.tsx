@@ -460,9 +460,9 @@ export function JobHistory() {
               return <tr key={j.id}>
                 <td data-label={tr("Last activity")} className="nowrap">{when(j.updated_at)}</td>
                 <td data-label={tr("Job")} className="wide"><b>{kindName(j.kind)}</b>{j.subject && <div className="small muted">{j.subject}</div>}</td>
-                <td data-label={tr("Status")}><Say k={gk}>{tr(gl)}</Say>{j.group === "retrying" && j.run_after && <div className="small muted">{tr("next try {}", when(j.run_after))}</div>}</td>
+                <td data-label={tr("Status")} className="nowrap"><Say k={gk}>{tr(gl)}</Say>{j.group === "retrying" && j.run_after && <div className="small muted">{tr("next try {}", when(j.run_after))}</div>}</td>
                 <td data-label={tr("Took")} className="num">{took(j.duration_s)}</td>
-                <td data-label={tr("Tries")} className="num">{tr("{} of {}", number(j.attempts), number(j.max_attempts))}</td>
+                <td data-label={tr("Tries")} className="num">{j.group === "retrying" || j.group === "failed" ? tr("{} of {}", number(j.attempts), number(j.max_attempts)) : j.attempts > 0 ? number(j.attempts) : "—"}</td>
                 <td data-label={tr("What happened")} className="small">{j.error ? <><b>{j.cause ? CAUSE_TITLE(j.cause, j.subject) : tr("Error")}</b><span className="fl-err">{j.error}</span></> : j.result?.length ? resultLine(j.result) : <span className="muted">—</span>}</td>
               </tr>;
             })}</tbody>
@@ -511,7 +511,7 @@ export function SourceChecks() {
               return <tr key={x.id}>
                 <td data-label={tr("Started")} className="nowrap">{when(x.started_at)}</td>
                 <td data-label={tr("Source")} className="wide"><b>{x.display_name ?? x.source_id}</b></td>
-                <td data-label={tr("Result")}><Say k={k}>{tr(l)}</Say></td>
+                <td data-label={tr("Result")} className="nowrap"><Say k={k}>{tr(l)}</Say></td>
                 <td data-label={tr("Took")} className="num">{took(x.duration_s)}</td>
                 <td data-label={tr("New")} className="num">{number(x.items_new)}</td>
                 <td data-label={tr("Changed")} className="num">{number(x.items_changed)}</td>

@@ -281,6 +281,7 @@ h3.fb-what { margin: 10px 0 8px; max-width: 70ch; font: 600 var(--fs-base)/1.45 
 }
 @media (max-width: 640px) {
   .fx-ctl { padding: 0 12px; gap: 8px; }
+  .fx-ctl:not(.fx-ctl-q) .fx-ico { display: none; }
   .fx-chev { right: 10px; }
   .fx-ctl select { padding-right: 18px; }
   .fx-ctl input:not([type="checkbox"]), .fx-ctl select { min-block-size: 46px; font-size: var(--fs-input); }
@@ -296,7 +297,7 @@ h3.fb-what { margin: 10px 0 8px; max-width: 70ch; font: 600 var(--fs-base)/1.45 
   .fb-when time { font-weight: 400; }
   .fb-foot { align-items: stretch; }
   .fb-acts { inline-size: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-  .fb-btn { min-block-size: 44px; justify-content: center; border: 1px solid var(--line); text-decoration: none; }
+  .fb-btn { min-block-size: 44px; justify-content: center; border: 1px solid var(--line); text-decoration: none; white-space: normal; text-align: center; }
   .fb-btn.is-main { border-color: var(--navy); }
   .fb-btn.fb-toggle, .fb-btn.is-quiet { min-block-size: 40px; border: 0; }
   .fb-btn.fb-toggle { justify-content: flex-start; padding-left: 2px; text-decoration: underline; text-decoration-color: var(--line); }

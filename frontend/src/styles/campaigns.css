@@ -50,7 +50,9 @@
 .cg-st.at.t-wait .cg-st-bar { background: repeating-linear-gradient(135deg, var(--purple) 0 8px, #CFAEFF 8px 16px); }
 .cg-st.at.t-bad .cg-st-bar { background: var(--orange); }
 .cg-st.at.t-ok .cg-st-bar, .cg-st.at.t-none .cg-st-bar { background: var(--navy); }
-.cg-strip:not(.cg-strip-s) { padding: 14px 16px 12px; background: var(--white); border: 1px solid var(--line); }
+.cg-stagebox { margin: 0 0 18px; padding: 14px 16px 12px; background: var(--white); border: 1px solid var(--line); }
+.cg-stagebox .cg-strip { margin: 0; }
+.cg-strip-cap { display: none; margin: 10px 0 0; font: 600 var(--fs-md)/1.35 var(--font-body); color: var(--navy); }
 .cg-strip-s { margin: 0; gap: 3px; }
 .cg-strip-s .cg-st { gap: 4px; }
 .cg-strip-s .cg-st-bar { block-size: 6px; }
@@ -194,6 +196,7 @@
 #next { scroll-margin-top: 16px; }
 
 .cg-results { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px 32px; align-items: start; }
+.cg-results.one { grid-template-columns: minmax(0, 640px); }
 .cg-funnel { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .cg-funnel li { display: grid; grid-template-columns: 96px minmax(0, 1fr) 44px; align-items: center; gap: 12px; font-size: var(--fs-sm); color: var(--body); }
 .cg-funnel b { font: 800 var(--fs-lg)/1 var(--font-head); color: var(--navy); text-align: right; }
@@ -274,10 +277,11 @@
   .cg-how { padding: 14px 14px 16px; }
   .cg-card { grid-template-columns: minmax(0, 1fr); padding: 16px; gap: 12px; }
   .cg-card-go .btn { flex: 1 1 auto; }
-  .cg-strip:not(.cg-strip-s) { padding: 12px; gap: 4px; }
-  .cg-strip:not(.cg-strip-s) .cg-st-l { font-size: var(--fs-label); letter-spacing: .04em; }
-  .cg-strip:not(.cg-strip-s) .cg-st-d { display: none; }
-  .cg-strip:not(.cg-strip-s) .cg-st.at .cg-st-d { display: block; grid-column: 1 / -1; }
+  .cg-stagebox { padding: 12px; }
+  .cg-stagebox .cg-strip { gap: 4px; }
+  .cg-stagebox .cg-st-l { font-size: var(--fs-label); letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cg-stagebox .cg-st-d { display: none; }
+  .cg-strip-cap { display: block; }
   .cg-wiz-bar { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .cg-wz button, .cg-wz-in { justify-content: center; padding: 8px 4px; min-block-size: 48px; }
   .cg-wz-l { display: none; }

@@ -500,7 +500,12 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
     });
   }, [setParams]);
   const set = (k: string, v: string) => update({ [k]: v });
-  const pick = (changes: Record<string, string>) => { update(changes); setPill(null); };
+  const pick = (changes: Record<string, string>) => {
+    update(changes);
+    const from = pill;
+    setPill(null);
+    if (from) window.requestAnimationFrame(() => document.getElementById(`tn-pill-${from}`)?.focus());       // back to the filter's button
+  };
   const choose = (next: Who) => update({ who: next === "icp" ? "" : next });
   const clearFilters = () => { update(Object.fromEntries(FILTER_KEYS.map((k) => [k, ""]))); setSearch(""); setPill(null); };
 
@@ -579,9 +584,9 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
           onChange={(e) => setSearch(e.target.value)} autoComplete="off" />
         {search && <button type="button" className="tn-search-clear" aria-label={tr("Clear the search")} onClick={() => { setSearch(""); update({ q: "" }); searchBox.current?.focus(); }}>×</button>}
       </form>
-      <p className="tn-try">
+      <p className="tn-try" hidden={!!qParam && !data?.search?.cpv.length}>
         {data?.search?.cpv.length ? <span>{tr("CPV codes starting {}", data.search.cpv.join(", "))}{data.search.words ? ` + “${data.search.words}”` : ""}</span>
-          : <><span>{tr("Try")}</span>{SUGGESTIONS.map((x) => <button key={x} type="button" className="tn-try-b" onClick={() => { setSearch(x); update({ q: x }); }}>{x}</button>)}</>}
+          : !qParam && <><span>{tr("Try")}</span>{SUGGESTIONS.map((x) => <button key={x} type="button" className="tn-try-b" onClick={() => { setSearch(x); update({ q: x }); }}>{x}</button>)}</>}
       </p>
 
       <div className="tn-who" role="group" aria-labelledby="tn-who-h">
