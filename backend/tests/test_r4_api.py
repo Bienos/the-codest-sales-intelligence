@@ -1,3 +1,4 @@
+import dataclasses
 import time
 
 import jwt
@@ -223,14 +224,26 @@ def test_cannot_propose_on_account_owned_by_someone_else_or_unlinked(world):
 
 def test_execute_blocked_when_kill_switch_off_or_no_writer(world, db_url):
     from ri.db import Database
+    c0, h = world["c"], world["h"]
+    body = {"hypothesis_id": world["hyps"]["prime_subcontract"], "subject": "Kill switch check", "justification": "route check"}
+    aid = c0.post("/api/crm/propose-activity", json=body, headers=h("bdm")).json()["approval_id"]
+    assert c0.post(f"/api/approvals/{aid}/decision", json={"approve": True}, headers=h("mgr")).status_code == 200
+    assert c0.post("/api/approvals/00000000-0000-0000-0000-000000000000/execute", headers=h("mgr")).status_code == 404
     db = Database(db_url, max_size=2)
-    try:
-        for s, wf in ((settings(writes=False), lambda: FakeWriter()), (settings(writes=True), None)):
-            c = TestClient(create_app(s, db=db, writer_factory=wf))
-            hdr = {"Authorization": f"Bearer {make_dev_token(SECRET, 'mgr@x')}"}
-            assert c.post("/api/approvals/00000000-0000-0000-0000-000000000000/execute", headers=hdr).status_code in {409, 503}
-    finally:
-        pass
+    for s, wf in ((settings(writes=False), lambda: FakeWriter()), (settings(writes=True), None)):
+        c = TestClient(create_app(s, db=db, writer_factory=wf))
+        hdr = {"Authorization": f"Bearer {make_dev_token(SECRET, 'mgr@x')}"}
+        assert c.post(f"/api/approvals/{aid}/execute", headers=hdr).status_code in {409, 503}       # approved, but writes are off or no write credential
+
+
+def test_approval_decide_and_execute_respect_account_scope(world):
+    """A seller who cannot see the account cannot approve or run another seller's CRM change (found in the 25 Nov security review)."""
+    c, h = world["c"], world["h"]
+    body = {"hypothesis_id": world["hyps"]["prime_subcontract"], "subject": "Scope check", "justification": "route check"}
+    aid = c.post("/api/crm/propose-activity", json=body, headers=h("bdm")).json()["approval_id"]
+    assert c.post(f"/api/approvals/{aid}/decision", json={"approve": True}, headers=h("bdm2")).status_code == 404     # out of scope: not even visible
+    assert c.post(f"/api/approvals/{aid}/decision", json={"approve": True}, headers=h("mgr")).status_code == 200
+    assert c.post(f"/api/approvals/{aid}/execute", headers=h("bdm2")).status_code == 403                             # neither requester nor approver
 
 
 # ------------------------------------------------------------------ webhook + admin
@@ -293,9 +306,14 @@ def test_google_signin_defaults_domain_allowlist_and_email_verified(monkeypatch)
         return jwt.encode({"email": "a@thecodest.co", "email_verified": True, "iss": "accounts.google.com", "aud": "cid.apps.googleusercontent.com", "exp": int(time.time()) + 60, **kw}, key, algorithm="RS256")
     assert v.email_for(tok()) == "a@thecodest.co"
     assert v.email_for(tok(iss="https://accounts.google.com")) == "a@thecodest.co"             # both Google issuer spellings
-    for bad in (tok(email_verified=False), tok(email="x@other.com"), tok(aud="someone-elses-client")):
+    for bad in (tok(email_verified=False), tok(email_verified=None), tok(email="x@other.com"), tok(aud="someone-elses-client")):
         with pytest.raises(HTTPException):
-            v.email_for(bad)
+            v.email_for(bad)                                                 # Google always states whether it verified the address; silence is refused
+    strict = TokenVerifier(dataclasses.replace(s, google_require_workspace=True), key_resolver=lambda t: key.public_key())
+    assert strict.email_for(tok(hd="thecodest.co")) == "a@thecodest.co"
+    with pytest.raises(HTTPException) as e:
+        strict.email_for(tok())                                              # a personal Google account registered on a work address
+    assert e.value.status_code == 403
 
 
 def test_only_the_api_requires_sign_in_config_in_production():

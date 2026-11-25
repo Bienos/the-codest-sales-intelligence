@@ -130,6 +130,15 @@ def crm_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
 
 
 
+def lemlist_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
+    """Hourly read-back of Lemlist activity, only when a key is set. Queued as a job so the scheduler tick stays short."""
+    now = now or datetime.now(timezone.utc)
+    if not settings.lemlist_api_key or now.minute >= 5:
+        return {}
+    jid, created = enqueue(conn, "lemlist_sync", {"by": "system:scheduler"}, idempotency_key=f"lemlist_sync:{now:%Y%m%d%H}", max_attempts=2)
+    return {"lemlist_sync_job": jid} if created else {}
+
+
 def requeue_billing_failures(conn: Conn, limit: int = 10) -> int:
     """Recover legacy terminal jobs only after the worker has successfully extracted again."""
     rows = qa(conn, """

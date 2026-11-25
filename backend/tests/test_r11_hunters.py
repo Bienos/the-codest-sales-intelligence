@@ -125,7 +125,7 @@ def test_watching_an_account_schedules_a_weekly_scan_once_and_shows_in_leads(wor
     from ri.scheduler import schedule_watchlist
     c, h, ids, _ = world
     assert c.post(f"/api/accounts/{ids['a']}/watch", headers=h("bdm")).json() == {"watched": True}
-    assert c.post(f"/api/accounts/00000000-0000-0000-0000-000000000000/watch", headers=h("bdm")).status_code == 404
+    assert c.post("/api/accounts/00000000-0000-0000-0000-000000000000/watch", headers=h("bdm")).status_code == 404
     items = {i["name"]: i["watched"] for i in c.get("/api/leads", headers=h("bdm")).json()["items"]}
     assert items["Synthetic London Bank plc"] is True and items["Synthetic Berlin Scale-up GmbH"] is False
     assert [i["name"] for i in c.get("/api/leads?watched=true", headers=h("bdm")).json()["items"]] == ["Synthetic London Bank plc"]

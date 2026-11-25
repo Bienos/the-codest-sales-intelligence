@@ -141,12 +141,16 @@ def upsert_person(conn: Conn, p: dict[str, Any]) -> None:
     if p.get("is_deleted"):
         conn.execute("DELETE FROM crm_persons WHERE crm_id=%s", (p["id"],))
         return
+    org_raw = p.get("org_id")
+    crm_org = org_raw.get("value") if isinstance(org_raw, dict) else org_raw          # v1 sends {"value": id, ...}, v2 sends the id
     optout = any(e.get("label") == "opt_out" for e in (p.get("emails") or []) if isinstance(e, dict)) or bool(p.get("marketing_status") in {"unsubscribed", "do_not_contact"})
     conn.execute(
         "INSERT INTO crm_persons(crm_id, crm_org_id, name, owner_id, email_optout, suppressed, raw, synced_at) VALUES (%s,%s,%s,%s,%s,%s,%s,now()) "
         "ON CONFLICT (crm_id) DO UPDATE SET crm_org_id=EXCLUDED.crm_org_id, name=EXCLUDED.name, owner_id=EXCLUDED.owner_id, email_optout=EXCLUDED.email_optout, "
         "suppressed=EXCLUDED.suppressed OR crm_persons.suppressed, synced_at=now()",
-        (p["id"], p.get("org_id"), p.get("name") or "", p.get("owner_id"), optout, optout, jb({"id": p["id"], "marketing_status": p.get("marketing_status")})))
+        (p["id"], crm_org, p.get("name") or "", p.get("owner_id"), optout, optout, jb({"id": p["id"], "marketing_status": p.get("marketing_status")})))
+    from ..people import link_crm_person
+    link_crm_person(conn, p)          # the same person in the people database: by email, else at the linked account
     if optout:   # suppression propagates to canonical people: honoured across ALL downstream tools
         conn.execute("UPDATE people SET suppressed=true, suppression_reason='crm opt-out' WHERE id IN (SELECT person_id FROM crm_persons WHERE crm_id=%s AND person_id IS NOT NULL)", (p["id"],))
 
@@ -188,7 +192,8 @@ def verify_basic_auth(header: str | None, expected_user: str, expected_secret: s
         user, _, pwd = base64.b64decode(header[6:]).decode().partition(":")
     except Exception:  # noqa: BLE001
         return False
-    return hmac.compare_digest(user, expected_user) and hmac.compare_digest(pwd, expected_secret)
+    # bytes, not str: compare_digest raises on non-ASCII text, which an attacker could use to turn a 401 into a 500
+    return hmac.compare_digest(user.encode(), expected_user.encode()) & hmac.compare_digest(pwd.encode(), expected_secret.encode())
 
 
 def receive_webhook(conn: Conn, body: dict[str, Any]) -> tuple[str, bool]:

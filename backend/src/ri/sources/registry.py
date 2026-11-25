@@ -53,6 +53,12 @@ def seed_registry(conn: Conn, path: Path = SEED) -> int:
             )
         if not row and s.get("collection_method"):      # an uncertified source may have its collection method corrected; certified ones never change silently
             conn.execute("UPDATE sources SET collection_method=%s WHERE source_id=%s AND status='pending_connector_validation'", (s["collection_method"], s["source_id"]))
+        if not row and s.get("canonical_domain"):
+            # the address check only accepts URLs on the registered domain, so a corrected domain must reach existing deployments too:
+            # uncertified sources only, and never when an operator set the address by hand (their address stays valid on the old domain)
+            conn.execute("UPDATE sources SET canonical_domain=%s WHERE source_id=%s AND status='pending_connector_validation' "
+                         "AND canonical_domain IS DISTINCT FROM %s AND coalesce(config->>'url_basis','') NOT LIKE 'set by %%'",
+                         (s["canonical_domain"], s["source_id"], s["canonical_domain"]))
     return n
 
 

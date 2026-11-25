@@ -33,7 +33,8 @@ _EVIDENCE = """EXISTS (SELECT 1 FROM event_claims ec JOIN claims cl ON cl.id=ec.
 
 
 def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, page: int = 1, kind: str = "",
-             region: str = "", organization_id: UUID | None = None, event: UUID | None = None, search: str = "", qualification: str = "target") -> list[dict]:
+             region: str = "", organization_id: UUID | None = None, event: UUID | None = None, search: str = "", qualification: str = "target",
+             rule: str = "") -> list[dict]:
     from .api.search import all_like, tokens
 
     where, args = org_scope_sql(p, "o.id")
@@ -80,7 +81,7 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
         ), stories AS (
             SELECT DISTINCT ON (story_key) *, array_agg(id) OVER (PARTITION BY story_key) AS event_ids
             FROM candidates
-            WHERE (%s='' OR (%s='tender')=(tender IS NOT NULL))
+            WHERE (%s='' OR (%s='tender')=(tender IS NOT NULL)) AND (%s='' OR %s=ANY(rules))
             ORDER BY story_key, happened DESC, id
         )
         SELECT * FROM stories WHERE (%s::uuid IS NULL OR %s::uuid=ANY(event_ids))
@@ -89,7 +90,10 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
                  happened DESC, id
         LIMIT %s OFFSET %s
         """, [*args, *region_args, *search_args, organization_id, organization_id, non_engineering_title_sql_pattern(), days, scope, kind, kind,
-              event, event, scope, scope, limit + 1, (page - 1) * limit])
+              rule, rule, event, event, scope, scope, limit + 1, (page - 1) * limit])
+    names = {x["id"]: x for x in qa(conn, "SELECT id, signal, strength, grp FROM legacy_signals WHERE id = ANY(%s)",
+                                    (sorted({x for r in rows for x in (r["rules"] or [])}),))} if rows else {}
+    from .outbound.signal_campaigns import ANGLES, DEFAULT_ANGLE
     out = []
     for r in rows:
         # Collect corroborating sources only from the events that passed the same
@@ -122,6 +126,8 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
                     "tender": r["tender"], "evidence": evidence, "sources": sources,
                     "next_action": action[0] if action else None,
                     "fit": fit_for(r["rules"]), "why": attrs.get("fit"), "language": attrs.get("language"),
+                    "signals": [{"rule_id": x, "name": names[x]["signal"], "strength": names[x]["strength"], "group": names[x]["grp"],
+                                 "meaning": ANGLES.get(x, DEFAULT_ANGLE)} for x in (r["rules"] or []) if x in names and not x.startswith("NEG-")],
                     "summary_en": attrs.get("summary_en"), "summary_pl": attrs.get("summary_pl")})
     return out
 
@@ -161,4 +167,4 @@ def rfp_research(conn: Conn, p: Principal) -> list[dict]:
         AND v.status IN ('queued','fetching','extracting','waiting_budget','failed','blocked','no_event')
         AND v.created_at >= now() - interval '30 days' AND v.url ~* '^https?://'
         ORDER BY v.created_at DESC, v.id LIMIT 12
-        """)
+        """, args)          # the scope's own parameters: without them every seller's archive page failed

@@ -11,12 +11,31 @@ from typing import Any
 from .audit import audit
 from .db import Conn, canonical_json, jb, q1
 
-TWO_PERSON = {"contact_enrichment", "crm_write", "outbound_message", "sequence_enrolment", "supplier_application", "quote_or_commitment", "proof_release"}
+TWO_PERSON = {"contact_enrichment", "crm_write", "outbound_message", "sequence_enrolment", "signal_campaign_push", "supplier_application", "quote_or_commitment", "proof_release"}
 APPROVER_ROLES = {"sales_manager", "admin", "bdm"}
 
 
 class ApprovalError(Exception):
     pass
+
+
+def approval_org_ids(conn: Conn, a: dict[str, Any]) -> list[str] | None:
+    """The accounts an approval acts on, so the API can apply the decider's row scope. None means it could not be worked out
+    (then only a manager or an administrator may decide it)."""
+    kind, target = a["kind"], a["target_id"]
+    if kind == "crm_write" and a["target_system"] == "pipedrive":
+        r = q1(conn, "SELECT organization_id FROM crm_organizations WHERE crm_id::text=%s AND organization_id IS NOT NULL", (str(target),))
+        return [str(r["organization_id"])] if r else None
+    if kind == "sequence_enrolment":
+        r = q1(conn, "SELECT organization_id FROM campaign_drafts WHERE id::text=%s", (str(target),))
+        return [str(r["organization_id"])] if r else None
+    if kind == "contact_enrichment":
+        r = q1(conn, "SELECT organization_id FROM contact_candidates WHERE person_id::text=%s AND provider=%s", (str(target), a["target_system"]))
+        return [str(r["organization_id"])] if r else None
+    if kind == "signal_campaign_push":
+        rows = conn.execute("SELECT DISTINCT organization_id FROM signal_campaign_members WHERE campaign_id::text=%s AND included", (str(target),)).fetchall()
+        return [str(r["organization_id"]) for r in rows]
+    return None
 
 
 def payload_hash(payload: Any) -> str:

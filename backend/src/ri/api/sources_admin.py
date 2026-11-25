@@ -6,11 +6,11 @@ used to make the server fetch arbitrary or internal addresses. robots.txt is enf
 from __future__ import annotations
 
 import ipaddress
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -18,6 +18,7 @@ from ..access import Principal
 from ..audit import audit
 from ..db import jb, q1
 from ..sources import registry
+from ..sources.safe import SafeClient
 from ..sources.webwatch import FeedConnector, PageWatchConnector
 from .auth import require
 
@@ -62,6 +63,13 @@ def check_url(url: str, canonical_domain: str | None) -> str:
     return url.strip()
 
 
+def _safe_detail(detail: str | None) -> str:
+    """A test result is shown in the browser: keep our own message and the status, never a remote server's response body."""
+    d = detail or ""
+    m = re.match(r"(?:provider billing|unexpected status \d{3})", d)
+    return m.group(0) if m else d[:160]
+
+
 def register(app: FastAPI) -> None:
     def tx(request: Request):
         return request.app.state.db.tx()
@@ -95,14 +103,14 @@ def register(app: FastAPI) -> None:
         if not url:
             raise HTTPException(400, "set a URL first")
         check_url(url, s["canonical_domain"])
-        async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-            conn_cls = FeedConnector if s["collection_method"] == "feed" else PageWatchConnector
-            kw = {} if s["collection_method"] == "feed" else {"selector": (s["config"] or {}).get("selector")}
-            try:
-                hc = await conn_cls(client, url, source_id=sid, **kw).health_check()
-                result = {"ok": hc.ok, "detail": hc.detail, "error_class": hc.error_class}
-            except Exception as exc:  # noqa: BLE001
-                result = {"ok": False, "detail": f"{type(exc).__name__}: {str(exc)[:200]}", "error_class": getattr(exc, "error_class", "transient_network")}
+        client = SafeClient(timeout=20)        # public addresses only, every redirect hop re-checked (the connectors follow redirects)
+        conn_cls = FeedConnector if s["collection_method"] == "feed" else PageWatchConnector
+        kw = {} if s["collection_method"] == "feed" else {"selector": (s["config"] or {}).get("selector")}
+        try:
+            hc = await conn_cls(client, url, source_id=sid, **kw).health_check()
+            result = {"ok": hc.ok, "detail": _safe_detail(hc.detail), "error_class": hc.error_class}
+        except Exception as exc:  # noqa: BLE001
+            result = {"ok": False, "detail": f"{type(exc).__name__}", "error_class": getattr(exc, "error_class", "transient_network")}
         result["at"] = datetime.now(timezone.utc).isoformat()
         with tx(request) as conn:
             conn.execute("UPDATE sources SET config = config || %s::jsonb WHERE source_id=%s", (jb({"validation": result}), sid))

@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime } from "../api";
 import { getLanguage, number, tr } from "../locale";
 import { countryName } from "../pages/targetMarket";
-import { Badge, Err, Skeleton, lab } from "./ui";
+import { Badge, Err, Skeleton, lab, safeHref } from "./ui";
+import { SignalRef, SignalTag } from "./Signals";
 
 type Source = { url: string; source: string | null };
 type Play = { play_id: string; offers: string[] };
@@ -16,6 +17,7 @@ type Finding = {
   sources: Source[];
   fit: { plays: Play[] };
   why?: { level: string; service: string; reason: string };
+  signals?: SignalRef[];
   next_action?: { hypothesis_id: string; action_type: string; has_owner: boolean; owner_name?: string; due_at?: string } | null;
 };
 type Lead = {
@@ -103,30 +105,31 @@ export function FindingCard({ item, onAccount = false }: { item: Finding; onAcco
       <time className="small muted" dateTime={item.happened}>{fmtDate(item.happened)}</time>
     </div>
     <h3 className="fcard-t">{summary}</h3>
+    {item.signals && item.signals.length > 0 && <div className="sigtags">{item.signals.map(sig => <SignalTag key={sig.rule_id} s={sig} />)}</div>}
     {translated && <details className="small finding-details"><summary>{tr("Translated summary · view original")}</summary><p>{item.summary}</p></details>}
     {item.tender && <p className="small"><b>{tr("Tender deadline")}</b> {deadline} UTC
       <span className="muted"> · {tr("Status checked {}.", fmtDateTime(item.tender.checked_at))}</span></p>}
     {item.tender?.scope && <p className="small"><b>{tr("Scope")}</b> {item.tender.scope}</p>}
-    <p className="finding-fit"><b>{tr("Why it fits The Codest")}</b><br />{reason}</p>
+    <div className="finding-fit">
+      {item.signals?.[0]?.meaning && !item.tender && <p className="m-0"><b>{tr("Why this is a buying signal")}</b><br />{tr(item.signals[0].meaning)}</p>}
+      <p className={item.signals?.[0]?.meaning && !item.tender ? "mb-0 mt-2" : "m-0"}><b>{tr("Why it fits The Codest")}</b><br />{reason}</p>
+    </div>
     <div className="row spread">
-      {source && <a href={source.url} target="_blank" rel="noreferrer noopener">{tr("Original source")} ↗</a>}
+      <span>{source && safeHref(source.url) && <a href={safeHref(source.url)} target="_blank" rel="noreferrer noopener">{tr("Original source")} ↗</a>}
+        <span className="small muted"> · {item.tender ? tr("confirmed by the official notice; eligibility still to check") : tr("confirmed by the source; outside need still to check")}</span></span>
       {onAccount && <Link to={`/feed?finding=${item.id}`}>{tr("Open in findings archive")}</Link>}
     </div>
-    <p className="small muted">{item.tender ? tr("The source confirms the notice. Supplier eligibility still needs checking.")
-      : tr("The source confirms the reported event. The need for outside help still needs checking.")}</p>
     <p className="small"><b>{tr("Next step")}</b>{" "}{item.next_action ? <Link to={`/opportunities/${item.next_action.hypothesis_id}`}>{tr("Open recommended action")}</Link> : item.tender ? tr("Check how to submit and whether we meet the supplier requirements.")
       : item.organization.qualified === false ? tr("Confirm company ownership and qualify demand for outside engineering.")
-      : tr("Identify the delivery owner and qualify demand for outside engineering.")}</p>
-    <dl className="account-profile-facts small">
-      <div><dt>{tr("Action owner")}</dt><dd>{item.next_action?.owner_name || tr(item.next_action?.has_owner ? "Assigned in Pipedrive" : "Unassigned")}</dd></div>
-      <div><dt>{tr("Follow-up due")}</dt><dd>{item.next_action?.due_at ? fmtDateTime(item.next_action.due_at) : tr("Not scheduled")}</dd></div>
-    </dl>
+      : tr("Identify the delivery owner and qualify demand for outside engineering.")}
+      {item.next_action && <span className="muted"> · {tr("Owner")}: {item.next_action.owner_name || tr(item.next_action.has_owner ? "Assigned in Pipedrive" : "Unassigned")}
+        {item.next_action.due_at && <> · {tr("due {}", fmtDateTime(item.next_action.due_at))}</>}</span>}</p>
     {item.evidence.length > 0 && <details className="finding-details">
       <summary>{tr("View evidence")}</summary>
       {item.evidence.map(e => <blockquote key={e.claim_id} className="fquote">
         <span>{tr("Original wording")}: “{e.claim}”</span>
         {language === "en" && e.translation && <span className="trans">{tr("English translation")}: “{e.translation}”</span>}
-        <cite><a href={e.url} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a></cite>
+        <cite>{safeHref(e.url) ? <a href={safeHref(e.url)} target="_blank" rel="noreferrer noopener">{e.source || tr("Original source")} ↗</a> : e.source}</cite>
       </blockquote>)}
     </details>}
   </article>;

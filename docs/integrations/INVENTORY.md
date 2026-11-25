@@ -1,4 +1,6 @@
-# Integration inventory — status as of 2026-11-21 (build sandbox)
+# Integration inventory: status as of 2026-11-25
+
+**25 Nov update:** outbound connectors were live-tested from a server with internet access (see `docs/releases/2026-11-25-security-people-campaigns.md`). Lemlist is built (signal campaigns, activity read-back, webhook); Pipedrive people now join the people database by email; Apollo finds feed the same list. Rows below that say "egress blocked" describe the 21 Nov build sandbox.
 
 Legend: **Built** = adapter + tests on fixtures · **Live-verified** = exercised against the real service · **Blocked** = cannot run here (reason).
 
@@ -18,7 +20,7 @@ Legend: **Built** = adapter + tests on fixtures · **Live-verified** = exercised
 | LLM extraction (Anthropic) | internal | ✅ schema + quote-anchor verification, token budget, **usage rows with input/output tokens per call**, fresh HTTP client per call | ❌ not yet run against the live API | Key and token cap set on Render. Dollar cost shows only if `RI_ANTHROPIC_PRICE_IN_PER_MTOK` and `_OUT_` are set. Prompt/gold-set regression still to run. |
 | Apollo | in (credit-consuming) | ✅ people search/enrich, approval + single-use | ❌ | Key, entitlement, **price**, and explicit approvals. Disabled by default. |
 | Slack / email | out | ✅ Slack webhook sink, signed links | ❌ | Webhook URL; email sink not built. |
-| Lemlist | out | ❌ not built | — | Intentionally: no sequence enrolment without the ownership/suppression/approval controls being signed off. |
+| Lemlist | out + in | ✅ per-account sequences and **signal campaigns** (create campaign + steps + leads with per-lead variables, never launched), hourly activity read-back, webhook | ❌ | Needs `LEMLIST_API_KEY`, `RI_OUTBOUND_ENABLED=true` and a manager's approval per campaign. Bounces and unsubscribes suppress the person everywhere. |
 | Approved proof / collateral | in | ✅ `proof_assets` governance | — | Marketing must load approved assets; none exist yet. |
 
 No synthetic or fixture response is presented as intelligence anywhere in the UI or API: demo data is labelled SYNTHETIC and seeded only with `RI_ENV=development`.

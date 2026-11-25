@@ -183,7 +183,7 @@ def execute_enrolment(conn: Conn, approval_id: str, client: LemlistClient | None
 
 
 def verify_webhook_secret(given: str | None, expected: str | None) -> bool:
-    return bool(given and expected and hmac.compare_digest(given, expected))
+    return bool(given and expected and hmac.compare_digest(given.encode(), expected.encode()))
 
 
 def record_event(conn: Conn, body: dict[str, Any]) -> dict[str, Any]:

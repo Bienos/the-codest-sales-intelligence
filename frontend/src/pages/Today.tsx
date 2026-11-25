@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
 import { actionReason, Badge, EVIDENCE_CONFIDENCE, Coverage, Err, Evidence, Fact, accessKind, demandKind, humanize, lab, priorityKind, unknownText, verdict, whyShort } from "../components/ui";
 import { SignalSummary } from "../components/BuyingSignal";
+import { SignalBoard, signalName } from "../components/Signals";
 
 const SECTIONS: [string, string][] = [["critical", "Urgent"], ["existing_accounts", "Your accounts"], ["new_discoveries", "New companies worth a look"],
   ["relationships", "People to get back in touch with"], ["deal_blockers", "Deals that are stuck"], ["research_review", "Research to review"]];
@@ -148,9 +149,10 @@ function ReviewCompanies() {
   </section>;
 }
 
-export default function Today({ canReview }: { canReview: boolean }) {
+export default function Today({ canReview, canCampaign = false }: { canReview: boolean; canCampaign?: boolean }) {
   const [d, setD] = useState<any>(null);
-  const findings = useFindings("scope=today&days=14&limit=12");
+  const [rule, setRule] = useState("");
+  const findings = useFindings(`scope=today&days=${rule ? 30 : 14}&limit=12${rule ? `&rule=${rule}` : ""}`);
   const [err, setErr] = useState<unknown>(null);
   const [revision, setRevision] = useState(0);
   const load = () => setRevision((n) => n + 1);
@@ -182,12 +184,13 @@ export default function Today({ canReview }: { canReview: boolean }) {
           <Link to="/feed?kind=signal&days=14"><span>{tr("Buying signals in this view")}</span><b>{number(findings.data.items.filter(item => !item.tender).length)}</b></Link>
           <Link to="/library?tab=sources"><span>{tr("Sources reporting successfully")}</span><b>{number(findings.data.coverage.monitored_sources - findings.data.coverage.unhealthy.length)} <small>/ {number(findings.data.coverage.monitored_sources)}</small></b></Link>
         </div>}
+        <SignalBoard days={30} target active={rule} onPick={(r) => { setRule(r); if (r) document.getElementById("latest-findings")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} canCampaign={canCampaign} />
         <section aria-labelledby="latest-findings">
           <div className="row spread finding-heading">
-            <h2 id="latest-findings">{tr("Latest findings")}</h2>
-            <Link to="/feed">{tr("All findings")}</Link>
+            <h2 id="latest-findings">{rule ? tr("Latest: {}", signalName(rule)) : tr("Latest findings")}</h2>
+            <span className="row">{rule && <button type="button" className="linkish" onClick={() => setRule("")}>{tr("Show all signals")}</button>}<Link to={rule ? `/feed?rule=${rule}` : "/feed"}>{tr("All findings")}</Link></span>
           </div>
-          <FindingsResult data={findings.data} error={findings.error} retry={findings.retry} empty="No new verified findings in the last 14 days">
+          <FindingsResult data={findings.data} error={findings.error} retry={findings.retry} empty={rule ? "No company with this signal in the last 30 days" : "No new verified findings in the last 14 days"}>
             {findings.data?.items.map(item => <FindingCard key={item.id} item={item} />)}
           </FindingsResult>
           {findings.data && <SourceCoverage coverage={findings.data.coverage} />}

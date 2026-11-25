@@ -15,3 +15,6 @@ backups/
 
 # Internal-only knowledge-base documents are held outside git (see backend/kb/README.md)
 backend/kb/*.html
+
+# local server logs
+*.log

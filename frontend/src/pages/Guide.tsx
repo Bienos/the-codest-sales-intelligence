@@ -18,11 +18,14 @@ const OUTPUTS = [
   ["Today", "A short queue. Each card opens with a plain verdict and one next step."],
   ["Opportunity", "The full page: the seven checks, the sources, what is not known yet, and questions to ask."],
   ["Drafts and Pipedrive requests", "Prepared for you. A colleague approves before anything leaves."],
+  ["Signal campaigns", "Pick a buying signal and write to every company showing it. A manager approves; it lands in Lemlist unlaunched."],
 ];
 const WORKFLOW = [
   ["Today", "/today", "Start with open requests and current buying signals. Read the source and review the suggested next step."],
   ["Accounts & leads", "/accounts?view=leads", "Find your workbook leads, then open the company to see its signals, people and assigned sources."],
-  ["All findings", "/feed", "Browse the evidence by region, date or type. The status shows whether company ownership is confirmed."],
+  ["All findings", "/feed", "Browse the evidence by region, date, type or buying signal. The status shows whether company ownership is confirmed."],
+  ["People", "/people", "Everyone you can contact, from the workbooks, Apollo, Pipedrive and Lemlist, with their company's buying signal and what happened in outreach."],
+  ["Campaigns", "/campaigns", "Turn one buying signal into a campaign: the platform picks the companies and people, writes each opening line from that company's news, and checks the copy."],
 ];
 const WORDS: [string, string][] = [
   ["Account", "A company you can research and track."],

@@ -9,7 +9,7 @@ import json
 import re
 from typing import Any, Awaitable, Callable
 
-from ..db import Conn, jb, q1, qa
+from ..db import Conn, q1, qa
 
 MAX_SOURCES = 28
 TEXT_CAP = 2200

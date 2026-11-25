@@ -40,6 +40,8 @@ def find_candidates(conn: Conn, provider: Any, org_id: str, *, by: str, titles: 
         conn.execute("INSERT INTO employment(person_id, organization_id, title, verification_status) VALUES (%s,%s,%s,'unverified')", (person, org_id, c.title))
         conn.execute("INSERT INTO contact_candidates(organization_id, provider, external_id, name, title, linkedin_url, person_id, found_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                      (org_id, provider.provider_id, c.external_id, c.name or "Unnamed", c.title, c.linkedin_url, person, by))
+        from ..people import record_source
+        record_source(conn, str(person), provider.provider_id, c.external_id)
         added += 1
     audit(conn, actor=by, operation="contact_search", record_type="organization", record_id=org_id, detail={"provider": provider.provider_id, "found": len(found), "added": added})
     return {"found": len(found), "added": added}

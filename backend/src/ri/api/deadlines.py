@@ -13,6 +13,8 @@ from ..db import q1, qa
 from ..precision import review
 from .auth import require
 
+MISS_DAILY_LIMIT = 30          # each reported page costs a fetch and a model read
+
 
 class DeadlineIn(BaseModel):
     title: str = Field(min_length=5, max_length=200)
@@ -80,6 +82,9 @@ def register_deadlines(app: FastAPI) -> None:
     def report_a_miss(body: MissIn, request: Request, p: Principal = Depends(require("research.request"))):
         from ..recall import report_miss
         with request.app.state.db.tx() as conn:
+            n = (q1(conn, "SELECT count(*) AS n FROM audit_events WHERE actor=%s AND operation='miss_reported' AND at > now() - interval '24 hours'", (p.email,)) or {"n": 0})["n"]
+            if n >= MISS_DAILY_LIMIT:
+                raise HTTPException(429, f"Daily limit reached ({MISS_DAILY_LIMIT} reported pages per person). It resets 24 hours after the first one.")
             try:
                 out = report_miss(conn, url=body.url, note=body.note, by=p.email)
             except ValueError as exc:

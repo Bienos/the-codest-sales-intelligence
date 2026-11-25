@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 from .base import (FetchBatch, HealthCheck, RawItem, SchemaDrift, SourceDescriptor, SourceDocumentDraft)
-from .http import request_json
+from .http import request_json, request_json_patient
 from .util import excerpt, first_text, parse_dt, sha, tz_of, utcnow
 
 TED_URL = "https://api.ted.europa.eu/v3/notices/search"
@@ -125,7 +125,12 @@ class FindTenderConnector:
     def __init__(self, client: httpx.AsyncClient, *, source_id: str = "procurement-uk-fts", stages: str = "tender,award",
                  now_fn=utcnow):
         self.client, self.source_id, self.stages, self.now = client, source_id, stages, now_fn
-        self.page_pause = 1.5
+        self.page_pause = 1.5          # the live API answers 429 when pages are requested back to back
+        self.sleep = asyncio.sleep     # replaced in tests
+
+    async def _page(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        """One page. A 429 asking for a short wait is waited out and the page tried once more, so a run does not stop halfway."""
+        return await request_json_patient(self.client, "GET", url, sleep=self.sleep, params=params)
 
     def describe(self) -> SourceDescriptor:
         return SourceDescriptor(self.source_id, "UK Find a Tender", "official_api", "S1", "1.0")
@@ -140,8 +145,8 @@ class FindTenderConnector:
     async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
         requested = self.now()
         if cursor and cursor.startswith("http"):
-            await asyncio.sleep(self.page_pause)          # the live API answers 429 when pages are requested back to back
-            data = await request_json(self.client, "GET", cursor)
+            await self.sleep(self.page_pause)
+            data = await self._page(cursor)
         else:
             # Checked against the live API: a comma-separated "stages" value silently returns no releases, and no updatedFrom pages through all history.
             # So: always a window (14 days on the first run), no stages filter, and relevance decided here.
@@ -149,7 +154,7 @@ class FindTenderConnector:
             params: dict[str, Any] = {"limit": min(limit, 100), "updatedFrom": since}
             if self.stages and "," not in self.stages:
                 params["stages"] = self.stages
-            data = await request_json(self.client, "GET", FTS_URL, params=params)
+            data = await self._page(FTS_URL, params)
         if not isinstance(data, dict) or "releases" not in data:
             raise SchemaDrift("OCDS package has no 'releases'")
         items = [RawItem(external_id=r["ocid"], version=r.get("date"), payload=r) for r in data["releases"]
@@ -226,11 +231,12 @@ class ContractsFinderConnector(FindTenderConnector):
     async def fetch(self, cursor: str | None, limit: int) -> FetchBatch:
         requested = self.now()
         if cursor and cursor.startswith("http"):
-            data = await request_json(self.client, "GET", cursor)
+            await self.sleep(self.page_pause)          # like Find a Tender, back-to-back pages are answered with 429
+            data = await self._page(cursor)
         else:
             since = cursor.removeprefix("since:") if cursor else (requested - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%S")
-            data = await request_json(self.client, "GET", CF_URL, params={"limit": min(limit, 100), "stages": self.stages, "publishedFrom": since,
-                                                                          "publishedTo": requested.strftime("%Y-%m-%dT%H:%M:%S")})
+            data = await self._page(CF_URL, {"limit": min(limit, 100), "stages": self.stages, "publishedFrom": since,
+                                             "publishedTo": requested.strftime("%Y-%m-%dT%H:%M:%S")})
         if not isinstance(data, dict) or "releases" not in data:
             raise SchemaDrift("OCDS package has no 'releases'")
         items = [RawItem(external_id=r["ocid"], version=r.get("date"), payload=r) for r in data["releases"] if r.get("ocid") and is_software_notice(r)]

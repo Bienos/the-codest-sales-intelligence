@@ -387,6 +387,7 @@ def register_feed(app: FastAPI) -> None:
                           limit: int = Query(20, ge=1, le=50), kind: str = Query("", pattern="^(|tender|signal)$"),
                           region: str = Query("", pattern="^(|uk|dach|nordics|poland|europe|international)$"),
                           qualification: str = Query("target", pattern="^(target|review|all)$"),
+                          rule: str = Query("", pattern=r"^(|[A-Z]{3}-\d{2})$"),
                           p: Principal = Depends(principal_dep)):
         from ..findings import account_leads, findings, rfp_research
 
@@ -406,7 +407,7 @@ def register_feed(app: FastAPI) -> None:
             elif scope == "archive" and p.can("research.request"):
                 leads = rfp_research(conn, p)
             items = findings(conn, p, scope=scope, days=365 if event else days, limit=limit, page=page, kind=kind, region=region,
-                             organization_id=organization, event=event, search=q,
+                             organization_id=organization, event=event, search=q, rule=rule,
                              qualification="target" if scope == "today" else "all" if organization or event else qualification)
             return {"items": items[:limit], "page": page, "has_more": len(items)>limit, "leads": leads,
                     "coverage": coverage_health(conn, p)}
@@ -469,11 +470,12 @@ def register_feed(app: FastAPI) -> None:
                     s["name"] = names.get(s["rule_id"], s["rule_id"])
             cov = coverage_health(conn, p)
             vw, vp = org_scope_sql(p, "o.id")
-            lead_scope = f"{target_sql()} AND ({vw})" if target else "TRUE"
+            # leads about an account follow the account's row scope; market-wide leads (no account) are shared
+            lead_scope = f"{target_sql()} AND ({vw})" if target else f"(v.organization_id IS NULL OR ({vw}))"
             leads = qa(conn, "SELECT v.url, v.claimed_text, v.status, v.created_at, v.plan_id, v.result FROM verification_requests v "
                        f"LEFT JOIN organizations o ON o.id=v.organization_id WHERE {lead_scope} "
                        "AND v.origin IN ('exa_discovery','seller_miss') AND v.status IN ('queued','fetching','extracting','waiting_budget','no_event','blocked','failed') "
-                       "ORDER BY v.created_at DESC LIMIT 12", vp if target else ())
+                       "ORDER BY v.created_at DESC LIMIT 12", vp)
             totals = counts = {}
             if not target:
                 totals = q1(conn, "SELECT count(*) FILTER (WHERE verification_status='verified') AS verified, count(*) FILTER (WHERE verification_status<>'verified') AS unverified, "
@@ -572,6 +574,10 @@ def register_scan(app: FastAPI) -> None:
             _quota(conn, p.email)
             existing = q1(conn, "SELECT id, display_name FROM organizations WHERE canonical_domain=%s ORDER BY in_master_list DESC LIMIT 1", (domain,))
             if existing:
+                where, params = org_scope_sql(p, "o.id")
+                if not q1(conn, f"SELECT 1 FROM organizations o WHERE o.id=%s AND ({where})", [existing["id"], *params]):     # noqa: S608
+                    # never attach notes or queue work on an account the caller cannot see, and do not reveal whose it is
+                    raise HTTPException(409, "This company is already tracked and is not in your accounts. Ask your manager to share it with you.")
                 oid, name, created = str(existing["id"]), existing["display_name"], False
             else:
                 name = (body.name or "").strip() or domain.split(".")[0].replace("-", " ").title()

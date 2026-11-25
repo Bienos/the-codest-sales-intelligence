@@ -32,6 +32,10 @@ def main(argv: list[str] | None = None) -> int:
                 return PipedriveWriter(s.pipedrive_domain, s.pipedrive_write_token)
         app = create_app(s, writer_factory=writer_factory)
         mount_frontend(app)
+        import logging
+
+        from .api.app import RedactSecretsInAccessLog
+        logging.getLogger("uvicorn.access").addFilter(RedactSecretsInAccessLog())     # the Lemlist webhook secret travels in the path
         uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))  # noqa: S104
         return 0
     conn = connect(s.database_url)
@@ -64,11 +68,12 @@ def main(argv: list[str] | None = None) -> int:
             print(sync_incremental(conn, reader), process_inbox(conn))
             conn.commit()
         elif a.cmd == "schedule":
-            from .scheduler import crm_sync_step, exa_budget_set, run_maintenance, schedule_due
+            from .scheduler import crm_sync_step, exa_budget_set, lemlist_sync_step, run_maintenance, schedule_due
             from .heartbeat import beat
             from .scheduler import schedule_discovery
             res = {"enqueued": schedule_due(conn), "discovery": schedule_discovery(conn, enabled=exa_budget_set(conn)), **run_maintenance(conn)}
             res.update(crm_sync_step(conn, s))
+            res.update(lemlist_sync_step(conn, s))
             conn.commit()
             try:
                 from .canary import run_canary
@@ -93,10 +98,8 @@ def main(argv: list[str] | None = None) -> int:
             conn.commit()
             print(res)
         elif a.cmd == "worker":
-            import httpx
             from .jobs.handlers import build_handlers
             from .jobs.queue import run_one
-            from .sources.registry import get as get_source
 
             from .sources.factory import build_connector
 

@@ -70,12 +70,11 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         except Exception:  # noqa: BLE001  (the import itself succeeded; the scheduler will keep relinking)
             conn.rollback()
             rl = {"checked": 0, "linked": 0}
-        return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile}
+        return {"import_run_id": res.run_id, "status": res.status, "tabs": {k: v.get("status") for k, v in res.tabs.items()}, "reconcile": res.reconcile, "relinked": rl}
 
     def sheet_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         """Reads a workbook straight from Google Sheets (service account) and imports it. Needs the workbook shared with the service account."""
         from ..config import Settings
-        from ..sheets import contracts as C
         from ..sheets.client import ConnectorBlocked, GoogleSheetsClient
         from ..sheets.importer import import_workbook
         key = job["payload"]["workbook"]
@@ -293,11 +292,30 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         from ..sources.ted_probe import run_probe
         return run_probe()          # read-only; the answer is stored on the job
 
+    def crm_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        """Pipedrive organisations, people and deals into the mirror; people are linked into the people database by email."""
+        from ..config import Settings
+        from ..crm.pipedrive import PipedriveReader, process_inbox, sync_incremental
+        s = Settings.from_env(require_auth=False)
+        res = sync_incremental(conn, PipedriveReader(s.pipedrive_domain, s.pipedrive_api_token))
+        return {"sync": res, "inbox": process_inbox(conn)}
+
+    def lemlist_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        """Lemlist activity (opens, replies, bounces, unsubscribes) back into the people database. Read-only towards Lemlist."""
+        from ..config import Settings
+        from ..outbound.lemlist import LemlistClient
+        from ..people import sync_lemlist
+        s = Settings.from_env(require_auth=False)
+        return sync_lemlist(conn, LemlistClient(s.lemlist_api_key))
+
+    crm_sync.own_transactions = True  # type: ignore[attr-defined]
+    lemlist_sync.own_transactions = True  # type: ignore[attr-defined]
     account_scan.own_transactions = True  # type: ignore[attr-defined]
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit}
+    return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit,
+            "crm_sync": crm_sync, "lemlist_sync": lemlist_sync}
 
 
 __all__ = ["build_handlers", "ConnectorError"]
