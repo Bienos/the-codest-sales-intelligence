@@ -85,11 +85,12 @@ type Hit = { x: number; y: number; next?: boolean };
 
 /** Where the head finds signals: in the open space around the copy and the card, never under the text. */
 function hitCells(w: number, h: number, card: Box, text: Box, link: Box): Hit[] {
-  if (w <= 980) return [{ x: w * 0.86, y: text.t / 2 }, { x: Math.max(link.r + 48, w * 0.72), y: (link.t + link.b) / 2 },
-    { x: w * 0.2, y: (card.b + h) / 2 }, { x: w * 0.64, y: (card.b + h) / 2 }, { x: card.r - 24, y: card.t - 20, next: true }];
+  if (w <= 980) return [{ x: card.r - 24, y: card.t - 20, next: true }, { x: w * 0.86, y: text.t / 2 }, { x: Math.max(link.r + 48, w * 0.72), y: (link.t + link.b) / 2 },
+    { x: w * 0.2, y: (card.b + h) / 2 }, { x: w * 0.64, y: (card.b + h) / 2 }];
   const gl = text.r + 36, gr = card.l - 36, gx = (f: number) => gl + (gr - gl) * f, cw = card.r - card.l;
   const out: Hit[] = [{ x: card.l + cw * 0.2, y: card.t * 0.5 }, { x: card.l + cw * 0.76, y: card.t * 0.28 },
-    { x: card.l + cw * 0.58, y: (card.b + h) / 2 }, { x: text.l / 2, y: h * 0.88 }, { x: card.l - 36, y: (card.t + card.b) / 2, next: true }];
+    { x: card.l + cw * 0.58, y: (card.b + h) / 2 }, { x: text.l / 2, y: h * 0.88 }];
+  out.unshift({ x: card.l - 36, y: (card.t + card.b) / 2, next: true });
   if (gr - gl > 60) out.push({ x: gx(0.25), y: h * 0.15 }, { x: gx(0.7), y: h * 0.33 }, { x: gx(0.2), y: h * 0.7 }, { x: gx(0.65), y: h * 0.9 });
   if (gr - gl > 150) { const mid = (card.t + card.b) / 2; out.push({ x: card.l - 108, y: mid - 72 }, { x: card.l - 156, y: mid + 48 }, { x: card.l - 60, y: mid + 120 }); }   // a few more near the next step
   if (w - card.r > 60) out.push({ x: (card.r + w) / 2, y: card.t + (card.b - card.t) * 0.62 });
@@ -112,10 +113,13 @@ function WatchGrid() {
       const w = hero.clientWidth, h = hero.clientHeight; if (!w) return;
       const h1 = box(".land-copy h1"), p = box(".land-copy p");
       const text = { l: Math.min(h1.l, p.l), t: h1.t, r: Math.max(h1.r, p.r), b: p.b };
-      setCells(hitCells(w, h, box("#signin"), text, box(".land-copy-actions a")).map((c) => {
-        const x = snap(c.x);
-        return { ...c, x, y: snap(c.y), d: ((x + 0.0132 * w) / (1.22 * w) - 1) * SWEEP };   // the moment the head passes x
-      }));
+      const placed: (Hit & { d: number })[] = [];
+      hitCells(w, h, box("#signin"), text, box(".land-copy-actions a")).forEach((c) => {
+        const x = snap(c.x), y = snap(c.y);
+        if (x < 0 || y < 0 || x > w || y > h || placed.some((o) => Math.abs(o.x - x) < GRID * 2 && Math.abs(o.y - y) < GRID * 2)) return;   // keep cells apart
+        placed.push({ ...c, x, y, d: ((x + 0.0132 * w) / (1.22 * w) - 1) * SWEEP });   // d: when the head passes x
+      });
+      setCells(placed);
     };
     place();
     const ro = "ResizeObserver" in window ? new ResizeObserver(place) : null;
