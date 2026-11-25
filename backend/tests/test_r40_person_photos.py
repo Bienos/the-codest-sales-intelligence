@@ -11,16 +11,18 @@ PHOTO_BEN = "https://media.licdn.com/dms/image/v2/C5603AQben/profile-displayphot
 PHOTO_DAN = "https://media-exp1.licdn.com/dms/image/C5603AQdan/profile-displayphoto-shrink_200_200/0/1500000000000?e=1900000000&t=ghi"
 
 
-def test_only_real_linkedin_profile_photos_are_accepted():
+def test_only_real_profile_photos_are_accepted():
+    """The picture comes from the person's own LinkedIn page; whichever host serves it, logos, banners, placeholders and unsafe addresses are not photos."""
     assert profile_photo(PHOTO) == PHOTO and profile_photo(PHOTO_DAN) == PHOTO_DAN
+    assert profile_photo("https://images.example.net/people/ada-clarke.jpg") == "https://images.example.net/people/ada-clarke.jpg"      # another host, still a plain picture
     for bad in (None, "", 42, ["x"],
                 PHOTO.replace("https://", "http://"),                                           # not https
                 "https://media.licdn.com/dms/image/v2/x/company-logo_200_200/0",                # a company logo
                 "https://media.licdn.com/dms/image/v2/x/profile-displaybackgroundimage-shrink_350_1400/0",     # a banner
                 "https://static.licdn.com/aero-v1/sc/h/9c8pery4andzj6ohjkjp54ma2",              # LinkedIn's grey placeholder
-                "https://example.com/profile-displayphoto.jpg",                                 # not LinkedIn
-                "https://evil-licdn.com/dms/image/x/profile-displayphoto/0",
-                "https://licdn.com.evil.example/dms/image/x/profile-displayphoto/0",
+                "https://static.licdn.com/sc/h/default-avatar",
+                "https://example.com/favicon.ico", "https://example.com/mark.svg",
+                "javascript:alert(1)", "data:image/png;base64,AAAA",
                 "https://media.licdn.com/dms/image/v2/x/profile-displayphoto 200/0",           # whitespace
                 "https://media.licdn.com/dms/image/v2/x/profile-displayphoto/" + "a" * 700):    # absurdly long
         assert profile_photo(bad) is None, bad
@@ -114,3 +116,18 @@ def test_person_research_ignores_a_picture_from_a_page_that_is_not_their_recorde
                                                    "text": "CTO at Kestrel Pay.", "image": PHOTO_BEN}]}
     _research(conn, env, ada, pages)
     assert q1(conn, "select photo_url from people where id=%s", (ada,))["photo_url"] is None
+
+
+def test_each_search_records_whether_pictures_came_back_and_from_where(conn, env):
+    """So a missing photo can be told apart from a search that returned no picture at all (hosts only, never names or addresses)."""
+    caps(conn)
+    ada = env["p"]["ada"]
+    rid = str(conn.execute("insert into person_profiles(person_id, organization_id, requested_by) values (%s,%s,'bdm@x') returning id", (ada, env["o"]["open"])).fetchone()["id"])
+    conn.commit()
+    pages = {"Ada Clarke Kestrel Pay Ltd Chief": [{"url": "https://www.linkedin.com/in/ada-clarke", "title": "Ada Clarke - CTO - Kestrel Pay | LinkedIn", "text": "CTO at Kestrel Pay.", "image": PHOTO}]}
+    reply = {"identity": {"confident": True}, "current_role": {"title": "CTO", "remit": "Engineering", "source": "W1"}}
+    profile_jobs.person_profile(conn, {"payload": {"profile_id": rid}}, post_factory=fake_post(pages, []), call_factory=fake_model(reply))
+    searched = q1(conn, "select content->'searched' as s from person_profiles where id=%s", (rid,))["s"]
+    li = next(x for x in searched if x["purpose"] == "linkedin")
+    assert li["images"] == 1 and li["image_hosts"] == ["media.licdn.com"]
+    assert all("images" in x for x in searched)

@@ -42,17 +42,19 @@ def normalise_linkedin(url: str) -> str | None:
     return f"https://www.linkedin.com/in/{unquote(m.group(1)).strip().lower()}"
 
 
+# Addresses that are never a person's own photo: company logos, banners and backgrounds, LinkedIn's grey placeholder, icons.
+NOT_A_PHOTO = re.compile(r"company-logo|logo|displaybackgroundimage|background|banner|/sc/h/|ghost|default|placeholder|favicon|\.svg(\?|$)|\.ico(\?|$)", re.I)
+
+
 def profile_photo(image: Any) -> str | None:
-    """A LinkedIn profile picture (what Exa returns as the image of a profile page), or None. Company logos, banners, LinkedIn's grey placeholder and
-    pictures hosted anywhere else are not profile photos and are ignored."""
+    """The picture Exa returns with a person's LinkedIn profile page (callers only pass results that ARE that person's own profile page), or None.
+    Only a plain https address, and never a logo, banner or placeholder."""
     from urllib.parse import urlparse
     from ..research.exa_search import image_url
     u = image_url(image)
-    if not u:
+    if not u or NOT_A_PHOTO.search(urlparse(u).path):
         return None
-    parts = urlparse(u)
-    host = (parts.hostname or "").lower()
-    return u if (host == "licdn.com" or host.endswith(".licdn.com")) and "displayphoto" in parts.path.lower() else None
+    return u
 
 
 def set_photo(conn: Conn, person_id: str, profile_url: str | None, photo: str | None) -> bool:

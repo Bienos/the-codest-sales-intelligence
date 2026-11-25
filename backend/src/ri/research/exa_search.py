@@ -11,6 +11,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlparse
 
 from .. import budget, usage
 from ..db import Conn
@@ -117,7 +118,8 @@ class ExaSearcher:
         self.conn.commit()
         self.calls += 1
         self.cost += actual
-        self.log.append({"purpose": purpose, "results": len(results)})
+        hosts = sorted({h for h in (urlparse(r["image"]).hostname for r in results if r.get("image")) if h})
+        self.log.append({"purpose": purpose, "results": len(results), "images": sum(1 for r in results if r.get("image")), "image_hosts": hosts[:4]})     # no names: only whether pictures came back, and from where
         return results
 
 
