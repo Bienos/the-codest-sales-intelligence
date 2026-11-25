@@ -69,7 +69,7 @@ def ensure_person(conn: Conn, *, name: str, email: str | None, org_id: str | Non
         return None
     if not pid:
         pid = str(conn.execute("INSERT INTO people(full_name, work_email, email_verification_status) VALUES (%s,%s,%s) RETURNING id",
-                               (name or (email or "Unknown").split("@")[0], email, email_status if email else None)).fetchone()["id"])     # type: ignore[index]
+                               (name or (email or "Unknown").split("@")[0], email, email_status if email else "unknown")).fetchone()["id"])     # type: ignore[index]
     elif email:
         conn.execute("UPDATE people SET work_email=%s, email_verification_status=%s WHERE id=%s AND work_email IS NULL", (email, email_status, pid))
     if org_id and not q1(conn, "SELECT 1 FROM employment WHERE person_id=%s AND organization_id=%s", (pid, org_id)):

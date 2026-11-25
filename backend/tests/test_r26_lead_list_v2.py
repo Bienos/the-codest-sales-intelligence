@@ -138,3 +138,11 @@ def test_a_synced_address_joins_the_person_already_at_the_account(conn):
                          email_status="Unverified (Lemlist)", system="lemlist", external_id="cam_1")
     assert pid2 != other
     assert conn.execute("select count(*) c from people").fetchone()["c"] == 3
+
+
+def test_a_person_can_be_created_without_an_email(conn):
+    from ri.people import ensure_person
+    oid = str(conn.execute("insert into organizations(display_name, country_code) values ('Synthetic Bank 2', 'GB') returning id").fetchone()["id"])
+    pid = ensure_person(conn, name="Fran Example", email=None, org_id=oid, title="CIO", email_status="Unverified (Lemlist)", system="exa", external_id="x1")
+    row = conn.execute("select work_email, email_verification_status from people where id=%s", (pid,)).fetchone()
+    assert row["work_email"] is None and row["email_verification_status"] == "unknown"
