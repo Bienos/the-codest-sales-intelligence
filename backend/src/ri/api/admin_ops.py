@@ -760,7 +760,7 @@ def data_health(conn: Conn, now: datetime | None = None, *, can_edit_sources: bo
     now = now or datetime.now(timezone.utc)
     srcs = qa(conn, "SELECT s.source_id, s.display_name, s.source_family, s.source_type, s.collection_method, s.status, s.poll_interval_s, s.auth_mode, "
                     "s.config->>'url' AS url, h.state AS health, h.last_attempt_at, h.last_success_at, h.consecutive_failures, h.error_class, h.detail AS health_detail, "
-                    "h.missed_due_runs FROM sources s LEFT JOIN source_health h USING (source_id)")
+                    "h.missed_due_runs, s.config->>'review_note' AS review_note FROM sources s LEFT JOIN source_health h USING (source_id)")
     runs = {r["source_id"]: r for r in qa(conn, "SELECT source_id, count(*) AS runs, count(*) FILTER (WHERE status='success') AS ok, "
                                                "count(*) FILTER (WHERE status IN ('failed','partial')) AS bad, coalesce(sum(items_new),0) AS new_items, "
                                                "coalesce(sum(items_changed),0) AS changed_items FROM monitoring_runs WHERE started_at > %s GROUP BY 1", (now - timedelta(days=14),))}
@@ -804,7 +804,7 @@ def data_health(conn: Conn, now: datetime | None = None, *, can_edit_sources: bo
             nxt = now if s["last_attempt_at"] is None else max(now, s["last_attempt_at"] + timedelta(seconds=int(s["poll_interval_s"] or 86400)))
         items.append({"source_id": sid, "name": s["display_name"], "family": s["source_family"], "type": s["source_type"], "method": s["collection_method"],
                       "status": s["status"], "state": state, "flags": flags, "every_s": int(s["poll_interval_s"] or 0) if scheduled or s["status"] != "active" else None,
-                      "scheduled": scheduled, "last_attempt_at": s["last_attempt_at"], "last_success_at": s["last_success_at"], "next_at": nxt,
+                      "note": s["review_note"] if s["status"] == "paused" else None, "scheduled": scheduled, "last_attempt_at": s["last_attempt_at"], "last_success_at": s["last_success_at"], "next_at": nxt,
                       "failures": int(s["consecutive_failures"] or 0), "error_class": s["error_class"] if state == "failing" else None,
                       "error": (re.sub(r"\s+", " ", s["health_detail"] or "")[:200] or None) if state == "failing" else None,
                       "runs_14d": int(rr.get("runs") or 0), "failed_runs_14d": int(rr.get("bad") or 0), "new_14d": int(rr.get("new_items") or 0),

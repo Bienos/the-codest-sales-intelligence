@@ -101,7 +101,8 @@ def test_connections_directory_lists_every_source_with_a_plain_state_and_what_to
     assert len(rows) >= 60 and all(r["state_label"] for r in rows.values())
     assert rows["registry-companies-house"]["state"] == "needs_credential" and "developer.company-information" in rows["registry-companies-house"]["where_to_get"]
     assert rows["ats-greenhouse"]["state"] == "per_account"
-    assert rows["attention-leaddev"]["state"] == "needs_retest" and rows["attention-leaddev"]["address"] == "https://leaddev.com/feed"
+    assert rows["attention-fintechglobal"]["state"] == "needs_retest" and rows["attention-fintechglobal"]["address"] == "https://fintech.global/feed/"
+    assert rows["attention-leaddev"]["state"] == "paused" and rows["attention-leaddev"]["address"] == "https://leaddev.com/feed"      # paused by the 26 Nov 2026 review
     assert rows["attention-finextra"]["state"] == "blocked_by_site" and rows["jobs-arbeitnow-de"]["state"] == "needs_retest"
     assert classify({"source_id": "attention-unlisted", "status": "pending_connector_validation", "collection_method": "feed", "config": {}}, None) == "needs_address"
     live = dict(rows["ats-lever"], status="active")

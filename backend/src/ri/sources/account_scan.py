@@ -297,8 +297,11 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                                 notes.append(f"{org['canonical_domain']}: job board {prov}/{board} found on the careers page")
                 elif ep["kind"] == "job_board" and ep["provider"] in ats_cls:
                     cls = ats_cls[ep["provider"]]
-                    con = cls(client, ep["board"], employer_name=org["display_name"], source_id=ats_source(ep["provider"]),
-                              **({"robots": robots} if getattr(cls, "USES_ROBOTS", False) else {}))
+                    extra_kw: dict[str, Any] = {"robots": robots} if getattr(cls, "USES_ROBOTS", False) else {}
+                    if getattr(cls, "USES_KNOWN", False):       # big boards: stored adverts are not asked for again (see WorkdayConnector)
+                        extra_kw["known"] = {r["job_id"]: r for r in qa(conn, "SELECT job_id, url, location, employment_type, tech_keywords, posted_at FROM job_postings "
+                                                                            "WHERE provider=%s AND board=%s AND open_status='open'", (ep["provider"], ep["board"]))}
+                    con = cls(client, ep["board"], employer_name=org["display_name"], source_id=ats_source(ep["provider"]), **extra_kw)
                     batch = _run(con.fetch(None, 500))
                     for w in batch.warnings:
                         notes.append(w)

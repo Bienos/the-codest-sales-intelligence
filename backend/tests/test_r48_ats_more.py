@@ -293,6 +293,23 @@ def test_workday_slow_down_request_on_a_detail_stops_the_details_but_keeps_the_p
     assert len([1 for m, _, _ in site.calls if m == "GET"]) == 1              # one 429 and no more detail calls
 
 
+def test_workday_adverts_already_stored_are_not_asked_for_again_and_keep_what_they_have():
+    known = {"R2000": {"employment_type": "permanent", "tech_keywords": ["java"], "posted_at": datetime(2026, 11, 1, tzinfo=timezone.utc), "location": "Zürich", "url": "https://x.example/r2000"},
+             "R2003": {"employment_type": "unknown", "tech_keywords": [], "posted_at": None, "location": None, "url": None}}          # stored, but never got its text: asked again
+    site = Workday(total=10)
+    c = make(WorkdayConnector, WD_BOARD, site, known=known)
+    b = run(c.fetch(None, 500))
+    asked = [p for m, p, _ in site.calls if m == "GET"]
+    assert len(asked) == 3 and not any("_R2000" in p for p in asked) and any("_R2003" in p for p in asked)            # R2000 reused; R2003, R2006, R2009 asked
+    kept = {i.external_id: i.payload for i in b.items}
+    assert kept["R2000"]["_tech"] == ["java"] and kept["R2000"]["_employment"] == "permanent" and kept["R2000"]["_location"] == "Zürich" and kept["R2000"]["_url"] == "https://x.example/r2000"
+    assert kept["R2000"]["_posted"] == datetime(2026, 11, 1, tzinfo=timezone.utc)
+    assert kept["R2003"]["_employment"] == "permanent" and kept["R2003"]["_tech"]
+    assert b.quota_usage["details"] == 3 and b.quota_usage["details_reused"] == 1
+    d = c.canonicalize(next(i for i in b.items if i.external_id == "R2000"))
+    assert d.structured["tech_keywords"] == ["java"]
+
+
 def test_workday_a_missing_detail_only_loses_keywords():
     site = Workday(total=6, detail_status=404)
     b = run(make(WorkdayConnector, WD_BOARD, site).fetch(None, 500))
@@ -642,9 +659,13 @@ def test_scan_finds_a_workday_board_reads_engineering_roles_and_closes_what_disa
     cov = conn.execute("SELECT coverage_state FROM account_source_coverage WHERE source_family='jobs'").fetchone()
     assert cov["coverage_state"] == "monitored_healthy"
 
-    # the same board again: nothing new, nothing duplicated
+    # the same board again: nothing new, nothing duplicated, and no detail call for an advert that is already stored (its keywords are kept)
+    gets = lambda site: len([1 for m, _, _ in site.calls if m == "GET"])      # noqa: E731
+    before = gets(first)
+    assert before == 3
     out2 = run_scan(conn, org, client=client(scan_site(first, careers=careers)), extractor=None, resolver=None)
-    assert out2["job_changes"] == 0
+    assert out2["job_changes"] == 0 and gets(first) == before
+    assert "kafka" in conn.execute("SELECT tech_keywords FROM job_postings WHERE job_id='R1001'").fetchone()["tech_keywords"]
     assert conn.execute("SELECT count(*) AS n FROM job_postings").fetchone()["n"] == 3 and len(events(conn, "engineering_job_opened")) == 2
 
     # one advert is taken down: closed, with a closed event; the others stay open
@@ -679,7 +700,7 @@ def test_a_posting_already_stored_is_updated_not_duplicated(conn, fast):
     seed_registry(conn)
     org = new_org(conn)
     conn.execute("INSERT INTO job_postings(provider, board, job_id, organization_id, employer_name, title, employment_type, open_status, url) "
-                 "VALUES ('workday', %s, 'R1001', %s, 'Harbourline Bank plc', 'Senior Java Engineer - Payments', 'permanent', 'open', 'https://old.example/1')", (WD_BOARD, org))
+                 "VALUES ('workday', %s, 'R1001', %s, 'Harbourline Bank plc', 'Senior Java Engineer - Payments', 'unknown', 'open', 'https://old.example/1')", (WD_BOARD, org))
     conn.commit()
     careers = '<a href="https://harbourline.wd3.myworkdayjobs.com/en-US/Careers">Jobs</a>'
     run_scan(conn, org, client=client(scan_site(Workday(postings=SHAPES["workday_list"]["jobPostings"]), careers=careers)), extractor=None, resolver=None)

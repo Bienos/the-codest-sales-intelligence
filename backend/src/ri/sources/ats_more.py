@@ -329,15 +329,20 @@ class WorkdayConnector(_MoreBase):
     """
     provider = "workday"
     BOARD_RE = re.compile(r"^[a-z0-9][a-z0-9-]*\.wd\d{1,3}/[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$")
+    USES_KNOWN = True              # the scan hands over what is already stored for this board (see `known`)
     PAGE = 20
     MAX_PAGES = 60                 # 1,200 postings
-    DETAIL_CAP = 40
+    DETAIL_CAP = 40                # detail calls a run, for engineering postings NOT already stored
     PAGE_PAUSE = 0.3
     TIME_BUDGET_S = 170.0
 
-    def __init__(self, *a: Any, clock=time.monotonic, **kw: Any):
+    def __init__(self, *a: Any, clock=time.monotonic, known: dict[str, dict[str, Any]] | None = None, **kw: Any):
+        """`known`: job_id -> the stored posting (employment_type, tech_keywords, posted_at, location) of this board's open adverts. A posting that is already
+        stored and already carries what its detail page gave (keywords or an employment type) is not asked for again: its stored values are passed on unchanged, so a
+        daily read makes detail calls only for new postings, and an advert that slides down the list never loses its keywords."""
         super().__init__(*a, **kw)
         self._clock = clock
+        self.known = known or {}
         self.page_pause = self.PAGE_PAUSE
         self.host, self.tenant, self.wd, self.site = split_workday_board(self.board)
         self.api = f"https://{self.host}/wday/cxs/{self.tenant}/{quote(self.site)}"
@@ -407,7 +412,7 @@ class WorkdayConnector(_MoreBase):
         self.stats.update({"requests": pages, "pages": pages, "postings_seen": read, "board_total": total or 0})
         rows: list[dict[str, Any]] = []
         used_ids: set[str] = set()
-        details = 0
+        details = reused = 0
         detail_stop = False
         for path, p in seen.items():
             title = (p.get("title") or "").strip()
@@ -418,6 +423,13 @@ class WorkdayConnector(_MoreBase):
                 jid = path.rstrip("/").rsplit("/", 1)[-1]
             used_ids.add(jid)
             desc, time_type, start, url, loc = "", None, None, None, (p.get("locationsText") or "").strip() or None
+            k = self.known.get(jid)
+            if k and (k.get("tech_keywords") or k.get("employment_type") not in (None, "unknown")):
+                reused += 1
+                rows.append({"_id": jid, "_title": title, "_team": None, "_location": k.get("location") or loc, "_employment": k.get("employment_type") or "unknown",
+                             "_posted": k.get("posted_at") or workday_posted_at(p.get("postedOn"), now), "_updated": None, "_url": k.get("url") or f"https://{self.host}/{self.site}{path}",
+                             "_desc": "", "_tech": list(k.get("tech_keywords") or [])})
+                continue
             if details < self.DETAIL_CAP and not detail_stop and self._clock() - started <= self.TIME_BUDGET_S:
                 if details:
                     await self._sleep(self.page_pause)
@@ -437,7 +449,7 @@ class WorkdayConnector(_MoreBase):
                          "_posted": start or workday_posted_at(p.get("postedOn"), now), "_updated": None,
                          "_url": url if isinstance(url, str) and url.startswith("http") else f"https://{self.host}/{self.site}{path}",
                          "_desc": desc, "_tech": tech_keywords(f"{title} {desc}")})
-        self.stats.update({"requests": pages + details, "details": details, "postings_kept": len(rows)})
+        self.stats.update({"requests": pages + details, "details": details, "details_reused": reused, "postings_kept": len(rows)})
         return rows
 
 

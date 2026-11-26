@@ -668,6 +668,7 @@ function SourceRow({ s, onDone }: { s: any; onDone: (msg: string) => void }) {
   return (
     <tr>
       <td data-label={tr("Source")} className="wide"><b>{s.name}</b><div className="small muted">{familyName(s.family)}</div>
+        {s.note && <div className="small dh-flag">{s.note}</div>}
         {s.flags.map((f: string) => <div key={f} className="small dh-flag">{tr(DH_FLAG[f] ?? humanize(f))}</div>)}
         {s.error && <div className="small fl-err">{s.error}</div>}</td>
       <td data-label={tr("How often")} className="nowrap">{s.can_change_cadence && s.every_s ? (
