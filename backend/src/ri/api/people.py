@@ -2,6 +2,7 @@
 who owns the account, and what has happened in outreach. Row scope follows the account; email addresses are never returned."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,7 +16,9 @@ from ..market import region_for
 from ..people import SYSTEM_LABEL, email_state, engagement
 from ..signals.seller import leading_signals
 from .auth import require
+from .profiles import LIST_KEYS, committee_group, title_seniority
 from .search import all_like, tokens
+from .today import _fits as best_fits
 
 ENGAGEMENT_LABEL = {"unsubscribed": "Unsubscribed", "bounced": "Bounced", "interested": "Interested", "replied": "Replied", "not_interested": "Not interested",
                     "clicked": "Clicked", "opened": "Opened", "sent": "Emailed", "pushed": "In a campaign", None: "Not contacted"}
@@ -63,6 +66,37 @@ def people_rows(conn, p: Principal, q: str = "") -> list[dict[str, Any]]:
                     "sources": sorted(systems, key=list(SYSTEM_LABEL).index), "engagement": eng, "engagement_label": ENGAGEMENT_LABEL.get(eng, eng),
                     "last_activity_at": r["last_activity_at"].isoformat() if r["last_activity_at"] else None, "campaigns": r["campaigns"]})
     return out
+
+
+def _safe_url(value: Any) -> str | None:
+    u = str(value or "").strip()
+    return u if re.match(r"^https?://[^\s]+$", u, re.I) else None
+
+
+def page_extras(conn, items: list[dict[str, Any]]) -> None:
+    """What the cards in the list need beyond the filters, added to ONE page of people (so it stays cheap whatever the size of the database):
+    where each person sits in the buying committee (the same reading as the company and person pages), their LinkedIn address, and the
+    company's best-fit service. Anything we cannot work out is simply left out; a card never shows a placeholder for it."""
+    if not items:
+        return
+    ids = [i["id"] for i in items]
+    pages = {str(r["id"]): r["linkedin_url"] for r in qa(conn, "SELECT id, linkedin_url FROM people WHERE id = ANY(%s::uuid[])", (ids,))}
+    lead: dict[str, dict[str, str]] = {}
+    exa: dict[str, dict[str, Any]] = {}
+    for r in qa(conn, "SELECT person_id, system, detail FROM person_sources WHERE person_id = ANY(%s::uuid[]) AND system IN ('sheets','exa') ORDER BY first_seen_at", (ids,)):
+        pid, detail = str(r["person_id"]), r["detail"] if isinstance(r["detail"], dict) else {}
+        if r["system"] == "sheets":
+            lead.setdefault(pid, {}).update({k: str(v).strip() for k, v in detail.items() if k in LIST_KEYS and str(v or "").strip() and str(v).strip() != "Unknown"})
+        else:
+            exa[pid] = detail
+    fits = best_fits(conn, sorted({i["company"]["id"] for i in items}))
+    for i in items:
+        listed, found = lead.get(i["id"], {}), exa.get(i["id"], {})
+        seniority = listed.get("seniority") or found.get("seniority") or title_seniority(i["title"])
+        i["seniority"] = seniority
+        i["committee"] = committee_group(i["title"], seniority, listed.get("persona") or found.get("persona"), listed.get("committee_role"))
+        i["linkedin_url"] = _safe_url(pages.get(i["id"]))
+        i["fit"] = fits.get(i["company"]["id"])
 
 
 def _filter(rows, *, source: str, email: str, eng: str, region: str, signal: str, rule: str, owner: str, suppressed: bool) -> list[dict[str, Any]]:
@@ -123,6 +157,7 @@ def register_people(app: FastAPI) -> None:
             filtered.sort(key=keys[sort])
             total = len(filtered)
             items = filtered[(page - 1) * size: page * size]
+            page_extras(conn, items)
             counts = {"total": len(rows), "with_signal": sum(1 for r in rows if r["signal"] and not r["suppressed"]),
                       "verified_email": sum(1 for r in rows if r["email"] == "verified" and not r["suppressed"]),
                       "with_email": sum(1 for r in rows if r["email"] != "none" and not r["suppressed"]),

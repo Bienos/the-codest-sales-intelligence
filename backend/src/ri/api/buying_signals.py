@@ -29,12 +29,19 @@ many companies have a signal of each family in the last 7, 30 and 90 days, how m
 weeks (rolling seven-day buckets ending now, so the last one is "this week"), and the strongest signal that is new this week (or, when
 the week is quiet, in the last 30 days).
 
+Each signal also carries ``why`` (one plain sentence on why it matters to us, third person, specific to the kind of signal; for a tender the
+notice's own fit line when it has one) and ``why_pl`` (the Polish line when the notice has one). A tender carries what the notice says, read from
+its stored summary when there is one: ``value``/``currency``, ``days_left``, ``buyer``, ``title_en``/``title_pl``, ``summary_en``/``summary_pl``,
+``wants``/``wants_pl``, ``work_type``. Each company carries up to three named people to talk to (``organization.contacts``: id, name, title,
+``email`` and ``linkedin`` as yes/no only, never an address) and ``organization.contacts_total``; only for people who may read contacts.
+
 ``organization.best_fit`` is the service of ours that fits the company best, from ``ri.solutions.best_fit_many`` when that module is
 present; without it the field is ``None`` and the page leaves the column out.
 """
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -66,6 +73,50 @@ PULSE_WINDOWS = (7, 30, 90)
 PULSE_WEEKS = 13
 _GROUP_INTENT = {"SRC": "route", "CAP": "capacity", "PRG": "programme", "MAN": "leader", "COM": "business", "REL": "relationship", "REG": "deadline"}
 _PRIORITY_RANK = {"P1": 0, "P2": 1, "P3": 2}
+
+# Why each kind of signal matters to The Codest, in one plain sentence about them (not an outreach opener). Used when the event has no reason of its own.
+RULE_WHY: dict[str, str] = {
+    "SRC-01": "They are buying software work now and a deadline is set, so we can bid or talk to the buyer before it closes.",
+    "SRC-02": "A supplier panel is open. Getting on it gives us access to the work that follows.",
+    "SRC-04": "An integrator won the programme. The integration and custom work around it may still be open to partners.",
+    "SRC-05": "A platform was chosen, and the integration work around it still needs a team.",
+    "SRC-06": "They asked for contract engineers, so they are short of people on a named system.",
+    "CAP-01": "They are hiring several engineers for one platform. A team extension can start sooner than hiring.",
+    "CAP-02": "Contract roles on a named system mean the work has a date and the team is short.",
+    "CAP-05": "They are taking AI from a pilot into production, which is work for our AI and data engineers.",
+    "PRG-01": "A core banking replacement needs extra engineers for integrations, data migration and testing.",
+    "PRG-02": "A cloud or data platform move has workstreams that a delivery team can own.",
+    "PRG-06": "A payments scheme change comes with fixed test dates, which suits a dedicated delivery team.",
+    "MAN-01": "A new technology leader sets the roadmap and the team model in the first months, a good time to introduce us.",
+    "REL-03": "Someone who knows us has started a new role, so there is a warm way in.",
+    "COM-01": "New funding usually brings a product plan that needs engineers quickly.",
+    "COM-02": "Integration work after an acquisition has a hard date, and teams are often short.",
+    "COM-03": "A launch in a new market brings payments, compliance and integration work with a fixed date.",
+    "COM-04": "A new licence means a fixed date for the platform behind the launch.",
+    "COM-05": "A customer go-live puts the integration work on a fixed date.",
+    "COM-06": "A new product line needs new integrations while the current platform keeps running.",
+    "COM-07": "A partnership with integration scope means connector and API work on a timeline.",
+    "COM-08": "A cost programme with a technology scope often means retiring old systems while the business keeps running.",
+}
+FAMILY_WHY = {
+    "SRC": "They have a way to buy engineering help open right now.",
+    "CAP": "They are short of engineers, which is where a team extension helps.",
+    "PRG": "A funded programme is under way and usually needs extra engineering.",
+    "MAN": "A new technology leader is setting the roadmap and the team model.",
+    "COM": "A business event like this usually brings build or integration work with a date.",
+    "REL": "Someone who knows us is involved, so there is a warm way in.",
+}
+DEFAULT_WHY = "News like this usually comes with engineering work on a date."
+MAX_CONTACTS = 3
+
+
+def _why(rule_id: str, fit: Any, notice: dict[str, Any] | None = None) -> tuple[str, str | None, bool]:
+    """(English line, Polish line when we have one, whether the line is about this very event rather than the kind of signal)."""
+    if notice and notice.get("fit_reason"):
+        return str(notice["fit_reason"]), notice.get("fit_reason_pl"), True
+    if isinstance(fit, dict) and fit.get("reason") and fit.get("level") != "none":
+        return str(fit["reason"]), None, True
+    return RULE_WHY.get(rule_id) or FAMILY_WHY.get(rule_id[:3]) or DEFAULT_WHY, None, False
 
 
 def _intent(rule_id: str, tier: str, strength: int) -> str:
@@ -150,6 +201,70 @@ def _signals(conn: Conn, p: Principal, *, days: int, q: str) -> list[dict[str, A
         ORDER BY s.demand_tier, s.strength DESC, coalesce(e.event_at, e.pub_at, s.effective_from) DESC, s.id
         LIMIT 600
         """, [list(HIGH_INTENT_RULES), days, non_engineering_title_sql_pattern(), *args, *search_args])      # noqa: S608
+
+
+def _notice_extras(conn: Conn, tenders: list[dict[str, Any]], now: datetime) -> dict[tuple[str, str], dict[str, Any]]:
+    """What the stored notice says about each open tender: value, plain-language title and summary, what they want, and the notice's own fit line.
+    Never fails the page: without the notice (or the helpers) the tender is shown with what the finding already holds."""
+    keys = {(t["organization_id"], t["tender"]["notice_id"]) for t in tenders if t.get("tender") and t["tender"].get("notice_id")}
+    if not keys:
+        return {}
+    try:
+        from ..tenders import notice_value, public_summary, value_eur
+        with conn.transaction():
+            rows = qa(conn, """SELECT n.notice_id, n.buyer_org_id::text AS org_id, n.buyer_name, n.source_id, n.value_if_reported, n.source_detail, n.summary, n.deadline_at
+                               FROM procurement_notices n WHERE n.notice_id = ANY(%s) AND n.buyer_org_id = ANY(%s::uuid[])""",
+                      [sorted({k[1] for k in keys}), sorted({k[0] for k in keys})])
+    except Exception:  # noqa: BLE001  (the extras are optional; the list must still load)
+        log.exception("tender details failed; the buying signals list is shown without them")
+        return {}
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        key = (r["org_id"], r["notice_id"])
+        if key not in keys:
+            continue
+        detail = r["source_detail"] if isinstance(r["source_detail"], dict) else {}
+        value, currency, _ = notice_value(r["source_id"], r["value_if_reported"], detail)
+        summary = public_summary(r["summary"]) or {}
+        fit = summary.get("fit") if isinstance(summary.get("fit"), dict) else {}
+        deadline = r["deadline_at"]
+        extra: dict[str, Any] = {
+            "buyer": r["buyer_name"], "value": value, "currency": currency, "value_eur": value_eur(value, currency),
+            "days_left": max(0, int((deadline - now).total_seconds() // 86400)) if isinstance(deadline, datetime) else None,
+            "title_en": summary.get("title_en"), "title_pl": summary.get("title_pl"), "summary_en": summary.get("summary_en"), "summary_pl": summary.get("summary_pl"),
+            "wants": summary.get("wants"), "wants_pl": summary.get("wants_pl"), "work_type": summary.get("work_type"),
+            "fit_reason": fit.get("reason") if fit.get("level") in ("strong", "possible") else None, "fit_reason_pl": fit.get("reason_pl") if fit.get("level") in ("strong", "possible") else None,
+        }
+        out[key] = {k: v for k, v in extra.items() if v not in (None, "", [])}
+    return out
+
+
+def _contacts(conn: Conn, p: Principal, ids: list[str], lead_rule: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """Up to three named people to talk to at each company, best title for the lead signal first, then people with an email. Only yes or no for the
+    email and LinkedIn: no address or link leaves here. Empty for someone who may not read contacts."""
+    if not ids or not p.can("contacts.read"):
+        return {}
+    try:
+        from ..outbound.signal_campaigns import _rank as title_rank
+        with conn.transaction():
+            rows = qa(conn, """
+                SELECT em.organization_id::text AS org_id, pe.id::text AS id, pe.full_name AS name, em.title,
+                       (pe.work_email IS NOT NULL) AS email, (pe.linkedin_url IS NOT NULL) AS linkedin
+                FROM employment em JOIN people pe ON pe.id=em.person_id AND pe.erased_at IS NULL AND NOT pe.suppressed
+                WHERE em.organization_id = ANY(%s::uuid[]) AND (em.valid_to IS NULL OR em.valid_to >= current_date)""", [ids])
+    except Exception:  # noqa: BLE001  (the names are optional; the list must still load)
+        log.exception("contacts failed; the buying signals list is shown without them")
+        return {}
+    by_org: dict[str, dict[str, dict[str, Any]]] = {}
+    for r in rows:
+        by_org.setdefault(r["org_id"], {}).setdefault(r["id"], r)
+    out: dict[str, dict[str, Any]] = {}
+    for oid, people in by_org.items():
+        rule = lead_rule.get(oid, "")
+        ranked = sorted(people.values(), key=lambda r: (title_rank(r["title"], rule), not r["email"], not r["title"], r["name"].lower()))
+        out[oid] = {"contacts": [{"id": r["id"], "name": r["name"], "title": r["title"], "email": bool(r["email"]), "linkedin": bool(r["linkedin"])} for r in ranked[:MAX_CONTACTS]],
+                    "contacts_total": len(ranked)}
+    return out
 
 
 def _companies(conn: Conn, p: Principal, ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -255,6 +370,14 @@ def _collect(conn: Conn, p: Principal, *, days: int, region: str, q: str) -> tup
                                                                                  "source": None, "published_at": None},
                     "organization_id": str(t["organization"]["id"])})
 
+    now = datetime.now(timezone.utc)
+    extras = _notice_extras(conn, raw, now)
+    for item in raw:           # the tenders so far: what the notice says, and why it matters
+        extra = extras.get((item["organization_id"], (item["tender"] or {}).get("notice_id")))
+        if extra:
+            item["tender"] = {**item["tender"], **extra}
+        item["why"], item["why_pl"], item["why_specific"] = _why(item["rule_id"], item["fit"], extra)
+
     held_back: set[str] = set()
     meta: dict[str, dict[str, Any]] = {}
     for r in _signals(conn, p, days=days, q=q):
@@ -271,7 +394,8 @@ def _collect(conn: Conn, p: Principal, *, days: int, region: str, q: str) -> tup
                     "event_id": r["event_id"], "event_type": r["event_type"], "summary": r["summary"],
                     "summary_en": r["summary_en"], "summary_pl": r["summary_pl"], "happened": r["happened"], "fit": r["fit"], "tender": None,
                     "evidence": {"quote": r["excerpt"], "translation": r["translation"], "url": r["url"], "source": r["source_name"], "published_at": r["published_at"]},
-                    "organization_id": r["organization_id"]})
+                    "organization_id": r["organization_id"],
+                    **dict(zip(("why", "why_pl", "why_specific"), _why(r["rule_id"], r["fit"])))})
 
     if any(i["rule_id"] == "SRC-01" for i in raw) and "SRC-01" not in meta:
         rows = qa(conn, "SELECT id, signal, grp, ordinal, who_to_contact FROM legacy_signals WHERE id='SRC-01'")
@@ -365,6 +489,11 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
     orgs = _companies(conn, p, sorted({i["organization_id"] for i in raw} | {i["organization_id"] for i in pulse_raw}))
     companies = _group(raw, orgs, now)
     by_org = {c["organization"]["id"] for c in companies}
+    if p.can("contacts.read"):
+        lead = {c["organization"]["id"]: c["signals"][0]["rule_id"] for c in companies}
+        found = _contacts(conn, p, list(lead), lead)
+        for oid in lead:
+            orgs[oid].update(found.get(oid, {"contacts": [], "contacts_total": 0}))
 
     # Every kind of signal in this view, with how many companies have it: the page's filter, before the kind is picked.
     kinds: dict[str, dict[str, Any]] = {}

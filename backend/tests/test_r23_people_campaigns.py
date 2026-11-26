@@ -139,6 +139,21 @@ def test_people_api_unifies_sources_signals_and_never_returns_addresses(conn, ma
     assert c.post("/api/people/sync/pipedrive", headers=h("bdm")).status_code == 403
 
 
+def test_people_list_cards_carry_committee_role_linkedin_and_fit(conn, market):
+    c, h = market["c"], market["h"]
+    conn.execute("update people set linkedin_url='https://www.linkedin.com/in/ada-clarke' where id=%s", (market["p"]["cto"],))
+    conn.execute("update people set linkedin_url='javascript:alert(1)' where id=%s", (market["p"]["eng"],))
+    conn.commit()
+    r = c.get("/api/people?q=kestrel", headers=h("bdm"))
+    assert r.status_code == 200 and "@" not in r.text
+    by = {i["name"]: i for i in r.json()["items"]}
+    assert by["Ada Clarke"]["committee"] == "decision" and by["Ada Clarke"]["linkedin_url"] == "https://www.linkedin.com/in/ada-clarke"
+    assert by["Ben Weber"]["committee"] == "technical" and by["Ben Weber"]["linkedin_url"] is None          # only web addresses are passed on
+    assert by["Cat Lind"]["committee"] == "influencer"
+    assert all("fit" in i and "seniority" in i for i in by.values())                                          # present on every card, possibly empty
+    assert by["Ada Clarke"]["fit"] is None or {"name", "level", "why", "service"} <= set(by["Ada Clarke"]["fit"])
+
+
 # ------------------------------------------------------------------ signal campaigns
 def test_audience_is_built_from_live_signals_and_explains_every_exclusion(conn, market):
     p = principal(conn, "bdm@x")

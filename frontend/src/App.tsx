@@ -18,7 +18,7 @@ import Person from "./pages/Person";
 import Tenders from "./pages/Tenders";
 import BuyingSignals, { IconSignals } from "./pages/BuyingSignals";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
-import { Err, Skeleton, lab, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, Brand } from "./components/ui";
+import { Err, Skeleton, lab, useScrollHints, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 
@@ -35,7 +35,17 @@ export default function App() {
   const [notice, setNotice] = useState<Notice>(null);
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
-  useEffect(() => { setMenu(false); window.scrollTo(0, 0); }, [loc.pathname]);
+  useScrollHints();
+  useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
+  useEffect(() => { setMenu(false); }, [loc.key]);
+  // The open menu covers the whole phone screen: the page behind it stays still, and Escape closes it.
+  useEffect(() => {
+    document.documentElement.classList.toggle("nav-open", menu);
+    if (!menu) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(false); };
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("keydown", esc); document.documentElement.classList.remove("nav-open"); };
+  }, [menu]);
   const [signInError, setSignInError] = useState<unknown>(null);
   useEffect(() => {
     setSignInError(null);
@@ -90,11 +100,14 @@ export default function App() {
       <nav className={`nav${menu ? " open" : ""}`} aria-label={tr("Primary")}>
         <div className="nav-top">
           <div className="brand"><Brand /></div>
-          <button className="nav-toggle" aria-expanded={menu} aria-controls="nav-panel" onClick={() => setMenu(!menu)}>{menu ? tr("Close") : "Menu"}</button>
+          <button className="nav-toggle" aria-expanded={menu} aria-controls="nav-panel" onClick={() => setMenu(!menu)}>
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">{menu ? <path d="M4 4l12 12M16 4L4 16" /> : <path d="M3 5h14M3 10h14M3 15h14" />}</svg>
+            <span>{menu ? tr("Close") : "Menu"}</span>
+          </button>
         </div>
-        <div className="nav-panel" id="nav-panel">
+        <div className="nav-panel" id="nav-panel" onClick={(e) => { if ((e.target as HTMLElement).closest("a")) setMenu(false); }}>
           <form className="navsearch" role="search" aria-label={tr("Navigation search")} onSubmit={(e) => { e.preventDefault(); const v = (new FormData(e.currentTarget).get("q") as string || "").trim(); if (v) nav(`/search?q=${encodeURIComponent(v)}`); }}><input name="q" aria-label={tr("Search the workspace")} placeholder={tr("Search the workspace")} /></form>
-          <LanguageSwitcher />
+          <span className="nav-lang"><LanguageSwitcher /></span>
           <span className="nav-group">{tr("Work")}</span>
           {can("today.read") && link("/today", tr("Today"), IconToday)}
           {can("accounts.read") && link("/signals", tr("Buying signals"), IconSignals)}
@@ -109,7 +122,11 @@ export default function App() {
           {link("/guide", tr("How it works"), IconGuide)}
           {(can("admin.sources") || can("sources.read") || can("audit.read") || can("admin.costs")) && link("/admin", tr("Administration"), IconAdmin)}
           {waiting > 0 && (can("approvals.read_own") || can("approvals.read_all")) && link("/admin/approvals", tr("Approvals ({} waiting)", waiting), IconAdmin)}
-          <div className="who"><b>{me.email}</b>{lab("role", me.role)}<br /><button onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>{tr("Sign out")}</button></div>
+          <div className="who">
+            <span className="who-lang"><LanguageSwitcher /></span>
+            <div className="who-id"><b>{me.email}</b><span>{lab("role", me.role)}</span></div>
+            <button type="button" className="who-out" onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>{tr("Sign out")}</button>
+          </div>
         </div>
       </nav>
       <main className="main">
