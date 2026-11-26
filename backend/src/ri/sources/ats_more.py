@@ -355,6 +355,8 @@ class WorkdayConnector(_MoreBase):
             raise
         if not isinstance(data, dict) or not isinstance(data.get("jobPostings"), list):
             raise SchemaDrift("Workday response has no 'jobPostings' list")
+        if offset == 0 and (isinstance(data.get("total"), bool) or not isinstance(data.get("total"), int) or data["total"] < 0):
+            raise SchemaDrift("Workday response has no usable 'total'")         # only the first page carries it
         return data
 
     async def health_check(self) -> HealthCheck:
@@ -381,9 +383,7 @@ class WorkdayConnector(_MoreBase):
             data = await self._post_page(offset, self.PAGE)
             pages += 1
             if total is None:
-                total = data.get("total")
-                if isinstance(total, bool) or not isinstance(total, int) or total < 0:
-                    raise SchemaDrift("Workday response has no usable 'total'")
+                total = data["total"]
             postings = data["jobPostings"]
             fresh = 0
             for p in postings:

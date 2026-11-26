@@ -168,14 +168,14 @@ def exa_budget_set(conn: Conn) -> bool:
 
 def schedule_discovery(conn: Conn, now: datetime | None = None, *, enabled: bool = True) -> int:
     """One discovery run per day when Exa is configured; the run itself enforces the hard budget and per-run limits."""
-    from .discovery.plans import sync_account_plans, sync_plans
+    from .discovery.plans import coverage_figures, sync_account_plans, sync_plans
     from .discovery.run import due_count
     now = now or datetime.now(timezone.utc)
     lane = LANE["discovery_plans"]
     if lane_due(lane, lane_rows(conn).get(lane.key), now):
         # hourly, not every tick: the priority list scans every workbook row (0.4 s a tick on production for no change).
         # Plans are visible in Administration even before Exa is configured; the lead monitor is one search per priority account.
-        res = {"plans_added": sync_plans(conn), "account_plans_added": sync_account_plans(conn)}
+        res = {"plans_added": sync_plans(conn), "account_plans_added": sync_account_plans(conn), **coverage_figures(conn, now)}
         record_lane(conn, lane.key, now, res)
     if not enabled:
         return 0

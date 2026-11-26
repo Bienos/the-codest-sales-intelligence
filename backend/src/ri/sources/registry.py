@@ -2,6 +2,7 @@
 certification record (provider doc URL, entitlement, verified endpoints, licence, owner, tested date, limits, rollback)."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +16,23 @@ REQUIRED_CERT = {"provider_doc_url", "auth_entitlement_verified", "verified_endp
                  "last_tested_date", "limits", "rollback_path"}
 
 
+# A source paused after a review (not by a person clicking Pause): the audit trail says so with this actor, and the plain reason sits in the
+# source's own config as `review_note`. The daily automatic test treats it like a person's pause: it never switches it on again by itself.
+REVIEW_ACTOR = "system:source-review"
+REVIEW_TODO = "Switch it on again by hand when it should run. It is never switched on automatically."
+
+
 class CertificationError(RuntimeError):
     pass
+
+
+def review_pause(conn: Conn, source_id: str, note: str) -> None:
+    """Pause a source after a review, reversibly: the status, the plain reason (shown in Administration, Sources) and an audit row that the
+    automatic test reads as "paused on purpose". Nothing it collected is touched."""
+    conn.execute("UPDATE sources SET status='paused', config = coalesce(config, '{}'::jsonb) || %s::jsonb WHERE source_id=%s",
+                 (jb({"review_note": note, "auto": {"state": "paused", "eligible": False, "reason": note, "todo": REVIEW_TODO,
+                                                    "at": datetime.now(timezone.utc).isoformat()}}), source_id))
+    pause(conn, source_id, REVIEW_ACTOR, note)
 
 
 def seed_registry(conn: Conn, path: Path = SEED) -> int:
@@ -36,6 +52,8 @@ def seed_registry(conn: Conn, path: Path = SEED) -> int:
              **{**s, "cost_profile": jb(s.get("cost_profile", {})), "config": jb(s.get("config", {}))}}).fetchone()
         if row:
             conn.execute("INSERT INTO source_health(source_id, state) VALUES (%s,'unconfigured') ON CONFLICT DO NOTHING", (s["source_id"],))
+            if s.get("review_note"):          # a fresh database matches the review: the source starts paused, with its reason
+                review_pause(conn, s["source_id"], s["review_note"])
             n += 1
         elif s.get("config"):     # existing deployment: add newly shipped config keys but never overwrite an operator's value
             # shipped config refreshes addresses nobody edited by hand; an operator's own address ("set by ...") is never overwritten
@@ -68,7 +86,8 @@ def activate(conn: Conn, source_id: str, certification: dict[str, Any], actor: s
         raise CertificationError(f"certification record incomplete, missing: {sorted(missing)}")
     if not certification["auth_entitlement_verified"]:
         raise CertificationError("auth/entitlement not verified: connector stays pending_connector_validation")
-    conn.execute("UPDATE sources SET status='active', certification=%s, reviewed_at=now() WHERE source_id=%s", (jb(certification), source_id))
+    conn.execute("UPDATE sources SET status='active', certification=%s, reviewed_at=now(), config = coalesce(config, '{}'::jsonb) - 'review_note' WHERE source_id=%s",
+                 (jb(certification), source_id))
     conn.execute("UPDATE source_health SET state='healthy', updated_at=now() WHERE source_id=%s AND state='unconfigured'", (source_id,))
     audit(conn, actor=actor, operation="activate_source", record_type="source", record_id=source_id, after=certification)
 

@@ -287,11 +287,12 @@ JOB_PROVIDER_SOURCE = {"arbeitnow": "jobs-arbeitnow-de", "jobtech": "jobs-jobtec
 
 
 def yield_note(src: dict[str, Any]) -> str | None:
-    """One quiet label for a source row: 'paused_after_review' (paused and a reason is on record) or 'finds_little' (read many pages, found little
-    about our target accounts). Nothing for a healthy source, a source nobody judges by this (tenders, search) or one with too little evidence."""
+    """One quiet label for a source row: 'paused_after_review' (paused by a source review, which keeps its plain reason as `review_note` in the
+    source's config) or 'finds_little' (read many pages, found little about our target accounts). Nothing for a healthy source, a source nobody
+    judges by this (tenders, search) or one with too little evidence. A pause by a person is just "Paused", with the reason when one was written."""
     status = src.get("status")
     if status == "paused":
-        return "paused_after_review" if src.get("pause_reason") else None
+        return "paused_after_review" if src.get("review_note") else None
     if status not in ("active", "degraded"):
         return None
     if src.get("source_family") in NOT_JUDGED_FAMILIES or src.get("collection_method") in NOT_JUDGED_METHODS:
@@ -313,7 +314,7 @@ def library_items(conn, now: datetime | None = None) -> list[dict[str, Any]]:
     rows = qa(conn,
         "SELECT s.source_id, s.display_name, s.source_tier, s.source_type, s.source_family, s.provider, s.countries, s.signal_rule_ids, s.collection_method, s.auth_mode, "
         "s.retention_policy, s.licence_notes, s.poll_interval_s, s.status, s.cost_profile, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, "
-        "coalesce(s.config->>'paused_reason', s.config->>'pause_reason') AS pause_reason_cfg, "
+        "s.config->>'review_note' AS review_note, "
         "h.state AS health, h.last_success_at, h.last_attempt_at, h.consecutive_failures, h.error_class, h.detail AS health_detail "
         "FROM sources s LEFT JOIN source_health h USING (source_id) ORDER BY s.source_tier, s.source_family, s.display_name")
     docs = {r["source_id"]: r for r in qa(conn, "SELECT source_id, count(*) AS documents, count(*) FILTER (WHERE fetched_at >= %s) AS pages_30d FROM source_documents GROUP BY source_id", (since,))}
@@ -348,13 +349,13 @@ def library_items(conn, now: datetime | None = None) -> list[dict[str, Any]]:
     for row in rows:
         sid = row["source_id"]
         d, f, j, sp = docs.get(sid) or {}, found.get(sid) or {}, jobs.get(sid) or {}, spend.get(sid) or {}
-        pause = row.pop("pause_reason_cfg", None) or (row["health_detail"] if row["health"] == "paused" else None)
+        pause = (row["review_note"] or (row["health_detail"] if row["health"] == "paused" else None)) if row["status"] == "paused" else None
         row.update(
             documents=int(d.get("documents") or 0), events=int(f.get("events") or 0), recent_buying_findings=buying.get(sid, 0),
             cost_usd_month=sp.get("cost_usd_month") or 0, units_month=sp.get("units_month") or 0,
             pages_30d=int(d.get("pages_30d") or 0), findings_30d=int(f.get("findings_30d") or 0) + j.get("findings_30d", 0),
             findings_target_30d=int(f.get("findings_target_30d") or 0) + j.get("findings_target_30d", 0),
-            pause_reason=(pause or "").strip() or None)
+            pause_reason=(pause or "").strip() or None, review_note=(row["review_note"] or "").strip() or None)
         row["yield_note"] = yield_note(row)
         row["monitoring_mode"] = monitoring_mode(row)
         out.append(row)

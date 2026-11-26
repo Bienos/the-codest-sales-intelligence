@@ -180,7 +180,7 @@ export default function Library({ render, query, setQuery, admin = false }: { re
                 <LFacts rows={[
                   ["How", <>{tr(METHOD[s.collection_method] ?? humanize(s.collection_method))}{periodic(s) ? cadence(s.poll_interval_s) : ""}</>],
                   ["Monitoring", periodic(s) && <><Badge kind={isStale(s) ? "warn" : hk(s.health)}>{isStale(s) ? tr("Last check overdue") : s.health === "healthy" && !s.last_success_at ? tr("Waiting for first successful check") : tr(HEALTH[s.health ?? "unconfigured"] ?? humanize(s.health))}</Badge>{s.last_success_at && <span className="small muted">{" " + tr("last worked") + " "}{fmtDateTime(s.last_success_at)}</span>}</>],
-                  ["Last error", s.health_detail && <span className="small">{s.health_detail}</span>],
+                  ["Last error", s.health_detail && !(s.status === "paused" && s.pause_reason === s.health_detail) && <span className="small">{s.health_detail}</span>],
                   ["Latest test", s.validation ? <>
                     <Badge kind={s.validation.ok ? "ok" : "bad"}>{s.validation.ok ? tr("Test passed") : tr("Test failed")}</Badge>
                     <span className="small muted"> {fmtDateTime(s.validation.at)}</span>

@@ -321,7 +321,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit,
+    return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "account_scan_background": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit,
             "crm_sync": crm_sync, "lemlist_sync": lemlist_sync, "tender_summaries": tender_summaries, **_exa_research_jobs(), **_admin_ops_jobs()}
 
 

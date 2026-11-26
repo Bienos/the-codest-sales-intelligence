@@ -1,45 +1,70 @@
 # How the platform works, and what runs by itself
 
-Written 21 Nov 2026. The live version of this table is **Administration, Pipeline**, which reads real heartbeats.
+Updated 26 Nov 2026. The live version of the source and task tables below is **Administration, Sources & data, Data health**, which reads real figures.
 
 ## The flow in one line
-**Source or sheet, then a page is read, then a quoted claim, then a verified event, then a signal, then a programme, then seven gates, then an opportunity card on Today, then a draft or CRM proposal that a second person approves.**
+**A source or workbook, then a page is read, then a quoted claim, then a verified finding, then a buying signal, then a programme, then seven gates, then an opportunity card on Today, then a draft that a second person approves.**
 
-## What triggers what
+## Where the information comes from
+The registry holds 98 sources. On 26 Nov 2026, 70 were live. The rest are internal or search sources used on request, or are waiting for a key, an address or a terms check. Data health shows the live number today.
 
-| Step | What starts it | Runs by itself? | Where it happens |
+| Channel | What it reads | How often | Cost |
 |---|---|---|---|
-| Scheduler tick | Render cron, every 5 minutes | Yes | `ri.cli schedule` |
-| Watch a source (tender feed, RSS, newsroom page) | Scheduler, when the source is **active** and its interval has passed | Yes, once a source is activated | worker, job `source_run` |
-| Activate a source | An administrator tests it from the server, then activates it | **No, a person does this once per source** | Administration, Sources |
-| Exa discovery | Scheduler, once a day, if the Exa key and a monthly cap are set | Yes | worker, job `discovery_run` |
-| Verify a claim | A seller presses Verify, or a discovery hit is queued | Partly: automatic after the trigger | worker, job `verify_url` |
-| Read the page and extract events | The verification job or a source run | Yes | worker |
-| Keep only quoted claims | Always, as part of extraction | Yes | `events/extract.py` |
-| Event, signal, programme, opportunity, score | Every verified event, immediately | **Yes, no manual step** (added 21 Nov; before that cards were never built from live data) | `ingest/process.py` then `opportunity/engine.py` |
-| Re-score a moved programme | Scheduler maintenance and the pipeline | Yes | scheduler |
-| Expire old signals, flag stale programmes | Scheduler maintenance | Yes | scheduler |
-| Daily digest to Slack | Scheduler, only if the Slack webhook is configured | Yes if configured, otherwise off | scheduler |
-| Import the two workbooks | A person uploads the .xlsx exports | **No, manual** until a Google service account exists | Administration, Imports |
-| Pipedrive sync and CRM writes | Not connected | **Off** | not wired |
-| Send email or messages | Nothing. The system never sends | Never | none |
-| Approve a draft or CRM change | A second person | **No, always a person** | Administration, Approvals |
+| Public tenders | EU (TED), UK Find a Tender, UK Contracts Finder, Poland (e-Zamówienia). Award notices of the last five weeks, for renewals. | Daily | Free |
+| News and trade press | About 35 news feeds. A cheap word check skips off-topic articles; the AI reads the rest. | Daily, some every two days | AI tokens |
+| Regulators, vendors, integrators | About 29 single pages (their news pages), compared with last time. | Daily or every two days | AI tokens, only when a page changes |
+| Job ads | Open job APIs for Sweden and Germany, Austria and Switzerland. Company career pages through the company website checks. | Daily | Free |
+| Company websites | An account's own news, careers and supplier pages. The top 25 accounts daily, starred accounts weekly, every other target account in rotation (about 20 accounts a day, so each roughly every six weeks), and any account on request. | As described | Free; the AI reads changed pages |
+| Web search (Exa) | Saved searches, and searches for target accounts that have had no finding for 90 days. Finds pages about companies that no feed covers. Every hit is only a lead: it is queued as a page check. | Daily run | Paid, capped (see below) |
+| Page checks | One page, when a seller presses a button or web search finds it. | On request | AI tokens |
+| Account lists | The lead-list workbooks (upload, or Google Sheets sync when set up). | On request | Free |
+| Lemlist | Replies, opens and opt-outs (read only). | Hourly | Free |
 
-## Cost and safety controls on the automatic parts
-- Anthropic: monthly token cap (`RI_ANTHROPIC_MONTHLY_TOKEN_CAP`). Calls reserve budget first and stop at the cap.
-- Exa: monthly dollar cap (`RI_EXA_MONTHLY_CAP_USD`), at most 8 searches and 3 new checks per run, each plan at most weekly.
-- Discovery never uses the last 30% of the model budget, so seller checks always have room.
-- Every call is recorded in Administration, Usage with what it was for.
-- Pages are fetched only from public addresses, with robots.txt honoured, a size cap, and no social networks.
+Rules for every page: robots.txt and AI content signals are obeyed, no login is ever used, social networks are not read, and a site that blocks the app is skipped, never worked around. Blocked or broken feeds are listed as such in Data health.
 
-## What makes it start producing opportunities
-1. **Activate sources.** 28 sources have an address. Test each from the server and activate (Administration, Sources). Until one is live, only discovery and manual verification feed the platform.
-2. **Upload the two workbooks** (Administration, Imports) so Today has accounts and a shortlist.
-3. **Check Usage after the first verifications** to see the real cost per check.
-4. Optional: Slack webhook for the digest; a Google service account for hourly sheet sync; Pipedrive for ownership.
+**Pipedrive is not connected.** Without it there is no ownership data and no CRM changes can be made. Nothing about it is shown in the app.
+
+## What starts what
+
+| Step | What starts it | Runs by itself? |
+|---|---|---|
+| Scheduler tick | Render cron, every 5 minutes. It only queues work; the worker does it. | Yes |
+| Read a source | The scheduler, when the source is live and its interval has passed | Yes |
+| Switch a source on | A daily test from the server switches safe public sources on. Sources that need a key, an address or a terms check wait for a person. | Mostly |
+| Check company websites | Daily, weekly and hourly rotation lanes | Yes |
+| Web search | Once a day, when the Exa key and a monthly cap are set | Yes |
+| Read a page, keep only quoted claims | Every source run and page check | Yes |
+| Finding, signal, programme, card, score | Every verified finding, straight away | Yes |
+| Expire old signals, move programmes on | Scheduler | Yes |
+| Daily digest to Slack | Scheduler, only if a Slack webhook is set | If set |
+| Import the workbooks | A person uploads them, or Google Sheets sync | Manual unless sync is set up |
+| Send an email | Nothing. The platform never sends | Never |
+| Approve a draft | A second person | Always a person |
+
+## Limits on the parts that cost money
+- **Exa: $20 a month.** Automatic searches stop at 60% of it ($12). The rest is kept for sellers pressing "Research with Exa", so those buttons always work.
+- **AI: 30 million tokens a month.** Background reading stops at 70%. Sellers' own checks keep the last 30%.
+- **Apollo:** subscription credits only. The platform never buys more.
+- Every paid call is recorded with what it was for (Administration, Usage). Feeds, tender APIs, company pages and job APIs cost nothing to read.
+
+## What Data health shows
+- **Every source:** how often it is read, when it was last read and will be next, what it found in 30 days and how much of that is about target accounts, with a plain state such as working, late, failing or no findings.
+- **Every automatic task** (scheduler lane): last run, result, next run. Tasks that start work can be paused and some can be run at the next tick. Tasks that keep the data correct cannot be paused.
+- **Background jobs** of the last 7 days, with the cause of a failure in plain words.
+- **What is waiting:** pages to read, page checks, company names to match.
+- **The AI limit used so far** and the 70% line.
+- **How big the stored tables are.**
+
+The Library (Reference, Library, Sources) shows the same for sellers in one line per source: what it brought in the last 30 days, how many findings were about target accounts, and a quiet label when a source reads many pages but finds little for our accounts, or is paused after a review.
+
+## Setting up
+1. Upload the lead-list workbooks (Administration, Sources & data) so Today has accounts.
+2. Look at Data health once a week: failing or late sources first.
+3. Optional: a Slack webhook for the digest; a Google service account for hourly sheet sync.
 
 ## Known limits
 - Scores are provisional weights, not win probabilities.
 - PDFs are not read yet.
 - German, Polish and Nordic extraction has not been tested against a gold set.
-- Sources found by web search are unproven until tested from the server.
+- Tenders mostly come from public buyers that are not our accounts. They appear on the Tenders page, but few become findings about an account.
+- Only about a tenth of the target accounts had a finding in the last 90 days when this was written. Rotating company website checks and web search for accounts with no finding are meant to change that.

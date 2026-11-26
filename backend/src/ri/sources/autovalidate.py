@@ -54,7 +54,9 @@ def policy(src: dict[str, Any], note: dict[str, Any] | None, *, paused_by_person
     if st in ("active", "degraded"):
         return {"eligible": False, "state": "live", "reason": "Live: read on its schedule.", "todo": None}
     if st == "paused" and paused_by_person:
-        return {"eligible": False, "state": "paused", "reason": "Paused by a person.", "todo": "Switch it on again by hand when it should run. It is never switched on automatically."}
+        # a pause after a review carries its plain reason in the source's own config (`registry.review_pause`); a person's pause has none
+        return {"eligible": False, "state": "paused", "reason": str(cfg.get("review_note") or "Paused by a person."),
+                "todo": "Switch it on again by hand when it should run. It is never switched on automatically."}
     if src["collection_method"] in ("internal", "search") or note.get("state") in NOT_SCHEDULED:
         state = note.get("state") if note.get("state") in NOT_SCHEDULED else "built_in"
         return {"eligible": False, "state": state, "reason": NOT_SCHEDULED[state], "todo": note.get("todo")}
@@ -89,7 +91,8 @@ def _notes() -> dict[str, dict[str, Any]]:
 
 
 def person_paused(conn: Conn) -> set[str]:
-    """Sources whose latest switch-on or pause was a pause by a person (the audit trail says who did what)."""
+    """Sources whose latest switch-on or pause was a pause (by a person in Administration, or after a review: `registry.REVIEW_ACTOR`).
+    The audit trail says who did what; either way the source is never switched on automatically."""
     return {r["record_id"] for r in qa(conn, "SELECT DISTINCT ON (record_id) record_id, operation FROM audit_events WHERE record_type='source' "
                                              "AND operation IN ('pause_source','activate_source') ORDER BY record_id, id DESC") if r["operation"] == "pause_source"}
 

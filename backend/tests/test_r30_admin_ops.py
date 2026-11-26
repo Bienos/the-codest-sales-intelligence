@@ -131,7 +131,7 @@ def test_policy_switches_on_only_public_keyless_sources_and_says_why_for_the_res
     seed_registry(conn)
     notes = autovalidate._notes()
     p = lambda sid: autovalidate.policy(_src(conn, sid), notes.get(sid))  # noqa: E731
-    assert p("attention-leaddev")["eligible"] and p("regulator-ecb")["eligible"]                       # public feeds
+    assert p("attention-fintechglobal")["eligible"] and p("regulator-eba")["eligible"]                       # public feeds
     assert p("procurement-ezamowienia")["eligible"]                                                    # open data API, keyless
     assert not p("procurement-mercell")["eligible"] and "Commercial" in p("procurement-mercell")["reason"]
     ch = p("registry-companies-house")
@@ -141,15 +141,15 @@ def test_policy_switches_on_only_public_keyless_sources_and_says_why_for_the_res
     assert terms["state"] in ("needs_terms", "not_built") and not terms["eligible"]
     assert p("procurement-udbud")["state"] in ("needs_terms", "not_built")
     assert p("ats-greenhouse")["state"] == "per_account" and p("internal-sheets")["state"] == "built_in"
-    conn.execute("update sources set status='paused' where source_id='regulator-ecb'")
-    assert autovalidate.policy(_src(conn, "regulator-ecb"), notes.get("regulator-ecb"), paused_by_person=True)["state"] == "paused"
-    assert autovalidate.policy(_src(conn, "regulator-ecb"), notes.get("regulator-ecb"), paused_by_person=False)["eligible"]   # paused by the registry
+    conn.execute("update sources set status='paused' where source_id='regulator-eba'")
+    assert autovalidate.policy(_src(conn, "regulator-eba"), notes.get("regulator-eba"), paused_by_person=True)["state"] == "paused"
+    assert autovalidate.policy(_src(conn, "regulator-eba"), notes.get("regulator-eba"), paused_by_person=False)["eligible"]   # paused by the registry
 
 
 def test_daily_run_switches_on_what_passes_and_records_why_the_rest_stays_off(conn):
     seed_registry(conn)
     conn.commit()
-    results = {"attention-leaddev": {"result": "passed", "ok": True}, "regulator-ecb": {"result": "failed", "ok": False, "error_class": "not_found", "detail": "unexpected status 404"},
+    results = {"attention-fintechglobal": {"result": "passed", "ok": True}, "regulator-eba": {"result": "failed", "ok": False, "error_class": "not_found", "detail": "unexpected status 404"},
                "regulator-boe": {"result": "failed", "ok": False, "error_class": "policy_block", "detail": "robots.txt disallows https://x"},
                "procurement-uk-fts": {"result": "passed", "ok": True}}
     tested = []
@@ -157,28 +157,28 @@ def test_daily_run_switches_on_what_passes_and_records_why_the_rest_stays_off(co
     def tester(c, sid):
         tested.append(sid)
         return results.get(sid, {"result": "failed", "ok": False, "error_class": "timeout", "detail": "ReadTimeout"})
-    out = autovalidate.run_daily(conn, tester=tester, only=["attention-leaddev", "regulator-ecb", "regulator-boe", "procurement-uk-fts", "procurement-mercell", "internal-sheets"])
-    assert out["switched_on"] == ["attention-leaddev"]
-    assert _src(conn, "attention-leaddev")["status"] == "active" and _src(conn, "attention-leaddev")["certification"]["technical_owner"] == autovalidate.BY
+    out = autovalidate.run_daily(conn, tester=tester, only=["attention-fintechglobal", "regulator-eba", "regulator-boe", "procurement-uk-fts", "procurement-mercell", "internal-sheets"])
+    assert out["switched_on"] == ["attention-fintechglobal"]
+    assert _src(conn, "attention-fintechglobal")["status"] == "active" and _src(conn, "attention-fintechglobal")["certification"]["technical_owner"] == autovalidate.BY
     a = lambda sid: _src(conn, sid)["config"]["auto"]  # noqa: E731
-    assert a("regulator-ecb")["state"] == "needs_address" and "404" in a("regulator-ecb")["reason"]
+    assert a("regulator-eba")["state"] == "needs_address" and "404" in a("regulator-eba")["reason"]
     assert a("regulator-boe")["state"] == "blocked_by_site" and "robots" in a("regulator-boe")["reason"]
     assert _src(conn, "procurement-uk-fts")["status"] != "active" and a("procurement-uk-fts")["state"] == "needs_terms"     # passed, but terms to check
     assert a("procurement-mercell")["state"] == "needs_credential" and "internal-sheets" not in tested
     from ri.connections import directory
     rows = {r["source_id"]: r for r in directory(conn)}
     assert rows["regulator-boe"]["state"] == "blocked_by_site" and "robots" in rows["regulator-boe"]["what_to_do"]
-    assert rows["attention-leaddev"]["state"] == "live"
+    assert rows["attention-fintechglobal"]["state"] == "live"
 
 
 def test_a_source_a_person_paused_is_never_switched_on(conn):
     from ri.sources import registry
     seed_registry(conn)
-    registry.pause(conn, "regulator-ecb", "admin@x", "too noisy")
+    registry.pause(conn, "regulator-eba", "admin@x", "too noisy")
     conn.commit()
-    out = autovalidate.run_daily(conn, tester=lambda c, sid: {"result": "passed", "ok": True}, only=["regulator-ecb"])
-    assert out["switched_on"] == [] and _src(conn, "regulator-ecb")["status"] == "paused"
-    assert _src(conn, "regulator-ecb")["config"]["auto"]["state"] == "paused"
+    out = autovalidate.run_daily(conn, tester=lambda c, sid: {"result": "passed", "ok": True}, only=["regulator-eba"])
+    assert out["switched_on"] == [] and _src(conn, "regulator-eba")["status"] == "paused"
+    assert _src(conn, "regulator-eba")["config"]["auto"]["state"] == "paused"
 
 
 def test_sources_overview_and_schedule(client, conn):

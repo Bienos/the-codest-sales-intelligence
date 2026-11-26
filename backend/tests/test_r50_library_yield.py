@@ -154,20 +154,28 @@ def test_a_source_that_reads_many_pages_but_finds_little_gets_one_quiet_label(co
     assert _items(conn)["regulator-ecb"]["yield_note"] is None      # three in about 130 pages: at least one per hundred
 
 
-def test_a_paused_source_says_why_when_a_reason_is_on_record(conn):
+def test_a_source_paused_by_a_review_says_so_and_why_and_a_pause_by_a_person_only_says_why(conn):
     _world(conn)
     for i in range(30):
         _doc(conn, "regulator-ecb", f"r{i}", days=3)
-    registry.pause(conn, "regulator-ecb", "admin@x", "Reviewed: 30 pages in a month, none about our accounts.")
+    # a person pauses it and writes a reason: just "paused", the reason is shown
+    registry.pause(conn, "regulator-ecb", "admin@x", "Taking it off while we change the address.")
+    conn.commit()
+    r = _items(conn)["regulator-ecb"]
+    assert r["status"] == "paused" and r["yield_note"] is None and r["pause_reason"] == "Taking it off while we change the address."
+    # a source review pauses it and keeps its plain reason in the source's config: "paused after a review"
+    registry.review_pause(conn, "regulator-ecb", "Paused after a review: 30 pages in a month, none about our accounts.")
     conn.commit()
     r = _items(conn)["regulator-ecb"]
     assert r["status"] == "paused" and r["yield_note"] == "paused_after_review" and "none about our accounts" in r["pause_reason"]
-    assert r["pages_30d"] == 30                                       # what it collected is kept and still shown
-    conn.execute("update sources set config = config || '{\"paused_reason\": \"Switched off after a review of 90 days\"}'::jsonb where source_id='regulator-ecb'")
+    assert r["pages_30d"] == 30 and r["documents"] == 30            # what it collected is kept and still shown
+    # switched on again by hand: the review note is gone with the pause, the label with it
+    registry.activate(conn, "regulator-ecb", CERT, "admin@x")
     conn.commit()
-    assert _items(conn)["regulator-ecb"]["pause_reason"] == "Switched off after a review of 90 days"
+    r = _items(conn)["regulator-ecb"]
+    assert r["status"] == "active" and r["pause_reason"] is None and r["review_note"] is None and r["yield_note"] == "finds_little"
     # paused with nothing written down: just paused, no claim about a review
-    conn.execute("update sources set config = config - 'paused_reason' where source_id='regulator-ecb'")
+    conn.execute("update sources set status='paused' where source_id='regulator-ecb'")
     conn.execute("update source_health set state='unconfigured', detail=NULL where source_id='regulator-ecb'")
     conn.commit()
     r = _items(conn)["regulator-ecb"]
@@ -209,6 +217,6 @@ def test_the_endpoint_keeps_every_old_key_and_adds_the_new_ones(client, conn):
     _world(conn)
     items = {s["source_id"]: s for s in c.get("/api/admin/library", headers=h).json()["items"]}
     fx = items["attention-finextra"]
-    assert OLD_KEYS <= set(fx) and {"pages_30d", "findings_30d", "findings_target_30d", "yield_note", "pause_reason"} <= set(fx)
+    assert OLD_KEYS <= set(fx) and {"pages_30d", "findings_30d", "findings_target_30d", "yield_note", "pause_reason", "review_note"} <= set(fx)
     assert (fx["pages_30d"], fx["findings_30d"], fx["findings_target_30d"]) == (4, 4, 2) and fx["monitoring_mode"] == "scheduled"
     assert c.get("/api/admin/library").status_code == 401

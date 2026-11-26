@@ -193,7 +193,7 @@ const pipelineStatus = (d: any): [Kind, string] => {
 /** What each kind of background job does, in words. */
 export const JOB_KIND: Record<string, string> = {
   source_run: "Reading a source", verify_url: "Checking a page", extract_document: "Reading a page with AI", assess_fit: "Writing fit reasons", tender_summaries: "Tender summaries",
-  account_scan: "Scanning a company", discovery_run: "Web search run", sheet_import_xlsx: "Workbook upload", sheet_sync: "Workbook sync", account_brief: "Company brief",
+  account_scan: "Scanning a company", account_scan_background: "Scanning a company", discovery_run: "Web search run", sheet_import_xlsx: "Workbook upload", sheet_sync: "Workbook sync", account_brief: "Company brief",
   campaign_draft: "Email draft", account_profile: "Company research", person_profile: "Person research", people_search: "Finding people", identity_autoresolve: "Company matching",
   sources_validate_all: "Testing sources", sources_validate_daily: "Daily source test", crm_sync: "CRM sync", lemlist_sync: "Lemlist sync", ted_awards_window: "TED award notices",
   evaluate_event: "Scoring a finding", ted_probe: "TED check", company_facts: "Company facts",
@@ -613,7 +613,19 @@ const LANE_UNIT: Record<string, [string, string]> = {
   relinked_events: ["finding matched", "findings matched"], hypotheses_built: ["card built", "cards built"], verifications_requeued: ["page check retried", "page checks retried"],
   billing_jobs_recovered: ["page check re-queued", "page checks re-queued"], reevaluated: ["card re-scored", "cards re-scored"],
 };
+const HELD_BY: Record<string, string> = {
+  ai_budget: "paused: the AI limit for this month is nearly used", daily_limit: "today's limit is reached", queue_busy: "waiting for earlier checks to finish",
+};
 const laneResult = (key: string, r: Record<string, unknown>): string => {
+  if (key === "scan_rotation" && typeof r?.targets_total === "number") {          // progress through the target accounts, not bare counters
+    const bits = [tr("{} of {} target accounts have had their own pages checked", number(Number(r.targets_checked ?? 0)), number(r.targets_total))];
+    if (typeof r.queued_today === "number") bits.push(tr("{} queued today", number(r.queued_today)));
+    if (typeof r.held_by === "string" && HELD_BY[r.held_by]) bits.push(tr(HELD_BY[r.held_by]));
+    return bits.join(" · ");
+  }
+  if (typeof r?.accounts_still_without_a_search === "number") {
+    return [tr("{} accounts searched in the last day", number(Number(r.accounts_searched ?? 0))), tr("{} still waiting for their first search", number(r.accounts_still_without_a_search))].join(" · ");
+  }
   const pairs = Object.entries(r ?? {}).filter(([, v]) => typeof v === "number") as [string, number][];
   if (!pairs.length) return "";
   return pairs.map(([k, v]) => (k === "n" ? `${number(v)} ${tr((LANE_UNIT[key] ?? ["done", "done"])[v === 1 ? 0 : 1])}` : `${number(v)} ${tr(humanize(k).toLowerCase())}`)).join(" · ");

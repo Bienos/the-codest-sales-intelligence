@@ -242,9 +242,9 @@ def test_seed_on_an_existing_database_picks_up_new_sources_addresses_and_a_corre
     seed_registry(conn)
     # the database as it was before this change
     conn.execute("update sources set canonical_domain='ebaclearing.eu', config='{\"note\": \"event programme address to be added\"}' where source_id='attention-ebaday'")
-    conn.execute("update sources set collection_method='change_monitor', config='{\"note\": \"no feed found yet\"}' where source_id='attention-leaddev'")
-    conn.execute("delete from source_health where source_id in ('jobs-arbeitnow-de','attention-cashlesspl')")
-    conn.execute("delete from sources where source_id in ('jobs-arbeitnow-de','attention-cashlesspl')")
+    conn.execute("update sources set collection_method='change_monitor', config='{\"note\": \"no feed found yet\"}' where source_id='attention-deutschestartups'")
+    conn.execute("delete from source_health where source_id in ('jobs-arbeitnow-de','attention-fintechnewsch')")
+    conn.execute("delete from sources where source_id in ('jobs-arbeitnow-de','attention-fintechnewsch')")
     # an operator's own address and a certified source are never changed
     conn.execute("update sources set canonical_domain='old.example', config='{\"url\": \"https://old.example/feed\", \"url_basis\": \"set by admin@x\"}' where source_id='attention-breakit'")
     conn.execute("update sources set canonical_domain='old.example', status='active' where source_id='attention-fintechglobal'")
@@ -252,9 +252,9 @@ def test_seed_on_an_existing_database_picks_up_new_sources_addresses_and_a_corre
     assert seed_registry(conn) == 2
     q = lambda sid: conn.execute("select canonical_domain, collection_method, status, config from sources where source_id=%s", (sid,)).fetchone()   # noqa: E731
     assert q("attention-ebaday")["canonical_domain"] == "abe-eba.eu" and q("attention-ebaday")["config"]["url"] == "https://www.abe-eba.eu/ebaday/"
-    assert q("attention-leaddev")["collection_method"] == "feed" and q("attention-leaddev")["config"]["url"] == "https://leaddev.com/feed"
-    assert q("attention-cashlesspl")["status"] == "pending_connector_validation" and q("jobs-arbeitnow-de")["canonical_domain"] == "arbeitnow.com"
+    assert q("attention-deutschestartups")["collection_method"] == "feed" and q("attention-deutschestartups")["config"]["url"] == "https://www.deutsche-startups.de/feed/"
+    assert q("attention-fintechnewsch")["status"] == "pending_connector_validation" and q("jobs-arbeitnow-de")["canonical_domain"] == "arbeitnow.com"
     assert q("attention-breakit")["canonical_domain"] == "old.example" and q("attention-breakit")["config"]["url"] == "https://old.example/feed"
     assert q("attention-fintechglobal")["canonical_domain"] == "old.example"
-    assert isinstance(build_connector(conn, "attention-leaddev"), FeedConnector) and isinstance(build_connector(conn, "attention-ebaday"), PageWatchConnector)
+    assert isinstance(build_connector(conn, "attention-deutschestartups"), FeedConnector) and isinstance(build_connector(conn, "attention-ebaday"), PageWatchConnector)
     assert conn.execute("select count(*) c from sources where source_id='procurement-ezamowienia'").fetchone()["c"] == 1
