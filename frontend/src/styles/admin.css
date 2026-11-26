@@ -509,5 +509,7 @@
 /* phone: every fold-away heading in Administration is a 44px tap target; tables stay in their own scroll area */
 @media (max-width: 640px) {
   .adm details > summary { min-height: 44px; display: flex; align-items: center; }
+  .adm a.ov-more { display: inline-flex; align-items: center; min-height: 44px; }
+  .adm td a, .adm a.small { padding-block: 12px; }
   .adm .table-wrap { max-width: 100%; }
 }

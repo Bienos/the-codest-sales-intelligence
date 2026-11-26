@@ -303,6 +303,10 @@
 @media (max-width: 640px) {
   .cg-filter button { min-block-size: 44px; }
   .cg-quiet > summary { min-height: 44px; display: flex; align-items: center; }
+  .cg-chips label { min-block-size: 44px; }
+  .cg-sigopt { gap: 4px; padding: 6px 14px 12px 6px; }
+  .cg-sigopt input { inline-size: 44px; block-size: 44px; margin: 0; }
+  .cg-chips input { inline-size: 100%; block-size: 100%; min-block-size: 0; }
   .cg-ph button { min-height: 44px; padding: 0 12px; }
   .cg-people li { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 2px 8px; padding: 4px 0; }
   .cg-people li .cg-pstate { grid-column: 2 / -1; }

@@ -11,7 +11,7 @@ import "../styles/account.css";
 /* ------------------------------------------------------------------ shared helpers (also used by the person page) */
 export const host = (u?: string | null) => { try { return new URL(String(u)).hostname.replace(/^www\./, ""); } catch { return ""; } };
 export const initials = (name: string) => {
-  const words = name.split(/[\s-]+/).filter((w) => /^\p{L}/u.test(w));
+  const words = name.split(/[\s-]+/).filter((w) => /^[\p{L}\p{N}]/u.test(w));
   return (words.length === 1 ? words[0].slice(0, 2) : words.slice(0, 2).map((w) => w[0]).join("")).toUpperCase() || "?";
 };
 /** A research date: a full day, a month (YYYY-MM) or a year. */
@@ -403,7 +403,7 @@ export function ResearchPanel({ r, canRun, start, busy, err }: { r: any; canRun:
       {canRun && <ResearchSetup setup={r.setup} />}
       <Err e={err} />
       {p.sources?.length > 0 && <details><summary className="small">{tr("Pages read ({})", p.sources.length)}</summary>
-        <ul className="tight small mt-2">{p.sources.map((s: any) => <li key={s.id}><a href={safeHref(s.url)} target="_blank" rel="noreferrer noopener">{s.title || host(s.url)}</a> <span className="muted">{host(s.url)}{s.published ? `, ${fmtDay(s.published)}` : ""}</span></li>)}</ul></details>}
+        <ul className="tight small mt-2 ac-pages">{p.sources.map((s: any) => <li key={s.id}><a href={safeHref(s.url)} target="_blank" rel="noreferrer noopener">{s.title || host(s.url)}</a> <span className="muted">{host(s.url)}{s.published ? `, ${fmtDay(s.published)}` : ""}</span></li>)}</ul></details>}
     </div>
   </section>;
 }
@@ -1387,7 +1387,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const ready = Boolean(research?.setup?.ready);
   return (
     <>
-      <header className="ac-hero" data-mark={initials(a.display_name)}>
+      <header className="ac-hero ac-co" data-mark={initials(a.display_name)}>
         <nav className="ac-crumb" aria-label={tr("Breadcrumb")}><Link to="/accounts">{tr("Accounts")}</Link><span aria-hidden="true">/</span><span aria-current="page">{a.display_name}</span></nav>
         <div className="ac-id">
           <Monogram name={a.display_name} size="lg" framed />

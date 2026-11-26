@@ -366,7 +366,7 @@ export function NewCampaign() {
 
 function SignalPick({ o, on, toggle }: { o: SignalOption; on: boolean; toggle: (id: string) => void }) {
   return <label className={`cg-sigopt${on ? " on" : ""}`}>
-    <input type="checkbox" checked={on} onChange={() => toggle(o.rule_id)} />
+    <input type="checkbox" className="tick44" checked={on} onChange={() => toggle(o.rule_id)} />
     <span className="cg-sigopt-b">
       <span className="cg-sigopt-g">{groupName(o.rule_id.slice(0, 3))} <Strength n={o.strength} /></span>
       <b>{signalName(o.rule_id, o.name)}</b>

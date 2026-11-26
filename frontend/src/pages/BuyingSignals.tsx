@@ -617,7 +617,8 @@ function SignalTable({ companies, kinds, sort, dir, onSort, showFit, canPeople, 
     const next = e.key === "Home" ? 0 : e.key === "End" ? all.length - 1 : i + (e.key === "ArrowDown" ? 1 : -1);
     if (all[next]) { e.preventDefault(); all[next].focus(); }
   };
-  const cols = showFit ? 8 : 7;
+  const narrow = useMedia("(max-width: 900px)");         // the region and offer columns fold away; the opened row spans what is left
+  const cols = (showFit ? 8 : 7) - (narrow ? (showFit ? 2 : 1) : 0);
   return <table ref={ref} className={`bs-table${showFit ? " has-fit" : ""}`}>
     <caption className="bs-vh">{tr("Companies with a buying signal. Open a row for the evidence, the people and what to do next.")}</caption>
     <thead><tr>

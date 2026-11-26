@@ -168,7 +168,7 @@
 .bs-results.is-loading { opacity: .55; }
 
 /* ---------- table view ---------- */
-.bs-table { inline-size: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: var(--white); border: 1px solid var(--line); font-size: var(--fs-sm); }
+.bs-table { display: table; overflow: visible; inline-size: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: var(--white); border: 1px solid var(--line); font-size: var(--fs-sm); }
 .bs-table th { position: sticky; top: 0; z-index: 2; padding: 0; background: var(--white); border-bottom: 1px solid var(--navy); text-align: left; font-weight: 400; }
 .bs-table th.c-co { inline-size: 200px; } .bs-table th.c-str { inline-size: 96px; } .bs-table th.c-when { inline-size: 104px; }
 .bs-table th.c-reg { inline-size: 78px; } .bs-table th.c-mail { inline-size: 92px; } .bs-table th.c-fit { inline-size: 118px; } .bs-table th.c-x { inline-size: 46px; }
@@ -357,7 +357,7 @@ a.bs-mail:hover, a.bs-mail:focus-visible { text-decoration: underline; text-deco
 }
 @media (max-width: 900px) {
   .bs-head { grid-template-columns: minmax(0, 1fr); }
-  .bs-table th.c-reg, .bs-table td.c-reg { display: none; }
+  .bs-table th.c-reg, .bs-table td.c-reg, .bs-table th.c-fit, .bs-table td.c-fit { display: none; }
 }
 @media (max-width: 760px) {
   .bs-head { margin-bottom: 14px; gap: 12px; }
