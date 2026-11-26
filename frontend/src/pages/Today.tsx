@@ -42,6 +42,7 @@ type Why = "reply" | "deadline" | "strong" | "signal" | "follow_up";
 
 const PHONE = "(max-width: 860px)";
 const NEW_SHOWN = 8;
+const DEADLINES_SHOWN = 6;
 const RELATIONSHIP: Record<string, string> = { client: "Client", past_client: "Past client", in_talks: "In talks" };
 
 /* ------------------------------------------------------------------ small helpers (local copies, so this page owns its look) */
@@ -49,15 +50,18 @@ const HUES = ["#CC085D", "#6A3FC9", "#1F5C8F", "#B8402F", "#8A1C6B", "#0E7490"];
 const hueOf = (s: string) => { let h = 7; for (const ch of s.toLowerCase()) h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0; return HUES[h % HUES.length]; };
 /** Initials for a mark: the capitalised words first, so "Banque de France" is BF and "Banca d’Italia" is BI. */
 const initials = (name: string) => {
-  const words = name.replace(/\(.*?\)/g, "").split(/[\s-]+/).map((w) => w.replace(/^[dl][’']/i, "")).filter((w) => /^\p{L}/u.test(w));
+  const words = name.replace(/\(.*?\)/g, "").split(/[\s-]+/).map((w) => w.replace(/^[dl][’']/i, "")).filter((w) => /^[\p{L}\p{N}]/u.test(w));
   const caps = words.filter((w) => /^\p{Lu}/u.test(w));
   const use = caps.length >= 2 ? caps : words;
   return (use.length === 1 ? use[0].slice(0, 2) : use.slice(0, 2).map((w) => w[0]).join("")).toUpperCase() || "?";
 };
 const COMMITTEE_HUE: Record<string, string> = { decision: "#CC085D", technical: "#6A3FC9", procurement: "#1F5C8F", influencer: "#B8402F" };
+const COMMITTEE_LABEL: Record<string, string> = { decision: "Decision maker", technical: "Technical buyer", procurement: "Procurement", influencer: "Influencer" };
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 const nameOf = (a: Action) => a.organization?.name ?? a.buyer ?? tr("Unknown buyer");
 
+/** British date order for English (26 November), Polish for Polish. */
+const loc = () => (getLanguage() === "pl" ? "pl-PL" : "en-GB");
 function daysSince(v?: string | null): number | null {
   if (!v) return null;
   const t = new Date(v).getTime();
@@ -78,7 +82,7 @@ function inDays(n?: number | null): string {
 function day(v?: string | null, opts: Intl.DateTimeFormatOptions = { weekday: "short", day: "numeric", month: "short" }): string {
   if (!v) return "";
   const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T12:00:00` : v);
-  return isNaN(d.getTime()) ? "" : d.toLocaleDateString(getLanguage(), opts);
+  return isNaN(d.getTime()) ? "" : d.toLocaleDateString(loc(), opts);
 }
 function greeting(): string {
   const h = new Date().getHours();
@@ -132,6 +136,18 @@ function repeats(why: string, shown: string): boolean {
 }
 /** The right-hand cue on a row: the deadline, or how fresh the news is. */
 const cue = (a: Action) => (a.kind === "tender" && a.days_left != null ? inDays(a.days_left) : ago(a.happened));
+/** One line on a list row: what happened, in plain words (the full text is in the brief). */
+function rowLine(a: Action): string {
+  if (a.kind === "reply" && a.person) return tr("{} answered our email.", a.person.name);
+  if (a.kind === "follow_up" && a.person) return tr("{} opened our email but has not answered.", a.person.name);
+  return (a.kind === "tender" ? a.title : a.text ?? a.title ?? "")?.replace(/[.\s]+$/, "") ?? "";
+}
+/** Who to talk to, on a list row: the person who wrote back, else the best match we hold, else the honest "nobody yet". */
+function rowWho(a: Action): string {
+  const c = a.person ?? a.contacts[0];
+  if (c) return a.kind === "reply" || a.kind === "follow_up" ? c.name : tr("Ask for {}", c.name);
+  return a.organization ? tr("No contacts yet") : tr("The tender page names the contact");
+}
 
 function Chip({ w, children }: { w: Why; children: React.ReactNode }) {
   return <span className={`td-chip td-w-${w}`}>{ICON[w]}<span>{children}</span></span>;
@@ -216,7 +232,7 @@ function MoreMenu({ items }: { items: { label: string; to?: string; href?: strin
 /* ------------------------------------------------------------------ the header: the day at a glance, and progress */
 function Header({ name, segments, done, total, next }: { name: string | null; segments: { key: string; w: Why; done: boolean; label: string }[];
   done: number; total: number; next: string | null }) {
-  const today = new Date().toLocaleDateString(getLanguage(), { weekday: "long", day: "numeric", month: "long" });
+  const today = new Date().toLocaleDateString(loc(), { weekday: "long", day: "numeric", month: "long" });
   return <header className="td-top">
     <div className="page td-top-in">
       <div className="td-hello">
@@ -238,7 +254,15 @@ function Header({ name, segments, done, total, next }: { name: string | null; se
 }
 
 /* ------------------------------------------------------------------ the week strip: deadlines on a timeline, and what is new */
-function Week({ d, sinceLabel, openKind, onKind, onPick }: { d: Brief; sinceLabel: string; openKind: NewKind | null;
+/** Where a deadline leads: the item on today's list, else the tender itself, else the company (or all tenders). */
+function Target({ m, className, label, onPick, children }: { m: Deadline; className: string; label: string; onPick: (key: string, slot: Slot) => void; children: React.ReactNode }) {
+  const external = m.url ? safeHref(m.url) : undefined;
+  if (m.in_list) return <button type="button" className={className} data-tip={label} aria-label={label} onClick={() => onPick(m.key, m.in_list!)}>{children}</button>;
+  if (external) return <a className={className} data-tip={label} aria-label={label} href={external} target="_blank" rel="noopener noreferrer">{children}</a>;
+  return <Link className={className} data-tip={label} aria-label={label} to={m.organization_id ? `/accounts/${m.organization_id}` : "/tenders"}>{children}</Link>;
+}
+
+function Week({ d, sinceLabel, openKind, phone, onKind, onPick }: { d: Brief; sinceLabel: string; openKind: NewKind | null; phone: boolean;
   onKind: (k: NewKind) => void; onPick: (key: string, slot: Slot) => void }) {
   const start = new Date(`${d.week.start}T12:00:00`);
   const days = Array.from({ length: d.week.days }, (_, i) => { const x = new Date(start); x.setDate(start.getDate() + i); return x; });
@@ -249,6 +273,8 @@ function Week({ d, sinceLabel, openKind, onKind, onPick }: { d: Brief; sinceLabe
     { k: "signal", label: tr("buying signals") }, { k: "tender", label: tr("tenders") },
     { k: "reply", label: tr("replies") }, { k: "campaign", label: tr("campaigns started") },
   ];
+  const anyNew = tiles.some((t) => (d.week.new[t.k] ?? 0) > 0);
+  const labelOf = (m: Deadline) => tr("{}: tender closes {}", m.name ?? "", day(m.date));
   return <section className="td-week" aria-label={tr("This week")}>
     <div className="td-tl">
       <div className="td-sec">
@@ -263,31 +289,35 @@ function Week({ d, sinceLabel, openKind, onKind, onPick }: { d: Brief; sinceLabe
           const weekend = x.getDay() === 0 || x.getDay() === 6;
           const month = i === 0 || x.getDate() === 1;
           return <li key={i} className={`td-day${i === 0 ? " is-today" : ""}${weekend ? " is-weekend" : ""}${marks.length ? " has-marks" : ""}`}>
-            <span className="td-dow" aria-hidden="true">{x.toLocaleDateString(getLanguage(), { weekday: "narrow" })}</span>
+            <span className="td-dow" aria-hidden="true">{x.toLocaleDateString(loc(), { weekday: "narrow" })}</span>
             <span className="td-dom"><span className="td-sr">{day(iso(x), { weekday: "long", day: "numeric", month: "long" })}</span>
-              <span aria-hidden="true">{x.getDate()}{month && <small>{x.toLocaleDateString(getLanguage(), { month: "short" })}</small>}</span></span>
-            {marks.length > 0 && <span className="td-pins">
-              {marks.slice(0, 3).map((m) => {
-                const label = tr("{}: tender closes {}", m.name ?? "", day(m.date));
-                const inner = <Mono name={m.name ?? "?"} size="xs" />;
-                return m.in_list
-                  ? <button key={m.key} type="button" className="td-pin" data-tip={label} aria-label={label} onClick={() => onPick(m.key, m.in_list!)}>{inner}</button>
-                  : m.url && safeHref(m.url)
-                    ? <a key={m.key} className="td-pin" data-tip={label} aria-label={label} href={safeHref(m.url)} target="_blank" rel="noopener noreferrer">{inner}</a>
-                    : <Link key={m.key} className="td-pin" data-tip={label} aria-label={label} to={m.organization_id ? `/accounts/${m.organization_id}` : "/tenders"}>{inner}</Link>;
-              })}
-              {marks.length > 3 && <Link className="td-pin td-pin-more" to="/tenders" aria-label={tr("{} more tenders", marks.length - 3)}>+{marks.length - 3}</Link>}
+              <span aria-hidden="true">{x.getDate()}{month && <small>{x.toLocaleDateString(loc(), { month: "short" })}</small>}</span></span>
+            {marks.length > 0 && <span className="td-pins" aria-hidden={phone || undefined}>
+              {phone
+                ? <>{marks.slice(0, 2).map((m) => <span key={m.key} className="td-pin"><Mono name={m.name ?? "?"} size="xs" /></span>)}{marks.length > 2 && <span className="td-pin td-pin-more">+{marks.length - 2}</span>}</>
+                : <>{marks.slice(0, 3).map((m) => <Target key={m.key} m={m} className="td-pin" label={labelOf(m)} onPick={onPick}><Mono name={m.name ?? "?"} size="xs" /></Target>)}
+                  {marks.length > 3 && <Link className="td-pin td-pin-more" to="/tenders" aria-label={tr("{} more tenders", marks.length - 3)}>+{marks.length - 3}</Link>}</>}
             </span>}
           </li>;
         })}
       </ol>
+      {phone && d.week.deadlines.length > 0 && <ul className="td-dl">
+        {d.week.deadlines.slice(0, DEADLINES_SHOWN).map((m) => <li key={m.key}>
+          <Target m={m} className="td-dl-row" label={labelOf(m)} onPick={onPick}>
+            <Mono name={m.name ?? "?"} size="sm" />
+            <span className="td-dl-t"><b>{m.name ?? tr("Unknown buyer")}</b>{m.title && <span>{m.title}</span>}</span>
+            <span className="td-dl-d"><b>{day(m.date, { weekday: "short", day: "numeric", month: "short" })}</b><small>{inDays(m.days_left)}</small></span>
+          </Target>
+        </li>)}
+        {d.week.deadlines.length > DEADLINES_SHOWN && <li><Link className="td-dl-all" to="/tenders">{tr("See all {} open tenders", number(d.week.deadlines.length))}</Link></li>}
+      </ul>}
     </div>
     <div className="td-counts">
       <div className="td-sec">
         <h2>{sinceLabel}</h2>
-        <p>{tr("What came in. Pick a number to see the list.")}</p>
+        <p>{anyNew ? tr("What came in. Pick a number to see the list.") : tr("Nothing new has come in yet.")}</p>
       </div>
-      <ul>
+      {anyNew && <ul>
         {tiles.map((t) => {
           const n = d.week.new[t.k] ?? 0;
           return <li key={t.k}>
@@ -297,7 +327,7 @@ function Week({ d, sinceLabel, openKind, onKind, onPick }: { d: Brief; sinceLabe
               : <span className="td-count is-zero"><b>0</b><span>{t.label}</span></span>}
           </li>;
         })}
-      </ul>
+      </ul>}
     </div>
   </section>;
 }
@@ -346,6 +376,8 @@ function NewList({ d, kind, onPick, onClose }: { d: Brief; kind: NewKind; onPick
 function Row({ a, rank, selected, onSelect }: { a: Action; rank: number; selected: boolean; onSelect: () => void }) {
   const w = whyOf(a);
   const soon = a.kind === "tender" && (a.days_left ?? 99) <= 7;
+  const line = rowLine(a);
+  const fit = a.fit?.name;
   return <li>
     <button type="button" id={`td-row-${a.key}`} className={`td-row td-w-${w}${selected ? " is-sel" : ""}`} aria-current={selected ? "true" : undefined}
       onClick={onSelect}>
@@ -353,9 +385,14 @@ function Row({ a, rank, selected, onSelect }: { a: Action; rank: number; selecte
       <Mono name={nameOf(a)} size="sm" />
       <span className="td-row-main">
         <span className="td-row-name">{nameOf(a)}</span>
-        <Chip w={w}>{tr(WHY_SHORT[w])}</Chip>
+        <span className="td-row-why">
+          <Chip w={w}>{tr(WHY_SHORT[w])}</Chip>
+          <span className={`td-row-cue${soon ? " is-soon" : ""}`}>{cue(a)}</span>
+        </span>
+        {line && <span className="td-row-line">{line}</span>}
+        <span className="td-row-who"><span>{rowWho(a)}</span>{fit && <span>{fit}</span>}</span>
       </span>
-      <span className={`td-row-cue${soon ? " is-soon" : ""}`}>{cue(a)}</span>
+      <span className="td-row-go" aria-hidden="true">{ICON.chevron}</span>
     </button>
   </li>;
 }
@@ -401,10 +438,12 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
   const headline = a.title && a.kind !== "reply" && a.kind !== "follow_up" ? a.title.replace(/[.\s]+$/, "") : null;
 
   const actionBar = <div className="td-b-acts">
-    {go.href
-      ? <a className="btn primary" href={go.href} target="_blank" rel="noopener noreferrer" onClick={opened}>{go.label} ↗</a>
-      : <Link className="btn primary" to={go.to!} onClick={opened}>{go.label}</Link>}
-    <MoreMenu items={more} />
+    <span className="td-b-main">
+      {go.href
+        ? <a className="btn primary" href={go.href} target="_blank" rel="noopener noreferrer" onClick={opened}>{go.label} ↗</a>
+        : <Link className="btn primary" to={go.to!} onClick={opened}>{go.label}</Link>}
+      <MoreMenu items={more} />
+    </span>
     <span className="td-b-marks">
       <button type="button" className="td-btn td-done" onClick={() => onMark(a, "done")} aria-keyshortcuts="D">{ICON.check}{tr("Mark done")}</button>
       <button type="button" className="td-btn td-btn-quiet" onClick={() => onMark(a, "later")} aria-keyshortcuts="N">{tr("Not now")}</button>
@@ -484,6 +523,7 @@ function PersonLine({ c, tag }: { c: Contact; tag?: string }) {
       <Link to={`/people/${c.id}`}>{c.name}</Link>
       {c.title && <span className="td-person-t">{c.title}</span>}
       {tag && <span className="td-person-tag">{tag}</span>}
+      {!tag && c.committee && COMMITTEE_LABEL[c.committee] && <span className="td-person-grp"><i style={{ background: COMMITTEE_HUE[c.committee] }} aria-hidden="true" />{tr(COMMITTEE_LABEL[c.committee])}</span>}
     </span>
     {c.has_email !== undefined && <span className={`td-mail${c.has_email ? " on" : ""}`}>{c.has_email ? tr("Email ✓") : tr("No email")}</span>}
   </li>;
@@ -503,7 +543,8 @@ function AllDone({ done, queue, onMore }: { done: number; queue: number; onMore:
 function NothingUrgent({ d }: { d: Brief }) {
   return <div className="td-state">
     <h2>{tr("Nothing urgent today")}</h2>
-    <p>{tr("No tender closes soon, nobody is waiting for an answer and no strong new signal came in. These top-priority companies are a good place to start.")}</p>
+    <p>{d.next_up.length > 0 ? tr("No tender closes soon, nobody is waiting for an answer and no strong new signal came in. These top-priority companies are a good place to start.")
+      : tr("No tender closes soon, nobody is waiting for an answer and no strong new signal came in.")}</p>
     {d.next_up.length > 0 && <ol className="td-nextup">
       {d.next_up.map((x) => <li key={x.organization.id}>
         <Mono name={x.organization.name} size="sm" />
@@ -646,7 +687,7 @@ export default function Today({ canCampaign = false }: { canReview?: boolean; ca
   }, [sheet, phone, selected]);
 
   const sinceLabel = d ? (d.last_visit
-    ? tr("New since {}", (daysSince(d.since) ?? 0) < 6 ? new Date(d.since).toLocaleDateString(getLanguage(), { weekday: "long" }) : day(d.since, { day: "numeric", month: "short" }))
+    ? tr("New since {}", (daysSince(d.since) ?? 0) < 6 ? new Date(d.since).toLocaleDateString(loc(), { weekday: "long" }) : day(d.since, { day: "numeric", month: "short" }))
     : tr("New in the last 7 days")) : "";
   const segments = [
     ...serverDone.filter((x) => x.slot === "today").map((x) => ({ key: x.key, w: whyOf({ kind: x.kind, strength: 3 }), done: true, label: x.label ?? "" })),
@@ -658,16 +699,21 @@ export default function Today({ canCampaign = false }: { canReview?: boolean; ca
   };
   const extraDone = serverDone.filter((x) => x.slot === "next");
 
+  // on a phone the list comes first (it is the job of the page); the deadlines and what is new follow it
+  const weekEl = d ? <>
+    <Week d={d} sinceLabel={sinceLabel} openKind={newKind} phone={phone} onKind={(k) => setNewKind((v) => (v === k ? null : k))} onPick={(k, s) => select(k, s, true)} />
+    {newKind && <NewList d={d} kind={newKind} onPick={(k, s) => select(k, s, true)} onClose={() => setNewKind(null)} />}
+  </> : null;
+
   return <div className="td">
     <Header name={d?.name ?? null} segments={segments} done={doneTodayCount} total={total}
       next={openToday[0] ? nameOf(openToday[0]) : null} />
     <div className="page td-body">
       {err ? <Err e={err} onRetry={() => setRevision((n) => n + 1)} /> : !d ? <Skeleton rows={8} label={tr("Loading today's list")} /> : <>
-        <Week d={d} sinceLabel={sinceLabel} openKind={newKind} onKind={(k) => setNewKind((v) => (v === k ? null : k))} onPick={(k, s) => select(k, s, true)} />
-        {newKind && <NewList d={d} kind={newKind} onPick={(k, s) => select(k, s, true)} onClose={() => setNewKind(null)} />}
+        {!phone && weekEl}
         <Err e={markErr} />
         <div className="td-work">
-          <section className="td-queue" aria-labelledby="td-queue-h">
+          {!(phone && actions.length === 0 && serverDone.length === 0 && queue.length === 0) && <section className="td-queue" aria-labelledby="td-queue-h">
             <div className="td-q-head">
               <h2 id="td-queue-h">{tr("Today’s list")}</h2>
               <span>{openToday.length ? tr("{} left", openToday.length) : total ? tr("All done") : ""}</span>
@@ -696,7 +742,7 @@ export default function Today({ canCampaign = false }: { canReview?: boolean; ca
             </div>}
             {order.length > 1 && <p className="td-keys" aria-hidden="true">
               <kbd>↑</kbd><kbd>↓</kbd> {tr("move")} <kbd>Enter</kbd> {tr("open")} <kbd>D</kbd> {tr("done")} <kbd>N</kbd> {tr("not now")}</p>}
-          </section>
+          </section>}
 
           <div className={`td-detail${current ? " has-item" : ""}${sheet && current ? " is-open" : ""}`}
             {...(phone && current && sheet ? { role: "dialog", "aria-modal": true, "aria-labelledby": "td-brief-h" } : {})}>
@@ -710,6 +756,7 @@ export default function Today({ canCampaign = false }: { canReview?: boolean; ca
                   : null}
           </div>
         </div>
+        {phone && weekEl}
       </>}
     </div>
   </div>;

@@ -64,7 +64,8 @@ function AddCompany({ onClose }: { onClose: () => void }) {
   );
 }
 
-const SIZE = 40;
+/** Forty companies a page on a computer, twenty on a phone (a shorter scroll to the page buttons). */
+const SIZE = typeof window !== "undefined" && window.matchMedia?.("(max-width: 820px)").matches ? 20 : 40;
 const SORTS: [string, string][] = [["score", "Strongest signals"], ["priority", "Lead list priority"], ["list_score", "List score"], ["recent", "Newest signal"], ["size", "Largest first"], ["name", "Company name"]];
 /** On/off filters, kept in the address so a filtered list survives opening a company and coming back. [address key, API parameter, API value, label] */
 const TOGGLES: [string, string, string, string][] = [
@@ -94,6 +95,7 @@ const Ico = {
   globe: <svg className="acc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" /></svg>,
   building: <svg className="acc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 21V5h10v16M14 10h6v11M4 21h16M8 9h2M8 13h2M8 17h2" /></svg>,
   sort: <svg className="acc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4" /></svg>,
+  sliders: <svg className="acc-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 4v6M7 14v6" /></svg>,
   chev: <svg className="acc-chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" /></svg>,
 };
 
@@ -130,11 +132,9 @@ export function Accounts({ me }: { me: { permissions: string[] } }) {
   return (
     <>
       <div className="page-head acc-headline">
-        <div>
-          <h1>{tr("Accounts")}</h1>
-          <p className="sub">{tr("Every company from your lead list and research, in one list. Open a company to see its people, signals and research.")}</p>
-        </div>
+        <h1>{tr("Accounts")}</h1>
         {research && <button className={adding ? "" : "primary"} onClick={() => update({ add: adding ? "" : "1" })}>{adding ? tr("Cancel") : tr("Add a company")}</button>}
+        <p className="sub">{tr("Every company from your lead list and research, in one list. Open a company to see its people, signals and research.")}</p>
       </div>
       {movedFromLeads && <div className="acc-moved" role="status">
         <p>{tr("Leads now sit on their company. Each row shows the strongest signal from your lead list. Every checked signal is on")} <Link to="/signals">{tr("Buying signals")}</Link>.</p>
@@ -202,6 +202,8 @@ function CompanyDirectory({ view, research, params, update, counts, setCounts }:
   const [selection, setSelection] = useState<{ query: string; ids: string[] }>({ query: filterQuery, ids: [] });
   const selected = selection.query === filterQuery ? selection.ids : [];
   const [msg, setMsg] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);       // phone: the region, industry and quick filters fold away
+  const [picking, setPicking] = useState(false);               // phone: tick boxes only while choosing companies
   const top = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -262,6 +264,7 @@ function CompanyDirectory({ view, research, params, update, counts, setCounts }:
   const goTo = (next: number) => { update({ page: next > 1 ? String(next) : "" }); top.current?.scrollIntoView({ block: "start" }); };
   const clear = () => update({ q: "", region: "", segment: "", priority: "", ...Object.fromEntries(TOGGLES.map(([key]) => [key, ""])) });
   const filtered = Boolean(q || region || segment || priority || TOGGLES.some(([key]) => on[key]));
+  const filterCount = [region, segment, priority, ...TOGGLES.map(([key]) => on[key])].filter(Boolean).length;
 
   const pages = d ? Math.max(1, Math.ceil(d.total / d.size)) : 1;
   const visiblePage = d?.page ?? page;
@@ -293,31 +296,34 @@ function CompanyDirectory({ view, research, params, update, counts, setCounts }:
       </details>
       {view === "filling" && <FillInNote />}
 
-      <div className="acc-tools-panel" role="search" aria-label={tr("Filter companies")}>
+      <div className={`acc-tools-panel${filtersOpen ? " is-open" : ""}`} role="search" aria-label={tr("Filter companies")}>
         <div className="acc-bar">
           <label className="acc-ctl acc-q">{Ico.search}<span className="sr">{tr("Search companies")}</span>
             <input type="search" maxLength={120} placeholder={tr("Search company, website or signal")} value={q} onChange={(e) => update({ q: e.target.value })} />
           </label>
-          <label className="acc-ctl">{Ico.globe}<span className="sr">{tr("Region")}</span>
+          <button type="button" className="acc-filter-toggle" aria-expanded={filtersOpen} aria-controls="acc-more" onClick={() => setFiltersOpen(!filtersOpen)}>
+            {Ico.sliders}<span>{tr("Filters")}</span>{filterCount > 0 && <b aria-label={counted(filterCount, ["active filter", "active filters"], ["aktywny filtr", "aktywne filtry", "aktywnych filtrów"])}>{number(filterCount)}</b>}{Ico.chev}
+          </button>
+          <label className="acc-ctl acc-region">{Ico.globe}<span className="sr">{tr("Region")}</span>
             <select value={region} onChange={(e) => update({ region: e.target.value })}>
               <option value="">{tr("All regions")}</option>
               {REGIONS.map(([key, name]) => <option key={key} value={key}>{tr(name)}</option>)}
             </select>{Ico.chev}
           </label>
-          <label className="acc-ctl">{Ico.building}<span className="sr">{tr("Industry")}</span>
+          <label className="acc-ctl acc-segment">{Ico.building}<span className="sr">{tr("Industry")}</span>
             <select value={segment} onChange={(e) => update({ segment: e.target.value })}>
               <option value="">{tr("All industries")}</option>
               {segment && !segments.some(([key]) => key === segment) && <option value={segment}>{segment}</option>}
               {segments.map(([key, n]) => <option key={key} value={key}>{tr(key)} ({number(n)})</option>)}
             </select>{Ico.chev}
           </label>
-          <label className="acc-ctl">{Ico.sort}<span className="sr">{tr("Sort by")}</span>
+          <label className="acc-ctl acc-sort">{Ico.sort}<span className="sr">{tr("Sort by")}</span>
             <select value={sort} onChange={(e) => update({ sort: e.target.value === "score" ? "" : e.target.value })}>
               {SORTS.map(([key, label]) => <option key={key} value={key}>{tr(label)}</option>)}
             </select>{Ico.chev}
           </label>
         </div>
-        <div className="acc-chips">
+        <div className="acc-chips" id="acc-more">
           <div className="acc-seg" role="group" aria-label={tr("Lead list priority")}>
             <span className="acc-seg-l" aria-hidden="true">{tr("Priority")}</span>
             <button type="button" aria-pressed={!priority} onClick={() => update({ priority: "" })}>{tr("All")}</button>
@@ -334,12 +340,15 @@ function CompanyDirectory({ view, research, params, update, counts, setCounts }:
         <p className="acc-count" role="status">{d ? counted(d.total, nouns[view][0], nouns[view][1]) : tr("Loading companies")}
           {filtered && <button type="button" className="linkish" onClick={clear}>{tr("Clear filters")}</button>}</p>
         <div className="acc-tools">
-          {selected.length > 0 && <span className="acc-selected">{tr("{} selected", number(selected.length))}
-            <button type="button" className="linkish" onClick={() => setSelection({ query: filterQuery, ids: [] })}>{tr("Clear selection")}</button></span>}
-          {selected.length > 0 && <button onClick={scanSelected}>{tr("Check news for {} companies", number(selected.length))}</button>}
+          {selectable && <button type="button" className="acc-selmode" aria-pressed={picking} onClick={() => setPicking(!picking)}>{picking ? tr("Done selecting") : tr("Select")}</button>}
           <button disabled={!d?.total} onClick={exportCsv}>{tr("Export CSV")}</button>
         </div>
       </div>
+      {selected.length > 0 && <div className="acc-selbar" role="region" aria-label={tr("Selected companies")}>
+        <span className="acc-selected">{tr("{} selected", number(selected.length))}</span>
+        <button type="button" className="acc-selbar-clear" onClick={() => setSelection({ query: filterQuery, ids: [] })}>{tr("Clear selection")}</button>
+        <button type="button" className="primary" onClick={scanSelected}>{tr("Check news for {} companies", number(selected.length))}</button>
+      </div>}
       {msg && <p className="okmsg" role="status">{msg}</p>}
       <Err e={err} onRetry={() => setRetry((n) => n + 1)} />
       {!d && !err && <Skeleton rows={6} label={tr("Loading companies")} />}
@@ -361,7 +370,7 @@ function CompanyDirectory({ view, research, params, update, counts, setCounts }:
           <span className="acc-h-rank">{tr("Lead list")}</span><span className="acc-h-ppl">{tr(col4)}</span>
           <span className="acc-h-end">{tr("Watch")}</span>
         </div>
-        <ol className={`acc-list${selectable ? "" : " no-pick"} is-${view}`} aria-label={tr("Companies, page {} of {}", visiblePage, pages)}>
+        <ol className={`acc-list${selectable ? "" : " no-pick"}${picking ? " is-picking" : ""}${selected.length ? " has-sel" : ""} is-${view}`} aria-label={tr("Companies, page {} of {}", visiblePage, pages)}>
           {d.items.map((r: any) => <AccountRow key={r.id} r={r} view={view} research={research} selectable={selectable}
             selected={selected.includes(r.id)} full={!selected.includes(r.id) && selected.length >= 25}
             onSelect={() => toggle(r.id)} onWatch={() => toggleWatch(r)} onDecide={(decision) => decide(r, decision)} onChanged={() => setRetry((n) => n + 1)} />)}
@@ -432,8 +441,9 @@ function AccountRow({ r, view, research, selectable, selected, full, onSelect, o
 }) {
   const to = `/accounts/${r.id}${view === "filling" && research ? "?profile=1" : ""}`;
   const facts = [r.segment, countryName(r.country_code), r.employees != null ? staff(r.employees, r.employees_uncertain) : null].filter(Boolean);
-  return <li className={`acc-row${selected ? " is-sel" : ""}`}>
-    {selectable && <label className="acc-pick"><input type="checkbox" aria-label={tr("Select {} for a news check", r.name)} checked={selected} disabled={full} onChange={onSelect} /></label>}
+  const meaning: string | undefined = r.stopped ? undefined : r.buying_signal?.meaning ?? r.list_lead?.why;       // why it matters to us, in the company's own words
+  return <li className={`acc-row${selected ? " is-sel" : ""}${PRIORITY.test(r.list_priority ?? "") ? ` is-${r.list_priority.toLowerCase()}` : ""}`}>
+    {selectable && <label className="acc-pick"><input type="checkbox" className="tick44" aria-label={tr("Select {} for a news check", r.name)} checked={selected} disabled={full} onChange={onSelect} /></label>}
     <span className="acc-av"><CompanyAvatar name={r.name} /></span>
     <div className="acc-id">
       <span className="acc-name-row"><Link className="acc-name" to={to} title={r.name}>{r.name}</Link>
@@ -444,6 +454,7 @@ function AccountRow({ r, view, research, selectable, selected, full, onSelect, o
     </div>
     <div className="acc-sig">
       <SignalCell r={r} research={research} onChanged={onChanged} />
+      {meaning && <p className="acc-meaning"><b>{tr("Why it matters")}</b> {meaning}</p>}
       {r.candidate_status === "pending_qualification" && research && <div className="acc-decide">
         <button type="button" onClick={() => onDecide("qualify")}>{tr("Confirm account")}</button>
         <button type="button" onClick={() => onDecide("reject")}>{tr("Remove from list")}</button></div>}

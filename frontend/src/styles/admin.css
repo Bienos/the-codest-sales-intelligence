@@ -505,3 +505,9 @@
 .dh-st { min-width: 15ch; }
 .dh-st .dh-read { display: block; margin-top: 2px; padding-left: 0; padding-bottom: 0; }
 .dh-t td:first-child { min-width: 200px; }
+
+/* phone: every fold-away heading in Administration is a 44px tap target; tables stay in their own scroll area */
+@media (max-width: 640px) {
+  .adm details > summary { min-height: 44px; display: flex; align-items: center; }
+  .adm .table-wrap { max-width: 100%; }
+}

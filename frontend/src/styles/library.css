@@ -85,3 +85,12 @@
   .lfacts { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .lfacts dd { margin-bottom: var(--space-2); }
 }
+
+/* phone */
+@media (max-width: 640px) {
+  .lgroup > summary { min-height: 48px; }
+  .lfilter { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: var(--space-3); }
+  .lfilter input { grid-column: 1 / -1; flex: none; max-width: none; width: 100%; }
+  .lfilter select { flex: none; width: 100%; }
+  .lfilter-n { grid-column: 1 / -1; margin-left: 0; }
+}

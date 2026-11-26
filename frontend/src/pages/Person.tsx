@@ -50,6 +50,10 @@ const dedupe = (xs: Opener[]) => xs.filter((o, i) => {
   return note.length < 40 || !xs.slice(0, i).some((p) => plain(p.text).includes(note));
 });
 
+/** True when one line only says again what another already says (the fit reason often quotes the news the opener is built on). */
+const core = (t: string) => t.toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").replace(/[^\p{L}\p{N} ]/gu, "").replace(/\s+/g, " ").trim().slice(0, 48);
+const repeats = (a: string, others: string[]) => { const x = core(a); return x.length > 12 && others.some((o) => core(o).includes(x) || x.includes(core(o)) && core(o).length > 12); };
+
 type Role = { title: string; company?: string | null; from?: number | null; to?: number | null; current?: boolean; cite?: any };
 const yearOf = (v: any): number | null => { const m = /\b(19|20)\d{2}\b/.exec(String(v ?? "")); return m ? Number(m[0]) : null; };
 
@@ -106,7 +110,8 @@ function Source({ s, url }: { s?: string | null; url?: string | null }) {
 }
 
 /** The sales brief: what this person cares about, what to offer, how to open, what to ask, and what we know against what we still need. */
-function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; first: string; err: unknown; retry: () => void; extraGaps: string[] }) {
+function SalesBrief({ b, first, err, retry, extraGaps, title, researched, seen }: { b: Brief | null; first: string; err: unknown; retry: () => void; extraGaps: string[];
+  title?: string | null; researched: boolean; seen: string[] }) {
   const head = <header className="sb-head">
     <span className="sb-ic" aria-hidden="true"><Ic.target /></span>
     <div><h2 id="sb-h">{tr("Sales brief")}</h2>
@@ -114,9 +119,10 @@ function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; firs
   </header>;
   if (!b) return <section className="sb" aria-labelledby="sb-h" aria-busy={!err}>{head}
     <div className="sb-body">{err ? <Err e={err} onRetry={retry} /> : <Skeleton rows={4} label={tr("Writing the brief")} />}</div></section>;
-  const key = [b.lens.committee_key, b.lens.committee].find((k) => k && COMMITTEE[k]) ?? null;
-  const gLabel = key ? tr(COMMITTEE[key].one) : b.lens.committee ? tr(b.lens.committee) : null;
-  const gaps = [...b.gaps, ...extraGaps.filter((x) => !b.gaps.some((y) => y.toLowerCase() === x.toLowerCase()))];
+  // "not researched yet" is said once, by the public profile section below; it is not repeated as an open question
+  const gaps = [...b.gaps, ...extraGaps.filter((x) => !b.gaps.some((y) => y.toLowerCase() === x.toLowerCase()))].filter((x) => researched || !/not researched this person/i.test(x));
+  // the masthead already shows the role and the part in the buying committee: only a different reading of the role is worth a line here
+  const lensRole = b.lens.role && b.lens.role.trim().toLowerCase() !== (title ?? "").trim().toLowerCase() ? b.lens.role : null;
   const facts = b.facts.filter((f) => !HERO_FACTS.has(f.label));
   const openers = dedupe(b.openers);
   const fit = b.best_fit;
@@ -126,8 +132,7 @@ function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; firs
     <div className="sb-top">
       <div className="sb-lens">
         <h3>{tr("What matters to {}", first)}</h3>
-        {(b.lens.role || gLabel) && <p className="sb-role">{b.lens.role && <span>{b.lens.role}</span>}
-          {gLabel && <span className="sb-grp" style={{ "--g": key ? COMMITTEE[key].color : "var(--navy)" } as React.CSSProperties}><i aria-hidden="true" />{gLabel}</span>}</p>}
+        {lensRole && <p className="sb-role"><span>{lensRole}</span></p>}
         {b.lens.cares_about.length > 0 ? <ul className="sb-cares">{b.lens.cares_about.map((x, i) => <li key={i}>{tr(x)}</li>)}</ul>
           : <p className="small m-0">{tr("Not enough known about the role yet.")}</p>}
       </div>
@@ -136,7 +141,7 @@ function SalesBrief({ b, first, err, retry, extraGaps }: { b: Brief | null; firs
         {fit ? <>
           <p className="sb-svc"><span className="sb-svc-ic" aria-hidden="true"><Fit /></span>{tr(fit.label)}</p>
           {level && <p className="sb-level"><Strength n={level[1]} />{tr(level[0])}</p>}
-          {fit.why && <p className="sb-why">{tr(fit.why)}</p>}
+          {fit.why && !repeats(fit.why, seen) && <p className="sb-why">{tr(fit.why)}</p>}
         </> : <p className="sb-why">{tr("No clear fit yet. Ask about their engineering plans first.")}</p>}
       </div>
     </div>
@@ -401,29 +406,26 @@ export default function Person() {
   const researchBusy = Boolean(r?.running) || r?.latest?.status === "failed";
   return <>
     <header className="ac-hero ps-hero" data-mark={initials(p.name)}>
-      <nav className="ac-crumb" aria-label={tr("Breadcrumb")}>
-        {co ? <><Link to="/accounts">{tr("Accounts")}</Link><span aria-hidden="true">/</span><Link to={`/accounts/${co.id}`}>{co.name}</Link><span aria-hidden="true">/</span>
-          <Link to={`/accounts/${co.id}?tab=people`}>{tr("People")}</Link></> : <Link to="/people">{tr("People")}</Link>}
+      <nav className="ac-crumb ps-crumb" aria-label={tr("Breadcrumb")}>
+        {co ? <><Link className="ps-crumb-far" to="/accounts">{tr("Accounts")}</Link><span className="ps-crumb-far" aria-hidden="true">/</span><Link to={`/accounts/${co.id}`}>{co.name}</Link><span className="ps-crumb-far" aria-hidden="true">/</span>
+          <Link className="ps-crumb-far" to={`/accounts/${co.id}?tab=people`}>{tr("People")}</Link></> : <Link to="/people">{tr("People")}</Link>}
         <span aria-hidden="true">/</span><span aria-current="page">{p.name}</span>
       </nav>
-      <div className="ac-id">
+      <div className="ps-id">
         <span className="ps-avatar"><Avatar name={p.name} committee={g} size="lg" photo={p.photo_url} /></span>
-        <div className="ac-name">
+        <div className="ps-name">
           <h1>{p.name}</h1>
           <p className="ps-role">{title ?? tr("Role not recorded")}{co && <> {tr("at")} <Link className="ps-co-link" to={`/accounts/${co.id}`}><Monogram name={co.name} size="xs" />{co.name}</Link></>}</p>
           {c?.summary?.text && <p className="ps-summary">{c.summary.text}</p>}
-          <div className="ac-links">
-            <span className="grp-badge"><GIcon />{tr(COMMITTEE[g].one)}</span>
-            <EmailMark has={Boolean(p.has_email)} onNavy />
-            {p.linkedin_url && safeHref(p.linkedin_url) ? <a href={safeHref(p.linkedin_url)} target="_blank" rel="noreferrer noopener"><Ic.linkedin />{tr("LinkedIn profile")}</a>
-              : <a href={`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${p.name} ${co?.name ?? ""}`)}`} target="_blank" rel="noreferrer noopener"><Ic.linkedin />{tr("Find on LinkedIn")}</a>}
-          </div>
           {p.suppressed && <p className="ps-warn">{tr("Do not contact.")} {p.suppression_reason ?? ""}</p>}
         </div>
-        {d.can_research && <div className="ac-actions">
-          <button type="button" className={c ? "" : "primary"} disabled={busy || r.running || !r.setup?.ready} title={r.setup?.ready ? undefined : tr("Research with Exa is not set up in this environment.")} onClick={start}>
-            {r.running ? tr("Researching…") : c ? tr("Research again") : tr("Research with Exa")}</button>
-        </div>}
+        <p className="ps-tags"><EmailMark has={Boolean(p.has_email)} onNavy /></p>
+        <div className="ps-acts">
+          {p.linkedin_url && safeHref(p.linkedin_url) ? <a className="btn ps-li" href={safeHref(p.linkedin_url)} target="_blank" rel="noreferrer noopener"><Ic.linkedin />{tr("LinkedIn profile")}</a>
+            : <a className="btn ps-li" href={`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${p.name} ${co?.name ?? ""}`)}`} target="_blank" rel="noreferrer noopener"><Ic.linkedin />{tr("Find on LinkedIn")}</a>}
+          {d.can_research && <button type="button" className={c ? "" : "primary"} disabled={busy || r.running || !r.setup?.ready} title={r.setup?.ready ? undefined : tr("Research with Exa is not set up in this environment.")} onClick={start}>
+            {r.running ? tr("Researching…") : c ? tr("Research again") : tr("Research with Exa")}</button>}
+        </div>
       </div>
       <ul className="ps-glance" aria-label={tr("At a glance")}>
         <li><span className="ps-gi tone" style={{ "--g": COMMITTEE[g].color } as React.CSSProperties} aria-hidden="true"><GIcon /></span>
@@ -439,7 +441,8 @@ export default function Person() {
     <div className="ac-grid mt-4">
       <div className="ps-main">
         {c?.identity && !c.identity.confident && !c.empty && <p className="ps-check"><Ic.alert />{tr("Check first: the pages may be about someone else with the same name.")} {c.identity.note ?? ""}</p>}
-        <SalesBrief b={brief} first={first} err={bErr} retry={() => void loadBrief()} extraGaps={c?.open_questions ?? []} />
+        <SalesBrief b={brief} first={first} err={bErr} retry={() => void loadBrief()} extraGaps={c?.open_questions ?? []} title={title} researched={Boolean(r.profile)}
+          seen={[strongest(acc, company)?.title, company?.signal?.summary, ...(brief?.openers ?? []).map((o) => o.text)].filter(Boolean) as string[]} />
         {researchBusy && <ResearchState r={r} kind="person" name={p.name} canRun={d.can_research} start={start} busy={busy} err={rErr} />}
         {!r.profile && !researchBusy && <ResearchInvite r={r} first={first} canRun={d.can_research} start={start} busy={busy} err={rErr} />}
         {c && <section className="ac-sheet ps-pub" aria-labelledby="ps-pub-h">

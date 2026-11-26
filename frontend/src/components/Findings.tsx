@@ -41,6 +41,56 @@ export type FindingsCoverage = Coverage;
 export type FindingKind = Kind;
 export type FindingsData = Result;
 
+/** True while the viewport matches the media query (the phone layout starts at 760px). */
+export function useMedia(query: string) {
+  const get = () => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches;
+  const [match, setMatch] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    const on = () => setMatch(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return match;
+}
+
+/** Why each kind of buying signal matters to The Codest, in one plain sentence about the company (the same lines Buying signals shows). */
+const WHY_RULE: Record<string, string> = {
+  "SRC-01": "They are buying software work now and a deadline is set, so we can bid or talk to the buyer before it closes.",
+  "SRC-02": "A supplier panel is open. Getting on it gives us access to the work that follows.",
+  "SRC-04": "An integrator won the programme. The integration and custom work around it may still be open to partners.",
+  "SRC-05": "A platform was chosen, and the integration work around it still needs a team.",
+  "SRC-06": "They asked for contract engineers, so they are short of people on a named system.",
+  "CAP-01": "They are hiring several engineers for one platform. A team extension can start sooner than hiring.",
+  "CAP-02": "Contract roles on a named system mean the work has a date and the team is short.",
+  "CAP-05": "They are taking AI from a pilot into production, which is work for our AI and data engineers.",
+  "PRG-01": "A core banking replacement needs extra engineers for integrations, data migration and testing.",
+  "PRG-02": "A cloud or data platform move has workstreams that a delivery team can own.",
+  "PRG-06": "A payments scheme change comes with fixed test dates, which suits a dedicated delivery team.",
+  "MAN-01": "A new technology leader sets the roadmap and the team model in the first months, a good time to introduce us.",
+  "REL-03": "Someone who knows us has started a new role, so there is a warm way in.",
+  "COM-01": "New funding usually brings a product plan that needs engineers quickly.",
+  "COM-02": "Integration work after an acquisition has a hard date, and teams are often short.",
+  "COM-03": "A launch in a new market brings payments, compliance and integration work with a fixed date.",
+  "COM-04": "A new licence means a fixed date for the platform behind the launch.",
+  "COM-05": "A customer go-live puts the integration work on a fixed date.",
+  "COM-06": "A new product line needs new integrations while the current platform keeps running.",
+  "COM-07": "A partnership with integration scope means connector and API work on a timeline.",
+  "COM-08": "A cost programme with a technology scope often means retiring old systems while the business keeps running.",
+};
+const WHY_FAMILY: Record<string, string> = {
+  SRC: "They have a way to buy engineering help open right now.",
+  CAP: "They are short of engineers, which is where a team extension helps.",
+  PRG: "A funded programme is under way and usually needs extra engineering.",
+  MAN: "A new technology leader is setting the roadmap and the team model.",
+  COM: "A business event like this usually brings build or integration work with a date.",
+  REL: "Someone who knows us is involved, so there is a warm way in.",
+};
+/** The "meaning" the findings answer carries for a signal is an outreach opener ("If you are choosing suppliers... I would like to"). It is not shown as a reason. */
+const OPENER = /\bI (would|am|can|will|hope)\b|^If you\b/i;
+
 /** What each sales play means for us in one sentence. Used when the finding has no reason of its own. */
 const WHY: Record<string, string> = {
   "SP-01": "A specialist engineering gap may suit staff augmentation.",
@@ -118,7 +168,9 @@ export function useCan(): (permission: string) => boolean | undefined {
   return (permission) => (perms ? perms.includes(permission) : undefined);
 }
 
-const same = (a?: string | null, b?: string | null) => (a ?? "").replace(/\W+/g, " ").trim().toLowerCase() === (b ?? "").replace(/\W+/g, " ").trim().toLowerCase();
+const norm = (t?: string | null) => (t ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+/** True when `a` adds nothing to `b`: the same words, or one is inside the other (a notice number in front of a title, a buyer name before it). */
+const same = (a?: string | null, b?: string | null) => { const x = norm(a), y = norm(b); return Boolean(x && y && (x === y || x.includes(y) || y.includes(x))); };
 
 export function SourceCoverage({ coverage }: { coverage: Coverage }) {
   const { monitored_sources: monitored, unhealthy, pending_validation_sources: pending } = coverage;
@@ -155,13 +207,16 @@ export function useFindings(query: string) {
 function reasonFor(item: Finding): { text: string; specific: boolean } {
   if (item.why?.reason && item.why.level !== "none") return { text: item.why.reason, specific: true };
   if (item.tender) return { text: tr("The notice requests engineering services. Review scope and supplier eligibility before bidding."), specific: false };
+  const rule = item.signals?.find(s => !s.rule_id.startsWith("NEG-"))?.rule_id;
+  const line = rule ? WHY_RULE[rule] ?? WHY_FAMILY[rule.slice(0, 3)] : undefined;
+  if (line) return { text: tr(line), specific: false };
   if (item.type === "engineering_job_opened" || item.type === "contractor_job_opened")
     return { text: tr("Engineering hiring can indicate a need for skills or capacity. Check the team and whether it uses external partners."), specific: false };
   const play = item.fit.plays.find(p => WHY[p.play_id]);
   if (play) return { text: tr(WHY[play.play_id]), specific: false };
   const service = item.why?.service ? SERVICES[item.why.service] : undefined;
   if (item.why?.level === "strong" && service) return { text: tr("This finding may fit {}. Confirm the workstream and supplier need.", tr(service)), specific: false };
-  const meaning = item.signals?.find(s => s.meaning)?.meaning;
+  const meaning = item.signals?.find(s => s.meaning && !OPENER.test(s.meaning))?.meaning;
   if (meaning) return { text: tr(meaning), specific: false };
   return { text: tr("Confirm the workstream and whether the company needs an external team."), specific: false };
 }
@@ -177,7 +232,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
   const translated = summary !== item.summary;
   const signals = (item.signals ?? []).filter(s => !s.rule_id.startsWith("NEG-"));
   const rule = signals[0]?.rule_id;
-  const meaning = signals.find(s => s.meaning)?.meaning;
+  const meaning = signals.find(s => s.meaning && !OPENER.test(s.meaning))?.meaning;
   const why = reasonFor(item);
   const org = item.organization;
   const company = `/accounts/${org.id}?finding=${item.id}`;
@@ -185,7 +240,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
   const first = item.evidence[0];
   const source = item.tender ? { url: item.tender.url, source: tr("Official notice"), published_at: null } : first ?? item.sources[0];
   const published = first?.published_at ?? item.sources[0]?.published_at ?? item.published ?? null;
-  const showQuote = first && !same(first.claim, item.summary) && !same(first.claim, summary);
+  const showQuote = first && !same(first.claim, item.summary) && !same(first.claim, summary) && !same(first.claim, item.tender?.title) && !same(first.claim, item.tender?.scope);
   const extra = Math.max(item.evidence.length - 1, 0) + item.sources.filter(s => !item.evidence.some(e => e.url === s.url)).length;
   const href = safeHref(source?.url);
   return <article className={`fd-card${item.tender ? " is-tender" : ""}`} id={`finding-${item.id}`} aria-labelledby={`finding-${item.id}-h`}>
@@ -197,7 +252,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
       {onAccount && (item.tender || signals.length === 0 ? <span className={`fd-kind${item.tender ? " is-tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span> : <span />)}
       <span className="fd-when"><time dateTime={item.happened}>{fmtDate(item.happened)}</time><span>{ago(item.happened)}</span></span>
     </header>
-    <h3 className="fd-head" id={`finding-${item.id}-h`}>{summary}</h3>
+    <h3 className="fd-head" id={`finding-${item.id}-h`}>{item.tender ? tenderLine(item) || summary : summary}</h3>
     <div className="fd-tags">
       {!onAccount && (item.tender || signals.length === 0) && <span className={`fd-kind${item.tender ? " is-tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span>}
       {signals.map(sig => <SignalTag key={sig.rule_id} s={sig} />)}
@@ -217,7 +272,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
         {language === "en" && first.translation && <span className="fd-trans">{tr("English translation")}: “{first.translation}”</span>}</blockquote>}
       <p className="fd-src">
         <span className="fd-checked">{item.tender ? tr("Confirmed by the official notice") : tr("Checked against the original page")}</span>
-        {source?.source && <span>{source.source}</span>}
+        {source?.source && !item.tender && <span>{source.source}</span>}
         {published && fmtDate(published) !== fmtDate(item.happened) && <span>{tr("published {}", fmtDate(published))}</span>}
         {href && <a href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>{tr("Open source")} ↗</a>}
       </p>
@@ -355,6 +410,12 @@ export function groupByDay<T extends { happened: string }>(items: T[], now: Date
   }));
 }
 
+/** For an open tender: the buyer's own title (TED titles read "Country – Category – Own title"). */
+function tenderLine(item: Finding): string {
+  const parts = (item.tender?.title ?? "").split(" – ").map(p => p.trim());
+  return parts.length >= 3 ? parts.slice(2).join(" – ") : (item.tender?.title ?? "").trim();
+}
+
 /** One finding as a compact card: the company, what happened in one sentence, the buying signal, the source, and what to do.
  * Details (the quote, why it matters, more sources) open in place. With onDismiss the person can mark it not relevant;
  * a dismissed finding folds into one line with an undo. */
@@ -375,12 +436,11 @@ export function FindingBrief({ item, onWatch, onDismiss, onRestore, canPeople = 
   const href = safeHref(source?.url);
   const host = href ? new URL(href).hostname.replace(/^www\./, "") : null;
   const published = first?.published_at ?? item.sources[0]?.published_at ?? item.published ?? null;
-  // why it matters: the finding's own reason, else what its buying signal usually means, else what this kind of news means for us
-  const meaning = signals.find(s => s.meaning)?.meaning;
+  // why it matters: the finding's own reason, else what its kind of buying signal means for us
   const reason = reasonFor(item);
-  const why = reason.specific || item.tender || !meaning ? reason.text : tr(meaning);
+  const why = reason.text;
   const showWhy = Boolean(item.tender || signals.length || reason.specific);
-  const showQuote = first && !same(first.claim, item.summary) && !same(first.claim, summary);
+  const showQuote = first && !same(first.claim, item.summary) && !same(first.claim, summary) && !same(first.claim, item.tender?.title) && !same(first.claim, item.tender?.scope);
   const others = item.sources.filter(s => !item.evidence.some(e => e.url === s.url) && s.url !== source?.url);
   const rule = signals[0]?.rule_id;
   const heading = `finding-${item.id}-h`;
@@ -406,10 +466,10 @@ export function FindingBrief({ item, onWatch, onDismiss, onRestore, canPeople = 
         <span aria-hidden="true">{item.watched ? "★" : "☆"}</span></button>}
       <span className="fb-when"><time dateTime={item.happened}>{fmtDate(item.happened)}</time><span>{ago(item.happened)}</span></span>
     </header>
-    <h3 className="fb-what" id={heading}>{sentence}</h3>
+    <h3 className="fb-what" id={heading}>{item.tender ? tenderLine(item) || sentence : sentence}</h3>
     <p className="fb-tags">
       {item.tender && <span className="fb-tag fam-tender"><i aria-hidden="true" />{tr("Open tender")}<span className="fb-tag-x">{tr("closes {}", fmtDate(item.tender.deadline))}</span></span>}
-      {signals.map(s => <span key={s.rule_id} className={`fb-tag fam-${signalFamily(s.rule_id)}`} title={s.meaning ? tr(s.meaning) : undefined}>
+      {signals.map(s => <span key={s.rule_id} className={`fb-tag fam-${signalFamily(s.rule_id)}`} title={WHY_RULE[s.rule_id] ? tr(WHY_RULE[s.rule_id]) : undefined}>
         <i aria-hidden="true" /><span className="fb-vh">{tr("Buying signal")}: </span>{signalName(s.rule_id, s.name)}</span>)}
       {!item.tender && signals.length === 0 && <span className="fb-tag fam-none"><i aria-hidden="true" />{tr("Background news, no buying signal")}</span>}
     </p>
@@ -436,12 +496,12 @@ export function FindingBrief({ item, onWatch, onDismiss, onRestore, canPeople = 
       </>}
     </div>
     <footer className="fb-foot">
-      <span className="fb-src" title={source?.source ?? undefined}>{host ?? source?.source ?? tr("Original source")}
-        {published && <span>{tr("published {}", fmtDate(published))}</span>}</span>
+      <span className="fb-src" title={source?.source ?? undefined}>
+        {href ? <a href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>{host ?? source?.source ?? tr("Original source")} <span aria-hidden="true">↗</span><span className="fb-vh"> {tr("(opens in a new tab)")}</span></a>
+          : <b>{host ?? source?.source ?? tr("Original source")}</b>}
+        {published && fmtDate(published) !== fmtDate(item.happened) && <span>{tr("published {}", fmtDate(published))}</span>}</span>
       <span className="fb-acts">
         <Link className="fb-btn is-main" to={company}>{tr("Open company")}</Link>
-        {href && <a className="fb-btn" href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>
-          {tr("See source")} <span aria-hidden="true">↗</span><span className="fb-vh"> {tr("(opens in a new tab)")}</span></a>}
         <button type="button" className="fb-btn fb-toggle" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>{open ? tr("Less") : tr("Details")}</button>
         {onDismiss && <button type="button" className="fb-btn is-quiet" onClick={() => onDismiss("not_relevant")}><span aria-hidden="true">✕</span> {tr("Not relevant")}</button>}
       </span>

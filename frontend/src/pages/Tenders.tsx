@@ -121,6 +121,21 @@ const locale = (language: string) => (language === "pl" ? "pl-PL" : "en-GB");
 const days = (n: number) => counted(n, ["day", "days"], ["dzień", "dni", "dni"]);
 const sentence = (parts: (string | null | undefined | false)[]) => { const t = parts.filter(Boolean).join(", "); return t.charAt(0).toUpperCase() + t.slice(1); };
 const regionLabel = (k: string) => tr(REGIONS.find(([r]) => r === k)?.[1] ?? "Our markets");
+/** Our four services, by the kind of work a tender asks for (only where one clearly fits). */
+const SERVICE_FOR_WORK: Record<string, string> = { software_development: "Delivery team", maintenance_support: "Team extension", data_ai: "AI and data", testing_qa: "QA and testing" };
+const PHONE = "(max-width: 640px)";
+/** True on a phone-sized screen, and follows the screen when it turns. */
+function usePhone() {
+  const [phone, setPhone] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(PHONE).matches);
+  useEffect(() => {
+    const query = window.matchMedia?.(PHONE);
+    if (!query) return;
+    const on = () => setPhone(query.matches);
+    query.addEventListener("change", on);
+    return () => query.removeEventListener("change", on);
+  }, []);
+  return phone;
+}
 const readLayout = () => { try { return localStorage.getItem(VIEW_KEY); } catch { return null; } };
 const saveLayout = (v: string) => { try { localStorage.setItem(VIEW_KEY, v); } catch { /* the address still carries it */ } };
 
@@ -228,9 +243,9 @@ function BuyerName({ t }: { t: Tender }) {
   return t.account ? <Link to={`/accounts/${t.account.id}`}>{t.buyer}</Link> : <>{t.buyer}</>;
 }
 
-function OfficialLink({ t, language }: { t: Tender; language: string }) {
+function OfficialLink({ t, language, label = "Open official notice" }: { t: Tender; language: string; label?: string }) {
   const href = safeHref(tedPage(t.url, language));
-  return href ? <a className="tn-official" href={href} target="_blank" rel="noreferrer noopener">{tr("Open official notice")} <span aria-hidden="true">↗</span></a> : null;
+  return href ? <a className="tn-official" href={href} target="_blank" rel="noreferrer noopener">{tr(label)} <span aria-hidden="true">↗</span></a> : null;
 }
 
 /** "≈ €1.25M" first, the notice's own amount under it. */
@@ -292,8 +307,36 @@ function WorthIt({ t, s, language }: { t: Tender; s: Local; language: string }) 
   </section>;
 }
 
-function TenderCard({ t, language }: { t: Tender; language: string }) {
+function TenderCard({ t, language, phone }: { t: Tender; language: string; phone: boolean }) {
   const s = localised(t.summary, language);
+  const worth = <WorthIt t={t} s={s} language={language} />;
+  const chips = s && (s.work || s.technologies.length > 0) ? <ul className="tn-chips" aria-label={tr("Kind of work and technologies")}>
+    {s.work && <li className="tn-chip tn-chip-work">{workLabel(s.work)}</li>}
+    {s.technologies.map((x) => <li key={x} className="tn-chip">{x}</li>)}
+  </ul> : null;
+  const foot = <div className="tn-foot">
+    {s && !sameTitle(t.title, s.title) && <p className="tn-original"><span>{tr("Original title")}</span> {t.title}</p>}
+    <p className="tn-source">
+      <OfficialLink t={t} language={language} />
+      <span>{t.source}</span>
+      <span>{tr("Notice {}", t.notice_id)}</span>
+      <span className={t.check_is_old ? "warnline" : undefined}>{t.checked_at ? tr("Status checked {}", fmtDate(t.checked_at)) : tr("Status not rechecked")}</span>
+    </p>
+  </div>;
+  const side = <aside className="tn-side">
+    <div className="tn-closes">
+      <span className="tn-k">{tr("Closes")}</span>
+      <span className="tn-v">{fmtDateTime(t.deadline)}{t.deadline_tz ? ` (${t.deadline_tz})` : ""}</span>
+    </div>
+    <div>
+      <span className="tn-k">{tr("Value")}</span>
+      <Value t={t} language={language} />
+    </div>
+    <div className={`tn-fit${s?.fit ? "" : " is-empty"}`}>
+      <span className="tn-k"><FitMeter level={s?.fit} /> {s?.fit ? tr(FIT_LABEL[s.fit]) : tr("Fit not judged yet")}</span>
+      {s?.reason && <span className="tn-reason" lang={s.lang}>{s.reason}</span>}
+    </div>
+  </aside>;
   return <li className={`tn-card${t.days_left <= 7 ? " is-soon" : ""}`}>
     <Due t={t} />
     <div className="tn-body">
@@ -308,41 +351,17 @@ function TenderCard({ t, language }: { t: Tender; language: string }) {
       </div>
       {s ? <>
         {s.text && <p className="tn-summary" lang={s.lang}>{s.text}</p>}
-        <WorthIt t={t} s={s} language={language} />
-        {(s.work || s.technologies.length > 0) && <ul className="tn-chips" aria-label={tr("Kind of work and technologies")}>
-          {s.work && <li className="tn-chip tn-chip-work">{workLabel(s.work)}</li>}
-          {s.technologies.map((x) => <li key={x} className="tn-chip">{x}</li>)}
-        </ul>}
+        {phone && side}
+        {phone ? <>{chips}<details className="tn-fold"><summary>{tr("Is it worth it?")}</summary>{worth}{foot}</details></> : <>{worth}{chips}{foot}</>}
       </> : <>
         {t.category && <p className="tn-category">{t.category}</p>}
         <p className={`tn-why-line${t.summary_state === "waiting" ? " is-waiting" : ""}`}>{whyLine(t, s)}</p>
         {t.scope && <p className="tn-scope">{t.scope}</p>}
-        <WorthIt t={t} s={null} language={language} />
+        {phone && side}
+        {phone ? <details className="tn-fold"><summary>{tr("Is it worth it?")}</summary><WorthIt t={t} s={null} language={language} />{foot}</details> : <><WorthIt t={t} s={null} language={language} />{foot}</>}
       </>}
-      <div className="tn-foot">
-        {s && !sameTitle(t.title, s.title) && <p className="tn-original"><span>{tr("Original title")}</span> {t.title}</p>}
-        <p className="tn-source">
-          <OfficialLink t={t} language={language} />
-          <span>{t.source}</span>
-          <span>{tr("Notice {}", t.notice_id)}</span>
-          <span className={t.check_is_old ? "warnline" : undefined}>{t.checked_at ? tr("Status checked {}", fmtDate(t.checked_at)) : tr("Status not rechecked")}</span>
-        </p>
-      </div>
     </div>
-    <aside className="tn-side">
-      <div className="tn-closes">
-        <span className="tn-k">{tr("Closes")}</span>
-        <span className="tn-v">{fmtDateTime(t.deadline)}{t.deadline_tz ? ` (${t.deadline_tz})` : ""}</span>
-      </div>
-      <div>
-        <span className="tn-k">{tr("Value")}</span>
-        <Value t={t} language={language} />
-      </div>
-      <div className={`tn-fit${s?.fit ? "" : " is-empty"}`}>
-        <span className="tn-k"><FitMeter level={s?.fit} /> {s?.fit ? tr(FIT_LABEL[s.fit]) : tr("Fit not judged yet")}</span>
-        {s?.reason && <span className="tn-reason" lang={s.lang}>{s.reason}</span>}
-      </div>
-    </aside>
+    {!phone && side}
   </li>;
 }
 
@@ -359,6 +378,7 @@ function TenderRow({ t, language, open, onToggle }: { t: Tender; language: strin
   const id = `tn-li-${t.id}`;
   const button = useRef<HTMLButtonElement>(null);
   const why = listLine(t, s);
+  const service = s?.fit && s.fit !== "none" && s.work ? SERVICE_FOR_WORK[s.work] : undefined;
   const close = (e: KeyboardEvent<HTMLDivElement>) => { if (e.key === "Escape") { e.stopPropagation(); onToggle(); button.current?.focus(); } };
   return <li className={`tn-li${open ? " is-open" : ""}${t.days_left <= 7 ? " is-soon" : ""}`}
     onClick={(e) => { if (!(e.target as HTMLElement).closest("a, button, .tn-li-more")) onToggle(); }}>
@@ -372,10 +392,18 @@ function TenderRow({ t, language, open, onToggle }: { t: Tender; language: strin
       </button>
       <p className="tn-why" lang={s?.reason ? s.lang : undefined} title={why}>{why}</p>
     </div>
-    <div className="tn-li-value"><Value t={t} language={language} compact /></div>
-    <div className="tn-li-due"><DueBar t={t} /></div>
+    <div className="tn-li-value" data-k={tr("Value")}><Value t={t} language={language} compact /></div>
+    <div className="tn-li-due" data-k={tr("Closes")}><DueBar t={t} /><small className="tn-duedate">{fmtDate(t.deadline)}</small></div>
+    <div className="tn-li-fit" data-k={tr("Fit for us")}>
+      <span className="tn-k"><FitMeter level={s?.fit} /> {s?.fit ? tr(FIT_LABEL[s.fit]) : tr("Not judged yet")}</span>
+      {service && <small>{tr("Best fit: {}", tr(service))}</small>}
+    </div>
     <div className="tn-li-country">{countryName(t.country) ?? "–"}</div>
     <span className="tn-li-chev" aria-hidden="true" />
+    <div className="tn-li-acts">
+      <button type="button" className="tn-li-toggle" aria-expanded={open} aria-controls={id} onClick={onToggle}>{open ? tr("Hide details") : tr("Details")}</button>
+      <OfficialLink t={t} language={language} label="Official notice" />
+    </div>
     {open && <div className="tn-li-more" id={id} onKeyDown={close}>
       <div className="tn-li-main">
         {s?.text ? <p className="tn-summary" lang={s.lang}>{s.text}</p> : t.scope ? <p className="tn-scope">{t.scope}</p> : null}
@@ -385,14 +413,14 @@ function TenderRow({ t, language, open, onToggle }: { t: Tender; language: strin
       </div>
       <dl className="tn-li-facts">
         <div><dt>{tr("Closes")}</dt><dd>{fmtDateTime(t.deadline)}{t.deadline_tz ? ` (${t.deadline_tz})` : ""}</dd></div>
-        <div><dt>{tr("Value")}</dt><dd><Value t={t} language={language} /></dd></div>
-        <div><dt>{tr("Fit for us")}</dt><dd><FitMeter level={s?.fit} /> {s?.fit ? tr(FIT_LABEL[s.fit]) : tr("Fit not judged yet")}</dd></div>
+        <div className="tn-dup"><dt>{tr("Value")}</dt><dd><Value t={t} language={language} /></dd></div>
+        <div className="tn-dup"><dt>{tr("Fit for us")}</dt><dd><FitMeter level={s?.fit} /> {s?.fit ? tr(FIT_LABEL[s.fit]) : tr("Fit not judged yet")}</dd></div>
         {s?.work && <div><dt>{tr("Kind of work")}</dt><dd>{workLabel(s.work)}{s.technologies.length ? `: ${s.technologies.join(", ")}` : ""}</dd></div>}
         {t.category && <div><dt>{tr("Category")}</dt><dd>{t.category}</dd></div>}
         {t.cpv && t.cpv.length > 0 && <div><dt>{tr("CPV codes")}</dt><dd>{t.cpv.join(", ")}</dd></div>}
         {s && !sameTitle(t.title, s.title) && <div><dt>{tr("Original title")}</dt><dd lang="und">{t.title}</dd></div>}
         <div><dt>{tr("Source")}</dt><dd>{t.source}, {tr("Notice {}", t.notice_id)}</dd></div>
-        <div className="tn-li-link"><OfficialLink t={t} language={language} /></div>
+        <div className="tn-li-link tn-dup"><OfficialLink t={t} language={language} /></div>
       </dl>
     </div>}
   </li>;
@@ -435,6 +463,7 @@ function Pill({ id, label, value, on, open, onOpen, wide = false, children }: { 
 /** Open tenders for software work from TED, UK Find a Tender, UK Contracts Finder and e-Zamówienia: our ICP by default, banks first. */
 export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }) {
   const language = useLanguage();
+  const phone = usePhone();
   const [params, setParams] = useSearchParams();
   const qParam = params.get("q") ?? "";
   const [search, setSearch] = useState(qParam);
@@ -459,7 +488,8 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
   const status = STATUS.some(([k]) => k === params.get("status")) ? params.get("status")! : "";
   const fit = ["strong", "possible"].includes(params.get("fit") ?? "") ? params.get("fit")! : "";
   const work = WORK_TYPES.some(([k]) => k === params.get("work_type")) ? params.get("work_type")! : "";
-  const view = params.get("view") === "list" || (params.get("view") !== "cards" && readLayout() === "list") ? "list" : "cards";
+  const saved = readLayout();       // a phone starts on the compact list (cards are long on a small screen) until the person picks a layout
+  const view = params.get("view") === "list" || (params.get("view") !== "cards" && (saved ? saved === "list" : phone)) ? "list" : "cards";
   const limit = view === "list" ? 50 : 30;
 
   const query = new URLSearchParams({ group: who, page: String(page), limit: String(limit), min_days: soon ? "0" : "3", sort });
@@ -557,7 +587,7 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
   const from = (page - 1) * limit + 1;
 
   return <div className="tn-page">
-    <PageHeader title="Open tenders" sub="Public tenders for software and IT work, from the official procurement sites. Our ICP comes first, banks at the top; every other buyer is one click away. Each tender says what is bought, how big it is and whether it fits us."
+    <PageHeader title="Open tenders" sub="Public tenders for software and IT work, from the official procurement sites. Banks and the rest of our ICP come first. Each tender says what is bought, how big it is and whether it fits us."
       right={data && <div className="tn-head-actions">
         <span className="small muted">{data.last_updated ? tr("Last updated {}", fmtDateTime(data.last_updated)) : tr("Not checked yet")}
           {data.refreshing && <>, {tr("checking the sources now")}</>}</span>
@@ -585,7 +615,7 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
           onChange={(e) => setSearch(e.target.value)} autoComplete="off" />
         {search && <button type="button" className="tn-search-clear" aria-label={tr("Clear the search")} onClick={() => { setSearch(""); update({ q: "" }); searchBox.current?.focus(); }}>×</button>}
       </form>
-      <p className="tn-try" hidden={!!qParam && !data?.search?.cpv.length}>
+      <p className="tn-try scroll-x" hidden={!!qParam && !data?.search?.cpv.length}>
         {data?.search?.cpv.length ? <span>{tr("CPV codes starting {}", data.search.cpv.join(", "))}{data.search.words ? ` + “${data.search.words}”` : ""}</span>
           : !qParam && <><span>{tr("Try")}</span>{SUGGESTIONS.map((x) => <button key={x} type="button" className="tn-try-b" onClick={() => { setSearch(x); update({ q: x }); }}>{x}</button>)}</>}
       </p>
@@ -597,7 +627,7 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
             <button type="button" className="tn-icp-all" aria-pressed={who === "icp"} onClick={() => choose("icp")}>
               <Glyph k="icp" /><span className="tn-icp-name">{tr("Our ICP")}</span><Count n={g?.icp} />
             </button>
-            <div className="tn-icp-chips">
+            <div className="tn-icp-chips scroll-x">
               {FINANCE.map((k) => <button key={k} type="button" className={`tn-chipb${g && g[k] === 0 ? " is-zero" : ""}`} aria-pressed={who === k} data-in={who === "icp" || undefined}
                 onClick={() => choose(k)}><Glyph k={k} /><span>{tr(GROUP[k][0])}</span><Count n={g?.[k]} /></button>)}
             </div>
@@ -608,7 +638,7 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
           </div>
         </div>
         <p className="tn-who-line">{tr(whoLine)}
-          {who === "icp" && g && g.icp < 25 && <> {tr("Banks and insurers rarely have to publish public tenders, so most notices come from public bodies: they are under Other sectors.")}</>}
+          {who === "icp" && g && g.icp < 25 && <span className="tn-who-extra"> {tr("Banks and insurers rarely have to publish public tenders, so most notices come from public bodies: they are under Other sectors.")}</span>}
         </p>
       </div>
 
@@ -718,7 +748,7 @@ export default function Tenders({ canRefresh = false }: { canRefresh?: boolean }
           </header>
           {view === "list"
             ? <ol className="tn-list">{run.items.map((t) => <TenderRow key={t.id} t={t} language={language} open={opened.has(t.id)} onToggle={() => toggleRow(t.id)} />)}</ol>
-            : <ol className="tn-cards">{run.items.map((t) => <TenderCard key={t.id} t={t} language={language} />)}</ol>}
+            : <ol className="tn-cards">{run.items.map((t) => <TenderCard key={t.id} t={t} language={language} phone={phone} />)}</ol>}
         </section>)}
         {view === "list" && <p className="tn-keys small muted">{tr("Keyboard: Tab to a tender, ↑ and ↓ to move, Enter to open or close, Esc to close.")}</p>}
       </div>}

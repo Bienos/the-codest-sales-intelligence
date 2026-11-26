@@ -145,17 +145,6 @@ tr.muted-row td { opacity: .62; }
 .mail-body { white-space: pre-wrap; margin-top: 6px; font-size: var(--fs-sm); line-height: 1.5; }
 @media (max-width: 900px) { .campaign-copy { grid-template-columns: 1fr; } .preview { position: static; } }
 
-/* ---------- landing: sign-in ---------- */
-.land-top .land-nav .land-signin { display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px; background: var(--pink-solid); color: #fff; text-decoration: none;
-  font: 800 12px var(--font-head); letter-spacing: .1em; text-transform: uppercase; box-shadow: 3px 3px 0 -1px var(--navy), 3px 3px 0 0 var(--pink); }
-.land-top .land-nav .land-signin:hover { filter: brightness(1.08); }
-.land-top .land-nav .land-signin:focus-visible { outline: 3px solid var(--white); outline-offset: 2px; }
-.auth-card .sub { color: var(--body); }
-.g-btn { min-height: 44px; width: 100%; display: flex; justify-content: flex-start; }
-.g-btn:not(.ready) { visibility: hidden; height: 0; min-height: 0; overflow: hidden; }      /* stays in the flow so its width can be measured */
-.g-btn-wait { min-height: 44px; display: flex; align-items: center; padding: 0 14px; border: 1px dashed var(--line); background: var(--tint-1); }
-.demo-ctl button { white-space: nowrap; }
-@media (max-width: 480px) { .land-top .land-nav .land-signin { display: inline-flex; } }
 table.audience { table-layout: fixed; width: 100%; }
 table.audience th:nth-child(1) { width: 64px; } table.audience th:nth-child(2) { width: 18%; } table.audience th:nth-child(3) { width: 22%; } table.audience th:nth-child(5) { width: 110px; }
 table.audience td { white-space: normal; overflow-wrap: anywhere; }
@@ -183,8 +172,6 @@ table.audience td { white-space: normal; overflow-wrap: anywhere; }
   .tender-meta { grid-column: 1 / -1; text-align: left; }
   .tender-due b { font-size: 22px; }
 }
-.g-btn-top { min-height: 40px; display: flex; align-items: center; }
-.land-top .land-nav .land-signin { box-shadow: none; padding: 0 20px; min-height: 40px; }
 
 /* ---------- knowledge base: the document owns the whole content area ---------- */
 .kb-reader { display: flex; flex-direction: column; min-height: 100vh; }
@@ -197,7 +184,16 @@ table.audience td { white-space: normal; overflow-wrap: anywhere; }
 .kb-tabs button[aria-current="page"] { border-bottom-color: var(--pink); }
 .kb-blurb { margin: 0; padding: 8px clamp(18px, 3vw, 36px); background: var(--tint-1); border-bottom: 1px solid var(--line); }
 .kb-frame2 { display: block; flex: 1; width: 100%; min-height: calc(100vh - 110px); border: 0; background: var(--white); }
-@media (max-width: 860px) { .kb-bar { position: static; padding-top: 14px; padding-bottom: 10px; } .kb-frame2 { min-height: 80vh; } }
+@media (max-width: 860px) {
+  .kb-bar { position: static; padding: 14px 16px 10px; }
+  .kb-blurb { padding: 8px 16px; }
+  .kb-bar-l, .kb-bar-r { width: 100%; }
+  .kb-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); width: 100%; gap: 8px; }
+  .kb-tabs button { min-height: 44px; padding: 8px 10px; border: 1px solid var(--navy); border-bottom-width: 3px; font-size: var(--fs-sm); letter-spacing: .02em; line-height: 1.2; }
+  .kb-tabs button[aria-current="page"] { background: var(--navy); color: var(--white); border-color: var(--navy); border-bottom-color: var(--pink); }
+  .kb-bar-r .btn { width: 100%; }
+  .kb-frame2 { min-height: 80vh; min-height: 80dvh; }
+}
 
 /* ---------- how it works ---------- */
 .guide-lede { max-width: 56ch; }

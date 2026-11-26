@@ -87,7 +87,7 @@ export default function App() {
   useEffect(refreshApprovals, [me, loc.pathname]);
   if (needLogin) return <Landing onDone={() => setN(n + 1)} notice={notice} />;
   if (!me) return <div className="shell">
-    <div className="nav"><Brand /><LanguageSwitcher /></div>
+    <div className="nav nav-signing"><div className="nav-top"><div className="brand"><Brand /></div><LanguageSwitcher /></div></div>
     <main className="page">
       <h1>{tr("Signing you in")}</h1>
       {signInError ? <Err e={signInError} onRetry={() => setN((value) => value + 1)} /> : <Skeleton label={tr("Signing you in")} />}

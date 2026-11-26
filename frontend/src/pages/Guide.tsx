@@ -310,7 +310,7 @@ export default function Guide({ can = () => true }: { can?: Can }) {
     </header>
 
     <div className="page hw-page">
-      <nav className="hw-jump" aria-label={tr("On this page")}>
+      <nav className="hw-jump scroll-x" aria-label={tr("On this page")}>
         {SECTIONS.map(([id, name]) => <a key={id} href={`#${id}`}>{tr(name)}</a>)}
       </nav>
 

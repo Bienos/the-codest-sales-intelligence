@@ -3,7 +3,7 @@ import { Navigate, useSearchParams, Link } from "react-router-dom";
 import { api, post } from "../api";
 import { counted, number, tr } from "../locale";
 import { Err, Skeleton } from "../components/ui";
-import { FindingBrief, FindingItem, FindingsCoverage, FindingsData, FindingLead, groupByDay, signalFamily, useCan } from "../components/Findings";
+import { FindingBrief, FindingItem, FindingsCoverage, FindingsData, FindingLead, groupByDay, signalFamily, useCan, useMedia } from "../components/Findings";
 import { REGIONS } from "./targetMarket";
 import { signalName } from "../components/Signals";
 import "../styles/findings.css";
@@ -25,6 +25,8 @@ const Ico = ({ children, className = "fx-ico" }: { children: React.ReactNode; cl
 const Chevron = () => <svg className="fx-chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" /></svg>;
 const IconSearch = () => <Ico><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5l5 5" /></Ico>;
 const IconPlace = () => <Ico><path d="M12 21s-6.5-6.1-6.5-11a6.5 6.5 0 0113 0c0 4.9-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.3" /></Ico>;
+const IconFilter = () => <Ico><path d="M3 5h18M6.5 12h11M10 19h4" /></Ico>;
+const IconKind = () => <Ico><path d="M2 12h4l3-7 5 14 3-7h5" /></Ico>;
 const IconClock = () => <Ico><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></Ico>;
 /** The three steps: sources read, finds matched, you act. */
 const IconRead = () => <Ico className="fx-step-ico"><path d="M4 5h11v15H4zM15 8h5v12h-5M7 9h5M7 12.5h5M7 16h3" /></Ico>;
@@ -72,6 +74,8 @@ function AllFindings() {
   const q = params.get("q") ?? "";
   const single = params.get("finding");
   const [search, setSearch] = useState(q);
+  const phone = useMedia("(max-width: 760px)");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const base = new URLSearchParams(Object.entries({
     scope: "archive", qualification: "all", days, region, rule, q, watched: watched ? "true" : "", hidden: hidden ? "true" : "", event: single ?? "",
   }).filter(([, v]) => v)).toString();
@@ -110,6 +114,9 @@ function AllFindings() {
   // nothing can be found while no source is switched on: the empty page then explains that, without filters to play with
   const quiet = Boolean(data && !filtered && !data.items.length && !data.has_more && (data.coverage.no_active_monitoring || !data.coverage.monitored_sources));
   const kinds = data?.kinds ?? [];
+  // what is switched on, in a few words, for the folded filter panel on a phone
+  const activeFilters = [region ? tr(REGIONS.find(([k]) => k === region)?.[1] ?? "") : "", days !== DEFAULT_DAYS ? tr(WINDOWS.find(([k]) => k === days)?.[1] ?? "") : "",
+    rule ? signalName(rule, kinds.find((k) => k.rule_id === rule)?.name) : "", watched ? tr("Only my watchlist") : ""].filter(Boolean);
   const canWatch = can("accounts.read");
   const hiddenCount = Math.max(0, (data?.hidden_count ?? 0) + Object.entries(answers).filter(([id, a]) => a && !data?.items.find((i) => i.id === id)?.dismissed).length
     - Object.entries(answers).filter(([id, a]) => !a && data?.items.find((i) => i.id === id)?.dismissed).length);
@@ -140,37 +147,50 @@ function AllFindings() {
     <header className="fx-head">
       <h1>{tr("All findings")}</h1>
       <p className="fx-lede">{tr("Everything our sources found about the companies on your list, newest first. Skim it, open what matters and mark the rest not relevant.")}</p>
-      <Steps coverage={data?.coverage} />
+      <Steps coverage={data?.coverage} phone={phone} />
       <p className="fx-other">{tr("Want to know who to contact first?")} <Link to="/signals">{tr("Buying signals")}</Link> {tr("ranks the companies by how strong their signals are. Tenders have their own page:")} <Link to="/tenders">{tr("Open tenders")}</Link>.</p>
     </header>
 
     {single ? <p className="fx-single"><span>{tr("You are looking at one finding.")}</span> <Link to="/feed">{tr("Show all findings")}</Link></p>
       : !quiet && <section className="fx-tools" aria-label={tr("Search and filter")}>
-        <form className="fx-bar" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }); }}>
+        <form className={`fx-bar${filtersOpen ? " is-open" : ""}`} role="search" onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }); }}>
           <label className="fx-ctl fx-ctl-q"><span className="fb-vh">{tr("Search")}</span><IconSearch />
             <input type="search" maxLength={120} placeholder={tr("Search a company or what happened")} value={search} onChange={(e) => setSearch(e.target.value)} /></label>
-          <label className="fx-ctl"><span className="fb-vh">{tr("Region")}</span><IconPlace />
-            <select value={region} onChange={(e) => update({ region: e.target.value })}>
-              <option value="">{tr("All regions")}</option>{REGIONS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
-            </select><Chevron /></label>
-          <label className="fx-ctl"><span className="fb-vh">{tr("Time window")}</span><IconClock />
-            <select value={days} onChange={(e) => update({ days: e.target.value === DEFAULT_DAYS ? "" : e.target.value })}>
-              {WINDOWS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
-            </select><Chevron /></label>
-          <label className="fx-ctl fx-watch">
-            <input type="checkbox" checked={watched} onChange={(e) => update({ watch: e.target.checked ? "1" : "" })} />
-            <span className="fx-switch" aria-hidden="true" />
-            <span>{tr("Only my watchlist")}{Boolean(data?.watchlist) && <b>{number(data!.watchlist!)}</b>}</span>
-          </label>
+          <button type="button" className="fx-filter-btn" aria-expanded={filtersOpen} aria-controls="fx-filters" onClick={() => setFiltersOpen((o) => !o)}>
+            <IconFilter /><span className="fx-filter-t"><b>{tr("Filters")}</b>{activeFilters.length > 0
+              ? <span className="fx-filter-on">{activeFilters.join(" · ")}</span> : <span>{tr("All regions")} · {windowLabel}</span>}</span>
+            {activeFilters.length > 0 && <span className="fx-filter-n" aria-label={tr("{} filters on", activeFilters.length)}>{activeFilters.length}</span>}
+            <Chevron /></button>
+          <div className="fx-filters" id="fx-filters">
+            <label className="fx-ctl"><span className="fb-vh">{tr("Region")}</span><IconPlace />
+              <select value={region} onChange={(e) => update({ region: e.target.value })}>
+                <option value="">{tr("All regions")}</option>{REGIONS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
+              </select><Chevron /></label>
+            <label className="fx-ctl"><span className="fb-vh">{tr("Time window")}</span><IconClock />
+              <select value={days} onChange={(e) => update({ days: e.target.value === DEFAULT_DAYS ? "" : e.target.value })}>
+                {WINDOWS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
+              </select><Chevron /></label>
+            {phone && <label className="fx-ctl fx-ctl-kind"><span className="fb-vh">{tr("Kind of buying signal")}</span><IconKind />
+              <select value={rule} onChange={(e) => update({ rule: e.target.value })}>
+                <option value="">{tr("All news")}</option>
+                {kinds.map((k) => <option key={k.rule_id} value={k.rule_id}>{signalName(k.rule_id, k.name)} ({number(k.findings)})</option>)}
+                {rule && !kinds.some((k) => k.rule_id === rule) && <option value={rule}>{signalName(rule)} (0)</option>}
+              </select><Chevron /></label>}
+            <label className="fx-ctl fx-watch">
+              <input type="checkbox" checked={watched} onChange={(e) => update({ watch: e.target.checked ? "1" : "" })} />
+              <span className="fx-switch" aria-hidden="true" />
+              <span>{tr("Only my watchlist")}{Boolean(data?.watchlist) && <b>{number(data!.watchlist!)}</b>}</span>
+            </label>
+          </div>
         </form>
-        <div className="fx-kinds" role="group" aria-label={tr("Kind of buying signal")}>
+        {!phone && <div className="fx-kinds" role="group" aria-label={tr("Kind of buying signal")}>
           <button type="button" className="fx-kind" aria-pressed={!rule} onClick={() => update({ rule: "" })}>{tr("All news")}</button>
           {kinds.map((k) => <button key={k.rule_id} type="button" className={`fx-kind fam-${signalFamily(k.rule_id)}`} aria-pressed={rule === k.rule_id}
             onClick={() => update({ rule: rule === k.rule_id ? "" : k.rule_id })}><i aria-hidden="true" />{signalName(k.rule_id, k.name)}<b>{number(k.findings)}</b></button>)}
           {rule && !kinds.some((k) => k.rule_id === rule) && <button type="button" className={`fx-kind fam-${signalFamily(rule)}`} aria-pressed onClick={() => update({ rule: "" })}>
             <i aria-hidden="true" />{signalName(rule)}<b>0</b></button>}
           {data && kinds.length === 0 && !rule && <span className="fx-kinds-none">{tr("No buying signal in this window yet. Signal types appear here as findings come in.")}</span>}
-        </div>
+        </div>}
       </section>}
 
     <div className="fx-grid">
@@ -209,7 +229,7 @@ function AllFindings() {
 }
 
 /** The three steps, with the live state of the first one: are the sources actually being read? */
-function Steps({ coverage }: { coverage?: FindingsCoverage }) {
+function Steps({ coverage, phone }: { coverage?: FindingsCoverage; phone: boolean }) {
   const monitored = coverage?.monitored_sources ?? 0;
   const broken = coverage?.unhealthy.length ?? 0;
   const off = coverage && (coverage.no_active_monitoring || monitored === 0);
@@ -218,7 +238,7 @@ function Steps({ coverage }: { coverage?: FindingsCoverage }) {
     : off ? tr("No source is switched on yet, so nothing new can come in.")
     : broken > 0 ? tr("{} of {} sources are working.", number(monitored - broken), number(monitored))
     : tr("All {} sources are working.", number(monitored));
-  return <ol className="fx-steps" aria-label={tr("How findings get here")}>
+  const steps = <ol className="fx-steps" aria-label={tr("How findings get here")}>
     <li className={`fx-step ${state}`}>
       <IconRead /><span className="fx-step-n">1</span>
       <b>{tr("We read the sources every day")}</b>
@@ -237,6 +257,12 @@ function Steps({ coverage }: { coverage?: FindingsCoverage }) {
       <span>{tr("Open the company or the source. Mark the rest not relevant and it stops showing.")}</span>
     </li>
   </ol>;
+  // on a phone the three steps fold away; the one live fact (are the sources being read?) stays in view
+  if (!phone) return steps;
+  return <details className={`fx-how ${state}`}>
+    <summary><b>{tr("How findings get here")}</b><span className="fx-how-s"><i aria-hidden="true" />{status}</span></summary>
+    {steps}
+  </details>;
 }
 
 /** Why the list is empty, in plain words, and what to do about it. */

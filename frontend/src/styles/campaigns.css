@@ -298,3 +298,13 @@
   .cg-step-row { grid-template-columns: minmax(0, 1fr); }
   .cg-step-row .cg-day input { max-inline-size: 100px; }
 }
+
+/* phone */
+@media (max-width: 640px) {
+  .cg-filter button { min-block-size: 44px; }
+  .cg-quiet > summary { min-height: 44px; display: flex; align-items: center; }
+  .cg-ph button { min-height: 44px; padding: 0 12px; }
+  .cg-people li { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 2px 8px; padding: 4px 0; }
+  .cg-people li .cg-pstate { grid-column: 2 / -1; }
+  .cg-people input[type="checkbox"] { inline-size: 44px; block-size: 44px; }
+}

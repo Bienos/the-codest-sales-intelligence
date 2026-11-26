@@ -75,7 +75,11 @@ const HOW: { stage: string; title: string; text: string }[] = [
 
 function HowItWorks() {
   const key = "ri_campaigns_how";
-  const [open, setOpen] = useState(() => { try { return localStorage.getItem(key) !== "hidden"; } catch { return true; } });
+    // the six steps start open on a computer, and folded on a phone (until the person opens them once) so the campaigns come first
+  const [open, setOpen] = useState(() => {
+    try { const saved = localStorage.getItem(key); if (saved) return saved !== "hidden"; } catch { /* storage unavailable */ }
+    return !(typeof window !== "undefined" && window.matchMedia?.("(max-width: 640px)").matches);
+  });
   const toggle = () => { const next = !open; setOpen(next); try { localStorage.setItem(key, next ? "shown" : "hidden"); } catch { /* storage unavailable */ } };
   return <section className={`cg-how${open ? "" : " closed"}`} aria-labelledby="cg-how-h">
     <div className="cg-how-top">
@@ -198,7 +202,7 @@ export function CampaignList() {
     <HowItWorks />
     {data && <OutboundNotice configured={data.lemlist_configured} enabled={data.outbound_enabled} />}
     {err ? <Err e={err} /> : !data ? <Skeleton rows={3} /> : items.length === 0 ? <StartFromSignals /> : <>
-      <div className="cg-filter" role="group" aria-label={tr("Show campaigns by stage")}>
+      <div className="cg-filter scroll-x" role="group" aria-label={tr("Show campaigns by stage")}>
         {FILTERS.map((x) => { const n = items.filter((c) => x.match(c.stage)).length;
           return <button key={x.key} type="button" aria-pressed={x.key === f.key} onClick={() => setParams(x.key ? { stage: x.key } : {}, { replace: true })}>
             {tr(x.label)} <b>{number(n)}</b></button>; })}
@@ -593,7 +597,7 @@ function CompanyBlock({ g, campaignId, canEdit, busy, issues, act, reload }: { g
     <ul className="cg-people">{g.people.map((m: any) => {
       const [label, kind] = PERSON_STATE[m.engagement ?? m.status] ?? PERSON_STATE.planned;
       return <li key={m.id} className={m.included ? "" : "out"}>
-        {canEdit ? <input type="checkbox" aria-label={tr("Include {}", m.name)} checked={m.included} disabled={busy}
+        {canEdit ? <input type="checkbox" className="tick44" aria-label={tr("Include {}", m.name)} checked={m.included} disabled={busy}
           onChange={(e) => act(() => api(`/api/signal-campaigns/${campaignId}/members/${m.id}`, { method: "PATCH", body: JSON.stringify({ included: e.target.checked }) }))} />
           : <span className="cg-dot" aria-hidden="true" />}
         <span className="cg-pp"><b>{m.name}</b>{m.title && <span className="muted">{m.title}</span>}</span>

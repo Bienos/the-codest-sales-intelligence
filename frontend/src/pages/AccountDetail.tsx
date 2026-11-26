@@ -3,9 +3,9 @@ import { Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post, put } from "../api";
 import { AccountFindings } from "../components/Findings";
-import { SHORT } from "../components/Signals";
+import { FAMILY, familyOf, SHORT } from "../components/Signals";
 import { countryName, staffCount } from "./targetMarket";
-import { Badge, Err, Evidence, humanize, Skeleton, reloadPage, safeHref, Tabs } from "../components/ui";
+import { Badge, Err, humanize, Skeleton, reloadPage, safeHref, Tabs, TIER } from "../components/ui";
 import "../styles/account.css";
 
 /* ------------------------------------------------------------------ shared helpers (also used by the person page) */
@@ -259,8 +259,9 @@ function FitList({ points, fromRecords }: { points: any[]; fromRecords: boolean 
       const Icon = fitIcon(p.label), Glyph = FIT_GLYPH[p.fit] ?? Ic.dash;
       return <li key={i} className={`fit-row ${p.fit}`}>
         <span className="fit-ic" aria-hidden="true"><Icon /></span>
-        <span className="fit-row-b"><b>{tr(p.label)}</b><span>{p.value}{p.source !== "R" && <> <Cite c={p} /></>}</span></span>
-        <span className={`fit-verdict ${p.fit}`}><Glyph />{tr(FIT_WORD[p.fit] ?? "Neutral")}</span>
+        <b className="fit-label">{tr(p.label)}</b>
+        <span className={`fit-verdict ${p.fit}`}><Glyph /><span className="fit-vw">{tr(FIT_WORD[p.fit] ?? "Neutral")}</span></span>
+        <span className="fit-val">{p.value}{p.source !== "R" && <> <Cite c={p} /></>}</span>
       </li>;
     })}</ul>
     {fromRecords && <p className="ac-note mt-2 mb-0">{tr("Judged from our own records. Research with Exa adds the tech stack, the engineering team and current change programmes.")}</p>}
@@ -604,7 +605,7 @@ function freshWhyNow(fit: any, d: any): string | null {
 }
 
 function HelpSection({ d, fit, fitErr, c }: { d: any; fit: any; fitErr: unknown; c: any }) {
-  const opps = programmes(d.opportunities ?? []);
+  const progs = programmeCards(d);
   const whyNow = freshWhyNow(fit, d);
   const services: any[] = fit?.services ?? [];
   const asked = new Set((c?.open_questions ?? []).map((q: string) => q.trim()));
@@ -626,15 +627,9 @@ function HelpSection({ d, fit, fitErr, c }: { d: any; fit: any; fitErr: unknown;
         <ul>{unknowns.map((u, i) => <li key={i}>{tr(u)}</li>)}</ul>
       </section>}
     </div>}
-    {opps.length > 0 && <>
+    {progs.length > 0 && <>
       <h3 className="ac-sub-h">{tr("Programmes we track")}</h3>
-      <ul className="opp-list">{opps.map((o) => <li key={o.hypothesis_id} className="opp">
-        <div className="opp-top"><b>{o.title}</b>
-          {o.sources > 1 && <span className="ac-count" title={tr("Brought together from {} records about the same programme", o.sources)}>{tr("{} sources", o.sources)}</span>}
-          <Link to={`/opportunities/${o.hypothesis_id}`}>{tr("Open")}</Link></div>
-        {(o.plain_reason || o.workstream?.scope_statement) && <p>{o.plain_reason ?? o.workstream.scope_statement}</p>}
-        <p className="opp-routes"><span>{tr("Ways in:")}</span> {o.routes.map((r: any) => tr(ROUTE_WORDS[r.type] ?? "Through {}", r.counterparty ?? "")).join(" · ")}</p>
-      </li>)}</ul>
+      <ul className="prg-list">{progs.map((p) => <ProgrammeCard key={p.id ?? p.title} p={p} full={false} />)}</ul>
     </>}
   </Part>;
 }
@@ -848,11 +843,22 @@ function FindPeople({ orgId, company, onAdded }: { orgId: string; company: strin
   </section>;
 }
 
+/** What to do with this person next, in one short sentence. */
+function nextForPerson(p: any): string | null {
+  if (p.suppressed) return null;
+  if (p.engagement === "replied" || p.engagement === "interested") return tr("They replied. Answer them.");
+  if (p.engagement) return tr("Follow up, or wait for a reply.");
+  if (p.has_email) return tr("Not contacted yet. Write to them.");
+  if (p.linkedin_url && safeHref(p.linkedin_url)) return tr("No email yet. Message them on LinkedIn.");
+  return tr("No email yet. Find one on their profile.");
+}
+
 function PersonCard({ p }: { p: any }) {
   const ll = p.lead_list ?? {};
   const prio = ll.priority;
   const useful = (v?: string | null) => (v && !/^other\s*\/\s*review$/i.test(v) ? v : null);
   const seniority = useful(p.seniority);
+  const next = nextForPerson(p);
   return <li className={`pp-card${prio === "P1" ? " p1" : ""}${p.suppressed ? " off" : ""}`}>
     <div className="pp-top">
       <Avatar name={p.name} committee={p.committee} photo={p.photo_url} />
@@ -871,6 +877,7 @@ function PersonCard({ p }: { p: any }) {
       {p.researched_at && <span className="pp-res"><Ic.spark />{tr("Researched")}</span>}
       {p.suppressed && <span className="pp-dnc">{tr("Do not contact")}</span>}
     </div>
+    {next && <Link className="pp-next" to={`/people/${p.id}`}><span>{next}</span><b aria-hidden="true">→</b></Link>}
   </li>;
 }
 
@@ -886,7 +893,7 @@ function PeopleTab({ orgId, company, me, people, err, reload }: { orgId: string;
     {people.length === 0 ? <div className="empty"><b>{tr("No people recorded yet")}</b>{tr("Use “Find decision makers” above, or import the lead list.")}</div> : <>
       <div className="pp-bar">
         <Coverage people={people} />
-        <div className="chips" role="group" aria-label={tr("Filter people")}>{Object.keys(PFILTERS).map((k) => <button key={k} type="button" className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{tr(PFILTERS[k][0])}<b>{people.filter(PFILTERS[k][1]).length}</b></button>)}</div>
+        <ScrollStrip className="chips pp-chips" label={tr("Filter people")} active={filter}>{Object.keys(PFILTERS).map((k) => <button key={k} type="button" className="chip" aria-pressed={filter === k} onClick={() => setFilter(k)}>{tr(PFILTERS[k][0])}<b>{people.filter(PFILTERS[k][1]).length}</b></button>)}</ScrollStrip>
       </div>
       {gaps.length > 0 && <p className="pp-gaps">{tr("No one yet in: {}. “Find decision makers” searches these parts of the buying group too.", gaps.map((k) => tr(COMMITTEE[k].label)).join(", "))}</p>}
       {shown.length === 0 ? <p className="muted">{tr("Nobody matches this filter.")}</p>
@@ -922,9 +929,9 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
     <div className="card mt-3">
       <div className="row spread"><b>{tr("Prepare a Lemlist campaign")}</b>{typeof en.lemlist_configured === "boolean" && <Badge kind={ready ? "ok" : "warn"}>{ready ? tr("Ready for approval") : tr("Lemlist setup required")}</Badge>}</div>
       <p className="small muted mt-1 mb-2">{tr("Everyone with an email address can be added. We build the campaign in Lemlist but do not launch it: a person presses Launch there.") + " "}
-        {en.outbound_enabled === false && tr("Sending is switched off for now.")}{en.lemlist_configured === false && tr("Lemlist is not connected yet.")}</p>
+        {en.outbound_enabled === false && tr("Sending is switched off for now.") + " "}{en.lemlist_configured === false && tr("Lemlist is not connected yet.")}</p>
       {plan.eligible.length === 0 && <p className="small">{tr("No contacts are eligible for this campaign.")}</p>}
-      {plan.eligible.map((c: any) => <label key={c.id} className="row small gap-2 mb-1"><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can || !ready} /> {c.name}{c.title ? `, ${c.title}` : ""}
+      {plan.eligible.map((c: any) => <label key={c.id} className="row small gap-2 mb-1 ac-pick"><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can || !ready} /><span>{c.name}{c.title ? `, ${c.title}` : ""}</span>
         <EmailMark has /></label>)}
       {unavailable.length > 0 && <p className="small muted">{tr("Unavailable for outreach:") + " "}{unavailable.join(", ")}.</p>}
       {can && <button className="primary" disabled={!ready || sel.length === 0} onClick={request}>{tr("Ask for approval to add") + " "}{sel.length || ""}</button>}
@@ -943,7 +950,7 @@ function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; can
   return (
     <div className="card">
       <p className="small muted mt-0">{tr("Three emails written from facts we have checked about this company, and tested against The Codest's brand rules. These are drafts: nothing is sent from here.")}</p>
-      {canDraft && <div className="row mb-3">
+      {canDraft && <div className="row mb-3 ac-camp-form">
         <label className="small">{tr("Who is it for?")}<select id="camp-role" value={role} onChange={(e) => setRole(e.target.value)} className="ml-2"><option value="">{tr("Technology or delivery leader")}</option><option value="CTO">CTO</option><option value="Head of Engineering">{tr("Head of Engineering")}</option><option value="Head of Payments">{tr("Head of Payments")}</option><option value="Head of Delivery or PMO">{tr("Head of Delivery or PMO")}</option><option value="Procurement lead">{tr("Procurement lead")}</option></select></label>
         <button className="primary" disabled={busy} onClick={() => make(role)}>{tr("Write outreach sequence")}</button></div>}
       {!b && <p className="muted">{tr("No draft yet. Research the company with Exa first for the best result: the emails are built from the facts we hold.")}</p>}
@@ -970,42 +977,252 @@ function CampaignTab({ camps, canDraft, orgId, make, decide }: { camps: any; can
 
 /* ------------------------------------------------------------------ findings & tenders */
 const DEMAND_TIER: Record<string, string> = { D1: "They asked for outside help", D2: "Likely to need outside help", D3: "A programme we checked; outside help not yet clear", D4: "Background; outside help not yet clear" };
-const SUBS = ["timeline", "tenders", "list", "signals", "leads", "sources"] as const;
-const MAIN_SUBS = ["timeline", "tenders", "list"];
-const SUB_LABEL: Record<string, string> = { timeline: "Findings", tenders: "Tenders & RFPs", list: "Lead list signals", signals: "Signal details", leads: "Links you added", sources: "Sources we watch" };
+const SUBS = ["timeline", "tenders", "list", "signals", "sources"] as const;
+const SUB_LABEL: Record<string, string> = { timeline: "Findings", tenders: "Tenders", list: "Lead list", signals: "Programmes", sources: "Sources" };
 const SUB_PURPOSE: Record<string, string> = {
   timeline: "Everything we found and checked about this company in the last year, newest first.",
   tenders: "Public tenders where they are the buyer, and contracts they have awarded.",
   list: "Buying signals from your own lead list, with the page each one came from. We have not checked them.",
-  signals: "Each checked finding, the kind of signal it is, and how clearly it shows a need for outside help.",
-  leads: "Links you or the lead list gave us about this company, and whether we could check them.",
-  sources: "The pages and feeds we read for this company, and when we last read them.",
+  signals: "The programmes they are running, and each finding we checked with how clearly it shows a need for outside help.",
+  sources: "Links you added, and the pages and feeds we read for this company.",
 };
+/** The old chip names still work in links. */
+const SUB_ALIAS: Record<string, string> = { leads: "sources" };
+const asSub = (v?: string | null) => { const s = SUB_ALIAS[v ?? ""] ?? v ?? ""; return (SUBS as readonly string[]).includes(s) ? s : null; };
 
+/** A row that scrolls sideways when it must: a fade shows there is more, and the chosen item is brought into view. */
+function ScrollStrip({ children, active, label, className }: { children: ReactNode; active: string; label: string; className: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ start: false, end: false });
+  const measure = () => {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.scrollLeft > 4, end = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setEdge((p) => (p.start === start && p.end === end ? p : { start, end }));
+  };
+  useEffect(() => {
+    const el = ref.current;
+    const on = el?.querySelector<HTMLElement>("[aria-pressed='true']");
+    if (el && on) {
+      const left = on.offsetLeft - 24, right = on.offsetLeft + on.offsetWidth + 24;
+      if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left); else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth;
+    }
+  }, [active]);
+  useEffect(measure);
+  useEffect(() => { const el = ref.current; if (!el || typeof ResizeObserver === "undefined") return; const ro = new ResizeObserver(measure); ro.observe(el); return () => ro.disconnect(); }, []);
+  return <div className={`ac-strip${edge.start ? " fade-start" : ""}${edge.end ? " fade-end" : ""}`}>
+    <div ref={ref} className={className} role="group" aria-label={label} onScroll={measure}>{children}</div>
+  </div>;
+}
+
+/* ---- programmes: what it is, why it matters, what is still unknown ---- */
+const STAGE: Record<string, string> = { candidate: "Early signal", announced: "Announced", planning: "Being planned", sourcing: "Choosing suppliers", implementation: "Being built",
+  transition_or_launch: "Going live", completed: "Finished", paused: "On hold", cancelled: "Cancelled", scope_unknown: "Scope unclear" };
+/** What the stage means for us, said plainly. Used only when the research gives no better reason. */
+const STAGE_NOTE: Record<string, string> = {
+  candidate: "Too early to say. Keep an eye on it.",
+  announced: "It has just been announced, so budget and scope are still being shaped. A good time to introduce The Codest.",
+  planning: "They are planning the work. A good time to ask how they will staff it.",
+  sourcing: "They are choosing suppliers now. This is the moment to be on the list.",
+  implementation: "The work is under way. Extra engineers are most often needed at this stage.",
+  transition_or_launch: "They are close to going live. Testing and support needs peak around now.",
+  completed: "The work has finished. Ask what comes next.",
+  paused: "It is on hold. Check back later.", cancelled: "It was cancelled. No action needed.",
+};
+const DOMAIN_WHAT: Record<string, string> = { payments_rail: "A change to the payment schemes they use.", core_banking: "A move to, or rebuild of, their core banking system.",
+  cloud_data: "A move to the cloud or a new data platform.", procurement: "A formal purchase of engineering services." };
+const daysAgo = (iso?: string | null) => { const t = iso ? Date.parse(iso) : NaN; return Number.isNaN(t) ? null : Math.round((Date.now() - t) / 86400000); };
+
+/** One card per programme. Same-kind repeats are folded into one, and each programme is joined to its opportunity for the plain reasons. */
+function programmeCards(d: any): any[] {
+  const opps: any[] = d.opportunities ?? [];
+  const byInit = new Map<string, any>();
+  for (const o of opps) if (o.initiative?.id && !byInit.has(o.initiative.id)) byInit.set(o.initiative.id, o);
+  const merged = new Map<string, any>();
+  const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  for (const i of d.initiatives ?? []) {
+    const title = plainTitle(i.title), key = norm(title) || i.id, o = byInit.get(i.id) ?? null;
+    const cur = merged.get(key);
+    if (!cur) { merged.set(key, { ...i, title, opp: o, gaps: [...(i.research_gaps ?? [])], tags: [...(i.technology_tags ?? [])] }); continue; }
+    cur.opp = cur.opp ?? o;
+    cur.gaps = [...new Set([...cur.gaps, ...(i.research_gaps ?? [])])];
+    cur.tags = [...new Set([...cur.tags, ...(i.technology_tags ?? [])])];
+    cur.budget_verified = cur.budget_verified || i.budget_verified;
+    if ((Date.parse(i.last_material_event_at ?? "") || 0) > (Date.parse(cur.last_material_event_at ?? "") || 0)) Object.assign(cur, { stage: i.stage, last_material_event_at: i.last_material_event_at, next_milestone_at: i.next_milestone_at });
+  }
+  // an opportunity whose programme is not in the list above still gets its card
+  for (const o of programmes(opps)) {
+    if ([...merged.values()].some((m) => m.opp?.hypothesis_id === o.hypothesis_id || norm(m.title) === norm(o.title))) continue;
+    merged.set(norm(o.title) || o.hypothesis_id, { id: o.initiative?.id, title: o.title, stage: o.initiative?.stage, opp: o, gaps: [], tags: [], budget_verified: true, last_material_event_at: o.what_happened?.event_date });
+  }
+  return [...merged.values()].sort((x, y) => (Date.parse(y.last_material_event_at ?? "") || 0) - (Date.parse(x.last_material_event_at ?? "") || 0));
+}
+
+/** The research's open questions, cleaned: no codes, no budget line (the card says that once), at most the first few. */
+const cleanGap = (g: string) => String(g).replace(/\s*\([a-z_]+=[^)]*\)/gi, "").trim();
+const isBudgetGap = (g: string) => /budget/i.test(g);
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="prg-row"><dt>{tr(label)}</dt><dd>{children}</dd></div>;
+}
+
+function ProgrammeCard({ p, full, said }: { p: any; full: boolean; said?: Set<string> }) {
+  const [more, setMore] = useState(false);
+  const o = p.opp;
+  const what = o?.workstream?.scope_statement || o?.plain_reason || DOMAIN_WHAT[p.programme_domain] || null;
+  const news = o?.what_happened?.summary && o.what_happened.summary !== what && !said?.has(normText(o.what_happened.summary)) ? o.what_happened : null;
+  const why = o?.buying_signal?.meaning || STAGE_NOTE[p.stage] || null;
+  const budgetUnknown = p.budget_verified === false;
+  const questions: string[] = [...(budgetUnknown ? [tr("Is the budget approved?")] : []), ...p.gaps.filter((g: string) => !isBudgetGap(g)).map(cleanGap).filter(Boolean).map((g: string) => tr(g))];
+  const shownQ = more ? questions : questions.slice(0, 2);
+  const last = p.last_material_event_at, next = p.next_milestone_at;
+  const ways = (o?.routes ?? []).map((r: any) => tr(ROUTE_WORDS[r.type] ?? "Through {}", r.counterparty ?? "")).join(" · ");
+  return <li className={`prg${full ? " full" : ""}`}>
+    <div className="prg-top"><h4>{p.title}</h4>{p.stage && STAGE[p.stage] && <span className={`prg-stage st-${p.stage}`}>{tr(STAGE[p.stage])}</span>}</div>
+    <dl className="prg-rows">
+      {what && <Row label="What it is">{what}</Row>}
+      {full && news && <Row label="Latest news">{news.summary} <span className="prg-date">{fmtDay(news.event_date)}</span></Row>}
+      {why && <Row label="Why it matters">{why}</Row>}
+      {!full && ways && <Row label="Ways in">{ways}</Row>}
+      {full && p.tags.length > 0 && <Row label="Technology"><ul className="ac-tags">{p.tags.map((t: string) => <li key={t} className="ac-tag">{t}</li>)}</ul></Row>}
+      {full && (last || next) && <Row label="Dates">{[last ? tr("Last news {}", fmtDate(last)) : null, next ? tr("Next milestone {}", fmtDate(next)) : null].filter(Boolean).join(" · ")}</Row>}
+      {full && questions.length > 0 && <Row label="Still to find out"><ul className="prg-q">{shownQ.map((g, i) => <li key={i}>{g}</li>)}</ul>
+        {questions.length > 2 && <button type="button" className="linkish ac-more" aria-expanded={more} onClick={() => setMore(!more)}>{more ? tr("Show less") : tr("Show {} more", questions.length - 2)}</button>}</Row>}
+    </dl>
+    {o?.hypothesis_id && <p className="prg-act"><Link to={`/opportunities/${o.hypothesis_id}`}>{full ? tr("Open the opportunity") : tr("Open")} →</Link></p>}
+  </li>;
+}
+
+/* ---- checked signals ---- */
+const normText = (t?: string | null) => String(t ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+/** Where a finding was read, and the quoted line only when it says something the title does not. */
+function SourceLines({ items, title }: { items: any[]; title: string }) {
+  if (!items.length) return <p className="sg-nosrc">{tr("No source attached yet.")}</p>;
+  const said = normText(title);
+  return <ul className="sg-src">{items.map((e) => {
+    const href = e.url ? safeHref(e.url) : undefined;
+    const c = normText(e.claim);
+    const quote = e.claim && c && !said.includes(c) && !c.includes(said) ? e.claim : null;
+    const meta = [e.authority ? tr(TIER[e.authority] ?? e.authority) : null, e.published_at ? tr("published {}", fmtDate(e.published_at)) : null].filter(Boolean).join(" · ");
+    return <li key={e.claim_id}>
+      {href ? <a className="ac-cite" href={href} target="_blank" rel="noreferrer noopener" title={tr("Open the original source")}>{host(e.url)} ↗</a> : <span className="ac-cite rec">{tr("Our records")}</span>}
+      {meta && <span className="sg-meta">{meta}</span>}
+      {quote && <q className="sg-quote">{quote}</q>}
+    </li>;
+  })}</ul>;
+}
+
+function SignalStory({ group, sigNames }: { group: any[]; sigNames: Record<string, string> }) {
+  const first = group[0];
+  const rules = [...new Map(group.map((x: any) => [`${x.rule_id}:${x.status}:${x.demand_tier}`, x])).values()];
+  const evidence = [...new Map(group.flatMap((x: any) => x.evidence).map((e: any) => [e.claim_id, e])).values()];
+  const date = first.event_at ?? first.pub_at;
+  const meaning = FAMILY[familyOf(first.rule_id)]?.meaning;
+  return <li className="sg">
+    {[...new Set(group.map((x: any) => x.event_id))].map((eventId: any) => <span id={`event-${eventId}`} key={eventId} />)}
+    <p className="sg-meta-top"><span>{date ? fmtDate(date) : tr("Date unknown")}</span>
+      {first.status === "active" ? <span className="sg-state on">{tr("Current")}</span> : <span className="sg-state">{tr("Historical")}</span>}</p>
+    <h4>{first.summary}</h4>
+    <ul className="sg-types">{rules.map((x: any) => <li key={`${x.rule_id}:${x.status}:${x.demand_tier}`}>
+      <b>{SHORT[x.rule_id] ? tr(SHORT[x.rule_id]) : sigNames[x.rule_id] ?? tr("Buying signal")}</b><span>{tr(DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier))}</span></li>)}</ul>
+    {meaning && <p className="sg-why"><b>{tr("Why it matters")}</b> {tr(meaning)}</p>}
+    <SourceLines items={evidence} title={first.summary ?? ""} />
+  </li>;
+}
+
+/** Status, order and how clear the need is, folded into one button so they never wrap unevenly. */
+function SignalFilters({ status, setStatus, tier, setTier, order, setOrder }: { status: string; setStatus: (v: string) => void; tier: string; setTier: (v: string) => void; order: string; setOrder: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const on = (status !== "all" ? 1 : 0) + (tier !== "all" ? 1 : 0) + (order !== "newest" ? 1 : 0);
+  return <div className="ac-filter">
+    <button type="button" className="chip ac-filter-btn" aria-expanded={open} onClick={() => setOpen(!open)}>{tr("Filter and sort")}{on > 0 && <b>{on}</b>}</button>
+    {open && <div className="ac-filter-grid">
+      <label>{tr("Status")}<select value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">{tr("All signals")}</option><option value="active">{tr("Current")}</option><option value="historical">{tr("Historical")}</option></select></label>
+      <label>{tr("How clear the need is")}<select value={tier} onChange={(e) => setTier(e.target.value)}><option value="all">{tr("All levels")}</option><option value="D1">{tr("They asked for help")}</option><option value="D2">{tr("Likely to need help")}</option><option value="D3">{tr("A programme we checked")}</option><option value="D4">{tr("Background")}</option></select></label>
+      <label>{tr("Order")}<select value={order} onChange={(e) => setOrder(e.target.value)}><option value="newest">{tr("Newest first")}</option><option value="oldest">{tr("Oldest first")}</option></select></label>
+      {on > 0 && <button type="button" className="linkish" onClick={() => { setStatus("all"); setTier("all"); setOrder("newest"); }}>{tr("Clear filters")}</button>}
+    </div>}
+  </div>;
+}
+
+/* ---- tenders ---- */
+const NOTICE_STATE: Record<string, string> = { open: "Open", amended: "Open, updated", closed: "Closed", awarded: "Awarded", cancelled: "Cancelled", planned: "Planned" };
 function Tenders({ orgId, route }: { orgId: string; route?: string }) {
   const [t, setT] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
   useEffect(() => { api(`/api/accounts/${orgId}/tenders`).then(setT).catch(setErr); }, [orgId]);
   if (err) return <Err e={err} />;
   if (!t) return <Skeleton rows={2} />;
-  if (!t.notices.length && !t.awards.length) return <div className="card"><p className="m-0">{tr("No public tenders or contract awards name this company as the buyer.")}</p>
-    <p className="small mt-2 mb-0">{tr("Most private banks, insurers and payment companies buy without a public tender.")}{route && <> {tr("How they buy, from your lead list:")} {isUrl(route) ? <a href={safeHref(route)} target="_blank" rel="noreferrer noopener">{host(route)} ↗</a> : route}</>}</p></div>;
+  if (!t.notices.length && !t.awards.length) return <div className="ac-empty"><p><b>{tr("No public tenders name this company as the buyer.")}</b></p>
+    <p>{tr("Most private banks, insurers and payment companies buy without a public tender.")}{route && <> {tr("How they buy, from your lead list:")} {isUrl(route) ? <a href={safeHref(route)} target="_blank" rel="noreferrer noopener">{host(route)} ↗</a> : route}</>}</p></div>;
   return <>
-    {t.notices.length > 0 && <div className="card"><h3 className="mt-0">{tr("Tenders where they are the buyer")}</h3>
-      {t.notices.map((n: any) => <div key={n.id} className="ac-tender"><div><b>{n.title || tr("Untitled notice")}</b>
-        <div className="small">{[humanize(n.status), n.country, n.published_at ? tr("published {}", fmtDate(n.published_at)) : null].filter(Boolean).join(", ")}</div></div>
-        <div className="small">{n.deadline_at && <div><b>{tr("Deadline")}</b> {fmtDate(n.deadline_at)}</div>}{n.official_url && safeHref(n.official_url) && <a href={safeHref(n.official_url)} target="_blank" rel="noreferrer noopener">{tr("Official notice")} ↗</a>}</div></div>)}</div>}
-    {t.awards.length > 0 && <div className="card"><h3 className="mt-0">{tr("Contracts they awarded")}</h3>
-      {t.awards.map((a: any) => <div key={a.notice_id} className="ac-tender"><div><b>{a.title || tr("Untitled award")}</b><div className="small">{tr("Won by {}", (a.winners ?? []).join(", ") || tr("not stated"))}</div></div>
-        <div className="small">{a.awarded_on && <div>{tr("Awarded {}", fmtDate(a.awarded_on))}</div>}{a.expected_end && <div>{tr("Ends {}", fmtDate(a.expected_end))}{a.end_basis === "assumed" ? ` (${tr("estimate")})` : ""}</div>}</div></div>)}</div>}
+    {t.notices.length > 0 && <>
+      <h3 className="ac-sub-h">{tr("Tenders where they are the buyer")}</h3>
+      <ul className="tn-list">{t.notices.map((n: any) => {
+        const left = n.deadline_at ? -(daysAgo(n.deadline_at) ?? 0) : null;
+        const open = n.status === "open" || n.status === "amended";
+        const href = n.official_url ? safeHref(n.official_url) : undefined;
+        return <li key={n.id} className="tn">
+          <div className="tn-top"><span className={`tn-state${open ? " open" : ""}`}>{tr(NOTICE_STATE[n.status] ?? humanize(n.status))}</span>
+            {open && left != null && left >= 0 && <span className="tn-left">{left === 0 ? tr("Closes today") : left === 1 ? tr("1 day left") : tr("{} days left", left)}</span>}</div>
+          <h4>{n.title || tr("Untitled notice")}</h4>
+          <p className="tn-meta">{[n.deadline_at ? tr("Deadline {}", fmtDate(n.deadline_at)) : null, n.published_at ? tr("published {}", fmtDate(n.published_at)) : null, n.country].filter(Boolean).join(" · ")}</p>
+          {open && <p className="tn-next">{n.deadline_at ? tr("Decide by {} whether to bid, or which bidder to partner with.", fmtDate(n.deadline_at)) : tr("Decide whether to bid, or which bidder to partner with.")}</p>}
+          {href && <p className="prg-act"><a href={href} target="_blank" rel="noreferrer noopener">{tr("Open the notice")} ↗</a></p>}
+        </li>;
+      })}</ul></>}
+    {t.awards.length > 0 && <>
+      <h3 className="ac-sub-h">{tr("Contracts they awarded")}</h3>
+      <ul className="tn-list">{t.awards.map((a: any) => {
+        const href = a.official_url ? safeHref(a.official_url) : undefined;
+        return <li key={a.notice_id} className="tn">
+          <div className="tn-top"><span className="tn-state">{tr("Awarded")}</span>{a.awarded_on && <span className="tn-left">{fmtDate(a.awarded_on)}</span>}</div>
+          <h4>{a.title || tr("Untitled award")}</h4>
+          <p className="tn-meta">{[tr("Won by {}", (a.winners ?? []).join(", ") || tr("not stated")), a.expected_end ? tr("Ends {}", fmtDate(a.expected_end)) + (a.end_basis === "assumed" ? ` (${tr("estimate")})` : "") : null].filter(Boolean).join(" · ")}</p>
+          {(a.expected_end || (a.winners ?? []).length > 0) && <p className="tn-next">{tr("Ask the winner whether they need extra engineers, or plan ahead for when the contract ends.")}</p>}
+          {href && <p className="prg-act"><a href={href} target="_blank" rel="noreferrer noopener">{tr("Open the notice")} ↗</a></p>}
+        </li>;
+      })}</ul></>}
   </>;
 }
 
-function Activity({ d, eps, sub, setSub, params, sigNames }: any) {
+/* ---- sources and links ---- */
+function SourcesView({ d, eps, accountId, canScan, scanBusy, runScan }: { d: any; eps: any[]; accountId: string; canScan: boolean; scanBusy: boolean; runScan: () => void }) {
+  const [links, setLinks] = useState(false);
+  return <>
+    <details className="ac-fold" onToggle={(e) => setLinks((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary>{tr("Links you added")}</summary>
+      {links && <AccountFindings key="leads" accountId={accountId} selected={null} leadsOnly />}
+    </details>
+    {eps.length === 0 && d.coverage.length === 0 ? <div className="ac-empty">
+      <p><b>{tr("We have not read this company's pages yet.")}</b> {tr("That means we cannot see, not that nothing is happening.")}</p>
+      <p>{tr("Check for news looks for its news feed, press page, careers page and job board.")}</p>
+      {canScan && <button type="button" disabled={scanBusy} onClick={runScan}>{tr("Check for news")}</button>}
+    </div> : <>
+    {eps.length > 0 && <><h3 className="ac-sub-h">{tr("Pages and feeds we read")}</h3>
+      <ul className="ac-rows">{eps.map((e: any, i: number) => <li key={i}>
+        <div className="ac-rows-main"><b>{humanize(e.kind)}{e.provider ? ` (${e.provider})` : ""}</b>
+          <a className="break-all" href={safeHref(e.url)} target="_blank" rel="noreferrer noopener">{e.url} ↗</a></div>
+        <div className="ac-rows-side">{e.last_scanned_at ? <><Badge kind={e.last_status === "ok" ? "ok" : "bad"}>{e.last_status === "ok" ? tr("Worked") : tr("Problem")}</Badge>
+          <span>{tr("Checked {}", fmtDateTime(e.last_scanned_at))}</span>{e.docs_seen > 0 && <span>{tr("{} items read", e.docs_seen)}</span>}</> : <span>{tr("Not checked yet")}</span>}
+          {e.last_detail && <span className="muted">{e.last_detail}</span>}</div>
+      </li>)}</ul></>}
+    {d.coverage.length > 0 && <><h3 className="ac-sub-h">{tr("What we can see")}</h3>
+      <ul className="ac-rows">{d.coverage.map((c: any, i: number) => <li key={i}>
+        <div className="ac-rows-main"><b>{humanize(c.source_family)}</b></div>
+        <div className="ac-rows-side"><Badge kind={c.coverage_state === "ok" || c.coverage_state === "covered" ? "ok" : ""}>{humanize(c.coverage_state)}</Badge>{c.last_success_at && <span>{tr("Last checked {}", fmtDate(c.last_success_at))}</span>}</div>
+      </li>)}</ul></>}
+    </>}
+    {d.source_rows?.length > 0 && <><h3 className="ac-sub-h">{tr("Where it appears in your workbooks")}</h3><ul className="tight small mb-0">{d.source_rows.map((r: any, i: number) => <li key={i}>{tr("{}, row {}", r.sheet_title, r.row_number)}</li>)}</ul></>}
+  </>;
+}
+
+function Activity({ d, eps, sub, setSub, params, sigNames, canScan, scanBusy, runScan }: any) {
   const [signalStatus, setSignalStatus] = useState("all");
   const [signalTier, setSignalTier] = useState("all");
   const [signalOrder, setSignalOrder] = useState("newest");
   const a = d.account;
+  const all = new Set<string>(d.signals.map((s: any) => s.story_key ?? s.event_id));
   const groups = new Map<string, any[]>();
   for (const s of d.signals) {
     if ((signalStatus !== "all" && s.status !== signalStatus) || (signalTier !== "all" && s.demand_tier !== signalTier)) continue;
@@ -1017,57 +1234,41 @@ function Activity({ d, eps, sub, setSub, params, sigNames }: any) {
     if (!dx) return dy ? 1 : 0; if (!dy) return -1;
     const o = Date.parse(dx) - Date.parse(dy); return signalOrder === "oldest" ? o : -o;
   });
-  const counts: Record<string, number | undefined> = { signals: new Set(d.signals.map((s: any) => s.story_key ?? s.event_id)).size, list: (d.list_signals ?? []).length };
-  const chip = (k: string) => <button key={k} type="button" className="chip" aria-pressed={sub === k} onClick={() => setSub(k)}>{tr(SUB_LABEL[k])}{counts[k] != null && <b>{counts[k]}</b>}</button>;
+  const progs = programmeCards(d);
+  const nList = (d.list_signals ?? []).length;
+  const counts: Record<string, number | undefined> = { signals: (progs.length || all.size) || undefined, list: nList || undefined };
+  // choices that are empty are not shown, unless you are looking at one
+  const shown = SUBS.filter((k) => k !== "list" && k !== "signals" ? true : k === sub || Boolean(counts[k]));
   return <>
-    <div className="ac-subnav" role="group" aria-label={tr("Findings and tenders")}>
-      {MAIN_SUBS.map(chip)}
-      <span className="ac-subnav-more">{tr("More:")}</span>
-      {SUBS.filter((k) => !MAIN_SUBS.includes(k)).map(chip)}
-    </div>
+    <ScrollStrip className="ac-subnav" label={tr("Findings and tenders")} active={sub}>
+      {shown.map((k) => <button key={k} type="button" className="chip" aria-pressed={sub === k} onClick={() => setSub(k)}>{tr(k === "signals" && progs.length === 0 ? "Signals" : SUB_LABEL[k])}{counts[k] != null && <b>{counts[k]}</b>}</button>)}
+    </ScrollStrip>
     <p className="ac-purpose ac-sub-purpose">{tr(SUB_PURPOSE[sub] ?? "")}</p>
     {sub === "timeline" && <AccountFindings key={"t" + (params.get("finding") ?? "")} accountId={a.id} selected={params.get("finding")} leadsOnly={false} />}
-    {sub === "leads" && <AccountFindings key="leads" accountId={a.id} selected={null} leadsOnly />}
     {sub === "tenders" && <Tenders orgId={a.id} route={d.list_profile?.["Procurement Route"]} />}
-    {sub === "list" && <div className="card">
-      {(d.list_signals ?? []).length === 0 ? <p className="m-0">{tr("Your lead list records no signals for this company.")}</p>
-        : <ul className="ac-tl">{d.list_signals.map((x: any, i: number) => <li key={i}><time>{fmtDay(x.date)}</time><div className="ac-tl-body">
+    {sub === "list" && (nList === 0 ? <div className="ac-empty"><p><b>{tr("Your lead list records no signals for this company.")}</b></p></div>
+      : <div className="card"><ul className="ac-tl">{d.list_signals.map((x: any, i: number) => <li key={i}><time>{fmtDay(x.date)}</time><div className="ac-tl-body">
           <b>{x.category || x.event}</b>{x.category && x.event && <p>{x.event}</p>}
           {x.implication && <p>{x.implication}</p>}
           <p className="ac-tl-meta">{x.source_url && <Cite c={{ source_url: x.source_url, source: "list" }} />}{x.confidence && <span>{tr("{} confidence", x.confidence)}</span>}
-            {x.repeats > 1 && <span>{tr("Your list records this {} times; shown once.", x.repeats)}</span>}</p></div></li>)}</ul>}
-    </div>}
+            {x.repeats > 1 && <span>{tr("Your list records this {} times; shown once.", x.repeats)}</span>}</p></div></li>)}</ul></div>)}
     {sub === "signals" && <>
-      {d.initiatives.length > 0 && <><h3>{tr("Programmes")}</h3>{d.initiatives.map((i: any) => <div key={i.id} className="card"><b>{plainTitle(i.title)}</b> <Badge>{humanize(i.stage)}</Badge> {!i.budget_verified && <Badge kind="warn">{tr("Budget not confirmed")}</Badge>}
-        <p className="small">{tr("Technology:") + " "}{i.technology_tags.join(", ") || tr("Not known")}. {i.next_milestone_at ? tr("Last big news {}, next milestone {}.", fmtDate(i.last_material_event_at), fmtDate(i.next_milestone_at)) : tr("Last big news {}.", fmtDate(i.last_material_event_at))}</p>
-        {i.research_gaps.length > 0 && <><span className="small"><b>{tr("Still to find out")}</b></span><ul className="tight small">{i.research_gaps.map((g: string, k: number) => <li key={k}>{String(g).replace(/\s*\([a-z_]+=[^)]*\)/gi, "")}</li>)}</ul></>}</div>)}</>}
-      <div className="row gap-2 mb-2 ac-filters">
-        <label>{tr("Status") + " "}<select value={signalStatus} onChange={(e) => setSignalStatus(e.target.value)}><option value="all">{tr("All signals")}</option><option value="active">{tr("Current")}</option><option value="historical">{tr("Historical")}</option></select></label>
-        <label>{tr("Order") + " "}<select value={signalOrder} onChange={(e) => setSignalOrder(e.target.value)}><option value="newest">{tr("Newest first")}</option><option value="oldest">{tr("Oldest first")}</option></select></label>
-        <label>{tr("How clear the need is") + " "}<select value={signalTier} onChange={(e) => setSignalTier(e.target.value)}><option value="all">{tr("All levels")}</option><option value="D1">{tr("They asked for help")}</option><option value="D2">{tr("Likely to need help")}</option><option value="D3">{tr("A programme we checked")}</option><option value="D4">{tr("Background")}</option></select></label>
-      </div>
-      {stories.map((group) => {
-        const first = group[0];
-        const rules = new Map(group.map((x: any) => [`${x.rule_id}:${x.status}:${x.demand_tier}`, x]));
-        const evidence = new Map(group.flatMap((x: any) => x.evidence).map((e: any) => [e.claim_id, e]));
-        return <div className="card" key={first.story_key ?? first.event_id}>
-          {[...new Set(group.map((x: any) => x.event_id))].map((eventId: any) => <span id={`event-${eventId}`} key={eventId} />)}
-          <b>{first.summary}</b><p className="small muted">{first.event_at || first.pub_at ? fmtDate(first.event_at ?? first.pub_at) : tr("Date unknown")}</p>
-          {[...rules.entries()].map(([key, x]: any) => <p className="small" key={key}><Badge kind={x.status === "active" ? "ok" : ""}>{x.status === "active" ? tr("Current") : tr("Historical")}</Badge> {SHORT[x.rule_id] ? tr(SHORT[x.rule_id]) : sigNames[x.rule_id] ?? tr("Buying signal")}. {tr(DEMAND_TIER[x.demand_tier] ?? humanize(x.demand_tier))}</p>)}
-          <Evidence items={[...evidence.values()]} />
-        </div>;
-      })}
-      {stories.length === 0 && <p className="muted">{d.signals.length ? tr("No signals match these filters.") : tr("No checked findings yet. Press “Check for news” to read the company's own pages and search the web.")}</p>}
+      {progs.length > 0 && <>
+        <h3 className="ac-sub-h">{tr("Programmes")}</h3>
+        <ul className="prg-list">{progs.map((p) => <ProgrammeCard key={p.id ?? p.title} p={p} full said={new Set(d.signals.map((x: any) => normText(x.summary)))} />)}</ul>
+      </>}
+      {all.size > 0 && <>
+        <div className="ac-sub-row"><h3 className="ac-sub-h">{tr("Checked findings")}</h3>
+          {all.size > 1 && <SignalFilters status={signalStatus} setStatus={setSignalStatus} tier={signalTier} setTier={setSignalTier} order={signalOrder} setOrder={setSignalOrder} />}</div>
+        {stories.length > 0 ? <ul className="sg-list">{stories.map((group) => <SignalStory key={group[0].story_key ?? group[0].event_id} group={group} sigNames={sigNames} />)}</ul>
+          : <p className="ac-note">{tr("No findings match these filters.")} <button type="button" className="linkish" onClick={() => { setSignalStatus("all"); setSignalTier("all"); }}>{tr("Clear filters")}</button></p>}
+      </>}
+      {all.size === 0 && <div className="ac-empty">
+        <p><b>{tr("Nothing checked yet.")}</b> {tr("Check for news reads their website and searches the web.")}</p>
+        {canScan && <button type="button" disabled={scanBusy} onClick={runScan}>{tr("Check for news")}</button>}
+      </div>}
     </>}
-    {sub === "sources" && <>
-      <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Coverage table")}><table><thead><tr><th>{tr("Kind of source")}</th><th>{tr("State")}</th><th>{tr("Last successful check")}</th></tr></thead><tbody>{d.coverage.map((c: any, i: number) => <tr key={i}><td>{humanize(c.source_family)}</td><td>{humanize(c.coverage_state)}</td><td>{fmtDate(c.last_success_at)}</td></tr>)}
-        {d.coverage.length === 0 && <tr><td colSpan={3} className="muted">{tr("We have not checked this account's sources yet. That means we cannot see, not that nothing is happening.")}</td></tr>}</tbody></table></div>
-      <div className="card table-wrap" tabIndex={0} role="region" aria-label={tr("Where this company publishes")}><h3 className="mt-0">{tr("Where this company publishes")}</h3>
-        {eps.length === 0 ? <p className="small muted">{tr("Nothing found yet. Press “Check for news” to look for its news feed, press page, careers page and job board.")}</p>
-          : <table><thead><tr><th>{tr("Kind")}</th><th>{tr("Address")}</th><th>{tr("Last check")}</th><th>{tr("Items read")}</th></tr></thead><tbody>{eps.map((e: any, i: number) => <tr key={i}><td>{humanize(e.kind)}{e.provider ? ` (${e.provider})` : ""}</td><td className="small break-all"><a href={safeHref(e.url)} target="_blank" rel="noreferrer noopener">{e.url} ↗</a></td><td className="small">{e.last_scanned_at ? <>{fmtDateTime(e.last_scanned_at)} <Badge kind={e.last_status === "ok" ? "ok" : "bad"}>{e.last_status === "ok" ? tr("Worked") : tr("Problem")}</Badge>{e.last_detail && <div className="muted">{e.last_detail}</div>}</> : tr("Not yet")}</td><td>{e.docs_seen}</td></tr>)}</tbody></table>}</div>
-      {d.source_rows?.length > 0 && <div className="card"><h3 className="mt-0">{tr("Where it appears in your workbooks")}</h3><ul className="tight small mb-0">{d.source_rows.map((r: any, i: number) => <li key={i}>{tr("{}, row {}", r.sheet_title, r.row_number)}</li>)}</ul></div>}
-      {d.opportunities.length > 0 && <div className="card"><h3 className="mt-0">{tr("Sources for its opportunities")}</h3>{d.opportunities.slice(0, 3).map((o: any) => <Evidence key={o.hypothesis_id} items={o.evidence} />)}</div>}
-    </>}
+    {sub === "sources" && <SourcesView d={d} eps={eps} accountId={a.id} canScan={canScan} scanBusy={scanBusy} runScan={runScan} />}
   </>;
 }
 
@@ -1083,8 +1284,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const [err, setErr] = useState<unknown>(null);
   const linked: [Tab, string] | null = params.has("finding") || params.has("timeline") ? ["activity", "timeline"] : params.has("event") ? ["activity", "signals"] : null;
   const asked = params.get("tab") as Tab | null;
-  const [tab, setTab] = useState<Tab>(linked?.[0] ?? (asked && TABS.includes(asked) ? asked : "overview"));
-  const [sub, setSub] = useState<string>(linked?.[1] ?? "timeline");
+  const [tab, setTab] = useState<Tab>(linked?.[0] ?? (asked && TABS.includes(asked) ? asked : params.has("sub") ? "activity" : "overview"));
+  const [sub, setSub] = useState<string>(linked?.[1] ?? asSub(params.get("sub")) ?? "timeline");
   useEffect(() => { if (linked) { setTab(linked[0]); setSub(linked[1]); } }, [params]);
   const [sigNames, setSigNames] = useState<Record<string, string>>({});
   useEffect(() => { api("/api/library/signals").then((r) => setSigNames(Object.fromEntries(r.items.map((x: any) => [x.rule_id, x.signal])))).catch(() => undefined); }, []);
@@ -1162,11 +1363,17 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     try { const r = await post(`/api/accounts/${id}/scan`); setScan({ busy: false, msg: r.website ? tr("Reading {} and searching the web. New findings appear under Findings & tenders.", r.website) : tr("Started. This company has no website on record, so we only search the web."), err: null }); }
     catch (e) { setScan({ busy: false, msg: "", err: e }); }
   };
-  const goto = (t: Tab, s?: string) => {
+  /** After a tab changes, bring the start of its content into view (a phone shows only the cover otherwise). */
+  const toTabs = () => setTimeout(() => {
+    const top = document.querySelector(".ac-tabs")?.getBoundingClientRect().top;
+    if (top != null && (top < 70 || top > window.innerHeight * 0.45)) window.scrollTo({ top: Math.max(0, window.scrollY + top - 64), behavior: "smooth" });
+  }, 40);
+  const goto = (t: Tab, s?: string, stay = false) => {
     setTab(t); if (s) setSub(s);
-    if (linked || params.has("tab")) { const q = new URLSearchParams(params); ["finding", "timeline", "event", "tab"].forEach((k) => q.delete(k)); setParams(q, { replace: true }); }
+    if (!stay) toTabs();
+    if (linked || params.has("tab") || params.has("sub")) { const q = new URLSearchParams(params); ["finding", "timeline", "event", "tab", "sub"].forEach((k) => q.delete(k)); setParams(q, { replace: true }); }
   };
-  const jump = (anchor: string) => { goto("overview"); setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60); };
+  const jump = (anchor: string) => { goto("overview", undefined, true); setTimeout(() => document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60); };
   const companyLinkedIn = [...context.filter((x) => x.kind === "link").map((x) => x.value), ...((research?.profile?.sources ?? []).map((s: any) => s.url))]
     .find((u: string) => /linkedin\.com\/company\//i.test(u));
   const hq = c?.footprint?.hq?.value ?? countryName(a.country_code);
@@ -1189,9 +1396,9 @@ export function Account({ me }: { me: { permissions: string[] } }) {
             {(sector || hq || size) && <p className="ac-sub">{[sector, hq, size, ownership].filter(Boolean).map((x, i) => <span key={i}>{x}</span>)}</p>}
             <div className="ac-links">
               <RelBadge rel={rel} onNavy />
-              {a.canonical_domain && <a href={`https://${a.canonical_domain}`} target="_blank" rel="noreferrer noopener"><Ic.web />{a.canonical_domain}</a>}
-              {companyLinkedIn ? <a href={safeHref(companyLinkedIn)} target="_blank" rel="noreferrer noopener"><Ic.linkedin />LinkedIn</a>
-                : <a href={`https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(a.display_name)}`} target="_blank" rel="noreferrer noopener"><Ic.linkedin />{tr("Find on LinkedIn")}</a>}
+              {a.canonical_domain && <a href={`https://${a.canonical_domain}`} target="_blank" rel="noreferrer noopener" title={a.canonical_domain}><Ic.web /><span>{a.canonical_domain}</span></a>}
+              {companyLinkedIn ? <a href={safeHref(companyLinkedIn)} target="_blank" rel="noreferrer noopener"><Ic.linkedin /><span>LinkedIn</span></a>
+                : <a href={`https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(a.display_name)}`} target="_blank" rel="noreferrer noopener" title={tr("Find on LinkedIn")} aria-label={tr("Find on LinkedIn")}><Ic.linkedin /><span>LinkedIn</span></a>}
             </div>
           </div>
           <div className="ac-actions">
@@ -1203,33 +1410,35 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         </div>
         <div className="ac-glance">
           {fit.points.length > 0 && <button type="button" className="glance" onClick={() => jump("sec-fit")}>
-            <FitCells points={fit.points} />
-            <span><b>{tr("{} of {} points in our favour", good, fit.points.length)}</b><small>{tr("How they fit us")}</small></span></button>}
+            <span className="glance-vis"><FitCells points={fit.points} /></span>
+            <span className="glance-txt"><b>{tr("{} of {} points in our favour", good, fit.points.length)}</b><small>{tr("How they fit us")}</small></span></button>}
           {canPeople && <button type="button" className="glance" onClick={() => goto("people")}>
-            {live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 4).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" photo={p.photo_url} />)}{live.length > 4 && <span className="mono mono-sm more">+{live.length - 4}</span>}</span>
-              : <span className="glance-ic" aria-hidden="true"><Ic.people /></span>}
-            <span><b>{peopleCount === 1 ? tr("1 person") : peopleCount ? tr("{} people", number(peopleCount)) : tr("No people yet")}</b>
+            <span className="glance-vis">{live.length > 0 ? <span className="ac-stack" aria-hidden="true">{live.slice(0, 4).map((p) => <Avatar key={p.id} name={p.name} committee={p.committee} size="sm" photo={p.photo_url} />)}{live.length > 4 && <span className="mono mono-sm more">+{live.length - 4}</span>}</span>
+              : <span className="glance-ic" aria-hidden="true"><Ic.people /></span>}</span>
+            <span className="glance-txt"><b>{peopleCount === 1 ? tr("1 person") : peopleCount ? tr("{} people", number(peopleCount)) : tr("No people yet")}</b>
               <small>{!peopleCount ? tr("Find decision makers with Exa") : deciders === 1 ? tr("1 decision maker") : tr("{} decision makers", deciders)}</small></span></button>}
           <button type="button" className="glance" onClick={() => jump(Object.keys(lp).length ? "sec-list" : "sec-fit")}>
-            <span className="glance-ic" aria-hidden="true">{a.list_priority ? <b className={`glance-p ${String(a.list_priority).toLowerCase()}`}>{a.list_priority}</b> : <Ic.list />}</span>
-            <span><b>{a.list_priority || a.list_score != null ? [a.list_score != null ? tr("Score {}", a.list_score) : null, a.list_eligibility].filter(Boolean).join(" · ") || tr("On your lead list") : tr("Not on your lead list")}</b>
+            <span className="glance-vis"><span className="glance-ic" aria-hidden="true">{a.list_priority ? <b className={`glance-p ${String(a.list_priority).toLowerCase()}`}>{a.list_priority}</b> : <Ic.list />}</span></span>
+            <span className="glance-txt"><b>{a.list_priority || a.list_score != null ? [a.list_score != null ? tr("Score {}", a.list_score) : null, a.list_eligibility].filter(Boolean).join(" · ") || tr("On your lead list") : tr("Not on your lead list")}</b>
               <small>{tr("Your lead list")}</small></span></button>
           <button type="button" className="glance" onClick={() => jump("relationship")}>
-            <span className="glance-ic" aria-hidden="true"><Ic.badge /></span>
-            <span><b>{rel?.owner?.name ?? tr("Nobody yet")}</b><small>{tr("Account owner")}</small></span></button>
+            <span className="glance-vis"><span className="glance-ic" aria-hidden="true"><Ic.badge /></span></span>
+            <span className="glance-txt"><b>{rel?.owner?.name ?? tr("Nobody yet")}</b><small>{tr("Account owner")}</small></span></button>
         </div>
       </header>
       {scan.msg && <div className="okmsg mt-2 mb-2" role="status">{scan.msg}</div>}<Err e={scan.err} />
       {editing && canScan && a.entity_type !== "public_body" && <CompanyProfile account={a} onSave={(profile) => setD({ ...d, account: { ...a, ...profile } })} />}
+      <div className="ac-tabs">
       <Tabs items={[{ key: "overview", label: tr("Overview") }, { key: "people", label: <>{tr("People")}{canPeople && <span className="tabn">{number(peopleCount)}</span>}</> },
-        { key: "activity", label: tr("Findings & tenders") }, { key: "outreach", label: tr("Outreach") }]} value={tab} onChange={(k) => goto(k as Tab)} label={tr("Company sections")}>
+        { key: "activity", label: <><span className="t-long">{tr("Findings & tenders")}</span><span className="t-short">{tr("Findings")}</span></> }, { key: "outreach", label: tr("Outreach") }]} value={tab} onChange={(k) => goto(k as Tab)} label={tr("Company sections")}>
         {tab === "overview" && <Overview d={d} research={research} rel={rel} orgId={a.id} me={me} canRun={canScan} startResearch={startResearch} researchBusy={researchBusy}
           researchErr={researchErr} reloadRel={loadRel} onOwner={(owner: any) => setRel({ ...rel, owner })} goto={goto} people={canPeople ? people : null} fit={fit}
           scanBusy={scan.busy} runScan={runScan} solutions={solutions} solutionsErr={solutionsErr} />}
         {tab === "people" && <PeopleTab orgId={a.id} company={a.display_name} me={me} people={people} err={peopleErr} reload={() => { loadPeople(); loadRel(); }} />}
-        {tab === "activity" && <Activity d={d} eps={eps} sub={sub} setSub={setSub} params={params} sigNames={sigNames} />}
+        {tab === "activity" && <Activity d={d} eps={eps} sub={sub} setSub={setSub} params={params} sigNames={sigNames} canScan={canScan} scanBusy={scan.busy} runScan={runScan} />}
         {tab === "outreach" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={a.id} make={makeCampaign} decide={decideCampaign} />}
       </Tabs>
+      </div>
     </>
   );
 }

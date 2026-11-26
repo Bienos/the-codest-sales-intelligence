@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, api, fmtDate, fmtDateTime, post, trackSourceOpened } from "../api";
 import { counted, getLanguage, number, tr } from "../locale";
 import { Empty, Err, Skeleton, safeHref } from "../components/ui";
-import { CompanyAvatar, ListRank, ago } from "../components/Findings";
+import { CompanyAvatar, ListRank, ago, useMedia } from "../components/Findings";
 import { FAMILIES, FAMILY, familyName, familyOf, signalName } from "../components/Signals";
 import { REGIONS, countryName } from "./targetMarket";
 import "../styles/accounts.css";
@@ -26,24 +26,34 @@ const IconKind = () => <Ico d={<path d="M2 12h4l3-7 5 14 3-7h5" />} />;
 const IconRefresh = () => <Ico className="bs-ico bs-ico-refresh" d={<><path d="M20 11a8 8 0 10-2.3 5.7" /><path d="M20 4v7h-7" /></>} />;
 const IconTable = () => <Ico d={<path d="M3 5h18M3 10h18M3 15h18M3 20h18M9 5v15" />} />;
 const IconCards = () => <Ico d={<><rect x="3.5" y="3.5" width="7.5" height="7.5" /><rect x="13" y="3.5" width="7.5" height="7.5" /><rect x="3.5" y="13" width="7.5" height="7.5" /><rect x="13" y="13" width="7.5" height="7.5" /></>} />;
+const IconFilter = () => <Ico d={<path d="M3 5h18M6.5 12h11M10 19h4" />} />;
 const IconList = () => <Ico d={<path d="M3 6h3M9 6h12M3 12h3M9 12h12M3 18h3M9 18h12" />} />;
 const Chevron = ({ className = "bs-chev" }: { className?: string }) => <svg className={className} viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5" /></svg>;
 
 type Fit = { key: string | null; name: string; reason: string | null; level: "strong" | "possible" | "weak" | null; score: number | null };
+/** A person to talk to. The email and LinkedIn are yes or no only: no address reaches the page. */
+type Contact = { id: string; name: string; title: string | null; email: boolean; linkedin: boolean };
 type Org = { id: string; name: string; country: string | null; region: string; segment: string | null; domain: string | null;
-  list_priority: string | null; list_score: number | null; people: number; people_with_email: number; best_fit?: Fit | null };
-type Tender = { deadline: string | null; url: string | null; title: string | null; scope?: string | null };
+  list_priority: string | null; list_score: number | null; people: number; people_with_email: number; best_fit?: Fit | null;
+  /** Only sent to people who may read contacts: up to three, best title first, and how many there are in all. */
+  contacts?: Contact[]; contacts_total?: number };
+type Tender = { deadline: string | null; url: string | null; title: string | null; scope?: string | null; buyer?: string | null; value?: number | null; currency?: string | null;
+  value_eur?: number | null; days_left?: number | null; title_en?: string | null; title_pl?: string | null; summary_en?: string | null; summary_pl?: string | null;
+  wants?: string[]; wants_pl?: string[]; work_type?: string | null };
 type Signal = {
   id: string; rule_id: string; strength: number; demand_tier: string; intent: string; event_id: string; event_type: string;
   summary: string; summary_en?: string | null; summary_pl?: string | null; happened: string | null; age_days: number | null; more: number;
   fit?: { level?: string; service?: string; reason?: string } | null;
+  /** Why it matters to us in one sentence (and in Polish when the notice has one). */
+  why?: string | null; why_pl?: string | null; why_specific?: boolean;
   tender: Tender | null;
   evidence: { quote: string | null; translation: string | null; url: string | null; source: string | null; published_at: string | null };
 };
 type Company = { organization: Org; signals: Signal[]; strength: number; strength_reason: string; kinds: number; families?: string[]; latest: string | null; age_days: number | null };
 type Kind = { rule_id: string; name: string; group: string | null; strength: number; meaning: string; who_to_contact: string | null; companies: number; fresh: number; latest: string | null };
 type Top = { window: number; organization: { id: string; name: string; country: string | null; region: string }; company_strength: number; strength_reason: string;
-  signal: { rule_id: string; event_id: string; summary: string; summary_en?: string | null; summary_pl?: string | null; happened: string | null; age_days: number | null; strength: number; tender: Tender | null } };
+  signal: { rule_id: string; event_id: string; summary: string; summary_en?: string | null; summary_pl?: string | null; happened: string | null; age_days: number | null; strength: number; tender: Tender | null;
+    why?: string | null; why_pl?: string | null } };
 type Pulse = { days: number; windows: number[]; families: { family: string; d7: number; d30: number; d90: number }[];
   weeks: { start: string; end: string; news: number; companies: number }[]; week: { news: number; companies: number }; companies: number; top: Top | null };
 type Data = { days: number; sort: string; rule: string; family?: string; companies: Company[]; kinds: Kind[]; all: { companies: number; signals: number }; fresh_days: number;
@@ -63,14 +73,17 @@ const SORTS: [string, string][] = [["strength", "Strongest first"], ["newest", "
 const SERVER_SORTS = ["strength", "newest", "priority"];
 /** Each sortable column and the way it reads first: the strongest, newest, most reachable first; names A to Z. */
 const DEFAULT_DIR: Record<string, "asc" | "desc"> = { strength: "desc", newest: "desc", priority: "asc", company: "asc", signal: "asc", region: "asc", email: "desc", fit: "asc" };
-const LEVEL: Record<number, string> = { 3: "Strong", 2: "Good", 1: "Early" };
-/** Why a company is rated strong, shown under the bars. A plain "Good" or "Early" needs no extra words. */
+const LEVEL: Record<number, string> = { 3: "Strong", 2: "Good", 1: "Possible" };
+/** Why a company is rated the way it is, in a few words next to the bars. */
 const REASON: Record<string, string> = {
   outside_demand: "They asked for outside help",
   need_likely: "Outside help is likely",
   several: "Several signals at once",
   strong_kind: "One of the strongest signals",
+  clear: "A clear sign of new engineering work",
+  early: "An early sign worth watching",
 };
+const reasonOf = (code: string) => (REASON[code] ? tr(REASON[code]) : "");
 const REGION_SHORT: Record<string, string> = { uk: "UK", dach: "DACH", nordics: "Nordics", poland: "Poland", europe: "Europe", international: "Elsewhere" };
 const PAGE = 40;
 const FRESH_DAYS = 14;
@@ -100,6 +113,53 @@ function plain(text: string, name: string) {
 }
 const said = (s: { summary: string; summary_en?: string | null; summary_pl?: string | null }, name: string) =>
   plain((getLanguage() === "pl" ? s.summary_pl : s.summary_en) || s.summary, name);
+
+/* ------------------------------------------------------------------------------------------------ what a card says, without saying it twice */
+
+const norm = (t?: string | null) => (t ?? "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+/** True when `a` adds nothing to `b`: the same words, or one is inside the other. */
+const covers = (a?: string | null, b?: string | null) => { const x = norm(a), y = norm(b); return Boolean(x && y && (x === y || x.includes(y) || y.includes(x))); };
+const clip = (t: string, n: number) => (t.length <= n ? t : `${t.slice(0, n).replace(/\s+\S*$/, "")}…`);
+
+/** TED titles read "Country – Category – the buyer's own title": keep the buyer's own title, and the category apart. */
+function splitTitle(title?: string | null): { own: string; category: string | null } {
+  const parts = (title ?? "").split(" – ").map((p) => p.trim());
+  return parts.length >= 3 ? { own: parts.slice(2).join(" – "), category: parts[1] } : { own: (title ?? "").trim(), category: null };
+}
+
+/** What happened, in one plain line. For a tender: what is being bought, with a second line from the notice when it has one. */
+function describe(s: Pick<Signal, "summary" | "summary_en" | "summary_pl" | "tender">, org: { name: string }): { what: string; more: string | null } {
+  const t = s.tender;
+  if (!t) return { what: said(s, org.name), more: null };
+  const pl = getLanguage() === "pl";
+  const what = (pl ? t.title_pl : t.title_en) || splitTitle(t.title).own || said(s, org.name);
+  const plain = (pl ? t.summary_pl : t.summary_en) || (t.scope ? clip(t.scope, 220) : null);
+  return { what, more: plain && !covers(plain, what) ? plain : null };
+}
+
+/** Why it matters to The Codest: the line the server wrote for this event or kind of signal. Nothing when there is none: no outreach opener stands in. */
+function whyOf(s: Signal): string | null {
+  if (s.why) return getLanguage() === "pl" && s.why_pl ? s.why_pl : tr(s.why);
+  return s.fit?.reason && s.fit.level !== "none" ? s.fit.reason : null;
+}
+
+const daysUntil = (deadline: string) => Math.ceil((new Date(deadline).getTime() - Date.now()) / 86_400_000);
+function closesIn(deadline: string): string {
+  const d = daysUntil(deadline);
+  return d <= 0 ? tr("Closes today") : d === 1 ? tr("Closes tomorrow") : tr("Closes in {}", counted(d, ["day", "days"], ["dzień", "dni", "dni"]));
+}
+/** The tender's value as a short figure; in euros (roughly) when the notice is in another currency. */
+function worth(t: Tender): string | null {
+  if (!t.value) return null;
+  const cur = (t.currency ?? "").toUpperCase();
+  const fmt = (n: number, currency: string) => new Intl.NumberFormat(getLanguage() === "pl" ? "pl-PL" : "en-GB", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(n);
+  try {
+    if (cur === "EUR") return fmt(t.value, "EUR");
+    if (t.value_eur) return tr("about {}", fmt(t.value_eur, "EUR"));
+    if (/^[A-Z]{3}$/.test(cur)) return fmt(t.value, cur);
+  } catch { /* an unknown currency code: leave the value out rather than guess */ }
+  return null;
+}
 
 const clock = (v: string | Date) => new Date(v).toLocaleTimeString(getLanguage() === "pl" ? "pl-PL" : "en-GB", { hour: "2-digit", minute: "2-digit" });
 /** "just now", "14 min ago", "3 hours ago", then the usual days and weeks. */
@@ -168,6 +228,8 @@ export default function BuyingSignals({ canCampaign = false, canPeople = false }
   const dir: "asc" | "desc" = params.get("dir") === "asc" || params.get("dir") === "desc" ? params.get("dir") as "asc" | "desc" : DEFAULT_DIR[sort];
   const q = params.get("q") ?? "";
   const urlView = params.get("view");
+  const phone = useMedia("(max-width: 760px)");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useState<View>(() => urlView === "cards" || urlView === "summary" || urlView === "table" ? urlView : urlView === "type" ? "summary" : storedView());
   const [search, setSearch] = useState(q);
   const serverSort = SERVER_SORTS.includes(sort) ? sort : "strength";
@@ -218,6 +280,12 @@ export default function BuyingSignals({ canCampaign = false, canPeople = false }
   const shown = companies.slice(0, limit);
   const campaignRules = rule || (data?.kinds ?? []).filter((k) => !family || k.rule_id.startsWith(family)).map((k) => k.rule_id).join(",");
   const showFit = Boolean(data?.best_fit);
+  /** On a phone the table is a list of cards: the same card as the Cards view, so the information is the same everywhere. */
+  const shownView: View = phone && view === "table" ? "cards" : view;
+  const views = (phone ? [["cards", "Cards", IconCards], ["summary", "Summary", IconList]] : [["table", "Table", IconTable], ["cards", "Cards", IconCards], ["summary", "Summary", IconList]]) as unknown as [View, string, () => JSX.Element][];
+  // what is switched on, in a few words, for the folded filter panel on a phone
+  const activeFilters = [region ? tr(REGIONS.find(([k]) => k === region)?.[1] ?? "") : "", days !== "90" ? tr(WINDOWS.find(([k]) => k === days)?.[1] ?? "") : "",
+    rule ? signalName(rule, kinds.get(rule)?.name) : family ? familyName(family) : "", sort !== "strength" ? tr(SORTS.find(([k]) => k === sort)?.[1] ?? "Sorted by a column") : ""].filter(Boolean);
 
   return <div className="page bs-page">
     <header className="bs-head">
@@ -229,42 +297,49 @@ export default function BuyingSignals({ canCampaign = false, canPeople = false }
       <Freshness state={freshness} updated={updated} />
     </header>
 
-    {data?.pulse ? <SignalPulse pulse={data.pulse} family={family} onFamily={(f) => update({ family: f === family ? "" : f, rule: "" })} canPeople={canPeople} kinds={kinds} />
+    {data?.pulse ? <SignalPulse pulse={data.pulse} family={family} onFamily={(f) => update({ family: f === family ? "" : f, rule: "" })} canPeople={canPeople} />
       : !data && !error ? <div className="bs-pulse is-empty" aria-hidden="true" /> : null}
 
     <section className="bs-tools" aria-label={tr("Search and filter")}>
-      <form className="bs-bar" role="search" onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }); }}>
+      <form className={`bs-bar${filtersOpen ? " is-open" : ""}`} role="search" onSubmit={(e) => { e.preventDefault(); update({ q: search.trim() }); }}>
         <label className="bs-ctl bs-ctl-q"><span className="bs-vh">{tr("Search")}</span><IconSearch />
           <input type="search" maxLength={120} placeholder={tr("Search a company or what happened")} value={search} onChange={(e) => setSearch(e.target.value)} /></label>
-        <label className="bs-ctl"><span className="bs-vh">{tr("Region")}</span><IconPlace />
-          <select value={region} onChange={(e) => update({ region: e.target.value })}>
-            <option value="">{tr("All regions")}</option>{REGIONS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
-          </select><Chevron /></label>
-        <label className="bs-ctl"><span className="bs-vh">{tr("Time window")}</span><IconClock />
-          <select value={days} onChange={(e) => update({ days: e.target.value === "90" ? "" : e.target.value })}>
-            {WINDOWS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
-          </select><Chevron /></label>
-        <label className="bs-ctl"><span className="bs-vh">{tr("Kind of signal")}</span><IconKind />
-          <select value={rule || (family ? `fam:${family}` : "")} onChange={(e) => {
-            const v = e.target.value;
-            update(v.startsWith("fam:") ? { family: v.slice(4), rule: "" } : { rule: v, family: "" });
-          }}>
-            <option value="">{tr("All kinds of signal")}{data ? ` (${number(data.all.companies)})` : ""}</option>
-            {FAMILIES.map((f) => {
-              const list = (data?.kinds ?? []).filter((k) => k.rule_id.startsWith(f));
-              if (!list.length && family !== f && !rule.startsWith(f)) return null;
-              return <optgroup key={f} label={familyName(f)}>
-                <option value={`fam:${f}`}>{tr("All: {}", familyName(f).toLowerCase())}</option>
-                {list.map((k) => <option key={k.rule_id} value={k.rule_id}>{signalName(k.rule_id, k.name)} ({number(k.companies)})</option>)}
-                {rule.startsWith(f) && !kinds.has(rule) && <option value={rule}>{signalName(rule)} (0)</option>}
-              </optgroup>;
-            })}
-          </select><Chevron /></label>
-        <label className="bs-ctl"><span className="bs-vh">{tr("Sort")}</span><IconSort />
-          <select value={SORTS.some(([k]) => k === sort) ? sort : ""} onChange={(e) => update({ sort: e.target.value === "strength" ? "" : e.target.value, dir: "" })}>
-            {!SORTS.some(([k]) => k === sort) && <option value="">{tr("Sorted by a column")}</option>}
-            {SORTS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
-          </select><Chevron /></label>
+        <button type="button" className="bs-filter-btn" aria-expanded={filtersOpen} aria-controls="bs-filters" onClick={() => setFiltersOpen((o) => !o)}>
+          <IconFilter /><span className="bs-filter-t"><b>{tr("Filters")}</b>{activeFilters.length > 0
+            ? <span className="bs-filter-on">{activeFilters.join(" · ")}</span> : <span>{tr("All regions")} · {windowLabel}</span>}</span>
+          {activeFilters.length > 0 && <span className="bs-filter-n" aria-label={tr("{} filters on", activeFilters.length)}>{activeFilters.length}</span>}
+          <Chevron className="bs-chev-t" /></button>
+        <div className="bs-filters" id="bs-filters">
+          <label className="bs-ctl"><span className="bs-vh">{tr("Region")}</span><IconPlace />
+            <select value={region} onChange={(e) => update({ region: e.target.value })}>
+              <option value="">{tr("All regions")}</option>{REGIONS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
+            </select><Chevron /></label>
+          <label className="bs-ctl"><span className="bs-vh">{tr("Time window")}</span><IconClock />
+            <select value={days} onChange={(e) => update({ days: e.target.value === "90" ? "" : e.target.value })}>
+              {WINDOWS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
+            </select><Chevron /></label>
+          <label className="bs-ctl bs-ctl-kind"><span className="bs-vh">{tr("Kind of signal")}</span><IconKind />
+            <select value={rule || (family ? `fam:${family}` : "")} onChange={(e) => {
+              const v = e.target.value;
+              update(v.startsWith("fam:") ? { family: v.slice(4), rule: "" } : { rule: v, family: "" });
+            }}>
+              <option value="">{tr("All kinds of signal")}{data ? ` (${number(data.all.companies)})` : ""}</option>
+              {FAMILIES.map((f) => {
+                const list = (data?.kinds ?? []).filter((k) => k.rule_id.startsWith(f));
+                if (!list.length && family !== f && !rule.startsWith(f)) return null;
+                return <optgroup key={f} label={familyName(f)}>
+                  <option value={`fam:${f}`}>{tr("All: {}", familyName(f).toLowerCase())}</option>
+                  {list.map((k) => <option key={k.rule_id} value={k.rule_id}>{signalName(k.rule_id, k.name)} ({number(k.companies)})</option>)}
+                  {rule.startsWith(f) && !kinds.has(rule) && <option value={rule}>{signalName(rule)} (0)</option>}
+                </optgroup>;
+              })}
+            </select><Chevron /></label>
+          <label className="bs-ctl bs-ctl-sort"><span className="bs-vh">{tr("Sort")}</span><IconSort />
+            <select value={SORTS.some(([k]) => k === sort) ? sort : ""} onChange={(e) => update({ sort: e.target.value === "strength" ? "" : e.target.value, dir: "" })}>
+              {!SORTS.some(([k]) => k === sort) && <option value="">{tr("Sorted by a column")}</option>}
+              {SORTS.map(([k, label]) => <option key={k} value={k}>{tr(label)}</option>)}
+            </select><Chevron /></label>
+        </div>
       </form>
     </section>
 
@@ -279,8 +354,8 @@ export default function BuyingSignals({ canCampaign = false, canPeople = false }
         {filtered && Boolean(data) && <button type="button" className="linkish" onClick={clear}>{tr("Clear filters")}</button>}
       </p>
       <div className="bs-seg" role="group" aria-label={tr("Show as")}>
-        {([["table", "Table", IconTable], ["cards", "Cards", IconCards], ["summary", "Summary", IconList]] as const).map(([k, label, Icon]) =>
-          <button key={k} type="button" aria-pressed={view === k} onClick={() => chooseView(k)}><Icon />{tr(label)}</button>)}
+        {views.map(([k, label, Icon]) =>
+          <button key={k} type="button" aria-pressed={shownView === k} onClick={() => chooseView(k)}><Icon />{tr(label)}</button>)}
       </div>
     </div>
 
@@ -299,12 +374,12 @@ export default function BuyingSignals({ canCampaign = false, canPeople = false }
         </Empty>)}
 
     {data && companies.length > 0 && <div className={`bs-results${loading ? " is-loading" : ""}`} aria-busy={loading}>
-      {view === "table" && <SignalTable companies={shown} kinds={kinds} sort={sort} dir={dir} onSort={sortBy} showFit={showFit} canPeople={canPeople} canCampaign={canCampaign} focus={rule || family} />}
-      {view === "cards" && <ul className="bs-cards" aria-label={tr("Companies with a buying signal")}>
-        {shown.map((c) => <CompanyCard key={c.organization.id} c={c} kinds={kinds} canPeople={canPeople} canCampaign={canCampaign} />)}
+      {shownView === "table" && <SignalTable companies={shown} kinds={kinds} sort={sort} dir={dir} onSort={sortBy} showFit={showFit} canPeople={canPeople} canCampaign={canCampaign} focus={rule || family} />}
+      {shownView === "cards" && <ul className="bs-cards" aria-label={tr("Companies with a buying signal")}>
+        {shown.map((c) => <SignalCard key={c.organization.id} c={c} kinds={kinds} canPeople={canPeople} canCampaign={canCampaign} />)}
       </ul>}
-      {view === "summary" && <SummaryView companies={companies} kinds={kinds} family={family} />}
-      {view !== "summary" && companies.length > limit && <div className="bs-more">
+      {shownView === "summary" && <SummaryView companies={companies} kinds={kinds} family={family} />}
+      {shownView !== "summary" && companies.length > limit && <div className="bs-more">
         <button type="button" onClick={() => setLimit((n) => n + PAGE)}>{tr("Show {} more", number(Math.min(PAGE, companies.length - limit)))}</button>
         <span className="small muted">{tr("{} of {}", number(limit), number(companies.length))}</span>
       </div>}
@@ -347,7 +422,7 @@ function HowItWorks() {
       <dl className="bs-legend">
         <div><dt><Bars n={3} /> {tr("Strong")}</dt><dd>{tr("They asked for outside help or probably will, or several signals at once.")}</dd></div>
         <div><dt><Bars n={2} /> {tr("Good")}</dt><dd>{tr("A clear sign of new engineering work.")}</dd></div>
-        <div><dt><Bars n={1} /> {tr("Early")}</dt><dd>{tr("An early sign worth watching, such as funding without a named build.")}</dd></div>
+        <div><dt><Bars n={1} /> {tr("Possible")}</dt><dd>{tr("An early sign worth watching, such as funding without a named build.")}</dd></div>
       </dl>
       <p>{tr("Context-only news, such as a market launch, stays in")} <Link to="/feed">{tr("All findings")}</Link>. {tr("Companies with a reason to stop or wait, such as a hiring freeze, are held back.")}</p>
     </div>
@@ -419,7 +494,7 @@ function Freshness({ state, updated }: { state: ReturnType<typeof useFreshness>;
 /* ------------------------------------------------------------------------------------------------ the pulse at the top */
 
 /** The picture at the top: is anything new this week, which kinds of signal are busy, and the one signal to look at first. */
-function SignalPulse({ pulse, family, onFamily, canPeople, kinds }: { pulse: Pulse; family: string; onFamily: (f: string) => void; canPeople: boolean; kinds: Map<string, Kind> }) {
+function SignalPulse({ pulse, family, onFamily, canPeople }: { pulse: Pulse; family: string; onFamily: (f: string) => void; canPeople: boolean }) {
   const max = Math.max(1, ...pulse.families.map((f) => f.d90));
   if (!pulse.companies) return <section className="bs-pulse is-quiet" aria-labelledby="bs-pulse-h">
     <h2 id="bs-pulse-h" className="bs-k">{tr("Signal pulse")}</h2>
@@ -459,7 +534,7 @@ function SignalPulse({ pulse, family, onFamily, canPeople, kinds }: { pulse: Pul
       </ul>
     </div>
 
-    <TopSignal top={pulse.top} canPeople={canPeople} meaning={pulse.top ? kinds.get(pulse.top.signal.rule_id)?.meaning : undefined} />
+    <TopSignal top={pulse.top} canPeople={canPeople} />
   </section>;
 }
 
@@ -493,27 +568,28 @@ function WeekColumns({ weeks }: { weeks: Pulse["weeks"] }) {
     </svg>
     <p className="bs-weeks-axis" aria-hidden="true"><span>{tr("13 weeks ago")}</span><span>{tr("This week")}</span></p>
     <p className="bs-weeks-tip" aria-live="polite">{hot != null ? label(weeks[hot], hot) : ""}</p>
-    <table className="bs-vh"><caption>{tr("News per week")}</caption><thead><tr><th scope="col">{tr("Week")}</th><th scope="col">{tr("News")}</th><th scope="col">{tr("Companies")}</th></tr></thead>
-      <tbody>{weeks.map((w, i) => <tr key={i}><td>{i === weeks.length - 1 ? tr("This week") : tr("Week of {}", fmtDate(w.start))}</td><td>{w.news}</td><td>{w.companies}</td></tr>)}</tbody></table>
+    <div className="bs-vh"><table><caption>{tr("News per week")}</caption><thead><tr><th scope="col">{tr("Week")}</th><th scope="col">{tr("News")}</th><th scope="col">{tr("Companies")}</th></tr></thead>
+      <tbody>{weeks.map((w, i) => <tr key={i}><td>{i === weeks.length - 1 ? tr("This week") : tr("Week of {}", fmtDate(w.start))}</td><td>{w.news}</td><td>{w.companies}</td></tr>)}</tbody></table></div>
   </div>;
 }
 
-function TopSignal({ top, canPeople, meaning }: { top: Top | null; canPeople: boolean; meaning?: string }) {
+function TopSignal({ top, canPeople }: { top: Top | null; canPeople: boolean }) {
   if (!top) return <div className="bs-pulse-top is-none">
     <p className="bs-k">{tr("Strongest new signal")}</p>
     <p className="bs-top-none">{tr("Nothing new in the last 30 days. New signals appear here as sources are checked.")}</p>
   </div>;
   const s = top.signal;
   const level = tr(LEVEL[top.company_strength] ?? "Good");
+  const why = s.why ? (getLanguage() === "pl" && s.why_pl ? s.why_pl : tr(s.why)) : null;
   return <div className="bs-pulse-top">
     <p className="bs-k">{top.window === 7 ? tr("Strongest new signal this week") : tr("Quiet week. Strongest in the last 30 days")}</p>
     <p className="bs-top-co"><Link to={`/accounts/${top.organization.id}?event=${s.event_id}`}>{top.organization.name}</Link>
       {top.organization.country && <span>{countryName(top.organization.country)}</span>}</p>
     <p className="bs-top-k"><Swatch ruleId={s.rule_id} /><b>{signalName(s.rule_id)}</b><span className="bs-top-str"><Bars n={top.company_strength} />{level}</span></p>
-    <p className="bs-top-t">{said(s, top.organization.name)}</p>
-    {meaning && <p className="bs-top-why">{tr(meaning)}</p>}
+    <p className="bs-top-t">{describe(s, top.organization).what}</p>
+    {why && <p className="bs-top-why">{why}</p>}
     <p className="bs-top-f"><time dateTime={s.happened ?? undefined} title={s.happened ? fmtDate(s.happened) : undefined}>{ago(s.happened)}</time>
-      {s.tender?.deadline && <span>{tr("Deadline {}", fmtDate(s.tender.deadline))}</span>}
+      {s.tender?.deadline && <span>{closesIn(s.tender.deadline)}</span>}
       <Link to={`/accounts/${top.organization.id}?event=${s.event_id}`}>{tr("Open company")} →</Link>
       {canPeople && <Link to={`/people?q=${encodeURIComponent(top.organization.name)}`}>{tr("People")}</Link>}</p>
   </div>;
@@ -575,7 +651,8 @@ function TableRow({ c, kinds, cols, showFit, canPeople, canCampaign, focus, onKe
   const top = c.signals[0];
   const fresh = c.age_days != null && c.age_days <= FRESH_DAYS;
   const level = tr(LEVEL[c.strength] ?? "Good");
-  const reason = REASON[c.strength_reason] ? tr(REASON[c.strength_reason]) : "";
+  const reason = reasonOf(c.strength_reason);
+  const d = describe(top, org);
   const toggle = (e: React.MouseEvent) => { if (!(e.target as HTMLElement).closest("a,button")) setOpen((o) => !o); };
   return <tbody className={`bs-tb${open ? " is-open" : ""} is-s${c.strength}`}>
     <tr className="bs-tr" onClick={toggle}>
@@ -587,7 +664,7 @@ function TableRow({ c, kinds, cols, showFit, canPeople, canCampaign, focus, onKe
       <td className="c-sig">
         <span className="bs-sig-type"><Swatch ruleId={top.rule_id} /><b>{signalName(top.rule_id, kinds.get(top.rule_id)?.name)}</b>
           {c.signals.length > 1 && <span className="bs-plus" title={c.signals.slice(1).map((s) => signalName(s.rule_id, kinds.get(s.rule_id)?.name)).join(", ")}>{tr("+{} more", c.signals.length - 1)}</span>}</span>
-        <span className="bs-sig-line" title={said(top, org.name)}>{said(top, org.name)}</span>
+        <span className="bs-sig-line" title={d.what}>{d.what}{top.tender?.deadline && <span className="bs-sig-closes"> · {closesIn(top.tender.deadline)}</span>}</span>
       </td>
       <td className="c-str" data-label={tr("Strength")}><span className="bs-str" title={reason || undefined}><Bars n={c.strength} /><b>{level}</b><span className="bs-vh">{reason ? `. ${reason}` : ""}</span></span></td>
       <td className="c-when" data-label={tr("When")}><time className={fresh ? "is-fresh" : ""} dateTime={c.latest ?? undefined} title={c.latest ? fmtDate(c.latest) : undefined}>
@@ -605,100 +682,161 @@ function TableRow({ c, kinds, cols, showFit, canPeople, canCampaign, focus, onKe
   </tbody>;
 }
 
-/** Everything about one company's signals: what happened, why it matters, the evidence, who to contact and what to do next. */
+/* ------------------------------------------------------------------------------------------------ the pieces of a card and of an opened row */
+
+/** A tender's own facts: when it closes and what it is worth. Only what the notice states. */
+function TenderFacts({ t }: { t: Tender }) {
+  const value = worth(t);
+  if (!t.deadline && !value) return null;
+  const soon = t.deadline ? daysUntil(t.deadline) <= 14 : false;
+  return <p className="bs-facts">
+    {t.deadline && <span className={`bs-fact${soon ? " is-soon" : ""}`}><b>{closesIn(t.deadline)}</b><span>{fmtDate(t.deadline)}</span></span>}
+    {value && <span className="bs-fact"><b>{value}</b><span>{tr("contract value")}</span></span>}
+  </p>;
+}
+
+/** The people to talk to, named, with their role and whether we have an email and a LinkedIn page; or one clear next step when nobody is on file. */
+function People({ org, canPeople, limit = 2 }: { org: Org; canPeople: boolean; limit?: number }) {
+  const list = org.contacts;
+  const more = Math.max(0, (org.contacts_total ?? 0) - Math.min(limit, list?.length ?? 0));
+  const company = `/accounts/${org.id}?tab=people`;
+  if (list && list.length > 0) return <div className="bs-ppl">
+    <p className="bs-lab">{tr("Who to talk to")}</p>
+    <ul>{list.slice(0, limit).map((p) => <li key={p.id}>
+      <Link className="bs-pp-who" to={`/people/${p.id}`}><span className="bs-pp-n">{p.name}</span>{p.title && <span className="bs-pp-r">{p.title}</span>}</Link>
+      <span className="bs-pp-c"><span className={p.email ? "on" : ""}>{p.email ? tr("Email ✓") : tr("No email")}</span>{p.linkedin && <span className="on">LinkedIn</span>}</span>
+    </li>)}</ul>
+    {more > 0 && <Link className="bs-pp-more" to={company}>{tr("{} more at this company", number(more))}</Link>}
+  </div>;
+  if (list) return <div className="bs-ppl is-none">
+    <p className="bs-lab">{tr("Who to talk to")}</p>
+    <p className="bs-pp-none"><span>{tr("No contacts yet")}</span><Link to={company}>{tr("Find people with Exa")} →</Link></p>
+  </div>;
+  // an older answer, or someone who may not see names: the counts, as before
+  if (!canPeople || !org.people) return null;
+  return <div className="bs-ppl"><p className="bs-lab">{tr("Who to talk to")}</p>
+    <p className="bs-pp-none"><span>{tr("{}, {} with email", counted(org.people, ["person", "people"], ["osoba", "osoby", "osób"]), number(org.people_with_email))}</span>
+      <Link to={`/people?q=${encodeURIComponent(org.name)}`}>{tr("See the people")} →</Link></p></div>;
+}
+
+/** The source behind one signal, and only what the card does not already say: the quote is left out when it repeats a line that is shown. */
+function Source({ s, org, shown }: { s: Signal; org: Org; shown: (string | null | undefined)[] }) {
+  const language = getLanguage();
+  const href = safeHref(s.tender?.url ?? s.evidence.url);
+  const published = s.evidence.published_at ?? s.happened;
+  const quote = s.evidence.quote && !shown.some((t) => covers(s.evidence.quote, t)) ? s.evidence.quote : null;
+  const translation = language === "en" && quote && s.evidence.translation && !covers(s.evidence.translation, quote) ? s.evidence.translation : null;
+  const where = s.evidence.source || (s.tender ? tr("Official notice") : null);
+  return <div className="bs-evi">
+    <p className="bs-lab">{tr("Source")}</p>
+    {quote && <blockquote>“{quote}”{translation && <span>{tr("English translation")}: “{translation}”</span>}</blockquote>}
+    <p className="bs-evi-src">
+      {href && <a href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>{tr("Open the source")} ↗</a>}
+      <span className="bs-evi-meta">
+        {where && <span>{where}</span>}
+        {published && <span>{tr("published {}", fmtDate(published))}</span>}
+        <span>{s.tender ? tr("Confirmed by the official notice") : tr("Checked against the original page")}</span>
+        {s.more > 0 && <span>{tr("and {} earlier", number(s.more))}</span>}
+      </span>
+    </p>
+  </div>;
+}
+
+/** One signal at a company. With `full` it says what it is, when, what happened and why it matters; without, only the source (the card already says the rest). */
+function SignalBlock({ s, org, kind, full }: { s: Signal; org: Org; kind?: Kind; full: boolean }) {
+  const d = describe(s, org);
+  const fresh = s.age_days != null && s.age_days <= FRESH_DAYS;
+  const why = whyOf(s);
+  const wants = (getLanguage() === "pl" && s.tender?.wants_pl?.length ? s.tender.wants_pl : s.tender?.wants) ?? [];
+  return <li className="bs-sd">
+    {full && <>
+      <p className="bs-sd-k"><Swatch ruleId={s.rule_id} /><b>{signalName(s.rule_id, kind?.name)}</b>
+        <time className={fresh ? "is-fresh" : ""} dateTime={s.happened ?? undefined}>{fresh && <i className="bs-new" aria-hidden="true" />}{ago(s.happened) || tr("Date unknown")}</time></p>
+      <p className="bs-sd-t">{d.what}</p>
+      {d.more && <p className="bs-sd-scope">{d.more}</p>}
+      {s.tender && <TenderFacts t={s.tender} />}
+      {wants.length > 0 && <ul className="bs-wants" aria-label={tr("What the buyer asks for")}>{wants.slice(0, 4).map((w) => <li key={w}>{w}</li>)}</ul>}
+      {why && <p className="bs-sd-why"><b>{tr("Why it matters")}</b> {why}</p>}
+    </>}
+    <Source s={s} org={org} shown={[d.what, d.more, s.summary, s.tender?.title]} />
+  </li>;
+}
+
+/** Everything about one company's signals, in an opened table row: each signal in full, then who to talk to and what to do next. */
 function CompanyDetail({ c, kinds, canPeople, canCampaign, focus }: { c: Company; kinds: Map<string, Kind>; canPeople: boolean; canCampaign: boolean; focus: string }) {
   const org = c.organization;
   const top = c.signals[0];
   const kind = kinds.get(top.rule_id);
-  const reason = REASON[c.strength_reason] ? tr(REASON[c.strength_reason]) : "";
+  const reason = reasonOf(c.strength_reason);
   const rules = focus && /^[A-Z]{3}-\d{2}$/.test(focus) ? focus : top.rule_id;
   return <div className="bs-dt">
-    <ol className="bs-dt-sigs">{c.signals.map((s) => <SignalDetail key={s.id} s={s} org={org} kind={kinds.get(s.rule_id)} />)}</ol>
+    <ol className="bs-dt-sigs">{c.signals.map((s) => <SignalBlock key={s.id} s={s} org={org} kind={kinds.get(s.rule_id)} full />)}</ol>
     <aside className="bs-dt-side">
       <dl>
         <div><dt>{tr("Strength")}</dt><dd><Bars n={c.strength} /> {tr(LEVEL[c.strength] ?? "Good")}{reason && <span className="muted"> · {reason}</span>}</dd></div>
-        {org.best_fit && <div><dt>{tr("Best fit")}</dt><dd><b>{tr(org.best_fit.name)}</b>{org.best_fit.reason && <span className="bs-dt-why">{org.best_fit.reason}</span>}</dd></div>}
-        <div><dt>{tr("People")}</dt><dd>{org.people ? tr("{}, {} with email", counted(org.people, ["person", "people"], ["osoba", "osoby", "osób"]), number(org.people_with_email)) : tr("No contacts yet")}
-          {canPeople && org.people > 0 && <> · <Link to={`/people?q=${encodeURIComponent(org.name)}`}>{tr("See the people")}</Link></>}</dd></div>
-        {kind?.who_to_contact && <div><dt>{tr("Who to contact")}</dt><dd>{tr(kind.who_to_contact)}</dd></div>}
+        {org.best_fit && <div><dt>{tr("Best fit")}</dt><dd><b>{tr(org.best_fit.name)}</b></dd></div>}
+        {kind?.who_to_contact && !org.contacts?.length && <div><dt>{tr("Who to contact")}</dt><dd>{tr(kind.who_to_contact)}</dd></div>}
         {(org.list_priority || org.list_score != null) && <div><dt>{tr("Lead list")}</dt><dd><ListRank priority={org.list_priority} score={org.list_score} /></dd></div>}
         {org.segment && <div><dt>{tr("Sector")}</dt><dd>{org.segment}</dd></div>}
       </dl>
+      <People org={org} canPeople={canPeople} limit={3} />
       <p className="bs-dt-act">
-        <Link className="btn" to={`/accounts/${org.id}?event=${top.event_id}`}>{tr("Open company")}</Link>
+        <Link className="bs-btn is-main" to={`/accounts/${org.id}?event=${top.event_id}`}>{tr("Open company")}</Link>
         {canCampaign && org.people_with_email > 0 && <Link className="bs-dt-link" to={`/campaigns/new?rules=${rules}`}>{tr("Start a campaign with this signal")} →</Link>}
       </p>
     </aside>
   </div>;
 }
 
-/** One signal at a company: what kind, when, what happened, why it matters, and the evidence with its source. */
-function SignalDetail({ s, org, kind }: { s: Signal; org: Org; kind?: Kind }) {
-  const language = getLanguage();
-  const href = safeHref(s.tender?.url ?? s.evidence.url);
-  const published = s.evidence.published_at ?? s.happened;
-  const fresh = s.age_days != null && s.age_days <= FRESH_DAYS;
-  const why = s.fit?.reason && s.fit.level !== "none" ? s.fit.reason : kind?.meaning ? tr(kind.meaning) : null;
-  return <li className="bs-sd">
-    <p className="bs-sd-k"><Swatch ruleId={s.rule_id} /><b>{signalName(s.rule_id, kind?.name)}</b>
-      <time className={fresh ? "is-fresh" : ""} dateTime={s.happened ?? undefined}>{fresh && <i className="bs-new" aria-hidden="true" />}{ago(s.happened) || tr("Date unknown")}{s.happened && <span className="bs-sd-date">· {fmtDate(s.happened)}</span>}</time>
-      {s.more > 0 && <span className="bs-sd-more">{tr("and {} earlier", number(s.more))}</span>}</p>
-    <p className="bs-sd-t">{said(s, org.name)}</p>
-    {s.tender?.deadline && <p className="bs-sd-dl">{tr("Tender deadline")} <b>{fmtDateTime(s.tender.deadline)}</b></p>}
-    {why && <p className="bs-sd-why"><b>{tr("Why it matters")}</b> {why}</p>}
-    {s.tender?.scope && <p className="bs-sd-scope">{s.tender.scope}</p>}
-    <div className="bs-evi">
-      {s.evidence.quote ? <blockquote>“{s.evidence.quote}”
-        {language === "en" && s.evidence.translation && <span>{tr("English translation")}: “{s.evidence.translation}”</span>}</blockquote>
-        : <p className="muted">{tr("A structured record, with no quote to show.")}</p>}
-      <p className="bs-evi-src">
-        {href && <a href={href} target="_blank" rel="noreferrer noopener" onClick={() => trackSourceOpened({ organization_id: org.id, where: "evidence" })}>{tr("Open the source")} ↗</a>}
-        <span className="bs-evi-meta">{s.evidence.source && <span>{s.evidence.source}</span>}{published && <span>{tr("published {}", fmtDate(published))}</span>}</span>
-      </p>
-    </div>
-  </li>;
-}
-
 /* ------------------------------------------------------------------------------------------------ cards and summary */
 
-function CompanyCard({ c, kinds, canPeople, canCampaign }: { c: Company; kinds: Map<string, Kind>; canPeople: boolean; canCampaign: boolean }) {
+/** One company as a card: who it is, what happened, why it matters to us, who to talk to, and one action. The evidence opens underneath and adds only the source. */
+function SignalCard({ c, kinds, canPeople, canCampaign }: { c: Company; kinds: Map<string, Kind>; canPeople: boolean; canCampaign: boolean }) {
   const [open, setOpen] = useState(false);
   const panel = useId();
   const org = c.organization;
   const top = c.signals[0];
+  const others = c.signals.slice(1);
   const kind = kinds.get(top.rule_id);
   const fresh = c.age_days != null && c.age_days <= FRESH_DAYS;
-  const level = tr(LEVEL[c.strength] ?? "Good");
-  const why = top.fit?.reason && top.fit.level !== "none" ? top.fit.reason : kind?.meaning ? tr(kind.meaning) : null;
-  const facts = [countryName(org.country), REGION_SHORT[org.region] && org.region !== "poland" && org.region !== "uk" ? tr(REGION_SHORT[org.region]) : null, org.segment].filter(Boolean);
+  const d = describe(top, org);
+  const why = whyOf(top);
+  const reason = reasonOf(c.strength_reason);
+  const place = [countryName(org.country), org.segment].filter(Boolean).join(" · ");
+  const link = `/accounts/${org.id}?event=${top.event_id}`;
+  const fit = org.best_fit ? <p className="bs-card-fit"><span>{tr("Best fit")}</span><b title={org.best_fit.reason ?? undefined}>{tr(org.best_fit.name)}</b></p> : null;
   return <li className={`bs-card is-s${c.strength}`}>
-    <header className="bs-card-h">
+    <Link className="bs-card-h" to={link} aria-label={tr("Open company {}", org.name)}>
       <CompanyAvatar name={org.name} />
-      <div className="bs-card-co">
-        <Link className="bs-co-name" to={`/accounts/${org.id}?event=${top.event_id}`}>{org.name}</Link>
-        <span className="bs-co-sub">{facts.join(" · ")}
+      <span className="bs-card-co">
+        <span className="bs-co-name">{org.name}</span>
+        <span className="bs-co-sub">{place}
           {org.list_priority && /^P[123]$/.test(org.list_priority) && <span className={`acc-p acc-${org.list_priority.toLowerCase()}`} title={tr("Lead list priority {}", org.list_priority)}>{org.list_priority}</span>}</span>
-      </div>
-      <span className="bs-str bs-card-str" title={REASON[c.strength_reason] ? tr(REASON[c.strength_reason]) : undefined}><Bars n={c.strength} /><b>{level}</b></span>
-    </header>
+      </span>
+    </Link>
+    <p className="bs-card-s"><span className="bs-str"><Bars n={c.strength} /><b>{tr(LEVEL[c.strength] ?? "Good")}</b></span>{reason && <span className="bs-card-sw">{reason}</span>}</p>
     <div className="bs-card-b">
       <p className="bs-card-k"><Swatch ruleId={top.rule_id} /><b>{signalName(top.rule_id, kind?.name)}</b>
         <time className={fresh ? "is-fresh" : ""} dateTime={top.happened ?? undefined} title={top.happened ? fmtDate(top.happened) : undefined}>{fresh && <i className="bs-new" aria-hidden="true" />}{ago(top.happened) || tr("Date unknown")}</time></p>
-      <p className="bs-card-t">{said(top, org.name)}</p>
-      {top.tender?.deadline && <p className="bs-sd-dl">{tr("Tender deadline")} <b>{fmtDateTime(top.tender.deadline)}</b></p>}
-      {why && <p className="bs-card-why">{why}</p>}
-      {c.signals.length > 1 && <p className="bs-card-also">{tr("Also")}: {c.signals.slice(1).map((s) => signalName(s.rule_id, kinds.get(s.rule_id)?.name)).join(", ")}</p>}
+      <p className="bs-card-t">{d.what}</p>
+      {d.more && <p className="bs-card-m">{d.more}</p>}
+      {top.tender && <TenderFacts t={top.tender} />}
+      {why ? <div className="bs-card-why"><p><b>{tr("Why it matters")}</b> {why}</p>{fit}</div> : fit}
+      {others.length > 0 && <p className="bs-card-also"><span>{tr("Also")}</span> {others.map((s) => signalName(s.rule_id, kinds.get(s.rule_id)?.name)).join(" · ")}</p>}
     </div>
-    <dl className="bs-card-facts">
-      <div><dt className="bs-vh">{tr("Email")}</dt><dd><Reach org={org} canPeople={canPeople} /></dd></div>
-      {org.best_fit && <div><dt>{tr("Best fit")}</dt><dd title={org.best_fit.reason ?? undefined}>{tr(org.best_fit.name)}</dd></div>}
-    </dl>
+    <People org={org} canPeople={canPeople} />
     <footer className="bs-card-f">
-      <Link to={`/accounts/${org.id}?event=${top.event_id}`}>{tr("Open company")} →</Link>
-      {canCampaign && org.people_with_email > 0 && <Link to={`/campaigns/new?rules=${top.rule_id}`}>{tr("Campaign")}</Link>}
-      <button type="button" className="bs-card-ev" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>{tr("Evidence")}<Chevron className="bs-chev-t" /></button>
+      <Link className="bs-btn is-main" to={link}>{tr("Open company")}</Link>
+      <button type="button" className="bs-btn" aria-expanded={open} aria-controls={panel} onClick={() => setOpen(!open)}>{tr("Evidence")}<Chevron className="bs-chev-t" /></button>
     </footer>
-    <div className="bs-card-x" id={panel} hidden={!open}>{open && <ol className="bs-dt-sigs">{c.signals.map((s) => <SignalDetail key={s.id} s={s} org={org} kind={kinds.get(s.rule_id)} />)}</ol>}</div>
+    <div className="bs-card-x" id={panel} hidden={!open}>{open && <>
+      <ol className="bs-dt-sigs">
+        <SignalBlock s={top} org={org} kind={kind} full={false} />
+        {others.length > 0 && <li className="bs-also-h"><p className="bs-lab">{tr("Also at this company")}</p></li>}
+        {others.map((s) => <SignalBlock key={s.id} s={s} org={org} kind={kinds.get(s.rule_id)} full />)}
+      </ol>
+      {canCampaign && org.people_with_email > 0 && <p className="bs-card-camp"><Link to={`/campaigns/new?rules=${top.rule_id}`}>{tr("Start a campaign with this signal")} →</Link></p>}
+    </>}</div>
   </li>;
 }
 
@@ -721,7 +859,7 @@ function SummaryView({ companies, kinds, family }: { companies: Company[]; kinds
         const fresh = s.age_days != null && s.age_days <= FRESH_DAYS;
         return <li key={c.organization.id}>
           <Link className="bs-sum-co" to={`/accounts/${c.organization.id}?event=${s.event_id}`}>{c.organization.name}</Link>
-          <span className="bs-sum-t" title={said(s, c.organization.name)}><b>{signalName(s.rule_id, kinds.get(s.rule_id)?.name)}</b> · {said(s, c.organization.name)}</span>
+          <span className="bs-sum-t" title={describe(s, c.organization).what}><b>{signalName(s.rule_id, kinds.get(s.rule_id)?.name)}</b> · {describe(s, c.organization).what}</span>
           <time className={fresh ? "is-fresh" : ""} dateTime={s.happened ?? undefined}>{fresh && <i className="bs-new" aria-hidden="true" />}{ago(s.happened)}</time>
           <span className="bs-sum-s" role="img" aria-label={tr("Signal strength: {}", tr(LEVEL[c.strength] ?? "Good"))}><Bars n={c.strength} /></span>
         </li>;

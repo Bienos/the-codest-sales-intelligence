@@ -225,3 +225,15 @@
   .hw-jump { gap: 6px 16px; }
   .hw-end { padding: 20px 18px; }
 }
+
+/* phone: 16px gutters, one row of jump chips that slides, a full-width main action, 44px links */
+@media (max-width: 640px) {
+  .hw-hero-in { padding-inline: var(--gutter); }
+  .hw-cta { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .hw-cta .btn { width: calc(100% - var(--offset)); min-height: 48px; }
+  .hw-cta a:not(.btn) { display: inline-flex; align-items: center; min-height: 44px; }
+  .hw-jump { flex-wrap: nowrap; gap: 8px; padding: 12px var(--gutter); margin-inline: calc(-1 * var(--gutter)); }
+  .hw-jump a { flex: none; display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; border: 1px solid var(--navy); background: var(--white); text-decoration: none; white-space: nowrap; font-size: var(--fs-md); }
+  .hw-pages a { min-height: 44px; }
+  .hw-end .hw-cta .btn { width: calc(100% - var(--offset)); }
+}

@@ -461,7 +461,7 @@ def _pulse(raw: list[dict[str, Any]], companies: list[dict[str, Any]], now: date
         o = c["organization"]
         return {"window": window, "organization": {"id": o["id"], "name": o["name"], "country": o["country"], "region": o["region"]},
                 "company_strength": c["strength"], "strength_reason": c["strength_reason"],
-                "signal": {k: s[k] for k in ("rule_id", "event_id", "summary", "summary_en", "summary_pl", "happened", "age_days", "strength", "tender")}}
+                "signal": {k: s[k] for k in ("rule_id", "event_id", "summary", "summary_en", "summary_pl", "happened", "age_days", "strength", "tender", "why", "why_pl")}}
 
     return {"days": PULSE_DAYS, "windows": list(PULSE_WINDOWS), "families": families, "weeks": weeks,
             "week": {"news": len({r["event_id"] for r in week}), "companies": len({r["organization_id"] for r in week})},

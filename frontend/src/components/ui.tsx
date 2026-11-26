@@ -1,5 +1,5 @@
 import { counted, number, tr } from "../locale";
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { ReactNode } from "react";
 import { fmtDate, trackSourceOpened } from "../api";
 
@@ -220,6 +220,56 @@ export function Tabs({ items, value, onChange, label, children }: { items: { key
   );
 }
 export const reloadPage = () => window.location.reload();
+
+/** Anything that scrolls sideways on a phone (tab strips, chip rows, wide tables) fades at the edge that has more behind it, and the current
+ *  item is brought into view. Installed once for the whole app: it watches for new strips as pages change. The fade is plain CSS on [data-fade]. */
+const STRIPS = ".tabs, .scroll-x, .chips-scroll, .table-wrap, .adm-tabs, table";
+const CURRENT = '[aria-selected="true"], [aria-current="page"], a.active, .navlink.active, [aria-pressed="true"], .is-current';
+export function useScrollHints() {
+  useEffect(() => {
+    const seen = new WeakSet<Element>();
+    const hint = (el: HTMLElement) => {
+      const room = el.scrollWidth - el.clientWidth;
+      const left = el.scrollLeft > 2, right = room - el.scrollLeft > 2;
+      const v = room > 2 && (left || right) ? (left && right ? "lr" : left ? "l" : "r") : "";
+      if ((el.dataset.fade ?? "") !== v) { if (v) el.dataset.fade = v; else delete el.dataset.fade; }
+    };
+    const centre = (strip: HTMLElement, item: HTMLElement) => {
+      if (strip.scrollWidth <= strip.clientWidth + 2) return;
+      const a = strip.getBoundingClientRect(), b = item.getBoundingClientRect();
+      strip.scrollTo({ left: strip.scrollLeft + (b.left - a.left) - (a.width - b.width) / 2 });
+    };
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver((entries) => entries.forEach((e) => hint(e.target as HTMLElement)));
+    const attach = (el: HTMLElement) => {
+      if (seen.has(el)) return;
+      seen.add(el);
+      el.addEventListener("scroll", () => hint(el), { passive: true });
+      ro?.observe(el);
+      if (/\btabs\b|\bscroll-x\b|\badm-tabs\b/.test(el.className)) { const item = el.querySelector<HTMLElement>(CURRENT); if (item) centre(el, item); }
+      hint(el);
+    };
+    let frame = 0;
+    const scan = () => {
+      frame = 0;
+      document.querySelectorAll<HTMLElement>(STRIPS).forEach((el) => { if (el.tagName !== "TABLE" || getComputedStyle(el).overflowX === "auto") attach(el); hint(el); });
+    };
+    const soon = () => { if (!frame) frame = window.requestAnimationFrame(scan); };
+    const watch = new MutationObserver((list) => {
+      for (const m of list) {
+        if (m.type === "attributes") {
+          const t = m.target as HTMLElement;
+          const strip = t.closest<HTMLElement>(".tabs, .scroll-x, .adm-tabs");
+          if (strip && t !== strip && t.matches(CURRENT)) centre(strip, t);
+        }
+      }
+      soon();
+    });
+    watch.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-selected", "aria-pressed", "aria-current", "class"] });
+    window.addEventListener("resize", soon);
+    soon();
+    return () => { watch.disconnect(); ro?.disconnect(); window.removeEventListener("resize", soon); if (frame) window.cancelAnimationFrame(frame); };
+  }, []);
+}
 export const Empty = ({ title, children }: { title: string; children?: ReactNode }) => <div className="empty"><b>{tr(title)}</b>{typeof children === "string" ? tr(children) : children}</div>;
 
 /** Brand mark: the official logo file when it has been supplied, otherwise the plain text mark. Never redrawn here.
