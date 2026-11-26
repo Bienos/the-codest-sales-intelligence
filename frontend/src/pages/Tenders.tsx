@@ -394,7 +394,7 @@ function TenderRow({ t, language, open, onToggle }: { t: Tender; language: strin
     </div>
     <div className="tn-li-value" data-k={tr("Value")}><Value t={t} language={language} compact /></div>
     <div className="tn-li-due" data-k={tr("Closes")}><DueBar t={t} /><small className="tn-duedate">{fmtDate(t.deadline)}</small></div>
-    <div className="tn-li-fit" data-k={tr("Fit for us")}>
+    <div className="tn-li-fit" data-k={tr("Fit")}>
       <span className="tn-k"><FitMeter level={s?.fit} /> {s?.fit ? tr(FIT_LABEL[s.fit]) : tr("Not judged yet")}</span>
       {service && <small>{tr("Best fit: {}", tr(service))}</small>}
     </div>

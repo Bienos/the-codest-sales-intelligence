@@ -372,6 +372,7 @@ a.tn-official:focus-visible, .tn-li-what > button:focus-visible, .tn-col-sort:fo
   .tn-li-acts > * { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 10px; text-align: center; font: 800 var(--fs-sm)/1.15 var(--font-head); letter-spacing: .05em; text-transform: uppercase; white-space: normal; }
   .tn-li-acts a.tn-official { background: var(--pink-solid); border: 2px solid var(--pink-solid); color: var(--white); text-decoration: none; }
   .tn-li-acts a.tn-official:hover { background: var(--pink-solid-hover); border-color: var(--pink-solid-hover); color: var(--white); }
+  .tn-li-acts a.tn-official { white-space: normal; overflow-wrap: anywhere; }
   .tn-li-acts a.tn-official span { margin-left: 4px; }
   .tn-li-acts > * { font-size: var(--fs-xs); letter-spacing: .04em; }
   .tn-li-more { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); margin-top: var(--space-4); }
@@ -383,6 +384,10 @@ a.tn-official:focus-visible, .tn-li-what > button:focus-visible, .tn-col-sort:fo
   .tn-pages { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; text-align: center; margin-top: var(--space-4); }
   .tn-pages button { min-height: 48px; }
   .tn-empty-acts button { min-height: 44px; }
+}
+@media (max-width: 380px) {
+  .tn-li { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "what what" "buyer buyer" "due value" "fit fit" "why why" "acts acts" "more more"; }
+  .tn-li-fit { margin-top: 12px; }
 }
 @media (max-width: 420px) {
   .tn-search input::placeholder { font-size: var(--fs-sm); }

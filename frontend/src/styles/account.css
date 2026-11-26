@@ -670,6 +670,7 @@ a.ac-cite:hover { border-color: var(--purple); color: var(--navy); background: v
   .ac-rows li { grid-template-columns: minmax(0, 1fr); }
   .ac-rows-side { justify-content: flex-start; }
   .ac-fold summary { min-height: 40px; }
+  .fp-known summary { display: flex; align-items: center; min-height: 40px; margin: 0; }
   .ac-research summary { display: flex; align-items: center; min-height: 40px; margin: 0; }
   .ac-pages { padding-left: 0; list-style: none; }
   .ac-pages li { padding: 2px 0; }
