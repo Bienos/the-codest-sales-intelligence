@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, post } from "../api";
 import { counted, getLanguage, number, tr, useLanguage } from "../locale";
-import { Err, Skeleton, safeHref } from "../components/ui";
+import { Err, Skeleton, safeHref, useLogo } from "../components/ui";
 import { countryName } from "./targetMarket";
 import "../styles/today.css";
 
@@ -10,7 +10,7 @@ import "../styles/today.css";
  *  happened, who to write to, the opening line and one next step. Above it, tender deadlines for the next two weeks and what is new. */
 
 type Org = { id: string; name: string; country: string | null; region: string; priority: string | null; relationship: string | null;
-  people: number | null; people_with_email: number | null };
+  people: number | null; people_with_email: number | null; logo_url?: string | null };
 type Kind = "reply" | "tender" | "signal" | "follow_up";
 type Person = { id: string; name: string; title: string | null };
 type Contact = Person & { photo_url: string | null; has_email: boolean; matches: boolean; committee: string | null };
@@ -29,7 +29,7 @@ type NewItem = {
   deadline?: string | null; person?: Person | null; campaign?: { id: string; name: string; people: number } | null; in_list?: Slot | null;
 };
 type Deadline = { key: string; name: string | null; organization_id: string | null; date: string; days_left: number; title: string | null;
-  url: string | null; in_list: Slot | null };
+  url: string | null; in_list: Slot | null; logo_url?: string | null };
 type Brief = {
   generated_at: string; name: string | null; since: string; last_visit: string | null; actions: Action[]; done_today: Done[]; queue: Action[];
   more_actions: number; hidden: number; new: NewItem[]; new_total: number;
@@ -152,8 +152,10 @@ function rowWho(a: Action): string {
 function Chip({ w, children }: { w: Why; children: React.ReactNode }) {
   return <span className={`td-chip td-w-${w}`}>{ICON[w]}<span>{children}</span></span>;
 }
-function Mono({ name, size = "md" }: { name: string; size?: "xs" | "sm" | "md" | "lg" }) {
-  return <span className={`td-mono td-mono-${size}`} style={{ background: hueOf(name) }} aria-hidden="true">{initials(name)}</span>;
+/** A company's mark: its logo on a white tile when the API sends one (`logo`), otherwise its initials. A logo that does not load drops back to the initials. */
+function Mono({ name, size = "md", logo }: { name: string; size?: "xs" | "sm" | "md" | "lg"; logo?: string | null }) {
+  const pic = useLogo(logo);
+  return <span className={`td-mono td-mono-${size}${pic.ok ? " has-logo" : ""}`} style={pic.ok ? undefined : { background: hueOf(name) }} aria-hidden="true">{!pic.ok && initials(name)}{pic.img}</span>;
 }
 /** A person's mark: the LinkedIn photo when research found one (initials again if it no longer loads), else initials. */
 function Face({ name, photo, committee }: { name: string; photo?: string | null; committee?: string | null }) {
@@ -295,7 +297,7 @@ function Week({ d, sinceLabel, openKind, phone, onKind, onPick }: { d: Brief; si
             {marks.length > 0 && <span className="td-pins" aria-hidden={phone || undefined}>
               {phone
                 ? <>{marks.slice(0, 2).map((m) => <span key={m.key} className="td-pin"><Mono name={m.name ?? "?"} size="xs" /></span>)}{marks.length > 2 && <span className="td-pin td-pin-more">+{marks.length - 2}</span>}</>
-                : <>{marks.slice(0, 3).map((m) => <Target key={m.key} m={m} className="td-pin" label={labelOf(m)} onPick={onPick}><Mono name={m.name ?? "?"} size="xs" /></Target>)}
+                : <>{marks.slice(0, 3).map((m) => <Target key={m.key} m={m} className="td-pin" label={labelOf(m)} onPick={onPick}><Mono name={m.name ?? "?"} size="xs" logo={m.logo_url} /></Target>)}
                   {marks.length > 3 && <Link className="td-pin td-pin-more" to="/tenders" aria-label={tr("{} more tenders", marks.length - 3)}>+{marks.length - 3}</Link>}</>}
             </span>}
           </li>;
@@ -304,7 +306,7 @@ function Week({ d, sinceLabel, openKind, phone, onKind, onPick }: { d: Brief; si
       {phone && d.week.deadlines.length > 0 && <ul className="td-dl">
         {d.week.deadlines.slice(0, DEADLINES_SHOWN).map((m) => <li key={m.key}>
           <Target m={m} className="td-dl-row" label={labelOf(m)} onPick={onPick}>
-            <Mono name={m.name ?? "?"} size="sm" />
+            <Mono name={m.name ?? "?"} size="sm" logo={m.logo_url} />
             <span className="td-dl-t"><b>{m.name ?? tr("Unknown buyer")}</b>{m.title && <span>{m.title}</span>}</span>
             <span className="td-dl-d"><b>{day(m.date, { weekday: "short", day: "numeric", month: "short" })}</b><small>{inDays(m.days_left)}</small></span>
           </Target>
@@ -382,7 +384,7 @@ function Row({ a, rank, selected, onSelect }: { a: Action; rank: number; selecte
     <button type="button" id={`td-row-${a.key}`} className={`td-row td-w-${w}${selected ? " is-sel" : ""}`} aria-current={selected ? "true" : undefined}
       onClick={onSelect}>
       <span className="td-rank" aria-hidden="true">{rank}</span>
-      <Mono name={nameOf(a)} size="sm" />
+      <Mono name={nameOf(a)} size="sm" logo={a.organization?.logo_url} />
       <span className="td-row-main">
         <span className="td-row-name">{nameOf(a)}</span>
         <span className="td-row-why">
@@ -462,7 +464,7 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
           {!onBack && <span className="td-b-rank">{slot === "today" ? tr("{} of {} today", rank, total) : tr("Up next, number {}", rank)}</span>}
         </div>
         <div className="td-b-id">
-          <Mono name={name} size="lg" />
+          <Mono name={name} size="lg" logo={org?.logo_url} />
           <div>
             <h2 id="td-brief-h">{org ? <Link to={`/accounts/${org.id}`}>{name}</Link> : name}</h2>
             {facts.length > 0 && <p className="td-b-facts">{facts.map((f) => <span key={f}>{f}</span>)}</p>}
@@ -547,7 +549,7 @@ function NothingUrgent({ d }: { d: Brief }) {
       : tr("No tender closes soon, nobody is waiting for an answer and no strong new signal came in.")}</p>
     {d.next_up.length > 0 && <ol className="td-nextup">
       {d.next_up.map((x) => <li key={x.organization.id}>
-        <Mono name={x.organization.name} size="sm" />
+        <Mono name={x.organization.name} size="sm" logo={x.organization.logo_url} />
         <div>
           <Link to={`/accounts/${x.organization.id}`}><b>{x.organization.name}</b></Link>
           <span className="td-person-t">{countryName(x.organization.country)}</span>

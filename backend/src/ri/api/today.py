@@ -157,7 +157,7 @@ def deadline_in(text: str, today: date) -> date | None:
 def _org(o: dict[str, Any] | None, contacts: bool) -> dict[str, Any] | None:
     if not o:
         return None
-    return {"id": o["id"], "name": o["name"], "country": o["country"], "region": target_region(o["country"]),
+    return {"id": o["id"], "name": o["name"], "country": o["country"], "region": target_region(o["country"]), "logo_url": o.get("logo_url"),
             "priority": o["list_priority"] if o["list_priority"] in _PRIORITY else None, "relationship": o["relationship"],
             "people": int(o["people"]) if contacts else None, "people_with_email": int(o["people_with_email"]) if contacts else None}
 
@@ -168,7 +168,7 @@ def _targets(conn: Conn, p: Principal) -> dict[str, dict[str, Any]]:
     """Target companies the person may see, with how many people we know there and how many we could email."""
     where, args = org_scope_sql(p, "o.id")
     rows = qa(conn, f"""
-        SELECT o.id::text AS id, o.display_name AS name, o.country_code AS country, o.list_priority, o.list_score, o.relationship,
+        SELECT o.id::text AS id, o.display_name AS name, o.country_code AS country, o.logo_url, o.list_priority, o.list_score, o.relationship,
                coalesce(pc.people, 0) AS people, coalesce(pc.with_email, 0) AS people_with_email
         FROM organizations o
         LEFT JOIN (SELECT em.organization_id, count(DISTINCT em.person_id) AS people,
@@ -357,7 +357,7 @@ def _done_today(conn: Conn, p: Principal, now: datetime) -> list[dict[str, Any]]
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     rows = qa(conn, """
         SELECT DISTINCT ON (pe.detail->>'key') pe.detail->>'key' AS key, pe.detail->>'outcome' AS outcome, pe.detail->>'label' AS label,
-               pe.detail->>'kind' AS kind, pe.detail->>'slot' AS slot, pe.organization_id::text AS oid, o.display_name AS org_name, pe.at
+               pe.detail->>'kind' AS kind, pe.detail->>'slot' AS slot, pe.organization_id::text AS oid, o.display_name AS org_name, o.logo_url, pe.at
         FROM product_events pe LEFT JOIN organizations o ON o.id=pe.organization_id
         WHERE pe.user_id=%s AND pe.event='today_item' AND pe.at >= %s AND pe.detail->>'outcome' <> 'opened'
         ORDER BY pe.detail->>'key', pe.at DESC""", (p.user_id, start))
@@ -367,7 +367,7 @@ def _done_today(conn: Conn, p: Principal, now: datetime) -> list[dict[str, Any]]
             continue
         kind = r["kind"] if r["kind"] in KINDS else {"reply": "reply", "tender": "tender", "follow": "follow_up"}.get(r["key"].split(":")[0], "signal")
         out.append({"key": r["key"], "outcome": r["outcome"], "kind": kind, "slot": "next" if r["slot"] == "next" else "today",
-                    "organization_id": r["oid"], "label": r["org_name"] or _clean(r["label"]) or None, "at": r["at"]})
+                    "organization_id": r["oid"], "logo_url": r["logo_url"], "label": r["org_name"] or _clean(r["label"]) or None, "at": r["at"]})
     return out
 
 
@@ -446,7 +446,7 @@ def brief(conn: Conn, p: Principal, *, now: datetime | None = None) -> dict[str,
     # 1. replies: the person is waiting for an answer
     if contacts:
         for r in _replies(conn, p, now - timedelta(days=max(REPLY_DAYS, (now - since).days + 1))):
-            o = targets.get(r["oid"]) or (q1(conn, "SELECT id::text AS id, display_name AS name, country_code AS country, list_priority, list_score, "
+            o = targets.get(r["oid"]) or (q1(conn, "SELECT id::text AS id, display_name AS name, country_code AS country, logo_url, list_priority, list_score, "
                                                    "relationship, 0 AS people, 0 AS people_with_email FROM organizations WHERE id=%s", (r["oid"],)) if r["oid"] else None)
             key = f"reply:{r['person_id']}:{r['at']:%Y%m%d}"
             item = {"key": key, "kind": "reply", "organization": _org(o, contacts), "title": r["campaign_name"], "text": None,
@@ -598,7 +598,7 @@ def brief(conn: Conn, p: Principal, *, now: datetime | None = None) -> dict[str,
         d = c["deadline"].date() if isinstance(c["deadline"], datetime) else c["deadline"]
         if not isinstance(d, date):
             continue
-        deadlines.append({"key": c["key"], "name": org.get("name") or c.get("buyer"), "organization_id": org.get("id"),
+        deadlines.append({"key": c["key"], "name": org.get("name") or c.get("buyer"), "organization_id": org.get("id"), "logo_url": org.get("logo_url"),
                           "date": d, "days_left": c["days_left"], "title": c.get("title"),
                           "url": (c.get("source") or {}).get("url"), "in_list": where.get(c["key"])})
     week = {"start": today, "days": WEEK_DAYS, "deadlines": deadlines, "new": counts}

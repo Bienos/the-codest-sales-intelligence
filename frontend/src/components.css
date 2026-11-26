@@ -265,3 +265,5 @@ table.audience td { white-space: normal; overflow-wrap: anywhere; }
    Each tile sets --logo-pad for its size and draws its own white background and line when its `has-logo` class is on. */
 .logo-img { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; box-sizing: border-box; padding: var(--logo-pad, 4px); object-fit: contain; object-position: center; display: block; background: transparent; }
 .logo-img.is-pending { opacity: 0; }
+.hit-co { display: flex; align-items: center; gap: 12px; }           /* a company hit in the search results: the mark leads the line */
+.hit-co-t { min-width: 0; }

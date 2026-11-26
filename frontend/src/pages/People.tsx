@@ -4,7 +4,7 @@ import { api, fmtDate, post } from "../api";
 import { number, tr } from "../locale";
 import { Badge, Empty, Err, PageHeader, Skeleton, safeHref } from "../components/ui";
 import { SHORT, signalName } from "../components/Signals";
-import { Avatar, COMMITTEE, EmailMark, Ic } from "./AccountDetail";
+import { Avatar, COMMITTEE, EmailMark, Ic, Monogram } from "./AccountDetail";
 import { REGIONS, countryName } from "./targetMarket";
 import "../styles/people.css";
 
@@ -15,7 +15,7 @@ type Fit = { service: string | null; name: string; level: string | null; why: st
 type Person = {
   id: string; name: string; photo_url?: string | null; title: string | null; email: "verified" | "unverified" | "none"; suppressed: boolean; suppression_reason: string | null;
   committee?: string | null; seniority?: string | null; linkedin_url?: string | null; fit?: Fit | null; has_linkedin?: boolean;
-  company: { id: string; name: string; country: string | null; region: string; segment: string | null; band: string; score: number | null; stopped: boolean };
+  company: { id: string; name: string; country: string | null; region: string; segment: string | null; band: string; score: number | null; stopped: boolean; logo_url?: string | null };
   owner: { crm_owner_id: number | null; open_deals: number; mine: boolean };
   sources: string[]; engagement: string | null; engagement_label: string; last_activity_at: string | null; campaigns: number;
   signal: { rule_id: string; name: string; summary: string; date: string | null; tier: string; source_url: string | null } | null;
@@ -87,7 +87,7 @@ function Card({ p }: { p: Person }) {
       </div>
     </div>
     <div className="plc-c">
-      <Link className="plc-co" to={`/accounts/${p.company.id}`}>{p.company.name}</Link>
+      <Link className="plc-co" to={`/accounts/${p.company.id}`}><Monogram name={p.company.name} size="xs" logo={p.company.logo_url} />{p.company.name}</Link>
       {place && <span className="plc-place">{place}</span>}
     </div>
     <div className="plc-w">

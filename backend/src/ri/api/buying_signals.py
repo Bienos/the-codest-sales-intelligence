@@ -274,7 +274,7 @@ def _companies(conn: Conn, p: Principal, ids: list[str]) -> dict[str, dict[str, 
     where, args = org_scope_sql(p, "o.id")
     rows = qa(conn, f"""
         SELECT o.id::text AS id, o.display_name AS name, o.country_code AS country, o.segment, o.employees_estimate AS employees,
-               o.employees_uncertain, o.canonical_domain AS domain, o.list_priority, o.list_score,
+               o.employees_uncertain, o.canonical_domain AS domain, o.logo_url, o.list_priority, o.list_score,
                (SELECT count(DISTINCT em.person_id) FROM employment em JOIN people pe ON pe.id=em.person_id AND pe.erased_at IS NULL
                 WHERE em.organization_id=o.id) AS people,
                (SELECT count(DISTINCT em.person_id) FROM employment em JOIN people pe ON pe.id=em.person_id AND pe.erased_at IS NULL
@@ -459,7 +459,7 @@ def _pulse(raw: list[dict[str, Any]], companies: list[dict[str, Any]], now: date
             return None
         c, s = min(pool, key=lambda cs: (-cs[0]["strength"], _rank(cs[1]), -cs[1]["strength"], -_ts(cs[1]["happened"]), cs[0]["organization"]["name"].lower()))
         o = c["organization"]
-        return {"window": window, "organization": {"id": o["id"], "name": o["name"], "country": o["country"], "region": o["region"]},
+        return {"window": window, "organization": {"id": o["id"], "name": o["name"], "country": o["country"], "region": o["region"], "logo_url": o.get("logo_url")},
                 "company_strength": c["strength"], "strength_reason": c["strength_reason"],
                 "signal": {k: s[k] for k in ("rule_id", "event_id", "summary", "summary_en", "summary_pl", "happened", "age_days", "strength", "tender", "why", "why_pl")}}
 

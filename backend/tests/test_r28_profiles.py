@@ -174,16 +174,17 @@ def test_company_research_job_searches_writes_a_cited_profile_and_records_cost(c
     calls, prompts = [], []
     out = profile_jobs.account_profile(conn, {"payload": {"profile_id": rid}}, post_factory=fake_post(_company_pages(), calls), call_factory=fake_model(REPLY, prompts))
     row = q1(conn, "select * from account_profiles where id=%s", (rid,))
-    assert out["status"] == "done" and row["status"] == "done" and row["searches"] == 4 and float(row["exa_cost_usd"]) == pytest.approx(0.048)
-    assert [c.get("category") for c in calls] == [None, "news", None, None] and calls[0]["includeDomains"] == ["kestrel.example"]
+    assert out["status"] == "done" and row["status"] == "done" and row["searches"] == 5 and float(row["exa_cost_usd"]) == pytest.approx(0.06)      # four research searches and the tiny logo search (r45)
+    assert [c.get("category") for c in calls] == [None, "news", None, None, None] and calls[0]["includeDomains"] == ["kestrel.example"]
+    assert calls[4]["includeDomains"] == ["linkedin.com"] and calls[4]["numResults"] == 3
     assert all(c["contents"]["text"]["maxCharacters"] <= 2200 for c in calls) and "startPublishedDate" in calls[1]
     assert [s["id"] for s in row["sources"]] == ["W1", "W2"] and "text" not in row["sources"][0]      # page text is not stored
     assert row["content"]["vendors"][0]["name"] == "Mambu" and row["content"]["partial"] is False
     assert "<page id=\"W1\"" in prompts[0] and "Our records (R)" in prompts[0]
     used = qa(conn, "select cost_usd, cost_basis, operation from provider_usage where provider='exa'")
-    assert len(used) == 4 and all(u["cost_basis"] == "reported" and u["operation"] == "account_profile" for u in used)
+    assert len(used) == 5 and all(u["cost_basis"] == "reported" and u["operation"] == "account_profile" for u in used)
     b = q1(conn, "select spent, reserved from provider_budgets where provider='exa'")
-    assert float(b["spent"]) == pytest.approx(0.048) and float(b["reserved"]) == 0
+    assert float(b["spent"]) == pytest.approx(0.06) and float(b["reserved"]) == 0
 
 
 def test_exa_budget_exhaustion_stops_cleanly(conn, env):

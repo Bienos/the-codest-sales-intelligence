@@ -33,7 +33,7 @@ const Chevron = ({ className = "bs-chev" }: { className?: string }) => <svg clas
 type Fit = { key: string | null; name: string; reason: string | null; level: "strong" | "possible" | "weak" | null; score: number | null };
 /** A person to talk to. The email and LinkedIn are yes or no only: no address reaches the page. */
 type Contact = { id: string; name: string; title: string | null; email: boolean; linkedin: boolean };
-type Org = { id: string; name: string; country: string | null; region: string; segment: string | null; domain: string | null;
+type Org = { id: string; name: string; country: string | null; region: string; segment: string | null; domain: string | null; logo_url?: string | null;
   list_priority: string | null; list_score: number | null; people: number; people_with_email: number; best_fit?: Fit | null;
   /** Only sent to people who may read contacts: up to three, best title first, and how many there are in all. */
   contacts?: Contact[]; contacts_total?: number };
@@ -51,7 +51,7 @@ type Signal = {
 };
 type Company = { organization: Org; signals: Signal[]; strength: number; strength_reason: string; kinds: number; families?: string[]; latest: string | null; age_days: number | null };
 type Kind = { rule_id: string; name: string; group: string | null; strength: number; meaning: string; who_to_contact: string | null; companies: number; fresh: number; latest: string | null };
-type Top = { window: number; organization: { id: string; name: string; country: string | null; region: string }; company_strength: number; strength_reason: string;
+type Top = { window: number; organization: { id: string; name: string; country: string | null; region: string; logo_url?: string | null }; company_strength: number; strength_reason: string;
   signal: { rule_id: string; event_id: string; summary: string; summary_en?: string | null; summary_pl?: string | null; happened: string | null; age_days: number | null; strength: number; tender: Tender | null;
     why?: string | null; why_pl?: string | null } };
 type Pulse = { days: number; windows: number[]; families: { family: string; d7: number; d30: number; d90: number }[];
@@ -583,8 +583,9 @@ function TopSignal({ top, canPeople }: { top: Top | null; canPeople: boolean }) 
   const why = s.why ? (getLanguage() === "pl" && s.why_pl ? s.why_pl : tr(s.why)) : null;
   return <div className="bs-pulse-top">
     <p className="bs-k">{top.window === 7 ? tr("Strongest new signal this week") : tr("Quiet week. Strongest in the last 30 days")}</p>
-    <p className="bs-top-co"><Link to={`/accounts/${top.organization.id}?event=${s.event_id}`}>{top.organization.name}</Link>
-      {top.organization.country && <span>{countryName(top.organization.country)}</span>}</p>
+    <p className="bs-top-co"><CompanyAvatar name={top.organization.name} small logo={top.organization.logo_url} />
+      <span className="bs-top-co-t"><Link to={`/accounts/${top.organization.id}?event=${s.event_id}`}>{top.organization.name}</Link>
+        {top.organization.country && <span>{countryName(top.organization.country)}</span>}</span></p>
     <p className="bs-top-k"><Swatch ruleId={s.rule_id} /><b>{signalName(s.rule_id)}</b><span className="bs-top-str"><Bars n={top.company_strength} />{level}</span></p>
     <p className="bs-top-t">{describe(s, top.organization).what}</p>
     {why && <p className="bs-top-why">{why}</p>}
@@ -658,9 +659,14 @@ function TableRow({ c, kinds, cols, showFit, canPeople, canCampaign, focus, onKe
   return <tbody className={`bs-tb${open ? " is-open" : ""} is-s${c.strength}`}>
     <tr className="bs-tr" onClick={toggle}>
       <td className="c-co" data-label={tr("Company")}>
-        <Link className="bs-co-name" to={`/accounts/${org.id}?event=${top.event_id}`}>{org.name}</Link>
-        <span className="bs-co-sub">{countryName(org.country) ?? tr("Country unknown")}
-          {org.list_priority && /^P[123]$/.test(org.list_priority) && <span className={`acc-p acc-${org.list_priority.toLowerCase()}`} title={tr("Lead list priority {}", org.list_priority)}>{org.list_priority}</span>}</span>
+        <div className="bs-co-line">
+          <CompanyAvatar name={org.name} small logo={org.logo_url} />
+          <div className="bs-co-text">
+            <Link className="bs-co-name" to={`/accounts/${org.id}?event=${top.event_id}`}>{org.name}</Link>
+            <span className="bs-co-sub">{countryName(org.country) ?? tr("Country unknown")}
+              {org.list_priority && /^P[123]$/.test(org.list_priority) && <span className={`acc-p acc-${org.list_priority.toLowerCase()}`} title={tr("Lead list priority {}", org.list_priority)}>{org.list_priority}</span>}</span>
+          </div>
+        </div>
       </td>
       <td className="c-sig">
         <span className="bs-sig-type"><Swatch ruleId={top.rule_id} /><b>{signalName(top.rule_id, kinds.get(top.rule_id)?.name)}</b>
@@ -808,7 +814,7 @@ function SignalCard({ c, kinds, canPeople, canCampaign }: { c: Company; kinds: M
   const fit = org.best_fit ? <p className="bs-card-fit"><span>{tr("Best fit")}</span><b title={org.best_fit.reason ?? undefined}>{tr(org.best_fit.name)}</b></p> : null;
   return <li className={`bs-card is-s${c.strength}`}>
     <Link className="bs-card-h" to={link} aria-label={tr("Open company {}", org.name)}>
-      <CompanyAvatar name={org.name} />
+      <CompanyAvatar name={org.name} logo={org.logo_url} />
       <span className="bs-card-co">
         <span className="bs-co-name">{org.name}</span>
         <span className="bs-co-sub">{place}
@@ -859,7 +865,7 @@ function SummaryView({ companies, kinds, family }: { companies: Company[]; kinds
         const s = c.signals.find((x) => familyOf(x.rule_id) === f)!;
         const fresh = s.age_days != null && s.age_days <= FRESH_DAYS;
         return <li key={c.organization.id}>
-          <Link className="bs-sum-co" to={`/accounts/${c.organization.id}?event=${s.event_id}`}>{c.organization.name}</Link>
+          <Link className="bs-sum-co" to={`/accounts/${c.organization.id}?event=${s.event_id}`}><CompanyAvatar name={c.organization.name} tiny logo={c.organization.logo_url} /><span>{c.organization.name}</span></Link>
           <span className="bs-sum-t" title={describe(s, c.organization).what}><b>{signalName(s.rule_id, kinds.get(s.rule_id)?.name)}</b> · {describe(s, c.organization).what}</span>
           <time className={fresh ? "is-fresh" : ""} dateTime={s.happened ?? undefined}>{fresh && <i className="bs-new" aria-hidden="true" />}{ago(s.happened)}</time>
           <span className="bs-sum-s" role="img" aria-label={tr("Signal strength: {}", tr(LEVEL[c.strength] ?? "Good"))}><Bars n={c.strength} /></span>

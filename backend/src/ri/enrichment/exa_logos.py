@@ -51,6 +51,7 @@ def name_key(name: Any) -> str:
     s = unicodedata.normalize("NFKD", name if isinstance(name, str) else "")
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = re.sub(r"\([^)]*\)", " ", s).replace("&", " and ")
+    s = re.sub(r"\b(\w)\.(?=\w\b)", r"\1", s)          # S.A. -> SA., N.V. -> NV.: the legal suffix list knows the plain spelling
     s = LEGAL.sub(" ", s)
     s = re.sub(r"[\W_]+", " ", s.casefold()).strip()
     return re.sub(r"^the\s+", "", s)

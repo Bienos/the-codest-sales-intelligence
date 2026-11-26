@@ -254,7 +254,9 @@ def register_profiles(app: FastAPI) -> None:
     def company_research(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
         with tx(request) as conn:
             o = _visible_org(conn, p, oid)
-            return {**_research_state(conn, "account_profiles", "organization_id", str(o["id"]), _setup(request, conn)), "can_run": p.can("research.request")}
+            logo = q1(conn, "SELECT logo_url, logo_checked_at FROM organizations WHERE id=%s", (o["id"],)) or {}
+            return {**_research_state(conn, "account_profiles", "organization_id", str(o["id"]), _setup(request, conn)), "can_run": p.can("research.request"),
+                    "logo_url": logo.get("logo_url"), "logo_checked_at": logo.get("logo_checked_at")}
 
     @app.post("/api/accounts/{oid}/research")
     def start_company_research(oid: str, request: Request, p: Principal = Depends(require("research.request"))):
@@ -342,7 +344,7 @@ def register_profiles(app: FastAPI) -> None:
             pe = q1(conn, "SELECT id, full_name, linkedin_url, photo_url, work_email, email_verification_status, suppressed, suppression_reason, created_at FROM people WHERE id=%s", (pid,))
             where, params = org_scope_sql(p, "o.id")
             jobs = qa(conn, f"SELECT e.title, e.buyer_lane, e.verification_status, e.evidence_url, e.valid_from, e.valid_to, e.observed_at, o.id AS org_id, o.display_name, "   # noqa: S608
-                            f"o.canonical_domain, o.country_code, o.segment FROM employment e JOIN organizations o ON o.id=e.organization_id WHERE e.person_id=%s AND ({where}) "
+                            f"o.canonical_domain, o.country_code, o.segment, o.logo_url FROM employment e JOIN organizations o ON o.id=e.organization_id WHERE e.person_id=%s AND ({where}) "
                             "ORDER BY (e.valid_to IS NULL) DESC, e.observed_at DESC NULLS LAST", [pid, *params])
             sources = qa(conn, "SELECT system, external_id, first_seen_at, last_seen_at, detail FROM person_sources WHERE person_id=%s ORDER BY first_seen_at", (pid,))
             lead: dict[str, str] = {}
@@ -358,14 +360,14 @@ def register_profiles(app: FastAPI) -> None:
             company, colleagues = None, []
             if jobs:
                 oid = str(jobs[0]["org_id"])
-                o = q1(conn, "SELECT employees_estimate, employees_uncertain, list_priority, relationship FROM organizations WHERE id=%s", (oid,)) or {}
+                o = q1(conn, "SELECT employees_estimate, employees_uncertain, list_priority, relationship, logo_url FROM organizations WHERE id=%s", (oid,)) or {}
                 about = q1(conn, "SELECT content->'about'->>'text' AS about, finished_at FROM account_profiles WHERE organization_id=%s AND status='done' "
                                  "ORDER BY created_at DESC LIMIT 1", (oid,))
                 from ..signals.seller import leading_signals
                 sig = leading_signals(conn, [oid]).get(oid)
                 company = {"id": oid, "about": about["about"] if about else None, "researched_at": about["finished_at"] if about else None,
                            "employees": o.get("employees_estimate"), "employees_uncertain": bool(o.get("employees_uncertain")), "list_priority": o.get("list_priority"),
-                           "relationship": o.get("relationship"),
+                           "relationship": o.get("relationship"), "logo_url": o.get("logo_url"),
                            "signal": {"rule_id": sig["rule_id"], "label": sig["label"], "summary": sig["summary"], "date": sig["happened_at"] or sig["published_at"],
                                       "source_url": sig["source_url"]} if sig else None}
                 colleagues = [{k: x[k] for k in ("id", "name", "title", "committee", "has_email", "seniority", "suppressed", "photo_url")}
@@ -380,7 +382,8 @@ def register_profiles(app: FastAPI) -> None:
                            "suppressed": bool(pe["suppressed"]), "suppression_reason": pe["suppression_reason"] if pe["suppressed"] else None, "created_at": pe["created_at"]},
                 "employment": [{"title": j["title"], "lane": j["buyer_lane"], "role_confirmed": j["verification_status"] == "verified", "evidence_url": j["evidence_url"],
                                 "current": j["valid_to"] is None, "valid_from": j["valid_from"], "valid_to": j["valid_to"],
-                                "company": {"id": str(j["org_id"]), "name": j["display_name"], "domain": j["canonical_domain"], "country": j["country_code"], "segment": j["segment"]}} for j in jobs],
+                                "company": {"id": str(j["org_id"]), "name": j["display_name"], "domain": j["canonical_domain"], "country": j["country_code"], "segment": j["segment"],
+                                            "logo_url": j["logo_url"]}} for j in jobs],
                 "lead_list": lead or None,
                 "sources": [{"system": s["system"], "label": SYSTEM_LABEL.get(s["system"], s["system"]), "first_seen_at": s["first_seen_at"], "last_seen_at": s["last_seen_at"]} for s in sources],
                 "outreach": {"engagement": eng, "engagement_label": ENGAGEMENT_LABEL.get(eng, eng), "activity": activity,

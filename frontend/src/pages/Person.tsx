@@ -54,7 +54,7 @@ const dedupe = (xs: Opener[]) => xs.filter((o, i) => {
 const core = (t: string) => t.toLowerCase().replace(/\s*\([^)]*\)\s*$/, "").replace(/[^\p{L}\p{N} ]/gu, "").replace(/\s+/g, " ").trim().slice(0, 48);
 const repeats = (a: string, others: string[]) => { const x = core(a); return x.length > 12 && others.some((o) => core(o).includes(x) || x.includes(core(o)) && core(o).length > 12); };
 
-type Role = { title: string; company?: string | null; from?: number | null; to?: number | null; current?: boolean; cite?: any };
+type Role = { title: string; company?: string | null; logo?: string | null; from?: number | null; to?: number | null; current?: boolean; cite?: any };
 const yearOf = (v: any): number | null => { const m = /\b(19|20)\d{2}\b/.exec(String(v ?? "")); return m ? Number(m[0]) : null; };
 
 /** The career as bars on a shared year axis (a real sequence, so a timeline). Roles without years are listed underneath. */
@@ -72,12 +72,12 @@ function CareerPath({ roles }: { roles: Role[] }) {
   return <div className="career">
     {dated.length > 0 && <div className="cp" role="list" aria-label={tr("Career path")}>
       {dated.map((r, i) => { const end = r.current ? max : (r.to ?? r.from! + 1); return <div key={i} className={`cp-row${r.current ? " now" : ""}`} role="listitem">
-        <div className="cp-label"><Monogram name={r.company || r.title} size="sm" /><div><b>{r.title}</b><span>{[r.company, years(r)].filter(Boolean).join(", ")}</span>{r.cite && <Cite c={r.cite} />}</div></div>
+        <div className="cp-label"><Monogram name={r.company || r.title} size="sm" logo={r.logo} /><div><b>{r.title}</b><span>{[r.company, years(r)].filter(Boolean).join(", ")}</span>{r.cite && <Cite c={r.cite} />}</div></div>
         <div className="cp-track" aria-hidden="true"><span className={`cp-bar${r.to || r.current ? "" : " open"}`} style={{ left: pos(r.from!), width: `max(6px, calc(${pos(Math.max(end, r.from! + 0.5))} - ${pos(r.from!)}))` }} title={`${r.title}${r.company ? `, ${r.company}` : ""}: ${years(r)}`} /></div>
       </div>; })}
       <div className="cp-axis" aria-hidden="true"><div className="cp-ticks">{ticks.map((y) => <span key={y} style={{ left: pos(y) }}>{y}</span>)}</div></div>
     </div>}
-    {undated.length > 0 && <ul className="cp-undated">{undated.map((r, i) => <li key={i}><Monogram name={r.company || r.title} size="xs" /><span><b>{r.title}</b>{r.company ? `, ${r.company}` : ""}{r.current ? ` (${tr("now")})` : ""}</span>{r.cite && <Cite c={r.cite} />}</li>)}</ul>}
+    {undated.length > 0 && <ul className="cp-undated">{undated.map((r, i) => <li key={i}><Monogram name={r.company || r.title} size="xs" logo={r.logo} /><span><b>{r.title}</b>{r.company ? `, ${r.company}` : ""}{r.current ? ` (${tr("now")})` : ""}</span>{r.cite && <Cite c={r.cite} />}</li>)}</ul>}
   </div>;
 }
 
@@ -258,7 +258,7 @@ function CompanyCard({ co, company, acc, ctx, cres, best, others }: { co: any; c
     <div className="ps-co-top" data-mark={initials(co.name)}>
       <span className="ps-co-eyebrow">{tr("Works at")}</span>
       <div className="ps-co-id">
-        <Monogram name={co.name} size="md" framed />
+        <Monogram name={co.name} size="md" framed logo={co.logo_url ?? company?.logo_url} />
         <div className="ps-co-name">
           <h2 id="ps-co-h"><Link to={`/accounts/${co.id}`}>{co.name}</Link></h2>
           <p>{[co.segment, countryName(co.country), size].filter(Boolean).map((x, i) => <span key={i}>{x}</span>)}</p>
@@ -289,7 +289,7 @@ function CompanyCard({ co, company, acc, ctx, cres, best, others }: { co: any; c
       <LinkList rows={web} label={tr("On the web")} />
       {others.length > 0 && <>
         <h3 className="ps-links-h">{tr("Other roles we hold")}</h3>
-        <ul className="ps-roles">{others.map((j: any, i: number) => <li key={i}><Monogram name={j.company.name} size="xs" /><span>{j.title ?? tr("Role not recorded")}, <Link to={`/accounts/${j.company.id}`}>{j.company.name}</Link>{j.current ? "" : ` (${tr("past")})`}</span></li>)}</ul>
+        <ul className="ps-roles">{others.map((j: any, i: number) => <li key={i}><Monogram name={j.company.name} size="xs" logo={j.company.logo_url} /><span>{j.title ?? tr("Role not recorded")}, <Link to={`/accounts/${j.company.id}`}>{j.company.name}</Link>{j.current ? "" : ` (${tr("past")})`}</span></li>)}</ul>
       </>}
     </div>
   </section>;
@@ -395,9 +395,11 @@ export default function Person() {
     ...out.activity.map((a: any) => ({ when: a.happened_at, what: `${tr(ACTIVITY[a.type] ?? a.type)}${a.campaign_name ? ` (${a.campaign_name})` : ""}` }))]
     .sort((x, y) => String(y.when ?? "").localeCompare(String(x.when ?? "")));
   const title = c?.current_role?.title ?? job?.title;
+  /** A past employer that is also a company on our list shows its logo. */
+  const logoOf = (name?: string | null): string | null => { const k = String(name ?? "").trim().toLowerCase(); return k ? d.employment.find((j: any) => String(j.company?.name ?? "").trim().toLowerCase() === k)?.company?.logo_url ?? null : null; };
   const roles: Role[] = c ? [
-    ...(c.current_role ? [{ title: c.current_role.title, company: co?.name, from: c.current_role.since_year ?? yearOf(c.current_role.since), current: true, cite: c.current_role }] : []),
-    ...(c.previous_roles ?? []).map((x: any) => ({ title: x.title, company: x.company, from: x.from ?? yearOf(x.period), to: x.to ?? yearOf(String(x.period ?? "").split(/[-–]/)[1]), cite: x })),
+    ...(c.current_role ? [{ title: c.current_role.title, company: co?.name, logo: co?.logo_url ?? d.company?.logo_url, from: c.current_role.since_year ?? yearOf(c.current_role.since), current: true, cite: c.current_role }] : []),
+    ...(c.previous_roles ?? []).map((x: any) => ({ title: x.title, company: x.company, logo: logoOf(x.company), from: x.from ?? yearOf(x.period), to: x.to ?? yearOf(String(x.period ?? "").split(/[-–]/)[1]), cite: x })),
   ] : [];
   const colleagues: any[] = team ? team.filter((x) => x.id !== p.id) : d.colleagues ?? [];
   const company = d.company;
@@ -415,7 +417,7 @@ export default function Person() {
         <span className="ps-avatar"><Avatar name={p.name} committee={g} size="lg" photo={p.photo_url} /></span>
         <div className="ps-name">
           <h1>{p.name}</h1>
-          <p className="ps-role">{title ?? tr("Role not recorded")}{co && <> {tr("at")} <Link className="ps-co-link" to={`/accounts/${co.id}`}><Monogram name={co.name} size="xs" />{co.name}</Link></>}</p>
+          <p className="ps-role">{title ?? tr("Role not recorded")}{co && <> {tr("at")} <Link className="ps-co-link" to={`/accounts/${co.id}`}><Monogram name={co.name} size="xs" logo={co.logo_url ?? company?.logo_url} />{co.name}</Link></>}</p>
           {c?.summary?.text && <p className="ps-summary">{c.summary.text}</p>}
           {p.suppressed && <p className="ps-warn">{tr("Do not contact.")} {p.suppression_reason ?? ""}</p>}
         </div>

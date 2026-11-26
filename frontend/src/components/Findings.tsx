@@ -130,13 +130,13 @@ export function ago(v?: string | null): string {
 const LEGAL = /^(the|plc|ltd|limited|ag|sa|s\.a\.|ab|as|asa|gmbh|se|nv|bv|spa|oyj|inc|llc|a\/s|sp\.?|z|o\.o\.)$/i;
 /** A square with the company's logo when the API sends one (`logo`), otherwise its initials. The shade is stable per name so the same company always
  *  looks the same. A logo goes on a white tile and drops back to the initials if it does not load; the tile keeps its size either way. */
-export function CompanyAvatar({ name, small = false, logo }: { name: string; small?: boolean; logo?: string | null }) {
+export function CompanyAvatar({ name, small = false, tiny = false, logo }: { name: string; small?: boolean; tiny?: boolean; logo?: string | null }) {
   const pic = useLogo(logo);
   const words = name.split(/[\s\-–/&,()]+/).filter((w) => w && !LEGAL.test(w));
   const letters = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? name).slice(0, 2)).toUpperCase();
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return <span className={`co-av co-av-${h % 4}${small ? " sm" : ""}${pic.ok ? " has-logo" : ""}`} aria-hidden="true">{!pic.ok && letters}{pic.img}</span>;
+  return <span className={`co-av co-av-${h % 4}${small ? " sm" : ""}${tiny ? " xs" : ""}${pic.ok ? " has-logo" : ""}`} aria-hidden="true">{!pic.ok && letters}{pic.img}</span>;
 }
 
 /** Lead-list priority and score: P1 to P3 as a code, the 0 to 100 score as ten squares. */

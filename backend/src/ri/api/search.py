@@ -75,7 +75,7 @@ def register(app: FastAPI) -> None:
                 rows = qa(conn,
                     f"WITH hits AS (SELECT DISTINCT ON (r.organization_id) r.organization_id, r.original FROM legacy_account_research r WHERE {tx_} "     # noqa: S608
                     f"ORDER BY r.organization_id, (r.kind='priority_outreach') DESC) "
-                    f"SELECT o.id, o.display_name, o.country_code, o.segment, h.original AS hit FROM organizations o LEFT JOIN hits h ON h.organization_id=o.id "
+                    f"SELECT o.id, o.display_name, o.country_code, o.segment, o.logo_url, h.original AS hit FROM organizations o LEFT JOIN hits h ON h.organization_id=o.id "
                     f"WHERE ({where}) AND {focus} AND (h.organization_id IS NOT NULL OR ({nm})) ORDER BY (({nm})) DESC, o.in_master_list DESC, o.display_name LIMIT 25",
                     [*txp, *params, *nmp, *nmp])
                 items = []
@@ -83,7 +83,7 @@ def register(app: FastAPI) -> None:
                     o = r["hit"] or {}
                     field = next((k for k, v in o.items() if isinstance(v, str) and any(t.casefold() in v.casefold() for t in toks)), None)
                     items.append({"title": r["display_name"], "meta": " · ".join(x for x in (r["country_code"], r["segment"]) if x), "snippet": snippet(str(o.get(field, "")), toks) if field else "",
-                                  "field": field, "link": f"/accounts/{r['id']}"})
+                                  "field": field, "link": f"/accounts/{r['id']}", "logo_url": r["logo_url"]})
                 groups.append({"key": "accounts", "label": "Accounts and what your sheets say", "items": items})
                 ev_w, ev_p = all_like("e.summary", toks)
                 ew, ep = org_scope_sql(p, "e.subject_org_id")

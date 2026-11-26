@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Badge, Err, LABELS, Skeleton, TIER, humanize } from "../components/ui";
+import { CompanyAvatar } from "../components/Findings";
 
 const GROUP_LABEL: Record<string, string> = { accounts: "Accounts", events: "Findings", signals: "Signals", sources: "Sources and feeds", documents: "Pages we have read", verifications: "Pages being checked", kb: "Knowledge base" };
 const STATUS_WORD: Record<string, string> = { pending_connector_validation: "not set up yet", active: "live", paused: "paused" };
@@ -10,8 +11,9 @@ const STATUS_WORD: Record<string, string> = { pending_connector_validation: "not
 const plainMeta = (m: string) => m.replace(/\b[a-z]+(?:_[a-z]+)+\b/g, (t) => (LABELS.event as Record<string, string>)[t] ?? STATUS_WORD[t] ?? humanize(t).toLowerCase()).replace(/\bS[1-5]\b/g, (t) => TIER[t] ?? t);
 const EXAMPLES = ["core banking", "tender", "CTO appointed", "instant payments", "procurement", "Temenos", "senior-only", "DORA"];
 
-function Hit({ it }: { it: any }) {
-  const body = (
+/** `company` is true for a company hit: the company's logo (or its initials) leads the line, as everywhere a company is named. */
+function Hit({ it, company = false }: { it: any; company?: boolean }) {
+  const text = (
     <>
       <b className="hit-title">{it.title.replace(/^([A-Z]{3}-\d{2})\s+/, "")}</b>
       {it.meta && <span className="small muted"> · {plainMeta(it.meta)}</span>}
@@ -19,6 +21,7 @@ function Hit({ it }: { it: any }) {
       {it.snippet && <div className="small hit-snip">{it.snippet}</div>}
     </>
   );
+  const body = company ? <span className="hit-co"><CompanyAvatar name={it.title} small logo={it.logo_url} /><span className="hit-co-t">{text}</span></span> : text;
   // the research explorer is no longer offered; finding hits open the searchable findings list instead
   const link = typeof it.link === "string" ? it.link.replace(/^\/explorer(?=[?#]|$)/, "/feed") : it.link;
   return <li className="hit">{link ? <Link to={link}>{body}</Link> : it.url ? <a href={it.url} target="_blank" rel="noreferrer noopener">{body} ↗</a> : body}</li>;
@@ -54,7 +57,7 @@ export default function Search() {
       {d && d.total === 0 && <div className="empty"><b>{tr("No matches for “")}{d.query}”</b>{tr("Try fewer or shorter words, or check the spelling.")}</div>}
       {d?.groups.map((g: any) => (
         <section key={g.key}><div className="section-title">{tr(GROUP_LABEL[g.key] ?? g.label)} <Badge>{g.items.length}</Badge></div>
-          <ul className="hits">{g.items.map((it: any, i: number) => <Hit key={i} it={it} />)}</ul></section>))}
+          <ul className="hits">{g.items.map((it: any, i: number) => <Hit key={i} it={it} company={g.key === "accounts"} />)}</ul></section>))}
     </>
   );
 }

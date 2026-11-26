@@ -81,7 +81,7 @@ def _rows(conn, p: Principal, q: str, scope: str = "", *, every_state: bool = Fa
     terms = tokens(q) or ([q.strip()] if q.strip() else [])
     match, search_args = all_like("concat_ws(' ', o.display_name, o.canonical_domain, o.segment, o.country_code, ls.signal)", terms) if terms else ("TRUE", [])
     rows = qa(conn,
-        f"{_LIST_SIGNALS_CTE}SELECT {sector_sql('o.segment')} AS sector, o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.entity_type, o.company_ownership, "      # noqa: S608
+        f"{_LIST_SIGNALS_CTE}SELECT {sector_sql('o.segment')} AS sector, o.id, o.display_name AS name, o.country_code, o.segment, o.employees_estimate AS employees, o.employees_uncertain, o.in_master_list, o.canonical_domain, o.logo_url, o.entity_type, o.company_ownership, "      # noqa: S608
         f"o.company_profile_source_url, o.facts_checked_at, o.facts_status, o.facts_source->'_last' AS facts_last, "
         f"o.created_at, s.score, s.band, s.groups, s.signal_count, s.stopped, s.last_signal_at, s.top, c.status AS candidate_status, c.icp_note, "
         f"o.list_priority, o.list_score, o.list_eligibility, ls.signal AS list_signal, "
