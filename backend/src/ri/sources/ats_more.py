@@ -27,6 +27,7 @@ JOIN (join.com) has no public listing interface without an API token, so it is r
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import html
 import re
 import time
@@ -270,21 +271,47 @@ class _MoreBase(_AtsBase):
         super().__init__(client, board, employer_name=employer_name, source_id=source_id, now_fn=now_fn)
         self.robots = robots or RobotsCache()
         self._sleep = sleep or asyncio.sleep
+        self._http = client                 # the client for the current read: `client`, or one keep-alive connection inside `_keepalive`
+        self.page_pause = 0.0               # pause between the requests of one read (Workday sets its own)
         self.complete = True
         self.warnings: list[str] = []
         self.company_name: str | None = None
         self.stats: dict[str, Any] = {}
 
+    @contextlib.asynccontextmanager
+    async def _keepalive(self, host: str):
+        """One connection for a read that makes many requests to one host. The shared safe client opens a fresh connection for every request (that is
+        its design), and Workday's network answers a burst of new connections with 429 about every second request (measured on 26 Nov 2026: 8 requests
+        in a row, 4 refused; the same 8 over one connection all answered). The connection is still opened by `public_client`, which resolves the host,
+        refuses any address that is not public and connects to the checked address. In tests (any other client) the injected client is used as it is."""
+        from .safe import SafeClient, public_client
+        if not isinstance(self.client, SafeClient):
+            yield self.client
+            return
+        from ..verify.fetch import assert_public
+        await assert_public(f"https://{host}/")
+        async with public_client(self.client.timeout) as http:
+            self._http = http
+            try:
+                yield http
+            finally:
+                self._http = self.client
+
     async def _allowed(self, url: str) -> None:
-        if not await self.robots.allowed(self.client, url):
+        if not await self.robots.allowed(self._http, url):
             raise PolicyBlocked(self.robots.refusal(url))
+
+    async def _slow_down(self, seconds: float) -> None:
+        """The service asked us to wait (a 429): wait, and read the rest of this board more slowly."""
+        self.page_pause = min(self.page_pause * 2 + 0.3, 3.0)
+        await self._sleep(seconds)
 
     async def _json(self, url: str, **kw: Any) -> Any:
         await self._allowed(url)
-        return await request_json_patient(self.client, "GET", url, sleep=self._sleep, **kw)
+        return await request_json_patient(self._http, "GET", url, sleep=self._slow_down, **kw)
 
     async def _text(self, url: str) -> str:
-        return await request_text_patient(self.client, url, check=self._allowed, sleep=self._sleep)
+        return await request_text_patient(self._http, url, check=self._allowed, sleep=self._sleep)
 
     async def fetch(self, cursor: str | None, limit: int):
         self.complete, self.warnings, self.stats = True, [], {}
@@ -332,9 +359,9 @@ class WorkdayConnector(_MoreBase):
     USES_KNOWN = True              # the scan hands over what is already stored for this board (see `known`)
     PAGE = 20
     MAX_PAGES = 60                 # 1,200 postings
-    DETAIL_CAP = 40                # detail calls a run, for engineering postings NOT already stored
-    PAGE_PAUSE = 0.3
-    TIME_BUDGET_S = 170.0
+    DETAIL_CAP = 30                # detail calls a run, for engineering postings NOT already stored
+    PAGE_PAUSE = 0.6               # seconds between requests (Workday's network refuses faster bursts); doubled whenever Workday asks us to slow down
+    TIME_BUDGET_S = 150.0          # a read stays well inside the 300-second job lease; what was read by then is kept and nothing is closed
 
     def __init__(self, *a: Any, clock=time.monotonic, known: dict[str, dict[str, Any]] | None = None, **kw: Any):
         """`known`: job_id -> the stored posting (employment_type, tech_keywords, posted_at, location) of this board's open adverts. A posting that is already
@@ -352,7 +379,7 @@ class WorkdayConnector(_MoreBase):
         await self._allowed(url)
         await self._allowed(f"https://{self.host}/{quote(self.site)}/")             # robots rules name the career site's own path, not /wday/
         try:
-            data = await request_json_patient(self.client, "POST", url, sleep=self._sleep, json={"limit": limit, "offset": offset, "searchText": "", "appliedFacets": {}},
+            data = await request_json_patient(self._http, "POST", url, sleep=self._slow_down, json={"limit": limit, "offset": offset, "searchText": "", "appliedFacets": {}},
                                               headers={"Accept": "application/json"})
         except SchemaDrift as exc:
             if exc.status == 422:       # an unknown tenant answers 422 with no body
@@ -372,12 +399,16 @@ class WorkdayConnector(_MoreBase):
             return HealthCheck(False, str(exc), getattr(exc, "error_class", "transient_network"))
 
     async def _list(self) -> list[dict[str, Any]]:
+        async with self._keepalive(self.host):
+            return await self._read()
+
+    async def _read(self) -> list[dict[str, Any]]:
         started = self._clock()
         now = self.now()
         seen: dict[str, dict[str, Any]] = {}
         unnamed = pages = 0
         total: int | None = None
-        capped = False
+        capped = slowed = False
         offset = 0
         while True:
             if pages >= self.MAX_PAGES or self._clock() - started > self.TIME_BUDGET_S:
@@ -385,7 +416,13 @@ class WorkdayConnector(_MoreBase):
                 break
             if pages:
                 await self._sleep(self.page_pause)
-            data = await self._post_page(offset, self.PAGE)
+            try:
+                data = await self._post_page(offset, self.PAGE)
+            except RateLimited:
+                if not pages:
+                    raise                      # nothing read yet: the job layer waits and tries again later
+                slowed = True                  # asked to slow down part-way: keep the pages already read, say so, and close nothing
+                break
             pages += 1
             if total is None:
                 total = data["total"]
@@ -404,8 +441,10 @@ class WorkdayConnector(_MoreBase):
             if offset >= total or len(postings) < self.PAGE or fresh == 0:
                 break
         read = len(seen) + unnamed
-        self.complete = (not capped) and total is not None and read >= total
-        if capped:
+        self.complete = (not capped) and (not slowed) and total is not None and read >= total
+        if slowed:
+            self.warnings.append(f"Workday board {self.board}: Workday asked us to slow down after {pages} pages ({read} of {total} postings read), so no advert is closed on this read")
+        elif capped:
             self.warnings.append(f"Workday board {self.board}: read the newest {read} of {total} postings in {pages} pages, so no advert is closed on this read")
         elif not self.complete:
             self.warnings.append(f"Workday board {self.board}: read {read} of {total} postings (the list changed while it was read), so no advert is closed on this read")
@@ -600,7 +639,7 @@ class WorkableConnector(_MoreBase):
             if not jid or not title:
                 continue
             desc = plain_text(j.get("description"))
-            locs = j.get("locations") if isinstance(j.get("locations"), list) else []
+            locs: list[Any] = j["locations"] if isinstance(j.get("locations"), list) else []
             loc = ", ".join(x for x in (j.get("city"), j.get("state"), j.get("country")) if x) or \
                   next((", ".join(x for x in (l.get("city"), l.get("region"), l.get("country")) if x) for l in locs if isinstance(l, dict) and not l.get("hidden")), None)
             out.append({"_id": str(jid), "_title": title, "_team": j.get("department") or j.get("function"), "_location": loc or None,

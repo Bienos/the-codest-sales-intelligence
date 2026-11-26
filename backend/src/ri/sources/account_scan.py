@@ -79,6 +79,7 @@ async def probe_boards(client: httpx.AsyncClient, domain: str, org_name: str) ->
         except (httpx.HTTPError, ValueError):
             pass
     return hits
+MAX_CAREERS_PAGES = 4                     # careers pages read when looking for a job board (home page links first, then what those pages link to)
 EMPTY_LISTING = "Listing was empty"      # marker kept in `account_endpoints.last_detail` after a first empty read of a job board
 FEED_GUESSES = ("/feed", "/rss.xml", "/news/feed", "/blog/feed")
 MAX_BYTES = 2_000_000
@@ -180,12 +181,19 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
         return {"endpoints": [], "notes": [f"{domain}: home page could not be read (blocked by robots.txt, an error, or no response)"]}
     found = parse_page(html, home_url, domain)
     feeds, news, careers, ats, unread = list(found["feeds"]), list(found["news"]), list(found["careers"]), list(found["ats"]), list(found["unread"])
-    for careers_url in careers[:2]:              # job-board links usually sit on the careers page (a company often has a second, local one)
+    to_read, read_pages = list(careers[:2]), set[str]()      # job-board links usually sit on the careers page (a company often has a second, local one)
+    while to_read and len(read_pages) < MAX_CAREERS_PAGES:
+        careers_url = to_read.pop(0)
+        if careers_url in read_pages:
+            continue
+        read_pages.add(careers_url)
         page = await _get(client, robots, careers_url)
         if page:
             more = parse_page(page, careers_url, domain)
             ats += more["ats"]
             unread += more["unread"]
+            if not ats:                          # nothing yet: the careers page may point to the company's real jobs site (careers.bank.example)
+                to_read += [u for u in more["careers"] if u not in read_pages and u not in to_read][:2]
     eu = [b for p, b in ats if p == "greenhouse_eu"]
     if eu:
         ats = [(p, b) for p, b in ats if p != "greenhouse_eu"]
@@ -318,7 +326,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                     if batch.complete_listing:
                         # The newer readers (XML, RSS and widget feeds) can answer 200 with an empty list when a feed is switched off or moved. An empty list
                         # that would close every open advert of the board is believed only on the SECOND check in a row (the first leaves a marker).
-                        open_now = q1(conn, "SELECT count(*) AS n FROM job_postings WHERE provider=%s AND board=%s AND open_status='open'", (ep["provider"], ep["board"]))["n"]
+                        open_now = (q1(conn, "SELECT count(*) AS n FROM job_postings WHERE provider=%s AND board=%s AND open_status='open'", (ep["provider"], ep["board"])) or {"n": 0})["n"]
                         board_empty = (batch.quota_usage or {}).get("postings_seen", len(batch.items)) == 0      # Workday keeps only engineering roles: a busy board with none is not empty
                         if ep["provider"] in ats_more.MORE_CONNECTORS and board_empty and open_now and not (ep.get("last_detail") or "").startswith(EMPTY_LISTING):
                             detail = f"{EMPTY_LISTING}: its {open_now} open adverts are kept until the next check says the same"

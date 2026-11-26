@@ -137,6 +137,30 @@ def test_careers_page_links_iframes_and_scripts_are_read_for_every_system():
     assert got == [("workday", WD_BOARD), ("lever", "acme")]
 
 
+def test_discover_follows_a_careers_page_to_the_companys_jobs_site_and_stops_at_four_pages():
+    seen = []
+    pages = {"https://bank.example/": '<a href="/careers">Careers</a>',
+             "https://bank.example/careers": '<a href="https://jobs.bank.example/">Open roles</a><a href="https://careers.bank.example/x">More</a>',
+             "https://jobs.bank.example/": '<a href="https://harbourline.wd3.myworkdayjobs.com/en-US/Careers">Search</a>'}
+
+    def handler(req):
+        if req.url.path == "/robots.txt":
+            return httpx.Response(404)
+        seen.append(str(req.url))
+        return httpx.Response(200, text=pages[str(req.url)]) if str(req.url) in pages else httpx.Response(404)
+    out = run(discover(client(handler), "bank.example"))
+    assert [e["board"] for e in out["endpoints"] if e["kind"] == "job_board"] == [WD_BOARD]
+    assert "https://careers.bank.example/x" not in seen          # found a board on the second page: no need to read further
+
+    chain = {f"https://bank.example/c{i}": "".join(f'<a href="https://bank.example/c{j}">c</a>' for j in range(i + 1, i + 3)) for i in range(0, 12)}
+    chain["https://bank.example/"] = '<a href="/careers">Careers</a>'
+    chain["https://bank.example/careers"] = '<a href="https://bank.example/careers/c0">x</a>'
+    seen.clear()
+    run(discover(client(lambda r: httpx.Response(404) if r.url.path == "/robots.txt" else (seen.append(str(r.url)) or httpx.Response(200, text=chain.get(str(r.url), "<html></html>")))), "bank.example"))
+    import re
+    assert len([u for u in seen if re.search(r"/(careers|c\d+)$", u)]) <= 4                      # never more than four careers pages, however long the chain
+
+
 def test_discover_finds_a_workday_board_on_the_second_careers_page_and_reports_join():
     pages = {"https://bank.example/": '<a href="/careers">Careers</a><a href="https://careers.bank.example/">Careers UK</a>',
              "https://bank.example/careers": "<html>no links</html>",
@@ -232,6 +256,66 @@ def test_workday_time_budget_stops_the_read_without_a_complete_listing():
     c = make(WorkdayConnector, WD_BOARD, site, clock=lambda: next(ticks))
     b = run(c.fetch(None, 500))
     assert b.complete_listing is False and len([1 for m, _, _ in site.calls if m == "POST"]) < 5 and b.warnings
+
+
+def test_workday_slows_down_for_the_rest_of_the_read_after_a_rate_limit_and_still_finishes():
+    inner = Workday(total=100)
+    state = {"refused": False}
+    slept: list[float] = []
+
+    async def sleep(s):
+        slept.append(s)
+
+    def handler(req):
+        if req.method == "POST" and json.loads(req.content)["offset"] == 40 and not state["refused"]:
+            state["refused"] = True
+            return httpx.Response(429, headers={"Retry-After": "4"}, text="Too many requests")
+        return inner(req)
+    c = make(WorkdayConnector, WD_BOARD, handler, sleep=sleep)
+    c.page_pause = 0.6
+    b = run(c.fetch(None, 500))
+    assert b.complete_listing is True and len(b.items) == len([i for i in range(100) if i % 3 == 0])
+    assert 4.0 in slept and c.page_pause > 0.6 and slept.index(4.0) < len(slept) - 1          # waited as asked, then paced more slowly
+    assert max(slept[slept.index(4.0) + 1:]) >= 1.5
+
+
+def test_workday_reads_a_whole_board_over_one_connection_when_it_runs_on_the_safe_client(monkeypatch):
+    """The safe client opens a fresh connection per request and Workday's network answers a burst of those with 429; a board read uses ONE connection,
+    still opened by public_client (public addresses only), and the host is checked first."""
+    from ri.sources import safe
+    site = Workday(total=45)
+    opened, checked = [], []
+
+    def fake_public_client(timeout=30, **kw):
+        opened.append(timeout)
+        return httpx.AsyncClient(transport=httpx.MockTransport(site))
+
+    async def fake_assert_public(url):
+        checked.append(url)
+
+    async def per_request_connection(self, *a, **k):
+        raise AssertionError("a fresh connection per request would be used")
+    monkeypatch.setattr(safe, "public_client", fake_public_client)
+    monkeypatch.setattr("ri.verify.fetch.assert_public", fake_assert_public)
+    monkeypatch.setattr(safe.SafeClient, "request", per_request_connection)
+    c = WorkdayConnector(safe.SafeClient(timeout=30), WD_BOARD, employer_name="X", sleep=no_sleep, now_fn=lambda: NOW)
+    c.page_pause = 0
+    b = run(c.fetch(None, 500))
+    assert b.complete_listing is True and len(b.items) == 15 and b.quota_usage["requests"] == 18          # 3 pages and 15 details
+    assert opened == [30] and checked == ["https://harbourline.wd3.myworkdayjobs.com/"]
+    assert c._http is c.client                                                                             # back to the shared client afterwards
+
+
+def test_workday_slow_down_request_part_way_keeps_the_pages_read_and_closes_nothing():
+    inner = Workday(total=100)
+
+    def handler(req):
+        if req.method == "POST" and json.loads(req.content)["offset"] >= 40:
+            return httpx.Response(429, headers={"Retry-After": "86400"}, text="Too many requests")
+        return inner(req)
+    b = run(make(WorkdayConnector, WD_BOARD, handler).fetch(None, 500))
+    assert b.complete_listing is False and "asked us to slow down after 2 pages (40 of 100" in b.warnings[0]
+    assert len(b.items) == len([i for i in range(40) if i % 3 == 0])
 
 
 def test_workday_a_list_that_changed_while_it_was_read_is_not_a_complete_listing():
