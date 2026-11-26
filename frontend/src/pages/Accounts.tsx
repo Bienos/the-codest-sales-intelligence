@@ -1,7 +1,7 @@
 import { counted, number, tr } from "../locale";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { api, fmtDate, post } from "../api";
+import { api, fmtDate, getToken, post } from "../api";
 import { CHECKING, ListLeadLine } from "./Prospects";
 import { REGIONS, countryName } from "./targetMarket";
 import { Badge, Err, Skeleton, groupName, safeHref } from "../components/ui";
@@ -239,7 +239,7 @@ function CompanyDirectory({ view, research, params, update, counts, setCounts }:
   };
   const exportCsv = async () => {
     try {
-      const t = sessionStorage.getItem("ri_token");
+      const t = getToken();
       const response = await fetch(`/api/leads.csv?${filterQuery}`, { headers: t ? { Authorization: `Bearer ${t}` } : {} });
       if (!response.ok) throw new Error(await response.text());
       const url = URL.createObjectURL(await response.blob());

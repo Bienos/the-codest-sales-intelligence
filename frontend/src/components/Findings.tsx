@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, fmtDate, fmtDateTime, trackSourceOpened } from "../api";
+import { api, fmtDate, fmtDateTime, getToken, trackSourceOpened } from "../api";
 import { getLanguage, number, tr } from "../locale";
 import { countryName } from "../pages/targetMarket";
 import { Badge, Err, Skeleton, lab, safeHref } from "./ui";
@@ -107,8 +107,7 @@ let permissionCache: { token: string | null; perms: Promise<string[]> } | null =
 export function useCan(): (permission: string) => boolean | undefined {
   const [perms, setPerms] = useState<string[] | null>(null);
   useEffect(() => {
-    let token: string | null = null;
-    try { token = sessionStorage.getItem("ri_token"); } catch { /* storage unavailable */ }
+    const token = getToken();
     if (!permissionCache || permissionCache.token !== token) {
       permissionCache = { token, perms: api<{ permissions: string[] }>("/api/me").then((m) => m.permissions).catch(() => { permissionCache = null; return []; }) };
     }

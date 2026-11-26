@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { ApiError, api, clearToken } from "./api";
+import { AUTH_EXPIRED, ApiError, api, clearToken, getToken, keepSessionAlive } from "./api";
 import { LanguageSwitcher, tr, useLanguage } from "./locale";
 import Today from "./pages/Today";
 import { Accounts } from "./pages/Accounts";
@@ -41,12 +41,29 @@ export default function App() {
     setSignInError(null);
     api<Me>("/api/me").then((m) => { setMe(m); setNeedLogin(false); setNotice(null); }).catch((e) => {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
-        let t: string | null = null; try { t = sessionStorage.getItem("ri_token"); } catch { /* storage unavailable */ }
+        const t = getToken();
         setNotice(t ? (e.status === 403 ? { kind: "denied", email: emailFromToken(t) } : { kind: "expired" }) : null);
         clearToken(); setNeedLogin(true);
       } else { setNeedLogin(false); setSignInError(e); }
     });
   }, [n]);
+  // One sign-in for every tab: signing in or out in another tab is followed here, and a sign-in the server no longer accepts
+  // shows the sign-in screen (the page stays where it is, so signing in again brings you straight back to it).
+  const needLoginRef = useRef(false);
+  needLoginRef.current = needLogin;
+  useEffect(() => {
+    const ended = () => { setNotice({ kind: "expired" }); setMe(null); setNeedLogin(true); };
+    const changed = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== "ri_token") return;
+      if (e.newValue) { if (needLoginRef.current) setN((v) => v + 1); }
+      else { setNotice(null); setMe(null); setNeedLogin(true); }
+    };
+    window.addEventListener(AUTH_EXPIRED, ended);
+    window.addEventListener("storage", changed);
+    return () => { window.removeEventListener(AUTH_EXPIRED, ended); window.removeEventListener("storage", changed); };
+  }, []);
+  const signedIn = me !== null;
+  useEffect(() => (signedIn ? keepSessionAlive() : undefined), [signedIn]);
   const [waiting, setWaiting] = useState(0);
   const refreshApprovals = () => {
     if (!me?.permissions.some((p) => p === "approvals.read_own" || p === "approvals.read_all")) {
