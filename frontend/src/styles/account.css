@@ -547,6 +547,13 @@ a.ac-cite:hover { border-color: var(--purple); color: var(--navy); background: v
 .ac-pick > span:not(.ac-mail) { flex: 1; min-width: 0; }
 .ac-pick .ac-mail { flex: none; }
 
+@media (max-width: 900px) {
+  /* four tiles are two by two on a tablet and a phone */
+  .ac-co .ac-glance { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ac-co .ac-glance .glance { border-bottom: 1px solid var(--navy-line); }
+  .ac-co .ac-glance .glance:nth-child(2n) { border-right: 0; }
+  .ac-co .ac-glance .glance:nth-last-child(-n + 2):nth-child(odd), .ac-co .ac-glance .glance:nth-last-child(-n + 2):nth-child(odd) ~ .glance, .ac-co .ac-glance .glance:last-child { border-bottom: 0; }
+}
 @media (max-width: 700px) {
   /* the person page shares the masthead: it keeps these (its own rules are scoped with .ps-hero) */
   .ac-hero { padding: 14px 16px 0; }

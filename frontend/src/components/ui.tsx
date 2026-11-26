@@ -251,7 +251,10 @@ export function useScrollHints() {
     let frame = 0;
     const scan = () => {
       frame = 0;
-      document.querySelectorAll<HTMLElement>(STRIPS).forEach((el) => { if (el.tagName !== "TABLE" || getComputedStyle(el).overflowX === "auto") attach(el); hint(el); });
+      document.querySelectorAll<HTMLElement>(STRIPS).forEach((el) => {
+        if (seen.has(el)) { hint(el); return; }
+        if (el.tagName !== "TABLE" || getComputedStyle(el).overflowX === "auto") attach(el);     // a table is a strip only where it scrolls on its own (phones)
+      });
     };
     const soon = () => { if (!frame) frame = window.requestAnimationFrame(scan); };
     const watch = new MutationObserver((list) => {
