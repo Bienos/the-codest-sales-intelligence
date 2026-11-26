@@ -187,7 +187,7 @@ def register(app: FastAPI) -> None:
     def discovery(request: Request, p: Principal = Depends(require("admin.costs"))):
         s = request.app.state.settings
         with tx(request) as conn:
-            plans = qa(conn, "SELECT * FROM discovery_plans ORDER BY theme, geography")
+            plans = qa(conn, "SELECT * FROM discovery_plans WHERE theme <> 'account_coverage' ORDER BY theme, geography")      # the one-search-per-account plans are ~1,000 rows: their progress is in Data health
             b = q1(conn, "SELECT cap, reserved, spent FROM provider_budgets WHERE provider='exa' AND kind='monthly' AND period=%s", (usage.period_now(),))
             return {"configured": bool(s.exa_api_key) if hasattr(s, "exa_api_key") else False, "key_present_on_api": bool(s.exa_api_key), "cap_usd": s.exa_monthly_cap_usd,
                     "interval_days": s.discovery_interval_days, "max_searches_per_run": s.discovery_max_searches_per_run,
@@ -381,7 +381,7 @@ def register_pipeline(app: FastAPI) -> None:
                            "count(*) FILTER (WHERE collection_method<>'internal') AS total, count(*) FILTER (WHERE config->>'url' IS NOT NULL AND status<>'active' AND collection_method<>'internal') AS ready_to_test FROM sources") or {}
             failing = qa(conn, "SELECT s.display_name, h.error_class, h.consecutive_failures FROM sources s JOIN source_health h USING (source_id) WHERE s.status IN ('active','degraded') AND h.state IN ('degraded','failed','blocked') LIMIT 10")
             disc = q1(conn, "SELECT max(last_run_at) AS last_run, count(*) FILTER (WHERE enabled AND (last_run_at IS NULL OR last_run_at < now() - make_interval(days => %s))) AS due, count(*) AS plans, "
-                            "count(*) FILTER (WHERE theme='account_watch') AS accounts FROM discovery_plans", (s.discovery_interval_days,)) or {}
+                            "count(*) FILTER (WHERE theme='account_watch') AS accounts FROM discovery_plans WHERE theme <> 'account_coverage'", (s.discovery_interval_days,)) or {}
             ver = {r["status"]: r["n"] for r in qa(conn, "SELECT status, count(*) AS n FROM verification_requests GROUP BY status")}
             ev = q1(conn, "SELECT count(*) AS n, count(*) FILTER (WHERE first_observed_at > now() - interval '7 days') AS week FROM events") or {}
             ini = q1(conn, "SELECT count(*) AS n FROM initiatives WHERE status='active'") or {}

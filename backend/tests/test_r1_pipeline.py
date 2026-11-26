@@ -52,7 +52,9 @@ def ted_notice(num, deadline="2026-12-07+01:00", ntype="cn-standard", title="Cor
 
 # ------------------------------------------------------------------- registry gating
 def test_all_seeded_sources_pending_and_unactivated_source_does_not_run(conn, env):
-    assert conn.execute("select count(*) c from sources where status<>'pending_connector_validation'").fetchone()["c"] == 0
+    # nothing is live; the only sources not waiting are the six the 26 Nov 2026 review paused (never switched on by themselves)
+    assert {r["status"] for r in conn.execute("select status from sources").fetchall()} == {"pending_connector_validation", "paused"}
+    assert conn.execute("select count(*) c from sources where status='paused'").fetchone()["c"] == 6
     c = TedConnector(client(lambda r: httpx.Response(200, json={"notices": [], "totalNoticeCount": 0})), query="x", now_fn=lambda: NOW)
     res = run_source(conn, c)
     assert res.status == "skipped"
