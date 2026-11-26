@@ -4808,5 +4808,9 @@
   "LinkedIn did not share a profile photo for this person: it only offered a placeholder or a logo, so initials are shown.": "LinkedIn nie udostępnił zdjęcia profilowego tej osoby: pokazał tylko szare zdjęcie zastępcze albo logo, więc widać inicjały.",
   "Their LinkedIn page was found, but no picture came with it, so initials are shown.": "Znaleziono ich stronę LinkedIn, ale nie przyszedł z nią żaden obrazek, więc widać inicjały.",
   "Their LinkedIn page was not among the search results, so no photo could be taken.": "Ich strony LinkedIn nie było wśród wyników wyszukiwania, więc nie dało się pobrać zdjęcia.",
-  "We could not be sure the pages are about this person, so no photo was taken.": "Nie mieliśmy pewności, że strony dotyczą tej osoby, więc nie pobrano zdjęcia."
+  "We could not be sure the pages are about this person, so no photo was taken.": "Nie mieliśmy pewności, że strony dotyczą tej osoby, więc nie pobrano zdjęcia.",
+  "No LinkedIn company page was found, so no logo could be taken and initials are shown.": "Nie znaleziono strony firmy na LinkedIn, więc nie dało się pobrać logo i widać inicjały.",
+  "The LinkedIn pages we found did not clearly match this company, so initials are shown.": "Znalezione strony LinkedIn nie pasowały wyraźnie do tej firmy, więc widać inicjały.",
+  "The company's LinkedIn page came without a logo, so initials are shown.": "Strona firmy na LinkedIn nie miała logo, więc widać inicjały.",
+  "LinkedIn only offered a placeholder or a banner, not a logo, so initials are shown.": "LinkedIn pokazał tylko szary obrazek zastępczy albo baner, a nie logo, więc widać inicjały."
 }
