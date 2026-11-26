@@ -4,18 +4,24 @@ Four searches (the company's own site, news from the last 12 months, technology 
 then ONE model call that must tie every statement to a numbered page. A statement whose page was not returned is dropped; a dated item or a
 vendor must also quote its page word for word, and a vendor's name must appear in that page. The profile says when it is partial (budget
 ran out or Exa stopped) instead of pretending to be complete.
+
+A fifth, tiny search looks for the company's LinkedIn page to take its logo from (only when no logo was looked for in the last 60 days). Its
+results never reach the model and a failure of it never fails the research. See ``enrichment.exa_logos`` for what counts as a logo.
 """
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable
 
 from ..db import Conn, q1
+from ..enrichment.exa_logos import LOGO_SEARCH_CHARS, logo_due, pick_logo
 from ..sources.base import BudgetExceeded
 from .exa_search import ExaSearcher, ExaStopped, number_sources, since, source_list, text_contents
 
+log = logging.getLogger(__name__)
 Call = Callable[[str, str], Awaitable[tuple[str, int, int, str]]]
 
 CODEST = ("The Codest is a Polish software engineering company. It sells team extension (engineers joining the client's team), dedicated delivery teams, "
@@ -276,9 +282,11 @@ def verify_profile(raw: dict[str, Any], src: dict[str, dict[str, Any]]) -> tuple
     return out, v.dropped
 
 
-def recorded_facts(conn: Conn, org_id: str) -> dict[str, Any]:
+def recorded_facts(conn: Conn, org_id: str, now: datetime | None = None) -> dict[str, Any]:
+    """What our records say about the company. `logo_due` is not a fact about the company: it tells plan() whether the logo search is worth its
+    cost today (no logo looked for in the last 60 days); research_company removes it before the facts reach the model or the stored profile."""
     o = q1(conn, "SELECT display_name, legal_name, canonical_domain, country_code, segment, employees_estimate, employees_uncertain, company_ownership, entity_type, "
-                 "list_icp_segment, list_region, list_priority FROM organizations WHERE id=%s", (org_id,))
+                 "list_icp_segment, list_region, list_priority, logo_checked_at FROM organizations WHERE id=%s", (org_id,))
     if not o:
         raise ValueError("account not found")
     lp = q1(conn, "SELECT original FROM legacy_account_research WHERE organization_id=%s AND kind='master_account' ORDER BY observed_at DESC LIMIT 1", (org_id,))
@@ -286,7 +294,8 @@ def recorded_facts(conn: Conn, org_id: str) -> dict[str, Any]:
     return {k: v for k, v in {"name": o["display_name"], "legal_name": o["legal_name"], "website": o["canonical_domain"], "country": o["country_code"],
                               "sector": o["segment"] or lp.get("Industry"), "employees": o["employees_estimate"], "employees_is_estimate": bool(o["employees_uncertain"]) if o["employees_estimate"] else None,
                               "ownership": None if o["company_ownership"] == "unknown" else o["company_ownership"], "entity_type": o["entity_type"],
-                              "lead_list_segment": o["list_icp_segment"], "lead_list_region": o["list_region"]}.items() if v not in (None, "")}
+                              "lead_list_segment": o["list_icp_segment"], "lead_list_region": o["list_region"],
+                              "logo_due": logo_due(o["logo_checked_at"], now)}.items() if v not in (None, "")}
 
 
 def plan(rec: dict[str, Any], now: datetime) -> list[tuple[str, dict[str, Any]]]:
@@ -297,7 +306,7 @@ def plan(rec: dict[str, Any], now: datetime) -> list[tuple[str, dict[str, Any]]]
         about["includeDomains"] = [rec["website"]]
     else:
         about.update(query=f"{name}{where}", category="company")
-    return [
+    out: list[tuple[str, dict[str, Any]]] = [
         ("about", about),
         ("news", {"query": f"{name} news", "type": "auto", "category": "news", "numResults": 6, "startPublishedDate": since(365, now), "contents": text_contents(1500)}),
         ("vendors", {"query": f"{name} selects technology partner, vendor or system integrator to implement a platform", "type": "auto", "numResults": 5,
@@ -305,6 +314,11 @@ def plan(rec: dict[str, Any], now: datetime) -> list[tuple[str, dict[str, Any]]]
         ("hiring", {"query": f"{name} engineering team hiring software engineers, technology transformation", "type": "auto", "numResults": 4,
                     "startPublishedDate": since(365, now), "contents": text_contents(1200)}),
     ]
+    if rec.get("logo_due"):
+        # last, and tiny: the company's LinkedIn page for its logo (only the title and the picture are used; no category, no dates)
+        out.append(("logo", {"query": f"{name} LinkedIn company page", "type": "auto", "numResults": 3, "includeDomains": ["linkedin.com"],
+                             "contents": text_contents(LOGO_SEARCH_CHARS)}))
+    return out
 
 
 def user_prompt(src: dict[str, dict[str, Any]], rec: dict[str, Any], now: datetime) -> str:
@@ -314,13 +328,23 @@ def user_prompt(src: dict[str, dict[str, Any]], rec: dict[str, Any], now: dateti
 
 
 def research_company(conn: Conn, org_id: str, *, searcher: ExaSearcher, call: Call, run: Callable[[Any], Any], now: datetime | None = None) -> dict[str, Any]:
-    """Runs the searches and the model. Raises BudgetExceeded / ExaStopped only when NOTHING was found; otherwise returns a partial profile."""
+    """Runs the searches and the model. Raises BudgetExceeded / ExaStopped only when NOTHING was found; otherwise returns a partial profile.
+    The result also says what the logo search found (`logo_checked`, `logo_url`) for the caller to store; the logo search never fails the research."""
     now = now or datetime.now(timezone.utc)
-    rec = recorded_facts(conn, org_id)
+    facts = recorded_facts(conn, org_id, now)
+    rec = {k: v for k, v in facts.items() if k != "logo_due"}
     results: list[dict[str, Any]] = []
+    logo_results: list[dict[str, Any]] | None = None       # None: not searched (a logo was looked for recently) or the search failed
     notes: list[str] = []
     partial = False
-    for purpose, body in plan(rec, now):
+    for purpose, body in plan(facts, now):
+        if purpose == "logo":
+            try:
+                logo_results = searcher.search(purpose, body, text_cap=300)
+            except Exception as exc:  # noqa: BLE001 - a missing logo is never a reason to fail the research; the search is retried next time
+                conn.rollback()
+                log.warning("logo search skipped: %s", type(exc).__name__)
+            continue
         try:
             results.extend(searcher.search(purpose, body, text_cap=TEXT_CAP))
         except BudgetExceeded:
@@ -335,12 +359,14 @@ def research_company(conn: Conn, org_id: str, *, searcher: ExaSearcher, call: Ca
             partial = True
             notes.append(str(exc))
             break
+    logo_url, logo_check = pick_logo(logo_results, rec["name"], rec.get("website")) if logo_results is not None else (None, None)
+    extra = {"logo_url": logo_url, "logo_checked": logo_results is not None}
     src = number_sources(results)
-    base = {"recorded": rec, "partial": partial, "notes": notes, "searched": searcher.log}
+    base = {"recorded": rec, "partial": partial, "notes": notes, "searched": searcher.log, **({"logo_check": logo_check} if logo_check else {})}
     if not src:
         return {"content": {**base, "about": None, "products": [], "footprint": {}, "icp_points": [], "recent": [], "vendors": [], "how_we_help": [], "open_questions": [],
                             "empty": "Exa found no pages about this company. Check the website on record, then try again."},
-                "sources": [], "dropped": 0, "model": None, "tokens_in": 0, "tokens_out": 0}
+                "sources": [], "dropped": 0, "model": None, "tokens_in": 0, "tokens_out": 0, **extra}
     parsed, tin, tout, model = ask_json(call, run, SYSTEM, user_prompt(src, rec, now))
     content, dropped = verify_profile(parsed, src)
-    return {"content": {**base, **content}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout}
+    return {"content": {**base, **content}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout, **extra}

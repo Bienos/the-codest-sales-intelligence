@@ -5,7 +5,7 @@ import { api, fmtDate, fmtDateTime, post, put } from "../api";
 import { AccountFindings } from "../components/Findings";
 import { FAMILY, familyOf, SHORT } from "../components/Signals";
 import { countryName, staffCount } from "./targetMarket";
-import { Badge, Err, humanize, Skeleton, reloadPage, safeHref, Tabs, TIER } from "../components/ui";
+import { Badge, Err, humanize, Skeleton, reloadPage, safeHref, Tabs, TIER, useLogo } from "../components/ui";
 import "../styles/account.css";
 
 /* ------------------------------------------------------------------ shared helpers (also used by the person page) */
@@ -42,9 +42,13 @@ export function ResearchSetup({ setup }: { setup?: any }) {
 const HUES = ["#CC085D", "#6A3FC9", "#1F5C8F", "#B8402F", "#8A1C6B", "#0E7490"];
 export const hueOf = (s: string) => { let h = 7; for (const ch of s.toLowerCase()) h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0; return HUES[h % HUES.length]; };
 
-/** A company's mark: its initials on a colour of its own. */
-export function Monogram({ name, size = "md", framed = false }: { name: string; size?: "xs" | "sm" | "md" | "lg"; framed?: boolean }) {
-  return <span className={`mono mono-${size}${framed ? " framed" : ""}`} style={{ background: hueOf(name) }} aria-hidden="true">{initials(name)}</span>;
+/** A company's mark: its logo on a white tile when the API sends `logo` (the picture's address), otherwise its initials on a colour of its own.
+ *  A logo that does not load drops back to the initials. The tile keeps its size either way, so layouts never move. */
+export function Monogram({ name, size = "md", framed = false, logo }: { name: string; size?: "xs" | "sm" | "md" | "lg"; framed?: boolean; logo?: string | null }) {
+  const pic = useLogo(logo);
+  return <span className={`mono mono-${size}${framed ? " framed" : ""}${pic.ok ? " has-logo" : ""}`} style={pic.ok ? undefined : { background: hueOf(name) }} aria-hidden="true">
+    {!pic.ok && initials(name)}{pic.img}
+  </span>;
 }
 
 /** Buying committee groups. The API works the group out from the lead list's committee role and persona, the seniority and the job title. */
@@ -400,6 +404,17 @@ function PhotoNote({ c }: { c?: { state?: string } | null }) {
   const m = c?.state ? PHOTO_NOTE[c.state] : undefined;
   return m ? <p className="small muted m-0">{tr(m)}</p> : null;
 }
+/** Why a company has initials instead of a logo after research (one plain state: nothing else about the picture is kept). A found logo needs no note. */
+const LOGO_NOTE: Record<string, string> = {
+  no_linkedin_page: "No LinkedIn company page was found, so no logo could be taken and initials are shown.",
+  name_mismatch: "The LinkedIn pages we found did not clearly match this company, so initials are shown.",
+  no_logo: "The company's LinkedIn page came without a logo, so initials are shown.",
+  not_a_logo: "LinkedIn only offered a placeholder or a banner, not a logo, so initials are shown.",
+};
+function LogoNote({ c }: { c?: { state?: string } | null }) {
+  const m = c?.state ? LOGO_NOTE[c.state] : undefined;
+  return m ? <p className="small muted m-0">{tr(m)}</p> : null;
+}
 
 /* ------------------------------------------------------------------ research: what the profile is built on (the states are in ResearchState) */
 export function ResearchPanel({ r, canRun, start, busy, err }: { r: any; canRun: boolean; start: () => void; busy: boolean; err: unknown }) {
@@ -411,6 +426,7 @@ export function ResearchPanel({ r, canRun, start, busy, err }: { r: any; canRun:
       <p className="small m-0">{tr("Last researched {}. {} searches, {} pages read.", fmtDateTime(p.finished_at), p.searches, (p.sources ?? []).length)}
         {p.dropped > 0 && <> {tr("Left out because their page did not support them: {}.", p.dropped)}</>}</p>
       <PhotoNote c={p.content?.photo_check} />
+      <LogoNote c={p.content?.logo_check} />
       {p.content?.partial && <p className="small m-0">{(p.content.notes ?? []).join(" ")}</p>}
       {canRun && !r.running && <div><button type="button" disabled={busy || !r.setup?.ready} onClick={start}>{tr("Research again")}</button></div>}
       {canRun && <ResearchSetup setup={r.setup} />}
@@ -694,7 +710,7 @@ function VendorSection({ c, d }: { c: any; d: any }) {
   if (!vendors.length && !c) return null;
   return <Part title="Vendors & partners" purpose="Who already supplies their technology. Ask what these partners do not cover." id="sec-vendors">
     {vendors.length ? <>
-      <ul className="vchips">{shown.map((v: any, i: number) => <li key={i} className="vchip"><Monogram name={v.name} size="sm" /><div><b>{v.name}</b>{v.role && <span>{v.role}</span>}{v.cite}</div></li>)}</ul>
+      <ul className="vchips">{shown.map((v: any, i: number) => <li key={i} className="vchip"><Monogram name={v.name} size="sm" logo={v.logo_url} /><div><b>{v.name}</b>{v.role && <span>{v.role}</span>}{v.cite}</div></li>)}</ul>
       {more}
       <p className="ac-note mt-2 mb-0">{tr("A named vendor does not mean an exclusive contract or that they cover everything.")}</p></>
       : <p className="small m-0">{tr("No vendors or integrators are named in the pages Exa found. Ask about current suppliers in the first call.")}</p>}
@@ -1403,7 +1419,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
       <header className="ac-hero ac-co" data-mark={initials(a.display_name)}>
         <nav className="ac-crumb" aria-label={tr("Breadcrumb")}><Link to="/accounts">{tr("Accounts")}</Link><span aria-hidden="true">/</span><span aria-current="page">{a.display_name}</span></nav>
         <div className="ac-id">
-          <Monogram name={a.display_name} size="lg" framed />
+          <Monogram name={a.display_name} size="lg" framed logo={research && "logo_url" in research ? research.logo_url : a.logo_url} />
           <div className="ac-name">
             <h1>{a.display_name}</h1>
             {(sector || hq || size) && <p className="ac-sub">{[sector, hq, size, ownership].filter(Boolean).map((x, i) => <span key={i}>{x}</span>)}</p>}

@@ -444,7 +444,7 @@ function AccountRow({ r, view, research, selectable, selected, full, onSelect, o
   const meaning: string | undefined = r.stopped ? undefined : r.buying_signal?.meaning ?? r.list_lead?.why;       // why it matters to us, in the company's own words
   return <li className={`acc-row${selected ? " is-sel" : ""}${PRIORITY.test(r.list_priority ?? "") ? ` is-${r.list_priority.toLowerCase()}` : ""}`}>
     {selectable && <label className="acc-pick"><input type="checkbox" className="tick44" aria-label={tr("Select {} for a news check", r.name)} checked={selected} disabled={full} onChange={onSelect} /></label>}
-    <span className="acc-av"><CompanyAvatar name={r.name} /></span>
+    <span className="acc-av"><CompanyAvatar name={r.name} logo={r.logo_url} /></span>
     <div className="acc-id">
       <span className="acc-name-row"><Link className="acc-name" to={to} title={r.name}>{r.name}</Link>
         {r.shortlist && <span className="acc-tag">{tr("Shortlist")}</span>}

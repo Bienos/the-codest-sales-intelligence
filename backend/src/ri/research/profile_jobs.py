@@ -87,6 +87,9 @@ def _run_research(conn: Conn, job: dict[str, Any], *, table: str, kind: str, res
         from ..enrichment.exa_people import set_photo
         person = q1(conn, "SELECT linkedin_url FROM people WHERE id=%s", (row["person_id"],))
         set_photo(conn, str(row["person_id"]), person["linkedin_url"] if person else None, r["photo_url"])
+    if table == "account_profiles" and org_id and r.get("logo_checked"):
+        from ..enrichment.exa_logos import set_logo      # the logo search ran: keep the logo it found, and note the check so it is not repeated for 60 days
+        set_logo(conn, org_id, r.get("logo_url"))
     conn.commit()
     return {"status": "done", "searches": searcher.calls, "cost_usd": round(searcher.cost, 4), "dropped": r["dropped"]}
 

@@ -19,6 +19,11 @@
 .mono.avatar.has-photo.mono-xs::after { height: 2px; }
 .mono.framed { border: 3px solid var(--white); margin: 0 6px 6px 0; }
 .mono.framed::after { content: ""; position: absolute; inset: -3px; border: 2px solid var(--pink); transform: translate(6px, 6px); z-index: -1; }
+/* a company logo (round 6): a white tile with a thin line and a little padding, the logo kept whole (contain); the initials tile is the fallback */
+.mono.has-logo { background: var(--white); color: var(--navy); box-shadow: inset 0 0 0 1px var(--line); --logo-pad: 4px; }
+.mono-xs.has-logo { --logo-pad: 2px; }
+.mono-sm.has-logo { --logo-pad: 3px; }
+.mono.framed.has-logo { box-shadow: inset 0 0 0 1px var(--line); --logo-pad: 5px; }
 
 /* ---------- masthead ---------- */
 .ac-hero { position: relative; overflow: hidden; isolation: isolate; background: var(--navy); color: var(--on-navy); border-top: 3px solid var(--purple); padding: 18px clamp(16px, 3vw, 28px) 0; }
@@ -573,6 +578,7 @@ a.ac-cite:hover { border-color: var(--purple); color: var(--navy); background: v
   .ac-co .ac-name { display: contents; }
   .ac-co .mono-lg, .ac-co .mono.framed { grid-column: 1; grid-row: 1; width: 52px; height: 52px; margin: 0; border: 0; font-size: 21px; box-shadow: inset 0 -3px 0 var(--pink); }
   .ac-co .mono.framed::after { display: none; }
+  .ac-co .mono.framed.has-logo { box-shadow: inset 0 -3px 0 var(--pink); --logo-pad: 4px; }
   .ac-co .ac-name h1 { grid-column: 2; grid-row: 1; font-size: 22px; line-height: 1.1; }
   .ac-co .ac-sub { grid-column: 1 / -1; margin: 0; font-size: var(--fs-md); line-height: 1.5; display: block; }
   .ac-co .ac-sub span { display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }

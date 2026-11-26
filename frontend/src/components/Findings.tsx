@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, getToken, trackSourceOpened } from "../api";
 import { getLanguage, number, tr } from "../locale";
 import { countryName } from "../pages/targetMarket";
-import { Badge, Err, Skeleton, lab, safeHref } from "./ui";
+import { Badge, Err, Skeleton, lab, safeHref, useLogo } from "./ui";
 import { SignalRef, SignalTag, signalName } from "./Signals";
 import "../styles/findings.css";
 
@@ -12,7 +12,7 @@ type Play = { play_id: string; offers: string[] };
 type Finding = {
   id: string; event_ids: string[]; type: string; summary: string; language?: string;
   summary_en?: string; summary_pl?: string; happened: string; published?: string | null;
-  organization: { id: string; name: string; country: string; qualified?: boolean };
+  organization: { id: string; name: string; country: string; qualified?: boolean; logo_url?: string | null };
   tender: { title: string; url: string; deadline: string; checked_at: string; notice_id: string; scope?: string | null } | null;
   evidence: Array<Source & { claim: string; claim_id: string; translation?: string | null }>;
   sources: Source[];
@@ -128,13 +128,15 @@ export function ago(v?: string | null): string {
 }
 
 const LEGAL = /^(the|plc|ltd|limited|ag|sa|s\.a\.|ab|as|asa|gmbh|se|nv|bv|spa|oyj|inc|llc|a\/s|sp\.?|z|o\.o\.)$/i;
-/** A square with the company's initials. The shade is stable per name so the same company always looks the same. */
-export function CompanyAvatar({ name, small = false }: { name: string; small?: boolean }) {
+/** A square with the company's logo when the API sends one (`logo`), otherwise its initials. The shade is stable per name so the same company always
+ *  looks the same. A logo goes on a white tile and drops back to the initials if it does not load; the tile keeps its size either way. */
+export function CompanyAvatar({ name, small = false, logo }: { name: string; small?: boolean; logo?: string | null }) {
+  const pic = useLogo(logo);
   const words = name.split(/[\s\-–/&,()]+/).filter((w) => w && !LEGAL.test(w));
   const letters = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] ?? name).slice(0, 2)).toUpperCase();
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return <span className={`co-av co-av-${h % 4}${small ? " sm" : ""}`} aria-hidden="true">{letters}</span>;
+  return <span className={`co-av co-av-${h % 4}${small ? " sm" : ""}${pic.ok ? " has-logo" : ""}`} aria-hidden="true">{!pic.ok && letters}{pic.img}</span>;
 }
 
 /** Lead-list priority and score: P1 to P3 as a code, the 0 to 100 score as ten squares. */
@@ -246,7 +248,7 @@ export function FindingCard({ item, onAccount = false, canCampaign, canPeople }:
   return <article className={`fd-card${item.tender ? " is-tender" : ""}`} id={`finding-${item.id}`} aria-labelledby={`finding-${item.id}-h`}>
     <header className="fd-top">
       {!onAccount && <Link to={company} className="fd-co" aria-label={tr("Open company {}", org.name)}>
-        <CompanyAvatar name={org.name} />
+        <CompanyAvatar name={org.name} logo={org.logo_url} />
         <span className="fd-co-text"><span className="fd-co-name">{org.name}</span><span className="fd-co-meta">{countryName(org.country)}</span></span>
       </Link>}
       {onAccount && (item.tender || signals.length === 0 ? <span className={`fd-kind${item.tender ? " is-tender" : ""}`}>{item.tender ? tr("Open RFP or tender") : lab("event", item.type)}</span> : <span />)}
@@ -458,7 +460,7 @@ export function FindingBrief({ item, onWatch, onDismiss, onRestore, canPeople = 
     <span className="fb-node" aria-hidden="true" />
     <header className="fb-top">
       <Link to={company} className="fb-co">
-        <CompanyAvatar name={org.name} small />
+        <CompanyAvatar name={org.name} small logo={org.logo_url} />
         <span className="fb-co-text"><span className="fb-co-name">{org.name}</span>{org.country && <span className="fb-co-meta">{countryName(org.country)}</span>}</span>
       </Link>
       {onWatch && <button type="button" className="fb-star" aria-pressed={Boolean(item.watched)} onClick={onWatch}

@@ -5,6 +5,10 @@
 .co-av-1 { background: var(--tint-2); color: var(--navy); box-shadow: inset 0 0 0 1px var(--purple); }
 .co-av-2 { background: var(--white); color: var(--navy); box-shadow: inset 0 0 0 2px var(--navy); }
 .co-av-3 { background: var(--purple); color: var(--navy); }
+/* a company logo (round 6): white tile, thin line, the logo kept whole (contain); the coloured initials above are the fallback */
+.co-av { position: relative; }
+.co-av.has-logo { background: var(--white); color: var(--navy); box-shadow: inset 0 0 0 1px var(--line); --logo-pad: 4px; }
+.co-av.sm.has-logo { --logo-pad: 3px; }
 
 /* ---------- one finding ---------- */
 .fd-card { position: relative; background: var(--white); border: 1px solid var(--line); border-left: 4px solid var(--purple); padding: 14px 18px 12px; margin: 0 0 12px; overflow-wrap: anywhere; scroll-margin-top: 88px;
