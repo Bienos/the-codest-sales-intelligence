@@ -22,7 +22,7 @@ type Action = {
   rule_id?: string | null; more?: number; person?: Person | null; engagement?: { opens: number; clicks: number } | null;
   contacts: Contact[]; fit: Fit | null;
 };
-type Done = { key: string; outcome: Mark; kind: Kind; slot: Slot; organization_id: string | null; label: string | null; at: string };
+type Done = { key: string; outcome: Mark; kind: Kind; slot: Slot; organization_id: string | null; label: string | null; at: string; logo_url?: string | null };
 type NewKind = "signal" | "tender" | "reply" | "campaign";
 type NewItem = {
   key: string; kind: NewKind; at: string; organization?: Org | null; buyer?: string | null; text?: string | null; url?: string | null;
@@ -399,10 +399,10 @@ function Row({ a, rank, selected, onSelect }: { a: Action; rank: number; selecte
   </li>;
 }
 
-function DoneRow({ label, kind, outcome, onUndo }: { label: string; kind: Kind; outcome: Mark; onUndo: () => void }) {
+function DoneRow({ label, kind, outcome, logo, onUndo }: { label: string; kind: Kind; outcome: Mark; logo?: string | null; onUndo: () => void }) {
   return <li className={`td-row is-done td-w-${whyOf({ kind, strength: 3 })}`}>
     <span className="td-rank td-rank-done" aria-hidden="true">{ICON.check}</span>
-    <Mono name={label} size="sm" />
+    <Mono name={label} size="sm" logo={logo} />
     <span className="td-row-main">
       <span className="td-row-name">{label}</span>
       <span className="td-row-state">{outcome === "done" ? tr("Done") : tr("Not now, back in 3 days")}</span>
@@ -724,9 +724,9 @@ export default function Today({ canCampaign = false }: { canReview?: boolean; ca
             {total === 0 && actions.length === 0
               ? <p className="td-q-empty">{tr("Nothing on the list today.")}</p>
               : <ol className="td-q">
-                  {serverDone.filter((x) => x.slot === "today").map((x) => <DoneRow key={x.key} label={x.label ?? tr("Item")} kind={x.kind} outcome={x.outcome} onUndo={() => onUndoServer(x)} />)}
+                  {serverDone.filter((x) => x.slot === "today").map((x) => <DoneRow key={x.key} label={x.label ?? tr("Item")} kind={x.kind} outcome={x.outcome} logo={x.logo_url} onUndo={() => onUndoServer(x)} />)}
                   {actions.map((a) => marks[a.key]
-                    ? <DoneRow key={a.key} label={nameOf(a)} kind={a.kind} outcome={marks[a.key]} onUndo={() => onUndoLocal(a)} />
+                    ? <DoneRow key={a.key} label={nameOf(a)} kind={a.kind} outcome={marks[a.key]} logo={a.organization?.logo_url} onUndo={() => onUndoLocal(a)} />
                     : <Row key={a.key} a={a} rank={rankOf(a)} selected={current?.key === a.key} onSelect={() => select(a.key)} />)}
                 </ol>}
             {(queue.length > 0 || extraDone.length > 0) && <div className="td-next">
@@ -734,9 +734,9 @@ export default function Today({ canCampaign = false }: { canReview?: boolean; ca
                 {ICON.chevron}<span>{tr("Up next")}</span><small>{tr("{} more, if you have time", openNext.length)}</small>
               </button>
               {showNext && <ol className="td-q td-q-next" id="td-next-list">
-                {extraDone.map((x) => <DoneRow key={x.key} label={x.label ?? tr("Item")} kind={x.kind} outcome={x.outcome} onUndo={() => onUndoServer(x)} />)}
+                {extraDone.map((x) => <DoneRow key={x.key} label={x.label ?? tr("Item")} kind={x.kind} outcome={x.outcome} logo={x.logo_url} onUndo={() => onUndoServer(x)} />)}
                 {queue.map((a) => marks[a.key]
-                  ? <DoneRow key={a.key} label={nameOf(a)} kind={a.kind} outcome={marks[a.key]} onUndo={() => onUndoLocal(a)} />
+                  ? <DoneRow key={a.key} label={nameOf(a)} kind={a.kind} outcome={marks[a.key]} logo={a.organization?.logo_url} onUndo={() => onUndoLocal(a)} />
                   : <Row key={a.key} a={a} rank={rankOf(a)} selected={current?.key === a.key} onSelect={() => select(a.key)} />)}
               </ol>}
               {showNext && d.more_actions > queue.length && <p className="td-note">
