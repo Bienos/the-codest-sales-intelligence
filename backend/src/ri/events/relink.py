@@ -17,8 +17,10 @@ def relink_unmatched(conn: Conn, limit: int = 300, now: datetime | None = None) 
     rows = qa(conn, "SELECT id, subject_name_raw, attrs FROM events WHERE subject_org_id IS NULL AND subject_name_raw IS NOT NULL AND length(subject_name_raw) > 2 "
                     "AND (attrs->>'relink_checked_at' IS NULL OR (attrs->>'relink_checked_at')::timestamptz < %s) ORDER BY first_observed_at DESC NULLS LAST LIMIT %s", (newest["t"], limit))
     linked = 0
+    decided: dict[str, object] = {}           # 8.7k unmatched findings carry only 4.7k distinct names: resolve each name once per run
     for r in rows:
-        d = resolve(conn, name=r["subject_name_raw"], allow_create=False)
+        nk = r["subject_name_raw"].strip().lower()
+        d = decided.get(nk) or decided.setdefault(nk, resolve(conn, name=r["subject_name_raw"], allow_create=False))
         if d.action == "auto_link" and d.org_id:
             conn.execute("UPDATE events SET subject_org_id=%s WHERE id=%s", (d.org_id, r["id"]))
             nid = (r["attrs"] or {}).get("notice_id")

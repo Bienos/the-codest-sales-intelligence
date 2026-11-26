@@ -1,7 +1,7 @@
 import { getLanguage, number, tr } from "../locale";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, post, upload } from "../api";
+import { api, post, put, upload } from "../api";
 import { Badge, Err, humanize, lab, Skeleton } from "../components/ui";
 import "../styles/admin.css";
 
@@ -196,15 +196,17 @@ export const JOB_KIND: Record<string, string> = {
   account_scan: "Scanning a company", discovery_run: "Web search run", sheet_import_xlsx: "Workbook upload", sheet_sync: "Workbook sync", account_brief: "Company brief",
   campaign_draft: "Email draft", account_profile: "Company research", person_profile: "Person research", people_search: "Finding people", identity_autoresolve: "Company matching",
   sources_validate_all: "Testing sources", sources_validate_daily: "Daily source test", crm_sync: "CRM sync", lemlist_sync: "Lemlist sync", ted_awards_window: "TED award notices",
-  evaluate_event: "Scoring a finding", ted_probe: "TED check",
+  evaluate_event: "Scoring a finding", ted_probe: "TED check", company_facts: "Company facts",
 };
-const kindName = (k: string) => tr(JOB_KIND[k] ?? humanize(k));
+export const kindName = (k: string) => tr(JOB_KIND[k] ?? humanize(k));
 
 /** Each cause in plain English: a title ({} is the service) and what it means. */
-const CAUSE: Record<string, [string, string]> = {
+export const CAUSE: Record<string, [string, string]> = {
   ai_credit: ["AI credit ran out", "The AI provider's account ran out of credit, so pages, summaries and checks could not be read. Nothing was wrong with the work itself."],
   budget: ["Monthly budget used up", "The monthly limit for AI or web search was reached, so the work stopped as designed. A new month, or a higher limit, lets it run."],
   fit_bug: ["Old fit-check bug", "A bug in the fit check left a database transaction broken, so the whole batch stopped. The bug is fixed; these can be retried."],
+  cut_off: ["The AI answer was too long and got cut off", "The model hit its length limit before it finished, so the answer could not be used. Smaller batches fix it; a retry alone usually fails the same way."],
+  unreadable_answer: ["The AI answer could not be read", "The model answered, but not in the expected format (often a list that broke off or a stray quote). A retry usually works; it keeps failing if the batch is too large."],
   empty_output: ["The AI returned an empty answer", "The model answered with nothing usable, usually for a very long page or one it would not summarise. A retry usually works."],
   timeout: ["Timeouts", "The other side did not answer in time. Usually a slow or busy site; a retry later normally works."],
   http_400: ["{} returned 400 (bad request)", "The service rejected our request as malformed. Usually a change on their side, such as a query or field it no longer accepts."],
@@ -550,5 +552,256 @@ export function KnowledgeAdmin() {
           </li>))}
       </ul>
     </>
+  );
+}
+
+/* ------------------------------------------------------------------ data health: every source and the scheduler's automatic work */
+
+/** How often, in words. */
+export function every(s?: number | null): string {
+  if (!s) return "—";
+  if (s % 604800 === 0) return s === 604800 ? tr("Weekly") : tr("Every {} weeks", number(s / 604800));
+  if (s % 86400 === 0) return s === 86400 ? tr("Daily") : tr("Every {} days", number(s / 86400));
+  if (s % 3600 === 0) return s === 3600 ? tr("Hourly") : tr("Every {} hours", number(s / 3600));
+  return tr("Every {} minutes", number(Math.round(s / 60)));
+}
+
+/** When something happens next: "Due now", "In 40 min", "Today, 14:00". */
+function nextWhen(v?: string | null): string {
+  if (!v) return tr("Paused");
+  const ms = Date.parse(v) - Date.now();
+  if (ms <= 60_000) return tr("At the next check");
+  if (ms < 3_600_000) return tr("In {} min", number(Math.round(ms / 60_000)));
+  return when(v);
+}
+
+/** Each source state: colour, name, and what it means. */
+const DH_STATE: Record<string, [Kind, string, string]> = {
+  failing: ["bad", "Failing", "Its last reads failed."],
+  late: ["warn", "Late", "Not read on its schedule. The scheduler or the worker may have stopped, or the site keeps timing out."],
+  never: ["warn", "Not read yet", "Switched on but not read yet. The next check reads it."],
+  no_findings: ["warn", "Finds nothing useful", "It reads fine, but nothing it read in the last 30 days became a finding."],
+  nothing_new: ["info", "Nothing new", "Read on schedule, but the page has not changed in 30 days."],
+  ok: ["ok", "Working", "Read on schedule and finding things."],
+  per_account: ["info", "Read in company checks", "Read for each account during its company-page check, not on a schedule of its own."],
+  off: ["", "Switched off", "Not switched on. See Sources for why and how to switch it on."],
+  on_demand: ["", "Used on request", "Used when someone asks for it, never on a timer."],
+};
+const DH_FILTERS: [string, string, Kind, string[]][] = [
+  ["attention", "Needs a look", "warn", ["failing", "late", "never", "no_findings"]],
+  ["working", "Working", "ok", ["ok", "nothing_new", "per_account"]],
+  ["off", "Off or on request", "", ["off", "on_demand"]],
+];
+const DH_FLAG: Record<string, string> = {
+  mostly_skipped: "Mostly off-topic: nine in ten articles fail the cheap word check.",
+  waiting_to_be_read: "Some pages wait for the AI to read them (the monthly AI limit for background reading is reached, or the AI was unavailable).",
+};
+const FAMILY: Record<string, string> = {
+  procurement: "Tenders", attention: "News and trade press", regulatory: "Regulators and standards", vendor: "Vendors and integrators", jobs: "Job boards",
+  company_ir: "Company pages", registry: "Company registers", verification: "Page checks", discovery: "Web search", internal: "Internal",
+};
+const familyName = (f?: string | null) => tr(FAMILY[f ?? ""] ?? humanize(f));
+/** What a lane's bare number counts: [one, many]. */
+const LANE_UNIT: Record<string, [string, string]> = {
+  finance_pilot_scans: ["company check queued", "company checks queued"], watchlist_scans: ["company check queued", "company checks queued"],
+  fit_queued: ["fit check queued", "fit checks queued"], tender_summaries_queued: ["summary run queued", "summary runs queued"],
+  renewals_refreshed: ["award re-read queued", "award re-reads queued"], identity_auto_queued: ["matching run queued", "matching runs queued"],
+  source_check_queued: ["source test queued", "source tests queued"], market_tagged: ["finding tagged", "findings tagged"],
+  public_bodies_tagged: ["public buyer marked", "public buyers marked"], retriaged: ["article sent back for reading", "articles sent back for reading"],
+  procurement_events_backfilled: ["tender finding made", "tender findings made"], tenders_expired: ["tender closed", "tenders closed"],
+  renewals_rechecked: ["award re-judged", "awards re-judged"], degraded_sources: ["source marked late", "sources marked late"],
+  relinked_events: ["finding matched", "findings matched"], hypotheses_built: ["card built", "cards built"], verifications_requeued: ["page check retried", "page checks retried"],
+  billing_jobs_recovered: ["page check re-queued", "page checks re-queued"], reevaluated: ["card re-scored", "cards re-scored"],
+};
+const laneResult = (key: string, r: Record<string, unknown>): string => {
+  const pairs = Object.entries(r ?? {}).filter(([, v]) => typeof v === "number") as [string, number][];
+  if (!pairs.length) return "";
+  return pairs.map(([k, v]) => (k === "n" ? `${number(v)} ${tr((LANE_UNIT[key] ?? ["done", "done"])[v === 1 ? 0 : 1])}` : `${number(v)} ${tr(humanize(k).toLowerCase())}`)).join(" · ");
+};
+const LANE_CHOICES = [300, 900, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400];
+const STORED: Record<string, string> = {
+  organizations: "Companies", people: "People", legacy_account_research: "Workbook rows", events: "Findings", source_documents: "Pages and articles read",
+  procurement_notices: "Tenders", awarded_contracts: "Award notices", job_postings: "Job adverts", signals: "Buying signals", jobs: "Background jobs (all time)",
+  provider_usage: "Paid calls (all time)", audit_events: "Audit log entries",
+};
+const size = (b: number) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+
+/** The way information flows, with the number at each step: switched-on sources, what they read, what became a finding, what is about one of
+ * our accounts, and what is a buying signal. */
+function Flow({ d }: { d: any }) {
+  const src = d.sources as any[];
+  const on = src.filter((s) => !["off", "on_demand"].includes(s.state)).length;
+  const sum = (k: string) => src.reduce((a, s) => a + Number(s[k] ?? 0), 0);
+  const steps: [string, number, string][] = [
+    ["Sources switched on", on, tr("of {} in the registry", number(src.length))],
+    ["New items read", sum("new_14d"), tr("last 14 days")],
+    ["Became findings", sum("findings_30d"), tr("last 30 days")],
+    ["About our accounts", sum("matched_30d"), tr("matched to a company")],
+    ["Buying signals", sum("signals_30d"), tr("active now")],
+  ];
+  return (
+    <ol className="dh-flow" aria-label={tr("How information flows")}>
+      {steps.map(([l, n, sub], i) => <li key={l} className={i === steps.length - 1 ? "last" : undefined}><span className="dh-flow-n">{number(n)}</span><span className="dh-flow-l">{tr(l)}</span><span className="dh-flow-s">{sub}</span></li>)}
+    </ol>
+  );
+}
+
+function SourceRow({ s, onDone }: { s: any; onDone: (msg: string) => void }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null);
+  const [k, label] = DH_STATE[s.state] ?? ["", humanize(s.state)];
+  const act = async (f: () => Promise<any>, ok: (r: any) => string) => { setBusy(true); setErr(null); try { onDone(ok(await f())); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  const readNow = () => act(() => post(`/api/admin/sources/${s.source_id}/read-now`), (r) => r.queued ? tr("{}: queued to be read now.", s.name) : r.reason === "read_recently" ? tr("{} was read a few minutes ago; try again later.", s.name) : tr("{} is already waiting to be read.", s.name));
+  const cadence = (v: number) => act(() => put(`/api/admin/sources/${s.source_id}/cadence`, { every_s: v }), () => tr("{} is now read {}.", s.name, every(v).toLowerCase()));
+  const choices: number[] = [21600, 43200, 86400, 172800, 604800];
+  return (
+    <tr>
+      <td data-label={tr("Source")} className="wide"><b>{s.name}</b><div className="small muted">{familyName(s.family)}</div>
+        {s.flags.map((f: string) => <div key={f} className="small dh-flag">{tr(DH_FLAG[f] ?? humanize(f))}</div>)}
+        {s.error && <div className="small fl-err">{s.error}</div>}</td>
+      <td data-label={tr("How often")} className="nowrap">{s.can_change_cadence && s.every_s ? (
+        <select aria-label={tr("How often to read {}", s.name)} value={choices.includes(s.every_s) ? s.every_s : ""} disabled={busy} onChange={(e) => cadence(Number(e.target.value))}>
+          {!choices.includes(s.every_s) && <option value="">{every(s.every_s)}</option>}
+          {choices.map((c) => <option key={c} value={c}>{every(c)}</option>)}
+        </select>) : s.state === "per_account" ? tr("With each company check") : every(s.every_s)}</td>
+      <td data-label={tr("Read")} className="nowrap small"><div>{s.last_success_at ?? s.last_attempt_at ? tr("Last: {}", when(s.last_success_at ?? s.last_attempt_at)) : tr("Never read")}</div>{s.scheduled && <div className="muted">{tr("Next: {}", nextWhen(s.next_at))}</div>}</td>
+      <td data-label={tr("New, 14 days")} className="num">{s.scheduled ? number(s.new_14d) : "—"}</td>
+      <td data-label={tr("Findings, 30 days")} className="num">{number(s.findings_30d)}</td>
+      <td data-label={tr("On our accounts")} className="num">{number(s.matched_30d)}</td>
+      <td data-label={tr("Status")} className="dh-st"><Say k={k}>{tr(label)}</Say>{s.failures > 1 && <div className="small muted">{tr("{} failed reads in a row", number(s.failures))}</div>}
+        {s.can_read_now && <button type="button" className="ghost dh-read" disabled={busy} onClick={readNow}>{tr("Read now")}</button>}
+        <Err e={err} /></td>
+    </tr>
+  );
+}
+
+function LaneRow({ l, onDone }: { l: any; onDone: (msg: string) => void }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState<unknown>(null);
+  const act = async (f: () => Promise<any>, ok: string) => { setBusy(true); setErr(null); try { await f(); onDone(ok); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  const res = laneResult(l.key, l.result);
+  const state: [Kind, string] = !l.enabled ? ["", tr("Paused")] : l.error ? ["bad", tr("Last run failed")] : l.catching_up ? ["info", tr("Catching up")] : l.last_run_at ? ["ok", tr("Running")] : ["info", tr("Not run yet")];
+  return (
+    <li className={`dh-lane ${state[0]}`}>
+      <div className="dh-lane-main">
+        <b>{tr(l.label)}</b>
+        <span className="small">{tr(l.what)}</span>
+        <span className="small muted">{[tr("Runs: {}", every(l.every_s).toLowerCase()), l.last_run_at ? tr("last run {}", when(l.last_run_at)) : tr("not run yet"), l.enabled ? tr("next {}", nextWhen(l.next_at).toLowerCase()) : ""].filter(Boolean).join(" · ")}</span>
+        {(res || l.error) && <span className="small">{l.error ? <span className="fl-err">{l.error}</span> : tr("Last run: {}", res)}</span>}
+        {l.requested_by && <span className="small muted">{tr("{} asked for it to run at the next check.", l.requested_by)}</span>}
+      </div>
+      <div className="dh-lane-act">
+        <Say k={state[0]}>{state[1]}</Say>
+        {l.adjustable && <select aria-label={tr("How often: {}", tr(l.label))} value={l.every_s} disabled={busy || !l.enabled} onChange={(e) => act(() => put(`/api/admin/lanes/${l.key}`, { every_s: Number(e.target.value) }), tr("{} now runs {}.", tr(l.label), every(Number(e.target.value)).toLowerCase()))}>
+          {Array.from(new Set([...LANE_CHOICES, l.every_s])).sort((a, b) => a - b).map((c) => <option key={c} value={c}>{every(c)}{c === l.default_every_s ? ` (${tr("usual")})` : ""}</option>)}
+        </select>}
+        {l.can_run && l.enabled && <button type="button" className="ghost" disabled={busy || !!l.requested_by} onClick={() => act(() => post(`/api/admin/lanes/${l.key}/run`), tr("{} runs at the next check, within five minutes.", tr(l.label)))}>{tr("Run at next check")}</button>}
+        {l.can_pause && <button type="button" className={l.enabled ? "ghost" : ""} disabled={busy} aria-pressed={!l.enabled}
+          onClick={() => act(() => put(`/api/admin/lanes/${l.key}`, { enabled: !l.enabled }), l.enabled ? tr("{} is paused. Nothing new of this kind is queued until you switch it on.", tr(l.label)) : tr("{} is switched on again.", tr(l.label)))}>{l.enabled ? tr("Pause") : tr("Switch on")}</button>}
+        <Err e={err} />
+      </div>
+    </li>
+  );
+}
+
+/** Data health: where each piece of information comes from, how often it is read, whether it still finds anything, and what the scheduler
+ * does by itself. The things that need a look come first. */
+export function DataHealth() {
+  const [tick, setTick] = useState(0); const [msg, setMsg] = useState("");
+  const [f, setF] = useQueryState({ show: "" });
+  const r = useLoad("/api/admin/data-health", true, tick);
+  const d = r.d;
+  const done = (m: string) => { setMsg(m); setTick((t) => t + 1); };
+  if (r.err) return <Err e={r.err} onRetry={r.reload} />;
+  if (!d) return <Skeleton rows={4} />;
+  const src = d.sources as any[];
+  const countOf = (states: string[]) => src.filter((s) => states.includes(s.state)).length;
+  const attention = countOf(DH_FILTERS[0][3]);
+  const show = f.show || (attention ? "attention" : countOf(DH_FILTERS[1][3]) ? "working" : "all");
+  const filt = DH_FILTERS.find(([k]) => k === show);
+  const rows = filt ? src.filter((s) => filt[3].includes(s.state)) : src;
+  const lanes = d.lanes as any[];
+  const main = lanes.filter((l) => l.main), rest = lanes.filter((l) => !l.main);
+  const restBad = rest.filter((l) => l.error).length;
+  const jobs = (d.jobs as any[]).filter((j) => j.done + j.failed + j.retrying + j.waiting > 0);
+  const failingJobs = jobs.filter((j) => j.failing);
+  const sched = d.scheduler_at ? (Date.now() - Date.parse(d.scheduler_at)) / 60000 : null;
+  const bl = d.backlog ?? {};
+  return (
+    <div className="dh">
+      <p className="adm-lead">{tr("Where each piece of information comes from, how often it is read, and whether it still finds anything useful. Deal with the ones marked Needs a look first.")}</p>
+      {msg && <div className="okmsg" role="status">{msg}</div>}
+      <Flow d={d} />
+      <div className="dh-notes">
+        <Say k={sched === null ? "bad" : sched > 20 ? "bad" : "ok"}>{sched === null ? tr("The scheduler has never reported, so nothing is read by itself.") : sched > 20 ? tr("The scheduler last reported {}. Nothing new is collected until it runs again.", when(d.scheduler_at)) : tr("The scheduler checks every {} minutes; it last ran {}.", number(Math.round(d.tick_seconds / 60)), when(d.scheduler_at))}</Say>
+        {d.ai.pct !== null && <Say k={d.ai.background_paused ? "bad" : d.ai.pct >= d.ai.background_stops_at_pct - 10 ? "warn" : "ok"}>{d.ai.background_paused
+          ? tr("{}% of this month's AI limit is used. New articles are stored but not read by the AI until the 1st, so they become findings later. Your own research still works.", number(d.ai.pct))
+          : tr("{}% of this month's AI limit is used. Background reading pauses at {}% so your own research always has room.", number(d.ai.pct), number(d.ai.background_stops_at_pct))}</Say>}
+      </div>
+
+      <section aria-labelledby="dh-src-h" className="dh-sec">
+        <h3 id="dh-src-h" className="ov-h">{tr("Sources")}</h3>
+        <p className="small muted dh-sub">{tr("One line per source: how often it is read, when it was last and will next be read, what it brought in and how much of that is about our accounts.")}</p>
+        <div className="fchips" role="group" aria-label={tr("Show sources")}>
+          {DH_FILTERS.map(([k, l, c, states]) => <button key={k} type="button" className={c} aria-pressed={show === k} onClick={() => setF({ show: k })}>{tr(l)} <b>{number(countOf(states))}</b></button>)}
+          <button type="button" aria-pressed={show === "all"} onClick={() => setF({ show: "all" })}>{tr("All")} <b>{number(src.length)}</b></button>
+        </div>
+        {rows.length === 0 ? <Quiet>{show === "attention" ? tr("Nothing needs a look: every switched-on source is read on time and finds things.") : tr("No source in this group.")}</Quiet> : (
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Sources")}>
+            <table className="cards adm-t dh-t">
+              <thead><tr><th>{tr("Source")}</th><th>{tr("How often")}</th><th>{tr("Read")}</th><th className="num">{tr("New, 14 days")}</th>
+                <th className="num">{tr("Findings, 30 days")}</th><th className="num">{tr("On our accounts")}</th><th>{tr("Status")}</th></tr></thead>
+              <tbody>{rows.map((s) => <SourceRow key={s.source_id} s={s} onDone={done} />)}</tbody>
+            </table>
+          </div>)}
+        {show === "attention" && rows.length > 0 && <ul className="dh-key small">{DH_FILTERS[0][3].filter((k) => rows.some((s) => s.state === k)).map((k) => <li key={k}><b>{tr(DH_STATE[k][1])}</b>: {tr(DH_STATE[k][2])}</li>)}</ul>}
+      </section>
+
+      <section aria-labelledby="dh-lanes-h" className="dh-sec">
+        <h3 id="dh-lanes-h" className="ov-h">{tr("Automatic work")}</h3>
+        <p className="small muted dh-sub">{tr("What the platform does by itself, how often, and what it did last time. Pausing stops new work of that kind; nothing already found is lost.")}</p>
+        <ul className="dh-lanes">{main.map((l) => <LaneRow key={l.key} l={l} onDone={done} />)}</ul>
+        <Fold title={tr("Housekeeping ({} small steps)", number(rest.length))} desc={tr("Steps that keep the data right: tags, expiry, matching, scores. Most run at every check.")}
+          status={restBad ? ["bad", tr("{} failed on their last run", number(restBad))] : ["ok", tr("All ran fine")]}>
+          <ul className="dh-lanes">{rest.map((l) => <LaneRow key={l.key} l={l} onDone={done} />)}</ul>
+        </Fold>
+      </section>
+
+      <section aria-labelledby="dh-jobs-h" className="dh-sec">
+        <h3 id="dh-jobs-h" className="ov-h">{tr("Background jobs, last 7 days")}</h3>
+        <p className="small muted dh-sub">{tr("Each kind of job the worker ran: how many finished, failed or wait. A kind that keeps failing is named with its cause; see Job history for each one.")}</p>
+        {jobs.length === 0 ? <Quiet>{tr("No background job ran in the last 7 days.")}</Quiet> : (
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Background jobs, last 7 days")}>
+            <table className="cards adm-t">
+              <thead><tr><th>{tr("Job")}</th><th className="num">{tr("Finished")}</th><th className="num">{tr("Failed")}</th><th className="num">{tr("Will retry")}</th><th className="num">{tr("Waiting")}</th><th>{tr("Last finished")}</th><th>{tr("Problem")}</th></tr></thead>
+              <tbody>{jobs.map((j) => <tr key={j.kind}>
+                <td data-label={tr("Job")} className="wide"><Link to={`/admin/job-history?kind=${j.kind}&since=7d`}><b>{kindName(j.kind)}</b></Link></td>
+                <td data-label={tr("Finished")} className="num">{number(j.done)}</td>
+                <td data-label={tr("Failed")} className="num">{j.failed ? <b className="dh-bad">{number(j.failed)}</b> : "0"}</td>
+                <td data-label={tr("Will retry")} className="num">{number(j.retrying)}</td>
+                <td data-label={tr("Waiting")} className="num">{number(j.waiting)}</td>
+                <td data-label={tr("Last finished")} className="nowrap">{when(j.last_done)}</td>
+                <td data-label={tr("Problem")} className="small full">{j.cause ? <><Say k={j.failing ? "bad" : "warn"}>{tr(CAUSE[j.cause]?.[0] ?? "Error", tr("The service"), "")}</Say>{j.failing && <div className="small muted">{tr("Still failing: the last attempt failed after the last success.")}</div>}</> : <span className="muted">—</span>}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>)}
+        {failingJobs.length > 0 && <p className="small"><Link to="/admin/health/jobs">{tr("See the failed jobs grouped by cause, and retry or dismiss them")}</Link></p>}
+      </section>
+
+      <div className="adm-two dh-sec">
+        <section className="adm-panel" aria-labelledby="dh-wait-h">
+          <h3 id="dh-wait-h" className="adm-h4">{tr("Waiting to be done")}</h3>
+          <dl className="dh-dl">
+            <div><dt>{tr("Pages waiting for the AI to read them")}</dt><dd>{bl.pages_to_read ?? "—"}</dd></div>
+            <div><dt>{tr("Page checks in progress")}</dt><dd>{bl.page_checks ?? "—"}</dd></div>
+            <div><dt>{tr("Open tenders waiting for a summary")}</dt><dd>{bl.tender_summaries ?? "—"}</dd></div>
+            <div><dt>{tr("Company names waiting for a match")}</dt><dd>{bl.company_names ?? "—"}</dd></div>
+          </dl>
+        </section>
+        <section className="adm-panel" aria-labelledby="dh-store-h">
+          <h3 id="dh-store-h" className="adm-h4">{tr("What is stored")}</h3>
+          <dl className="dh-dl">{(d.stored as any[]).map((t) => <div key={t.table}><dt>{tr(STORED[t.table] ?? humanize(t.table))}</dt><dd>{number(t.rows)}<small>{size(t.bytes)}</small></dd></div>)}</dl>
+          <p className="small muted m-0">{tr("Row counts are the database's own estimate, refreshed as tables change.")}</p>
+        </section>
+      </div>
+    </div>
   );
 }

@@ -56,6 +56,15 @@ def process_run(conn: Conn, res: RunResult, *, extractor: EventExtractor | None 
             if not d or (d["raw_meta"] or {}).get("structured"):
                 continue
             from ..events.triage import looks_relevant
+            twin = q1(conn, "SELECT o.id FROM source_documents me JOIN source_documents o ON o.canonical_url=me.canonical_url AND o.source_id<>me.source_id "
+                            "WHERE me.id=%s AND me.canonical_url IS NOT NULL AND EXISTS (SELECT 1 FROM event_documents ed WHERE ed.document_id=o.id) LIMIT 1", (doc_id,))
+            if twin:
+                # the same article from a sister feed, i.e. ANOTHER source (Finextra publishes five); a changed page of the same source is a new version and is read again. Link it to the findings already made, do not pay to read it again
+                conn.execute("INSERT INTO event_documents(event_id, document_id) SELECT event_id, %s FROM event_documents WHERE document_id=%s ON CONFLICT DO NOTHING",
+                             (doc_id, twin["id"]))
+                conn.execute("UPDATE source_documents SET raw_meta = (raw_meta - 'pending_extraction') || '{\"triage\": \"same_article_as_another_source\"}'::jsonb WHERE id=%s", (doc_id,))
+                summary["same_article"] = summary.get("same_article", 0) + 1
+                continue
             if not looks_relevant(d["title"], d["body"]):
                 # saves model budget: recorded as skipped (never silently dropped), text purged for licence-restricted sources by the normal retention rule
                 conn.execute("UPDATE source_documents SET raw_meta = (raw_meta - 'pending_extraction') || '{\"triage\": \"skipped_not_relevant\"}'::jsonb WHERE id=%s", (doc_id,))

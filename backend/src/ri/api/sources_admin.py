@@ -43,6 +43,14 @@ class PauseIn(BaseModel):
     reason: str = Field(min_length=3, max_length=300)
 
 
+class CadenceIn(BaseModel):
+    every_s: int
+
+
+CADENCES = (21600, 43200, 86400, 172800, 604800)      # 6 hours, 12 hours, a day, two days, a week
+READ_NOW_COOLDOWN = timedelta(minutes=10)
+
+
 def check_url(url: str, canonical_domain: str | None) -> str:
     u = urlparse(url.strip())
     host = (u.hostname or "").lower()
@@ -158,3 +166,42 @@ def register(app: FastAPI) -> None:
             load(conn, sid)
             registry.pause(conn, sid, p.email, body.reason)
             return {"source_id": sid, "status": "paused"}
+
+    @app.put("/api/admin/sources/{sid}/cadence")
+    def set_cadence(sid: str, body: CadenceIn, request: Request, p: Principal = Depends(require("admin.sources"))):
+        """How often the scheduler reads this source. Free public sources only change load on the publisher; a fixed list of choices keeps
+        it polite (never more often than every 6 hours) and the next due time follows at once (ri.scheduler.due_sources)."""
+        if body.every_s not in CADENCES:
+            raise HTTPException(400, "choose 6 hours, 12 hours, 1 day, 2 days or 1 week")
+        with tx(request) as conn:
+            s = q1(conn, "SELECT source_id, collection_method, poll_interval_s FROM sources WHERE source_id=%s", (sid,))
+            if not s:
+                raise HTTPException(404, "source not found")
+            if s["collection_method"] in ("internal", "search"):
+                raise HTTPException(400, "this source is used on demand, not on a schedule")
+            conn.execute("UPDATE sources SET poll_interval_s=%s WHERE source_id=%s", (body.every_s, sid))
+            audit(conn, actor=p.email, operation="source_cadence_changed", record_type="source", record_id=sid,
+                  detail={"every_s": body.every_s, "was_every_s": s["poll_interval_s"]})
+            return {"source_id": sid, "every_s": body.every_s}
+
+    @app.post("/api/admin/sources/{sid}/read-now")
+    def read_now(sid: str, request: Request, p: Principal = Depends(require("admin.sources"))):
+        """Queue one read of a switched-on source now (the same `source_run` job the scheduler queues). At most once per 10 minutes per source,
+        and never while one is already waiting or running."""
+        from ..jobs.queue import enqueue
+        from ..scheduler import SCHEDULED_STATUSES
+        with tx(request) as conn:
+            s = q1(conn, "SELECT s.source_id, s.status, s.collection_method, h.last_attempt_at FROM sources s LEFT JOIN source_health h USING (source_id) WHERE s.source_id=%s", (sid,))
+            if not s:
+                raise HTTPException(404, "source not found")
+            if s["status"] not in SCHEDULED_STATUSES or s["collection_method"] in ("internal", "search"):
+                raise HTTPException(400, "only a switched-on source can be read now")
+            if q1(conn, "SELECT 1 FROM jobs WHERE kind='source_run' AND payload->>'source_id'=%s AND status IN "
+                        "('scheduled','claimed','fetching','parsing','verifying','committing','retryable_failed')", (sid,)):
+                return {"source_id": sid, "queued": False, "reason": "already_waiting"}
+            now = datetime.now(timezone.utc)
+            if s["last_attempt_at"] and now - s["last_attempt_at"] < READ_NOW_COOLDOWN:
+                return {"source_id": sid, "queued": False, "reason": "read_recently"}
+            jid, created = enqueue(conn, "source_run", {"source_id": sid}, idempotency_key=f"source_run:{sid}:manual:{now:%Y%m%d%H%M}", correlation_id="manual")
+            audit(conn, actor=p.email, operation="source_read_now", record_type="source", record_id=sid, detail={"job_id": jid})
+            return {"source_id": sid, "queued": bool(created), "job_id": jid}

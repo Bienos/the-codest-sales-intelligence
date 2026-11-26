@@ -10,6 +10,7 @@ from __future__ import annotations
 import calendar
 import hashlib
 import re
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -31,12 +32,19 @@ class UndoIn(BaseModel):
     note: str | None = Field(default=None, max_length=300)
 
 
+class LaneIn(BaseModel):
+    enabled: bool | None = None
+    every_s: int | None = Field(default=None, ge=60, le=604800)
+
+
 # ====================================================================== failed jobs, grouped by cause
 
 CAUSES: list[tuple[str, str, str]] = [
     ("ai_credit", "AI credit ran out", "The AI provider's account ran out of credit, so pages, summaries and checks could not be read. Nothing was wrong with the work itself."),
     ("budget", "Monthly budget used up", "The monthly limit for AI or web search was reached, so the work stopped as designed. A new month, or a higher limit, lets it run."),
     ("fit_bug", "Old fit-check bug", "A bug in the fit check left a database transaction broken, so the whole batch stopped. The bug is fixed; these can be retried."),
+    ("cut_off", "The AI answer was too long and got cut off", "The model hit its length limit before it finished, so the answer could not be used. Smaller batches fix it; a retry alone usually fails the same way."),
+    ("unreadable_answer", "The AI answer could not be read", "The model answered, but not in the expected format (often a list that broke off or a stray quote). A retry usually works; it keeps failing if the batch is too large."),
     ("empty_output", "The AI returned an empty answer", "The model answered with nothing usable, usually for a very long page or one it would not summarise. A retry usually works."),
     ("timeout", "Timeouts", "The other side did not answer in time. Usually a slow or busy site; a retry later normally works."),
     ("http_400", "{source} returned 400 (bad request)", "The service rejected our request as malformed. Usually a change on their side, such as a query or field it no longer accepts."),
@@ -60,6 +68,10 @@ def classify(kind: str, ec: str, err: str) -> str:
         return "budget"
     if kind == "assess_fit" and re.search(r"transaction|InFailedSqlTransaction|aborted", e, re.I):
         return "fit_bug"
+    if re.search(r"cut off at the length limit|stop_reason: max_tokens", e, re.I):
+        return "cut_off"
+    if re.search(r"JSONDecodeError|Expecting (?:value|property name|',' delimiter)|Unterminated string|Extra data: line", e):
+        return "unreadable_answer"
     if re.search(r"empty model output", e, re.I):
         return "empty_output"
     if ec == "timeout" or re.search(r"timeout|timed out|ReadTimeout|ConnectTimeout|PoolTimeout", e, re.I):
@@ -131,14 +143,25 @@ def _state(conn: Conn, cause: str, kinds: set[str], source: str | None, last_at:
     return "quiet", "quiet", last_at
 
 
+def _uuids(xs: Any) -> list[str]:
+    """Only well-formed ids, so the primary-key index is used (`id::text = ANY(...)` cast every row and scanned the table)."""
+    out = []
+    for x in xs or []:
+        try:
+            out.append(str(uuid.UUID(str(x))))
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return out
+
+
 def _subjects(conn: Conn, letters: list[dict[str, Any]]) -> dict[str, str]:
     """A short plain name for what each failed job was about (a source, a page, a company)."""
     src_ids = {lt["payload"].get("source_id") for lt in letters if isinstance(lt["payload"].get("source_id"), str)}
     srcs = {r["source_id"]: r["display_name"] for r in qa(conn, "SELECT source_id, display_name FROM sources WHERE source_id = ANY(%s)", (list(src_ids),))} if src_ids else {}
     doc_ids = [lt["payload"].get("document_id") for lt in letters if isinstance(lt["payload"].get("document_id"), str)]
-    docs = {str(r["id"]): (r["title"] or r["canonical_url"] or "") for r in qa(conn, "SELECT id, title, canonical_url FROM source_documents WHERE id::text = ANY(%s)", (doc_ids,))} if doc_ids else {}
+    docs = {str(r["id"]): (r["title"] or r["canonical_url"] or "") for r in qa(conn, "SELECT id, title, canonical_url FROM source_documents WHERE id = ANY(%s::uuid[])", (_uuids(doc_ids),))} if _uuids(doc_ids) else {}
     org_ids = [lt["payload"].get("organization_id") for lt in letters if isinstance(lt["payload"].get("organization_id"), str)]
-    orgs = {str(r["id"]): r["display_name"] for r in qa(conn, "SELECT id, display_name FROM organizations WHERE id::text = ANY(%s)", (org_ids,))} if org_ids else {}
+    orgs = {str(r["id"]): r["display_name"] for r in qa(conn, "SELECT id, display_name FROM organizations WHERE id = ANY(%s::uuid[])", (_uuids(org_ids),))} if _uuids(org_ids) else {}
     out: dict[str, str] = {}
     for lt in letters:
         p = lt["payload"] or {}
@@ -380,7 +403,7 @@ def identity_overview(conn: Conn) -> dict[str, Any]:
         ai = ((r["evidence"] or {}).get("auto") or {}).get("ai") or {}
         if ai.get("candidate_id"):
             ids.add(str(ai["candidate_id"]))
-    orgs = {str(o["id"]): dict(o, id=str(o["id"])) for o in qa(conn, "SELECT id, display_name, country_code, canonical_domain FROM organizations WHERE id::text = ANY(%s)", (list(ids),))} if ids else {}
+    orgs = {str(o["id"]): dict(o, id=str(o["id"])) for o in qa(conn, "SELECT id, display_name, country_code, canonical_domain FROM organizations WHERE id = ANY(%s::uuid[])", (_uuids(ids),))} if _uuids(ids) else {}
 
     def shape(r: dict[str, Any]) -> dict[str, Any]:
         ev = r["evidence"] or {}
@@ -685,6 +708,192 @@ def _purpose_of(operation: str) -> tuple[str, str]:
     return PURPOSES.get(operation, ("other", "Other"))
 
 
+# ====================================================================== data health: every source and every automatic lane on one page
+
+# Job boards report findings through their own records (a job finding carries the provider, not a stored page).
+JOB_PROVIDER_SOURCE = {"arbeitnow": "jobs-arbeitnow-de", "jobtech": "jobs-jobtech-se", "greenhouse": "ats-greenhouse", "lever": "ats-lever",
+                       "ashby": "ats-ashby", "smartrecruiters": "ats-smartrecruiters"}
+PER_ACCOUNT_SOURCES = ("corporate-ir-newsrooms", "ats-greenhouse", "ats-lever", "ats-ashby", "ats-smartrecruiters", "ats-workday")
+CADENCE_CHOICES = (21600, 43200, 86400, 172800, 604800)          # 6 h, 12 h, 1 day, 2 days, a week
+QUIET_DAYS = 30
+BACKGROUND_STOP_PCT = 70          # events.budgeted: background reading keeps the last 30% of the AI limit for the sellers' own checks
+# What is stored, for the "how the database is used" block: table, plain key (the page names it)
+STORED = ("organizations", "people", "legacy_account_research", "events", "source_documents", "procurement_notices", "awarded_contracts", "job_postings",
+          "signals", "jobs", "provider_usage", "audit_events")
+
+
+def _source_state(s: dict[str, Any], now: datetime) -> tuple[str, list[str]]:
+    """One state per source, in the order a person should deal with them, plus extra notes (codes the page turns into words)."""
+    flags: list[str] = []
+    status, method = s["status"], s["collection_method"]
+    if method in ("internal", "search"):
+        return "on_demand", flags
+    live = status in ("active", "degraded")
+    if not live:
+        return ("per_account" if s["source_id"] in PER_ACCOUNT_SOURCES and (s["docs"] or 0) > 0 else "off"), flags
+    if s["docs_30d"] >= 20 and s["skipped_30d"] >= 0.8 * s["docs_30d"]:
+        flags.append("mostly_skipped")
+    if s["pending"]:
+        flags.append("waiting_to_be_read")
+    if s["health"] in ("failed", "blocked") or (s["consecutive_failures"] or 0) > 0:
+        return "failing", flags
+    if s["last_success_at"] is None:
+        return "never", flags
+    if (now - s["last_success_at"]).total_seconds() > 2 * max(int(s["poll_interval_s"] or 86400), TICK_SECONDS_DEFAULT):
+        return "late", flags
+    if s["docs_30d"] == 0 and (s["docs"] or 0) > 0 and s["first_doc_at"] and (now - s["first_doc_at"]).days >= QUIET_DAYS:
+        return "nothing_new", flags
+    if s["docs_30d"] > 0 and s["events_30d"] == 0 and s["first_doc_at"] and (now - s["first_doc_at"]).days >= 7:
+        return "no_findings", flags
+    return "ok", flags
+
+
+TICK_SECONDS_DEFAULT = 300
+STATE_ORDER = ["failing", "late", "never", "no_findings", "nothing_new", "ok", "per_account", "off", "on_demand"]
+
+
+def data_health(conn: Conn, now: datetime | None = None, *, can_edit_sources: bool = False, can_edit_lanes: bool = False) -> dict[str, Any]:
+    """Every source with how often it is read, when it was last and will next be read, what it found and how much of that became findings
+    matched to accounts; every automatic lane of the scheduler with its last run and result; the background jobs of the last 7 days; what
+    is waiting; and how big the stored tables are. Grouped queries only (no per-source subqueries)."""
+    from .. import scheduler
+    now = now or datetime.now(timezone.utc)
+    srcs = qa(conn, "SELECT s.source_id, s.display_name, s.source_family, s.source_type, s.collection_method, s.status, s.poll_interval_s, s.auth_mode, "
+                    "s.config->>'url' AS url, h.state AS health, h.last_attempt_at, h.last_success_at, h.consecutive_failures, h.error_class, h.detail AS health_detail, "
+                    "h.missed_due_runs FROM sources s LEFT JOIN source_health h USING (source_id)")
+    runs = {r["source_id"]: r for r in qa(conn, "SELECT source_id, count(*) AS runs, count(*) FILTER (WHERE status='success') AS ok, "
+                                               "count(*) FILTER (WHERE status IN ('failed','partial')) AS bad, coalesce(sum(items_new),0) AS new_items, "
+                                               "coalesce(sum(items_changed),0) AS changed_items FROM monitoring_runs WHERE started_at > %s GROUP BY 1", (now - timedelta(days=14),))}
+    docs = {r["source_id"]: r for r in qa(conn, "SELECT source_id, count(*) AS docs, min(fetched_at) AS first_doc_at, max(fetched_at) AS last_doc_at, "
+                                               "count(*) FILTER (WHERE fetched_at > %(d)s) AS docs_30d, "
+                                               "count(*) FILTER (WHERE fetched_at > %(d)s AND raw_meta->>'triage'='skipped_not_relevant') AS skipped_30d, "
+                                               "count(*) FILTER (WHERE raw_meta->>'pending_extraction'='true' AND content_text IS NOT NULL) AS pending "
+                                               "FROM source_documents GROUP BY 1", {"d": now - timedelta(days=QUIET_DAYS)})}
+    ev = {r["source_id"]: r for r in qa(conn, "SELECT d.source_id, count(DISTINCT e.id) AS events_30d, "
+                                             "count(DISTINCT e.id) FILTER (WHERE e.subject_org_id IS NOT NULL) AS matched_30d, "
+                                             "count(DISTINCT e.id) FILTER (WHERE EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND s.status='active')) AS signals_30d "
+                                             "FROM events e JOIN event_documents ed ON ed.event_id=e.id JOIN source_documents d ON d.id=ed.document_id "
+                                             "WHERE e.first_observed_at > %s AND NOT e.is_historical_replay GROUP BY 1", (now - timedelta(days=QUIET_DAYS),))}
+    for r in qa(conn, "SELECT e.attrs->>'provider' AS provider, count(*) AS events_30d, count(*) FILTER (WHERE e.subject_org_id IS NOT NULL) AS matched_30d, "
+                      "count(*) FILTER (WHERE EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND s.status='active')) AS signals_30d "
+                      "FROM events e WHERE e.event_type IN ('engineering_job_opened','contractor_job_opened','job_closed') AND e.first_observed_at > %s "
+                      "AND NOT e.is_historical_replay GROUP BY 1", (now - timedelta(days=QUIET_DAYS),)):
+        sid = JOB_PROVIDER_SOURCE.get(r["provider"] or "")
+        if sid:
+            cur = ev.setdefault(sid, {"events_30d": 0, "matched_30d": 0, "signals_30d": 0})
+            for k in ("events_30d", "matched_30d", "signals_30d"):
+                cur[k] = int(cur.get(k) or 0) + int(r[k] or 0)
+    from .. import usage
+    cost = {r["source_id"]: float(r["usd"]) for r in qa(conn, "SELECT source_id, coalesce(sum(cost_usd),0) AS usd FROM provider_usage WHERE period=%s AND source_id IS NOT NULL GROUP BY 1",
+                                                       (usage.period_now(),))}
+    items: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for s in srcs:
+        sid = s["source_id"]
+        if re.search(r"pipedrive", f"{sid} {s['display_name']}", re.I):
+            continue                                                  # Pipedrive is not used and never shown
+        rr, dd, ee = runs.get(sid) or {}, docs.get(sid) or {}, ev.get(sid) or {}
+        row = {**s, "docs": int(dd.get("docs") or 0), "docs_30d": int(dd.get("docs_30d") or 0), "skipped_30d": int(dd.get("skipped_30d") or 0),
+               "pending": int(dd.get("pending") or 0), "first_doc_at": dd.get("first_doc_at"), "last_doc_at": dd.get("last_doc_at"),
+               "events_30d": int(ee.get("events_30d") or 0), "matched_30d": int(ee.get("matched_30d") or 0), "signals_30d": int(ee.get("signals_30d") or 0)}
+        state, flags = _source_state(row, now)
+        counts[state] = counts.get(state, 0) + 1
+        scheduled = s["status"] in scheduler.SCHEDULED_STATUSES and s["collection_method"] not in ("internal", "search")
+        nxt = None
+        if scheduled:
+            nxt = now if s["last_attempt_at"] is None else max(now, s["last_attempt_at"] + timedelta(seconds=int(s["poll_interval_s"] or 86400)))
+        items.append({"source_id": sid, "name": s["display_name"], "family": s["source_family"], "type": s["source_type"], "method": s["collection_method"],
+                      "status": s["status"], "state": state, "flags": flags, "every_s": int(s["poll_interval_s"] or 0) if scheduled or s["status"] != "active" else None,
+                      "scheduled": scheduled, "last_attempt_at": s["last_attempt_at"], "last_success_at": s["last_success_at"], "next_at": nxt,
+                      "failures": int(s["consecutive_failures"] or 0), "error_class": s["error_class"] if state == "failing" else None,
+                      "error": (re.sub(r"\s+", " ", s["health_detail"] or "")[:200] or None) if state == "failing" else None,
+                      "runs_14d": int(rr.get("runs") or 0), "failed_runs_14d": int(rr.get("bad") or 0), "new_14d": int(rr.get("new_items") or 0),
+                      "docs": row["docs"], "docs_30d": row["docs_30d"], "skipped_30d": row["skipped_30d"], "pending": row["pending"], "last_doc_at": row["last_doc_at"],
+                      "findings_30d": row["events_30d"], "matched_30d": row["matched_30d"], "signals_30d": row["signals_30d"],
+                      "cost_month_usd": round(cost.get(sid, 0.0), 4), "url": s["url"],
+                      "can_read_now": bool(can_edit_sources and scheduled), "can_change_cadence": bool(can_edit_sources and s["collection_method"] not in ("internal", "search"))})
+    order = {k: i for i, k in enumerate(STATE_ORDER)}
+    items.sort(key=lambda x: (order.get(x["state"], 99), x["family"] or "", x["name"] or ""))
+
+    lane_rows = scheduler.lane_rows(conn)
+    lanes = []
+    for lane in scheduler.LANES:
+        r = lane_rows.get(lane.key)
+        lanes.append({"key": lane.key, "label": lane.label, "what": lane.what, "main": lane.main, "queues": lane.queues,
+                      "every_s": scheduler.lane_every(lane, r), "default_every_s": lane.every_s, "adjustable": lane.adjustable and can_edit_lanes,
+                      "can_pause": lane.can_pause and can_edit_lanes, "enabled": bool(r["enabled"]) if r and lane.can_pause else True,
+                      "last_run_at": (r or {}).get("last_run_at"), "next_at": scheduler.lane_next(lane, r, now), "result": (r or {}).get("last_result") or {},
+                      "error": (r or {}).get("last_error"), "runs": int((r or {}).get("runs") or 0),
+                      "requested_by": (r or {}).get("run_requested_by") if (r or {}).get("run_requested_by") != scheduler.MORE_WORK else None,
+                      "catching_up": (r or {}).get("run_requested_by") == scheduler.MORE_WORK, "can_run": can_edit_lanes})
+    jobs = qa(conn, "SELECT kind, count(*) FILTER (WHERE status='completed') AS done, count(*) FILTER (WHERE status IN ('permanent_failed','quarantined')) AS failed, "
+                    "count(*) FILTER (WHERE status='retryable_failed') AS retrying, "
+                    "count(*) FILTER (WHERE status IN ('scheduled','claimed','fetching','parsing','verifying','committing')) AS waiting, "
+                    "max(updated_at) FILTER (WHERE status='completed') AS last_done, max(updated_at) FILTER (WHERE status IN ('permanent_failed','quarantined')) AS last_failed "
+                    "FROM jobs WHERE updated_at > %s OR status IN ('scheduled','retryable_failed') GROUP BY 1 ORDER BY 1", (now - timedelta(days=7),))
+    last_err = {r["kind"]: r for r in qa(conn, "SELECT DISTINCT ON (kind) kind, last_error, last_error_class FROM jobs WHERE status IN ('permanent_failed','quarantined') "
+                                              "AND updated_at > %s ORDER BY kind, updated_at DESC", (now - timedelta(days=7),))}
+    job_items = []
+    for j in jobs:
+        e = last_err.get(j["kind"])
+        err = re.sub(r"\s+", " ", (e or {}).get("last_error") or "")[:200] or None
+        job_items.append({"kind": j["kind"], "done": int(j["done"]), "failed": int(j["failed"]), "retrying": int(j["retrying"]), "waiting": int(j["waiting"]),
+                          "last_done": j["last_done"], "last_failed": j["last_failed"], "error": err,
+                          "cause": classify(j["kind"], (e or {}).get("last_error_class") or "", err or "") if err else None,
+                          "failing": bool(int(j["failed"]) and (j["last_done"] is None or (j["last_failed"] and j["last_failed"] > j["last_done"])))})
+    backlog: dict[str, Any] = {}
+    for key, sql in (("pages_to_read", "SELECT count(*) AS n FROM source_documents WHERE raw_meta->>'pending_extraction'='true' AND content_text IS NOT NULL"),
+                     ("page_checks", "SELECT count(*) AS n FROM verification_requests WHERE status IN ('queued','fetching','extracting','waiting_budget')"),
+                     ("company_names", "SELECT count(*) AS n FROM identity_reviews WHERE status='open'"),
+                     ("tender_summaries", None)):
+        try:
+            with conn.transaction():
+                if sql is None:
+                    from ..tender_summary import count_pending
+                    backlog[key] = int(count_pending(conn))
+                else:
+                    backlog[key] = int((q1(conn, sql) or {"n": 0})["n"])
+        except Exception:  # noqa: BLE001 - a part this deployment lacks: no figure
+            backlog[key] = None
+    stored = [{"table": r["relname"], "rows": max(int(r["n"]), 0), "bytes": int(r["bytes"])} for r in qa(
+        conn, "SELECT c.relname, c.reltuples::bigint AS n, pg_total_relation_size(c.oid) AS bytes FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace "
+              "WHERE ns.nspname='public' AND c.relkind='r' AND c.relname = ANY(%s)", (list(STORED),))]
+    stored.sort(key=lambda x: STORED.index(x["table"]))
+    b = q1(conn, "SELECT cap, spent, reserved FROM provider_budgets WHERE provider='anthropic' AND kind='monthly' AND period=%s", (usage.period_now(),))
+    ai_pct = round((float(b["spent"]) + float(b["reserved"])) / float(b["cap"]) * 100, 1) if b and float(b["cap"]) > 0 else None
+    hb = {r["component"]: r["at"] for r in qa(conn, "SELECT component, at FROM system_heartbeats WHERE component IN ('scheduler','worker','worker-interactive')")}
+    return {"at": now, "tick_seconds": scheduler.TICK_SECONDS, "scheduler_at": hb.get("scheduler"), "worker_at": hb.get("worker"),
+            "counts": counts, "sources": items, "lanes": lanes, "jobs": job_items, "backlog": backlog, "stored": stored,
+            "ai": {"pct": ai_pct, "background_stops_at_pct": BACKGROUND_STOP_PCT, "background_paused": bool(ai_pct is not None and ai_pct >= BACKGROUND_STOP_PCT)},
+            "cadence_choices": list(CADENCE_CHOICES), "quiet_days": QUIET_DAYS}
+
+
+def set_lane(conn: Conn, key: str, actor: str, *, enabled: bool | None = None, every_s: int | None = None, run: bool = False) -> dict[str, Any]:
+    """Pause or switch on a lane, change how often it runs, or ask for it to run at the next tick. Only what the lane allows."""
+    from .. import scheduler
+    lane = scheduler.LANE.get(key)
+    if lane is None:
+        raise HTTPException(404, "no such automatic task")
+    if enabled is not None and not lane.can_pause:
+        raise HTTPException(400, "this task keeps the data correct and cannot be paused")
+    if every_s is not None:
+        if not lane.adjustable:
+            raise HTTPException(400, "how often this task runs is fixed")
+        if not scheduler.TICK_SECONDS <= every_s <= 86400:
+            raise HTTPException(400, "choose between 5 minutes and one day")
+    cur = q1(conn, "SELECT enabled, every_s, run_requested_by FROM scheduler_lanes WHERE lane=%s FOR UPDATE", (key,)) or {"enabled": True, "every_s": None, "run_requested_by": None}
+    new_enabled = cur["enabled"] if enabled is None else enabled
+    new_every = cur["every_s"] if every_s is None else (None if every_s == lane.every_s else every_s)     # the built-in cadence is stored as "none"
+    new_req = actor if run else cur["run_requested_by"]
+    conn.execute("INSERT INTO scheduler_lanes(lane, enabled, every_s, run_requested_by, updated_by, updated_at) VALUES (%s,%s,%s,%s,%s,now()) "
+                 "ON CONFLICT (lane) DO UPDATE SET enabled=EXCLUDED.enabled, every_s=EXCLUDED.every_s, run_requested_by=EXCLUDED.run_requested_by, "
+                 "updated_by=EXCLUDED.updated_by, updated_at=now()", (key, new_enabled, new_every, new_req, actor))
+    audit(conn, actor=actor, operation="scheduler_lane_run_requested" if run else "scheduler_lane_changed", record_type="scheduler_lane", record_id=key,
+          detail={"lane": lane.label, "enabled": new_enabled, "every_s": new_every or lane.every_s, "was_enabled": cur["enabled"],
+                  "was_every_s": cur["every_s"] or lane.every_s, "run_requested": run})
+    return {"lane": key, "enabled": bool(new_enabled), "every_s": new_every or lane.every_s, "run_requested": bool(new_req)}
+
+
 def paid_calls(conn: Conn, *, provider: str = "", purpose: str = "", status: str = "", since: str = "30d", limit: int = 50, offset: int = 0) -> dict[str, Any]:
     """Every paid AI or web search call, filterable by service, purpose, outcome and window, with the totals of what the filter matches."""
     iv = _window(since)
@@ -829,6 +1038,24 @@ def register(app: FastAPI) -> None:
                 raise HTTPException(404, "nothing left to dismiss in this group")
             return r
 
+    # ---- data health: sources and the scheduler's automatic work
+    @app.get("/api/admin/data-health")
+    def data_health_route(request: Request, p: Principal = Depends(require("sources.read"))):
+        with tx(request) as conn:
+            return data_health(conn, can_edit_sources=p.can("admin.sources"), can_edit_lanes=p.can("admin.jobs"))
+
+    @app.put("/api/admin/lanes/{key}")
+    def lane_set(key: str, body: LaneIn, request: Request, p: Principal = Depends(require("admin.jobs"))):
+        if body.enabled is None and body.every_s is None:
+            raise HTTPException(400, "nothing to change")
+        with tx(request) as conn:
+            return set_lane(conn, key, p.email, enabled=body.enabled, every_s=body.every_s)
+
+    @app.post("/api/admin/lanes/{key}/run")
+    def lane_run(key: str, request: Request, p: Principal = Depends(require("admin.jobs"))):
+        with tx(request) as conn:
+            return set_lane(conn, key, p.email, run=True)
+
     # ---- usage
     @app.get("/api/admin/usage/insights")
     def insights(request: Request, p: Principal = Depends(require("admin.costs"))):
@@ -837,4 +1064,4 @@ def register(app: FastAPI) -> None:
 
 
 __all__ = ["register", "classify", "failure_groups", "retry_group", "dismiss_group", "usage_insights", "identity_overview", "sources_overview",
-           "job_history", "source_checks", "sources_today", "import_history", "spend_this_month", "overview", "paid_calls"]
+           "job_history", "source_checks", "sources_today", "import_history", "spend_this_month", "overview", "paid_calls", "data_health", "set_lane"]

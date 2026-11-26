@@ -1,12 +1,132 @@
-"""Durable scheduling (spec 13 §5). The scheduler only ENQUEUES; idempotency keys make double-scheduling and restarts harmless."""
+"""Durable scheduling (spec 13 §5). The scheduler only ENQUEUES; idempotency keys make double-scheduling and restarts harmless.
+
+The cron (render.yaml) wakes the scheduler every TICK_SECONDS. Each housekeeping step is a *lane* (LANES below) with its own cadence:
+most run on every tick, the ones that only matter hourly or after a rule change run hourly. A lane records its last run and result in
+``scheduler_lanes`` (migration 0048), where Administration shows it and where a person can pause it, change how often it runs, or ask
+for it to run at the next tick. A lane with no row runs on its built-in cadence, so an empty table behaves like the old scheduler."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any, Callable
 
-from .db import Conn, q1, qa
+from .db import Conn, jb, q1, qa
 from .jobs.queue import enqueue
 
 SCHEDULED_STATUSES = ("active", "degraded")      # pending/blocked/failed/paused sources are never polled
+TICK_SECONDS = 300                               # render.yaml: schedule "*/5 * * * *"
+SLACK_SECONDS = 60                               # a tick that starts a little early still counts as due
+
+
+@dataclass(frozen=True)
+class Lane:
+    key: str                 # the step name (also the key of its figure in the scheduler's output)
+    label: str               # plain name for Administration
+    what: str                # one line: what it does
+    every_s: int = TICK_SECONDS
+    can_pause: bool = False  # only lanes whose pause cannot leave wrong data behind
+    adjustable: bool = False # a person may change how often it runs (between TICK_SECONDS and a day)
+    main: bool = False       # shown on its own in Administration; the others are grouped as housekeeping
+    queues: str | None = None    # the background job kind it starts, when it starts one
+
+
+HOUR = 3600
+LANES: tuple[Lane, ...] = (
+    Lane("finance_pilot_scans", "Daily check of the top accounts' own pages", "Once a day, queues a read of the news, careers and supplier pages of the 25 priority accounts.",
+         HOUR, can_pause=True, main=True, queues="account_scan"),
+    Lane("watchlist_scans", "Weekly check of starred accounts", "Once a week, queues a read of the own pages of every starred account.", HOUR, can_pause=True, main=True, queues="account_scan"),
+    Lane("market_tagged", "Market and region tags", "Gives each new finding its market, region and public or private lane."),
+    Lane("public_bodies_tagged", "Public bodies", "Marks public-sector buyers so they are not offered as sales accounts."),
+    Lane("retriaged", "Re-check skipped articles", "Articles the cheap word check skipped are checked again when the word list changes.", HOUR, adjustable=True),
+    Lane("procurement_events_backfilled", "Repair tenders left without a finding", "Makes the finding for any tender a stopped run saved without one. Also runs straight after a tender source fails.",
+         HOUR, adjustable=True),
+    Lane("tender_relevance", "Re-judge tender findings", "Applies the current software-work test to tender findings judged under an older one.", HOUR, adjustable=True),
+    Lane("tenders_expired", "Close tenders past their deadline", "Marks open tenders whose deadline passed more than 12 hours ago as expired, so counts stay honest.", HOUR),
+    Lane("fit_queued", "AI fit check for new findings", "At most once an hour, queues the AI check that writes why a new finding fits us, with an English and Polish summary.",
+         900, can_pause=True, main=True, queues="assess_fit"),
+    Lane("tender_summaries_queued", "Tender summaries", "At most once every two hours, queues the AI summary of open tenders in our sectors that have none.", can_pause=True, main=True, queues="tender_summaries"),
+    Lane("renewals_refreshed", "Award notices (renewals)", "Once a day, queues a re-read of the last five weeks of TED award notices.", HOUR, can_pause=True, main=True, queues="ted_awards_window"),
+    Lane("renewals_rechecked", "Re-judge stored awards", "Applies the current relevance rule to awards stored under an older one. Does nothing when all are current."),
+    Lane("identity_auto_queued", "Automatic company matching", "At most once an hour, queues the matcher while company names from the workbooks wait for a decision.", 900, can_pause=True, main=True,
+         queues="identity_autoresolve"),
+    Lane("source_check_queued", "Daily test of every source", "Once a day, queues the server test that switches safe public sources on by themselves.", HOUR, can_pause=True, main=True,
+         queues="sources_validate_daily"),
+    Lane("candidates", "New companies from findings", "Turns qualified new company names found in the news into candidate accounts.", can_pause=True),
+    Lane("candidate_gate", "Candidate check", "Re-checks candidate companies against the target market rules."),
+    Lane("degraded_sources", "Late sources", "Marks a source that missed its scheduled reads as late."),
+    Lane("expiry", "Signal expiry", "Ends buying signals whose time window has passed."),
+    Lane("initiatives", "Programme deadlines", "Moves programmes on when their next milestone date has passed."),
+    Lane("relinked_events", "Match findings to new accounts", "Re-matches findings about unknown companies when new accounts appear.", adjustable=True),
+    Lane("hypotheses_built", "Opportunity cards", "Builds the opportunity card for any programme that has none."),
+    Lane("verifications_requeued", "Stuck page checks", "Retries a page check whose job stopped answering (at most twice)."),
+    Lane("billing_jobs_recovered", "Work stopped by AI credit", "Re-queues page checks that stopped when the AI account ran out of credit, once it works again."),
+    Lane("reevaluated", "Opportunity re-check", "Re-scores opportunity cards whose programme changed."),
+    Lane("score", "Account scores", "Recomputes the account scores used for sorting."),
+    Lane("discovery_plans", "Saved web searches", "Keeps the saved web searches in line with the rules and the priority account list.", HOUR, adjustable=True),
+)
+LANE = {lane.key: lane for lane in LANES}
+
+
+def tick_seconds() -> int:
+    return TICK_SECONDS
+
+
+def lane_rows(conn: Conn) -> dict[str, dict[str, Any]]:
+    """The stored state of every lane. A database without the table (migration 0048 not applied yet) gives no rows: built-in cadences."""
+    try:
+        with conn.transaction():
+            return {r["lane"]: r for r in qa(conn, "SELECT * FROM scheduler_lanes")}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def lane_every(lane: Lane, row: dict[str, Any] | None) -> int:
+    v = (row or {}).get("every_s")
+    return int(v) if v and lane.adjustable else lane.every_s
+
+
+def lane_due(lane: Lane, row: dict[str, Any] | None, now: datetime) -> bool:
+    if row and not row["enabled"] and lane.can_pause:
+        return False
+    if row and row.get("run_requested_by"):
+        return True
+    last = (row or {}).get("last_run_at")
+    return last is None or (now - last).total_seconds() >= lane_every(lane, row) - SLACK_SECONDS
+
+
+def lane_next(lane: Lane, row: dict[str, Any] | None, now: datetime) -> datetime | None:
+    """When the lane runs next (None: paused). Due lanes run at the next tick."""
+    if row and not row["enabled"] and lane.can_pause:
+        return None
+    last = (row or {}).get("last_run_at")
+    if last is None or (row or {}).get("run_requested_by"):
+        return now
+    return max(now, last + timedelta(seconds=lane_every(lane, row)))
+
+
+def _figures(r: Any) -> dict[str, Any]:
+    if isinstance(r, dict):
+        return {k: v for k, v in r.items() if isinstance(v, (int, float, str, bool)) or v is None}
+    if isinstance(r, list):
+        return {"n": len(r)}
+    if isinstance(r, (int, float, bool)):
+        return {"n": r}
+    return {}
+
+
+MORE_WORK = "system:more-work"      # a slow lane that stopped at its batch limit runs again at the next tick, not an hour later
+
+
+def record_lane(conn: Conn, key: str, now: datetime, result: Any = None, error: str | None = None, *, again: bool = False) -> None:
+    """Remember that a lane ran, with what it did. Its own savepoint: bookkeeping never breaks the tick."""
+    try:
+        with conn.transaction():
+            conn.execute(
+                "INSERT INTO scheduler_lanes(lane, last_run_at, last_result, last_error, runs, run_requested_by, updated_at) VALUES (%s,%s,%s,%s,1,%s,now()) "
+                "ON CONFLICT (lane) DO UPDATE SET last_run_at=EXCLUDED.last_run_at, last_result=EXCLUDED.last_result, last_error=EXCLUDED.last_error, "
+                "runs=scheduler_lanes.runs+1, run_requested_by=EXCLUDED.run_requested_by", (key, now, jb(_figures(result)), error, MORE_WORK if again else None))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def due_sources(conn: Conn, now: datetime) -> list[dict]:
@@ -47,8 +167,12 @@ def schedule_discovery(conn: Conn, now: datetime | None = None, *, enabled: bool
     from .discovery.plans import sync_account_plans, sync_plans
     from .discovery.run import due_count
     now = now or datetime.now(timezone.utc)
-    sync_plans(conn)
-    sync_account_plans(conn)                 # the lead monitor: a weekly search per priority account                       # plans are visible in Administration even before Exa is configured
+    lane = LANE["discovery_plans"]
+    if lane_due(lane, lane_rows(conn).get(lane.key), now):
+        # hourly, not every tick: the priority list scans every workbook row (0.4 s a tick on production for no change).
+        # Plans are visible in Administration even before Exa is configured; the lead monitor is one search per priority account.
+        res = {"plans_added": sync_plans(conn), "account_plans_added": sync_account_plans(conn)}
+        record_lane(conn, lane.key, now, res)
     if not enabled:
         return 0
     if due_count(conn, 7, now) == 0:
@@ -159,8 +283,35 @@ def requeue_billing_failures(conn: Conn, limit: int = 10) -> int:
     return len(rows)
 
 
+def awards_need_recheck(conn: Conn) -> bool:
+    """Is any stored award judged under an older relevance rule? A range test on the relevance_v index (migration 0047), not a scan of
+    every award: the old `IS DISTINCT FROM` query read all 61k awards on every tick to find nothing."""
+    from .renewals import RELEVANCE_V
+    return bool(q1(conn, "SELECT 1 FROM awarded_contracts WHERE relevance_v IS NULL OR relevance_v < %s OR relevance_v > %s LIMIT 1", (RELEVANCE_V, RELEVANCE_V)))
+
+
+def recheck_awards_if_needed(conn: Conn) -> int:
+    from .renewals import recheck_awards
+    return recheck_awards(conn) if awards_need_recheck(conn) else 0
+
+
+def tender_run_failed_since(conn: Conn, since: datetime | None) -> bool:
+    """A tender source run that failed or stopped part-way since `since` may have left notices without their finding."""
+    return bool(q1(conn, "SELECT 1 FROM monitoring_runs r JOIN sources s USING (source_id) WHERE s.source_family='procurement' "
+                         "AND r.status IN ('partial','failed') AND r.started_at > %s LIMIT 1", (since or datetime(2000, 1, 1, tzinfo=timezone.utc),)))
+
+
+def expire_past_tenders(conn: Conn, now: datetime, grace_hours: int = 12) -> int:
+    """Open tenders whose deadline passed more than `grace_hours` ago are marked expired (the connectors' own rule: a past deadline is
+    expired). Every page already hides them by deadline; this keeps the stored status and the counts honest. A later official update
+    with a new deadline re-opens the notice through the normal ingest, exactly as before."""
+    return conn.execute("UPDATE procurement_notices SET status='expired', updated_at=now() WHERE status IN ('open','amended') AND deadline_at < %s",
+                        (now - timedelta(hours=grace_hours),)).rowcount
+
+
 def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
-    """Idempotent housekeeping. Every step runs in its own savepoint: one failing step is reported and the rest still run, so the scheduler heartbeat never goes quiet."""
+    """Idempotent housekeeping. Every step runs in its own savepoint: one failing step is reported and the rest still run, so the scheduler
+    heartbeat never goes quiet. Each step is a lane (LANES) and runs only when it is due on its own cadence and is not paused."""
     from .events.relink import relink_unmatched
     from .events.verify import tag_untagged
     from .identity.discovery import promote_candidates, reclassify_candidates
@@ -171,14 +322,26 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     from .signals.persist import sweep_expiry
     now = now or datetime.now(timezone.utc)
     out: dict = {}
+    rows = lane_rows(conn)
 
-    def step(name: str, fn) -> None:
+    def step(name: str, fn: Callable[[], Any], *, force: Callable[[dict[str, Any] | None], bool] | None = None,
+             more: Callable[[Any], bool] | None = None) -> None:
+        """Run one lane when it is due (or when `force` says something happened that needs it now); `more` says it stopped at its batch limit."""
+        lane = LANE.get(name)
+        row = rows.get(name)
+        if lane is not None and not lane_due(lane, row, now) and not (force and lane_due(lane, {**(row or {}), "last_run_at": None}, now) and force(row)):
+            if row and row.get("last_error") and (row["enabled"] or not lane.can_pause):
+                out[f"{name}_error"] = row["last_error"]          # still failing as of its last run: the self-test (canary) keeps seeing it
+            return
         try:
             with conn.transaction():
                 r = fn()
+                again = bool(more and more(r))
         except Exception as exc:  # noqa: BLE001
             out[f"{name}_error"] = f"{type(exc).__name__}: {exc}"[:200]
+            record_lane(conn, name, now, None, out[f"{name}_error"])
             return
+        record_lane(conn, name, now, r, again=again)
         if isinstance(r, dict):
             out.update({(k if name in ("expiry", "initiatives") else f"{name}_{k}" if k in ("scored", "cleared") else k): v for k, v in r.items()})
         else:
@@ -189,19 +352,22 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     from .market import tag_public_bodies
     step("public_bodies_tagged", lambda: tag_public_bodies(conn, 500))
-    from .events.triage import retriage
-    step("retriaged", lambda: retriage(conn, 500))
+    from .events.triage import relevance_version, retriage
+    step("retriaged", lambda: retriage(conn, 500), more=lambda _r: bool(q1(
+        conn, "SELECT 1 FROM source_documents WHERE raw_meta->>'triage'='skipped_not_relevant' AND content_text IS NOT NULL "
+              "AND fetched_at > now() - interval '21 days' AND coalesce(raw_meta->>'triage_v','') <> %s LIMIT 1", (relevance_version(),))))
     from .events.structured import backfill_procurement_events
-    step("procurement_events_backfilled", lambda: backfill_procurement_events(conn, 300))
+    step("procurement_events_backfilled", lambda: backfill_procurement_events(conn, 300),
+         force=lambda row: tender_run_failed_since(conn, (row or {}).get("last_run_at")), more=lambda n: int(n or 0) >= 300)
     from .events.structured import recheck_procurement_relevance
-    step("tender_relevance", lambda: recheck_procurement_relevance(conn, 2000))
+    step("tender_relevance", lambda: recheck_procurement_relevance(conn, 2000), more=lambda r: int((r or {}).get("tenders_rechecked") or 0) >= 2000)
+    step("tenders_expired", lambda: expire_past_tenders(conn, now))
     step("fit_queued", lambda: schedule_fit(conn, now))
     from .tender_summary import schedule as schedule_tender_summaries
     step("tender_summaries_queued", lambda: schedule_tender_summaries(conn, now))     # every two hours while tenders wait for a summary
     from .renewals import schedule_recent
-    from .renewals import recheck_awards
     step("renewals_refreshed", lambda: schedule_recent(conn, now))
-    step("renewals_rechecked", lambda: recheck_awards(conn))
+    step("renewals_rechecked", lambda: recheck_awards_if_needed(conn), more=lambda n: int(n or 0) >= 4000)
     from .identity.auto import schedule as schedule_identity_auto
     step("identity_auto_queued", lambda: schedule_identity_auto(conn, now))      # hourly while company matches wait for an automatic look
     from .sources.autovalidate import schedule as schedule_source_check

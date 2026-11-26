@@ -5,7 +5,7 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation, useParams } from "
 import { api, post, put, upload, patch } from "../api";
 import { Badge, Err, humanize, IconPeople, lab, Meter, Skeleton } from "../components/ui";
 import Library from "./Library";
-import { Fold, Health, HEALTH_PARTS, JobHistory, KnowledgeAdmin, Kind, MUST_BE_ZERO, Pager, Pick, Quiet, Say, SourceChecks, useLoad, useQueryState, when, windows } from "./PipelineStatus";
+import { DataHealth, Fold, Health, HEALTH_PARTS, JobHistory, KnowledgeAdmin, Kind, MUST_BE_ZERO, Pager, Pick, Quiet, Say, SourceChecks, useLoad, useQueryState, when, windows } from "./PipelineStatus";
 import Usage, { PaidCalls, SpendTotals } from "./Usage";
 import { Discovery, Verification } from "./Pipeline";
 import "../styles/admin.css";
@@ -44,7 +44,7 @@ function sectionsFor(p: (x: string) => boolean, waiting: number): Section[] {
     { key: "review", label: "To review", Icon: IcoReview, badge: approvals ? waiting : 0, blurb: "Decisions only a person can make: requests to approve, the few company names the matcher could not decide, and pages we could not check by ourselves.",
       tabs: [{ path: "/admin/approvals", label: "Approvals", show: approvals, badge: waiting }, { path: "/admin/identity", label: "Company matches", show: p("identity.manage") }, { path: "/admin/verification", label: "Pages being checked", show: p("sources.read") }] },
     { key: "data", label: "Sources & data", Icon: IcoData, blurb: "Where our information comes from: the sources we read, your workbooks, saved web searches and internal documents.",
-      tabs: [{ path: "/admin/sources", label: "Sources", show: p("sources.read") }, { path: "/admin/source-checks", label: "Source checks", show: p("sources.read") }, { path: "/admin/imports", label: "Workbooks", show: p("admin.sources") }, { path: "/admin/discovery", label: "Web search", show: p("admin.costs") }, { path: "/admin/knowledge", label: "Knowledge base", show: p("admin.sources") }] },
+      tabs: [{ path: "/admin/sources", label: "Sources", show: p("sources.read") }, { path: "/admin/data-health", label: "Data health", show: p("sources.read") }, { path: "/admin/source-checks", label: "Source checks", show: p("sources.read") }, { path: "/admin/imports", label: "Workbooks", show: p("admin.sources") }, { path: "/admin/discovery", label: "Web search", show: p("admin.costs") }, { path: "/admin/knowledge", label: "Knowledge base", show: p("admin.sources") }] },
     { key: "usage", label: "Usage & cost", Icon: IcoUsage, blurb: "What AI reading, web search and Apollo contact credits cost, measured against the monthly limits, down to every single paid call.",
       tabs: [{ path: "/admin/usage", label: "This month", show: p("admin.costs") }, { path: "/admin/usage/calls", label: "Every paid call", show: p("admin.costs") }, { path: "/admin/usage/limits", label: "Limits and totals", show: p("admin.costs") }] },
     { key: "health", label: "System health", Icon: IcoHealth, blurb: "Whether the background work is running and finding things, and a record of every job it ran.",
@@ -877,6 +877,8 @@ const OPS: Record<string, string> = {
   signal_campaign_pushed: "Sent a campaign to Lemlist", signal_campaign_withdrawn: "Withdrew a campaign", lemlist_enrolment_created: "Added someone to a Lemlist sequence",
   campaign_draft: "Drafted campaign emails", account_brief: "Wrote a company brief", verification_requested: "Asked to check a page", verification_batch_requested: "Asked to check pages",
   miss_reported: "Reported a page we missed", deadline_proposed: "Proposed a deadline", proof_asset_created: "Added a proof asset", schema_drift: "A workbook's columns changed",
+  scheduler_lane_changed: "Changed an automatic task", scheduler_lane_run_requested: "Asked an automatic task to run", source_cadence_changed: "Changed how often a source is read",
+  source_read_now: "Asked for a source to be read now",
   record_hard_block: "Blocked a record", create_activity: "Logged a CRM activity", create_deal: "Created a CRM deal", canary_failed: "A safety check failed", delivery_validation: "Checked a delivery",
 };
 const opName = (op: string) => tr(OPS[op] ?? humanize(op));
@@ -884,7 +886,8 @@ const RECORD: Record<string, string> = { organization: "Company", organization_p
   person: "Person", people_list: "People list", source: "Source", source_family: "Group of sources", user: "Person with access", signal_campaign: "Campaign", identity_review: "Company match",
   initiative: "Programme", opportunity_hypothesis: "Opportunity", discovery_plan: "Saved web search", import_run: "Workbook load", import_upload: "Workbook upload", account_source_link: "Workbook row",
   approval: "Approval", dead_letter: "Failed job", dead_letter_group: "Failed jobs", job: "Background job", integration: "Connected service", kb_document: "Knowledge base document",
-  verification_request: "Page check", regulatory_deadline: "Deadline", proof_asset: "Proof asset", campaign_draft: "Email draft", platform: "Platform", sheet: "Workbook" };
+  verification_request: "Page check", regulatory_deadline: "Deadline", proof_asset: "Proof asset", campaign_draft: "Email draft", platform: "Platform", sheet: "Workbook",
+  scheduler_lane: "Automatic task" };
 const recordLink = (t: string, id: string) => (["organization", "organization_people", "people_candidates", "crm_organization"].includes(t) ? `/accounts/${id}` : t === "person" ? `/people/${id}`
   : t === "opportunity_hypothesis" ? `/opportunities/${id}` : t === "signal_campaign" ? `/campaigns/${id}` : null);
 /** Who did it: a person's address, or the automatic job that did it. */
@@ -974,6 +977,7 @@ export default function Admin({ me, waiting, refreshApprovals }: { me: AdminUser
         <Route path="verification" element={<Sec s={review}><Gate ok={p("sources.read")}><Verification /></Gate></Sec>} />
         <Route path="data" element={<Navigate to={first("data")} replace />} />
         <Route path="sources" element={<Sec s={data}><Gate ok={p("sources.read")}><Sources canEdit={p("admin.sources")} /></Gate></Sec>} />
+        <Route path="data-health" element={<Sec s={data}><Gate ok={p("sources.read")}><DataHealth /></Gate></Sec>} />
         <Route path="source-checks" element={<Sec s={data}><Gate ok={p("sources.read")}><SourceChecks /></Gate></Sec>} />
         <Route path="connections" element={<Navigate to="/admin/sources" replace />} />
         <Route path="imports" element={<Sec s={data}><Gate ok={p("admin.sources")}><Imports /></Gate></Sec>} />

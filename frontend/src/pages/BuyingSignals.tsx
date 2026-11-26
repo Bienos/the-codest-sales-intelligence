@@ -551,7 +551,7 @@ function SignalTable({ companies, kinds, sort, dir, onSort, showFit, canPeople, 
       <SortHead k="newest" label="When" sort={sort} dir={dir} onSort={onSort} className="c-when" />
       <SortHead k="region" label="Region" sort={sort} dir={dir} onSort={onSort} className="c-reg" />
       <SortHead k="email" label="Email" sort={sort} dir={dir} onSort={onSort} className="c-mail" />
-      {showFit && <SortHead k="fit" label="Best fit" sort={sort} dir={dir} onSort={onSort} className="c-fit" />}
+      {showFit && <SortHead k="fit" label="Our offer" sort={sort} dir={dir} onSort={onSort} className="c-fit" />}
       <th scope="col" className="c-x"><span className="bs-vh">{tr("Details")}</span></th>
     </tr></thead>
     {companies.map((c) => <TableRow key={c.organization.id} c={c} kinds={kinds} cols={cols} showFit={showFit} canPeople={canPeople} canCampaign={canCampaign} focus={focus} onKey={move} />)}
