@@ -79,6 +79,12 @@ class Settings:
     discovery_interval_days: int = 7
     discovery_max_searches_per_run: int = 16
     discovery_max_new_requests_per_run: int = 30
+    # --- round 7, area 2: web search for target accounts with no finding in the last 90 days (backend/src/ri/discovery) ---
+    discovery_coverage_searches_per_run: int = 25           # RI_DISCOVERY_COVERAGE_SEARCHES_PER_RUN, one search per account a day; 0 switches the lane off
+    discovery_coverage_max_new_requests_per_run: int = 45   # RI_DISCOVERY_COVERAGE_MAX_NEW_REQUESTS_PER_RUN, new pages sent to the page check
+    discovery_coverage_cycle_days: int = 35                 # RI_DISCOVERY_COVERAGE_CYCLE_DAYS, an account is searched again after this many days
+    discovery_auto_budget_share: float = 0.60               # RI_DISCOVERY_AUTO_BUDGET_SHARE, automatic searches stop at this share of the monthly Exa cap
+    # --- end of the area 2 settings ---
     allowed_email_domain: str | None = None
     api_rate_per_minute: int = 600              # per caller; 0 switches the limiter off
     google_require_workspace: bool = False      # true: only accounts managed by the company's Google Workspace (token `hd` = allowed domain)
@@ -127,6 +133,11 @@ class Settings:
             discovery_interval_days=int(os.environ.get("RI_DISCOVERY_INTERVAL_DAYS", "7")),
             discovery_max_searches_per_run=int(os.environ.get("RI_DISCOVERY_MAX_SEARCHES_PER_RUN", "16")),
             discovery_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_MAX_NEW_REQUESTS_PER_RUN", "30")),
+            # round 7, area 2 (web search for accounts without a recent finding)
+            discovery_coverage_searches_per_run=int(os.environ.get("RI_DISCOVERY_COVERAGE_SEARCHES_PER_RUN", "25")),
+            discovery_coverage_max_new_requests_per_run=int(os.environ.get("RI_DISCOVERY_COVERAGE_MAX_NEW_REQUESTS_PER_RUN", "45")),
+            discovery_coverage_cycle_days=int(os.environ.get("RI_DISCOVERY_COVERAGE_CYCLE_DAYS", "35")),
+            discovery_auto_budget_share=_f("RI_DISCOVERY_AUTO_BUDGET_SHARE", 0.60),
             exa_est_cost_per_search=float(os.environ["RI_EXA_EST_COST_PER_SEARCH"]) if os.environ.get("RI_EXA_EST_COST_PER_SEARCH") else None,
             allowed_email_domain=(os.environ.get("RI_ALLOWED_EMAIL_DOMAIN") or "").lower() or None,
             api_rate_per_minute=int(os.environ.get("RI_API_RATE_PER_MINUTE", "600")),

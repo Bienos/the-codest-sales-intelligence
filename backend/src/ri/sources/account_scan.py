@@ -12,6 +12,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
+from . import ats_more
 from .http import UA
 from .webwatch import RobotsCache
 
@@ -25,6 +26,16 @@ ATS = [("greenhouse", re.compile(r"(?:boards|job-boards)\.greenhouse\.io/(?:embe
        ("ashby", re.compile(r"jobs\.ashbyhq\.com/([a-z0-9_.-]+)", re.I)),
        ("smartrecruiters", re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([A-Za-z0-9_-]+)", re.I))]
 BOARD_HOST = {"greenhouse": "boards.greenhouse.io", "lever": "jobs.lever.co", "lever_eu": "jobs.eu.lever.co", "ashby": "jobs.ashbyhq.com", "smartrecruiters": "jobs.smartrecruiters.com"}
+# Workday, Personio, Teamtailor, Recruitee and Workable are recognised from the host name by ats_more.detect_board (a Workday board needs the tenant, the
+# data-centre number and the site, so one pattern with one capture group does not fit); JOIN is recognised and reported but has no public listing interface.
+UNREAD_NOTE = {"join": "job board on JOIN ({board}); JOIN has no public listing interface without an API key, so it is not read"}
+
+
+def board_url(provider: str, board: str) -> str:
+    """The public page of a job board: what `account_endpoints.url` stores for it (unique per account)."""
+    if provider in BOARD_HOST:
+        return f"https://{BOARD_HOST[provider]}/{board}"
+    return ats_more.board_url(provider, board)
 
 
 def ats_source(provider: str) -> str:
@@ -68,6 +79,7 @@ async def probe_boards(client: httpx.AsyncClient, domain: str, org_name: str) ->
         except (httpx.HTTPError, ValueError):
             pass
     return hits
+EMPTY_LISTING = "Listing was empty"      # marker kept in `account_endpoints.last_detail` after a first empty read of a job board
 FEED_GUESSES = ("/feed", "/rss.xml", "/news/feed", "/blog/feed")
 MAX_BYTES = 2_000_000
 
@@ -96,7 +108,7 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
     p.feed(html[:MAX_BYTES])
     feeds = [urljoin(page_url, f) for f in p.feeds
              if not re.search(r"/comments/feed/?$", urlparse(f).path, re.I)]
-    news, careers, procurement, ats = [], [], [], []
+    news, careers, procurement, ats, unread = [], [], [], [], []
     for raw in p.links:
         u = urljoin(page_url, raw.strip())
         if not u.startswith("http"):
@@ -105,6 +117,12 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
             m = rx.search(u)
             if m and m.group(1).lower() not in {"embed", "jobs", "www"}:
                 ats.append((prov, m.group(1)))
+        more = ats_more.detect_board(u)               # Workday, Personio, Teamtailor, Recruitee, Workable (decided by the host name)
+        if more:
+            ats.append(more)
+        skipped = ats_more.detect_unread_board(u)     # recognised, not readable
+        if skipped:
+            unread.append(skipped)
         host = urlparse(u).netloc
         path = urlparse(u).path
         depth = len([x for x in path.split("/") if x and not re.fullmatch(r"[a-z]{2}(-[a-z]{2})?", x, re.I)])   # ignore a language prefix such as /en/
@@ -117,7 +135,25 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
             if PROCUREMENT_PATH.search(last):
                 procurement.append(u.split("#")[0])
     dedupe = lambda xs: list(dict.fromkeys(xs))   # noqa: E731
-    return {"feeds": dedupe(feeds), "news": dedupe(news), "careers": dedupe(careers), "procurement": dedupe(procurement), "ats": dedupe(ats)}
+    return {"feeds": dedupe(feeds), "news": dedupe(news), "careers": dedupe(careers), "procurement": dedupe(procurement), "ats": dedupe(ats), "unread": dedupe(unread)}
+
+
+def boards_in_links(links: list[str], base_url: str, readable: set[str]) -> list[tuple[str, str]]:
+    """Job boards that a page links to, for the providers we can read: the careers page we already fetch each scan shows boards that were not there
+    (or not recognised) when the account's pages were first found. No extra request."""
+    out: list[tuple[str, str]] = []
+    for raw in links:
+        u = urljoin(base_url, (raw or "").strip())
+        if not u.startswith("http"):
+            continue
+        for prov, rx in ATS:
+            m = rx.search(u)
+            if m and m.group(1).lower() not in {"embed", "jobs", "www"}:
+                out.append((prov, m.group(1)))
+        more = ats_more.detect_board(u)
+        if more:
+            out.append(more)
+    return [pb for pb in dict.fromkeys(out) if pb[0] in readable]
 
 
 async def _get(client: httpx.AsyncClient, robots: RobotsCache, url: str) -> str | None:
@@ -143,15 +179,20 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
     if html is None:
         return {"endpoints": [], "notes": [f"{domain}: home page could not be read (blocked by robots.txt, an error, or no response)"]}
     found = parse_page(html, home_url, domain)
-    feeds, news, careers, ats = list(found["feeds"]), list(found["news"]), list(found["careers"]), list(found["ats"])
-    if careers:                                  # job-board slugs usually sit on the careers page
-        page = await _get(client, robots, careers[0])
+    feeds, news, careers, ats, unread = list(found["feeds"]), list(found["news"]), list(found["careers"]), list(found["ats"]), list(found["unread"])
+    for careers_url in careers[:2]:              # job-board links usually sit on the careers page (a company often has a second, local one)
+        page = await _get(client, robots, careers_url)
         if page:
-            ats += parse_page(page, careers[0], domain)["ats"]
+            more = parse_page(page, careers_url, domain)
+            ats += more["ats"]
+            unread += more["unread"]
     eu = [b for p, b in ats if p == "greenhouse_eu"]
     if eu:
         ats = [(p, b) for p, b in ats if p != "greenhouse_eu"]
         notes.append(f"{domain}: job board on Greenhouse's EU instance ({', '.join(eu)}); that instance has no public listing API, so it is not read")
+    for prov, board in dict.fromkeys(unread):    # a board we recognise but cannot read: say so instead of staying silent
+        if prov in UNREAD_NOTE:
+            notes.append(f"{domain}: " + UNREAD_NOTE[prov].format(board=board))
     if not ats and org_name:                     # nothing linked from the site: try the company's short name, accepting only a board that names this company
         ats += await probe_boards(client, domain, org_name)
         if ats:
@@ -176,7 +217,7 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
     for u in careers[:1]:
         eps.append({"kind": "careers", "url": u, "provider": None, "board": None})
     for prov, board in list(dict.fromkeys(ats))[:3]:
-        eps.append({"kind": "job_board", "url": f"https://{BOARD_HOST[prov]}/{board}", "provider": prov, "board": board})
+        eps.append({"kind": "job_board", "url": board_url(prov, board), "provider": prov, "board": board})
     if not eps:
         notes.append(f"{domain}: no news feed, press page, careers page or job board found on the home page")
     return {"endpoints": eps, "notes": notes}
@@ -187,7 +228,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
     from ..db import q1, qa
     from ..ingest.pipeline import RunResult, _run, close_unseen_jobs, upsert_document, upsert_job
     from ..ingest.process import process_run
-    from .ats import AshbyConnector, GreenhouseConnector, LeverConnector, LeverEuConnector, SmartRecruitersConnector
+    from .factory import ats_connectors
     from .util import utcnow
     from .webwatch import FeedConnector, PageWatchConnector
     now = now or utcnow()
@@ -210,11 +251,13 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
         existing = qa(conn, "SELECT * FROM account_endpoints WHERE organization_id=%s", (org_id,))
     res = RunResult("account-scan", "completed")
     robots = RobotsCache()
-    retention = {r["source_id"]: r["retention_policy"] for r in qa(conn, "SELECT source_id, retention_policy FROM sources WHERE source_id IN ('corporate-ir-newsrooms','ats-greenhouse','ats-lever','ats-ashby','ats-smartrecruiters')")}
-    ats_cls = {"greenhouse": GreenhouseConnector, "lever": LeverConnector, "ashby": AshbyConnector, "smartrecruiters": SmartRecruitersConnector, "lever_eu": LeverEuConnector}
+    retention = {r["source_id"]: r["retention_policy"] for r in qa(conn, "SELECT source_id, retention_policy FROM sources WHERE source_id = 'corporate-ir-newsrooms' OR source_id LIKE 'ats-%'")}
+    ats_cls = ats_connectors()
     scanned = 0
-    for ep in existing:
+    queue = list(existing)          # a job board found on a careers page during this scan is appended and read in the same run
+    for ep in queue:
         status, detail, seen = "ok", None, 0
+        found_boards: list[dict[str, Any]] = []
         try:
             with conn.transaction():
                 if ep["kind"] in ("feed", "newsroom", "careers", "procurement"):
@@ -237,9 +280,29 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                             res.new_doc_ids.append(doc_id)
                         elif st == "changed":
                             res.changed_doc_ids.append(doc_id)
+                    if ep["kind"] == "careers" and batch.items:
+                        # boards linked from the careers page we just read (no extra request): accounts scanned before a career system was
+                        # recognised pick it up here. At most three boards an account, as in discovery.
+                        have = {(e["provider"], e["board"]) for e in queue if e["kind"] == "job_board"}
+                        for prov, board in boards_in_links(batch.items[0].payload.get("links") or [], ep["url"], set(ats_cls)):
+                            if len(have) >= 3:
+                                break
+                            if (prov, board) in have:
+                                continue
+                            row = conn.execute("INSERT INTO account_endpoints(organization_id, kind, url, provider, board) VALUES (%s,'job_board',%s,%s,%s) "
+                                               "ON CONFLICT (organization_id, url) DO NOTHING RETURNING *", (org_id, board_url(prov, board), prov, board)).fetchone()
+                            if row:
+                                have.add((prov, board))
+                                found_boards.append(dict(row))
+                                notes.append(f"{org['canonical_domain']}: job board {prov}/{board} found on the careers page")
                 elif ep["kind"] == "job_board" and ep["provider"] in ats_cls:
-                    con = ats_cls[ep["provider"]](client, ep["board"], employer_name=org["display_name"], source_id=ats_source(ep["provider"]))
+                    cls = ats_cls[ep["provider"]]
+                    con = cls(client, ep["board"], employer_name=org["display_name"], source_id=ats_source(ep["provider"]),
+                              **({"robots": robots} if getattr(cls, "USES_ROBOTS", False) else {}))
                     batch = _run(con.fetch(None, 500))
+                    for w in batch.warnings:
+                        notes.append(w)
+                        detail = detail or w[:300]
                     ids: set[str] = set()
                     for item in batch.items:
                         d = con.canonicalize(item)
@@ -250,10 +313,19 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                         if ch != "unchanged":
                             res.structured_changes.append(("job", jid, ch))
                     if batch.complete_listing:
-                        for closed in close_unseen_jobs(conn, ep["provider"], ep["board"], ids, now):   # only after an affirmative full listing
-                            res.structured_changes.append(("job", closed, "closed"))
+                        # The newer readers (XML, RSS and widget feeds) can answer 200 with an empty list when a feed is switched off or moved. An empty list
+                        # that would close every open advert of the board is believed only on the SECOND check in a row (the first leaves a marker).
+                        open_now = q1(conn, "SELECT count(*) AS n FROM job_postings WHERE provider=%s AND board=%s AND open_status='open'", (ep["provider"], ep["board"]))["n"]
+                        board_empty = (batch.quota_usage or {}).get("postings_seen", len(batch.items)) == 0      # Workday keeps only engineering roles: a busy board with none is not empty
+                        if ep["provider"] in ats_more.MORE_CONNECTORS and board_empty and open_now and not (ep.get("last_detail") or "").startswith(EMPTY_LISTING):
+                            detail = f"{EMPTY_LISTING}: its {open_now} open adverts are kept until the next check says the same"
+                            notes.append(f"{ep['provider']}/{ep['board']}: " + detail)
+                        else:
+                            for closed in close_unseen_jobs(conn, ep["provider"], ep["board"], ids, now):   # only after an affirmative full listing
+                                res.structured_changes.append(("job", closed, "closed"))
                 else:
                     raise ValueError("Account endpoint has no supported connector")
+            queue.extend(found_boards)
             scanned += 1
         except Exception as exc:   # noqa: BLE001 - one bad endpoint must not stop the others
             status, detail = "failed", f"{type(exc).__name__}: {exc}"[:300]
@@ -272,6 +344,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
                      "ON CONFLICT (organization_id, source_family) DO UPDATE SET coverage_state=EXCLUDED.coverage_state, source_ids=EXCLUDED.source_ids, last_success_at=coalesce(EXCLUDED.last_success_at,account_source_coverage.last_success_at), note=EXCLUDED.note, updated_at=now()",
                      (org_id, fam, state, [r["url"] for r in rows][:5], now if state == "monitored_healthy" else None, "; ".join(notes)[:300] or None))
     conn.commit()
+    existing = queue
     if not existing:
         outcome = "no_sources"
     elif not scanned:

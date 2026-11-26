@@ -10,6 +10,15 @@ class NoConnector(NotImplementedError):
     pass
 
 
+def ats_connectors() -> dict[str, type]:
+    """The job-board readers the account scan uses, by the provider name stored on `account_endpoints.provider` and `job_postings.provider`.
+    One place to register a new career system: the scan, its tests and the detection in account_scan.py all start from this list."""
+    from .ats import AshbyConnector, GreenhouseConnector, LeverConnector, LeverEuConnector, SmartRecruitersConnector
+    from .ats_more import MORE_CONNECTORS
+    return {"greenhouse": GreenhouseConnector, "lever": LeverConnector, "ashby": AshbyConnector, "smartrecruiters": SmartRecruitersConnector,
+            "lever_eu": LeverEuConnector, **MORE_CONNECTORS}
+
+
 def build_connector(conn: Conn, source_id: str):
     from .procurement import ContractsFinderConnector, FindTenderConnector, PolishBzpConnector, TedConnector
     from .jobs_market import ArbeitnowConnector, JobTechConnector

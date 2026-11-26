@@ -294,7 +294,7 @@ function SignalMap() {
   );
 }
 
-const WATCHING = ["tenders", "regulators", "company newsrooms", "job boards", "trade media", "your account lists"];
+const WATCHING = ["public tenders", "trade news", "company newsrooms", "job ads", "web search", "vendor news", "regulators", "your account lists"];
 
 /** One word at a time: what the platform is watching. Static when motion is reduced. */
 function Watching() {
@@ -303,7 +303,7 @@ function Watching() {
   return <div className="watching" aria-label={tr("Watching {}", WATCHING.map((name) => tr(name)).join(", "))}><span className="watching-k">{tr("Watching")}</span><span key={i} className="watching-w" aria-hidden="true">{tr(WATCHING[i])}</span></div>;
 }
 
-const SOURCES = ["Tenders", "Regulators", "Company newsrooms", "Job boards", "Trade media", "Your account lists", "Search discovery", "Programme announcements"];
+const SOURCES = ["Public tenders", "Trade and fintech news", "Company newsrooms", "Job ads", "Web search", "Vendor announcements", "Regulators", "Your account lists"];
 
 function Ticker() {
   return (
@@ -382,7 +382,7 @@ function Demo() {
 
 /* ---------- scroll-drawn timeline ---------- */
 const STEPS = [
-  { t: "Watch", d: "Tenders, company newsrooms, regulators, trade media and your own account lists are checked on a schedule." },
+  { t: "Watch", d: "Public tenders, trade news, company websites, job ads, web search and your own account lists are read regularly." },
   { t: "Verify", d: "Every claim is tied to a word-for-word quote on the original page. No quote, no signal." },
   { t: "Group", d: "Coverage of the same announcement counts once. Related events join into one programme." },
   { t: "Test", d: "Seven gates ask what is proven and what is still unknown, including whether demand is external." },

@@ -18,6 +18,7 @@ const ico = (d: ReactNode): Ico => (p) => (
 const IconJobs = ico(<><rect x="3" y="7" width="18" height="13" /><path d="M9 7V4h6v3M3 12h18" /></>);
 const IconWeb = ico(<><rect x="3" y="4" width="18" height="16" /><path d="M3 9h18M6.5 6.5h.01M9.5 6.5h.01" /></>);
 const IconSignal = ico(<><path d="M3 12h4l3-7 4 14 3-7h4" /></>);
+const IconSearch = ico(<><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5L21 21" /></>);
 
 /** A link when the viewer may open the page, otherwise the page name as plain text. */
 function To({ to, perm, can, children }: { to: string; perm: string; can: Can; children: ReactNode }) {
@@ -27,14 +28,14 @@ function To({ to, perm, can, children }: { to: string; perm: string; can: Can; c
 /* ------------------------------------------------------------------ hero diagram */
 
 function Machine() {
-  const sources: [string, Ico][] = [["News sites", IconFeed], ["Tenders", IconTender], ["Job ads", IconJobs], ["Company websites", IconWeb]];
+  const sources: [string, Ico][] = [["News and trade press", IconFeed], ["Public tenders", IconTender], ["Career sites and job ads", IconJobs], ["Company websites", IconWeb], ["Web search (Exa)", IconSearch]];
   const calls: [string, string][] = [
     ["A bank in London", "Hiring 12 payments engineers"],
     ["An insurer in Munich", "Open tender for a testing partner"],
     ["A fintech in Warsaw", "Raised money to build a new app"],
   ];
   return (
-    <figure className="hw-machine" aria-label={tr("Diagram: news, tenders, job ads and company websites go into the app. The app reads, matches and checks them. Out comes a short list of companies to call, each with a reason.")}>
+    <figure className="hw-machine" aria-label={tr("Diagram: news and trade press, public tenders, career sites and job ads, company websites and web search go into the app. The app reads, matches and checks them. Out comes a short list of companies to call, each with a reason.")}>
       <ul className="hw-feed" aria-label={tr("What the app reads")}>
         {sources.map(([label, Icon]) => <li key={label}><span className="hw-src"><Icon />{tr(label)}</span></li>)}
       </ul>
@@ -51,6 +52,7 @@ function Machine() {
           <span className="hw-call"><span className="hw-call-k">{tr("Call them")}</span><b>{tr(who)}</b><span>{tr(why)}</span></span>
         </li>)}
       </ol>
+      <p className="hw-note">{tr("Web search finds pages about companies that no news feed covers. Company websites are checked in turn, so every target account is read regularly and the top accounts most often.")}</p>
       <figcaption>{tr("An example morning. In the app you see real company names and the page behind each reason.")}</figcaption>
     </figure>
   );
@@ -113,8 +115,8 @@ type Step = { verb: string; line: string; chips: string[]; to: string; perm: str
 
 const STEPS: Step[] = [
   { verb: "Watch the market", art: ArtWatch,
-    line: "The app reads public news, tenders, job ads and company websites around the clock, so you don't have to.",
-    chips: ["News and press pages", "EU and UK tenders", "Job ads", "Company websites", "Web search with Exa"],
+    line: "The app reads public news and trade press, tenders, career sites and company websites around the clock, and searches the web for pages about companies that no news feed covers.",
+    chips: ["News and trade press", "EU, UK and Polish tenders", "Career sites and job ads", "Company websites, in turn", "Web search with Exa"],
     to: "/feed", perm: "explorer.read", page: "All findings", note: "every story it has read, with a link to the original page." },
   { verb: "Match it to your list", art: ArtMatch,
     line: "It works out which company each story is about, and whether it is a buying signal: a sign that the company may need engineers.",
@@ -200,9 +202,9 @@ function Day({ can }: { can: Can }) {
 type Budget = { cap: number; spent: number };
 type Live = { exa?: Budget; ai?: Budget; aiUsd?: number | null; apollo?: Budget };
 
-// The limits set for production (render.yaml: RI_EXA_MONTHLY_CAP_USD=20, RI_ANTHROPIC_MONTHLY_TOKEN_CAP=10000000; budget.py enforces them).
+// The limits set for production (Exa $20 a month, 30 million AI tokens a month; budget.py enforces them).
 // When the viewer may see costs, the live limits for this month replace these.
-const EXA_CAP = 20, AI_TOKENS = 10_000_000, AI_USD = 1.6;
+const EXA_CAP = 20, AI_TOKENS = 30_000_000, AI_USD = 4.8;
 
 const tokens = (n: number) => (n >= 1_000_000 ? tr("{} million", number(Math.round(n / 100_000) / 10)) : number(Math.round(n)));
 const usd = (n: number) => `$${n < 10 && n % 1 ? n.toFixed(2) : number(Math.round(n))}`;
@@ -240,13 +242,13 @@ function Costs({ can }: { can: Can }) {
       <section className="hw-cost" aria-labelledby="cost-exa">
         <h3 id="cost-exa">{tr("Exa web research")}</h3>
         <p className="hw-big">{tr("{} a month", usd(exaCap))}</p>
-        <p>{tr("Pays for company and people research, and for a few web searches a day. Researching one company costs a few cents.")}</p>
+        <p>{tr("Pays for company and people research, and for the web searches that find pages about companies no news feed covers. Researching one company costs a few cents. Automatic searches stop at 60% of the limit, so your own Research with Exa buttons always work.")}</p>
         <Wall b={live.exa} idle="Hard limit, checked before every search" label={tr("This month: {} of {} used", usd(live.exa?.spent ?? 0), usd(exaCap))} />
       </section>
       <section className="hw-cost" aria-labelledby="cost-ai">
         <h3 id="cost-ai">{tr("AI reading and writing")}</h3>
         <p className="hw-big">{tr("{} million tokens a month", number(Math.round(aiCap / 100_000) / 10))}</p>
-        <p>{tr("A token is a small piece of a word. The AI reads pages, picks out facts and writes summaries and first lines.")}{aiUsd ? " " + tr("About {} a month at today's list price.", usd(aiUsd)) : ""}</p>
+        <p>{tr("A token is a small piece of a word. The AI reads pages, picks out facts and writes summaries and first lines. Reading in the background pauses at 70% of the limit, so your own checks always have room.")}{aiUsd ? " " + tr("About {} a month at today's list price.", usd(aiUsd)) : ""}</p>
         <Wall b={live.ai} idle="Hard limit, checked before every call" label={tr("This month: {} of {} tokens used", tokens(live.ai?.spent ?? 0), tokens(aiCap))} />
       </section>
       <section className="hw-cost" aria-labelledby="cost-apollo">
@@ -257,7 +259,7 @@ function Costs({ can }: { can: Can }) {
       </section>
     </div>
     <div className="hw-free">
-      <p><b>{tr("Free to read:")}</b> {tr("news pages, official tender sites, job boards and company websites cost nothing.")}</p>
+      <p><b>{tr("Free to read:")}</b> {tr("news and trade press, official tender sites, career sites and job boards, and company websites cost nothing to read. Only web search and the AI cost money, which is why they have limits.")}</p>
       <p><b>{tr("Tracked:")}</b> {tr("every paid call is written down with what it was for.")} {mayCost && <Link to="/admin/usage">{tr("See usage and cost")}</Link>}</p>
     </div>
   </>;
@@ -274,14 +276,15 @@ const WORDS: [string, string, string][] = [
   ["ICP", "Our ideal customer: privately owned banks, insurers, payment companies and fintechs, mostly in the UK, DACH, the Nordics and Poland.", ""],
 ];
 const SERVICES: [string, string][] = [
-  ["Exa", "A web search service. The app uses it to research companies and people."],
+  ["Exa", "A web search service. The app uses it to research companies and people, and to find pages about companies that no news feed covers."],
   ["AI model", "Reads pages, picks out facts and writes summaries. A fact without a quote from the page is dropped."],
   ["Apollo", "A contact database that finds work email addresses, within our subscription."],
   ["Lemlist", "The email tool that sends campaigns. The app prepares them; you launch them there."],
 ];
 const FAQ: [string, string][] = [
   ["Does the app send emails by itself?", "No. It prepares campaigns. A manager approves them, and nothing goes out until someone presses Launch in Lemlist."],
-  ["Where does the information come from?", "Public pages: news sites, official tender sites, job boards and company websites, plus web search with Exa. Every finding links to its original page."],
+  ["Where does the information come from?", "Public pages: news and trade press, official tender sites, career sites and job boards, and company websites, plus web search with Exa, which finds pages about companies that no news feed covers. Every finding links to its original page."],
+  ["Does it read every company's website?", "In turn. Each target account's own news, careers and supplier pages are read regularly, and the top accounts most often. A company that has not been read yet can still show up through the news, tenders or web search."],
   ["Can it make things up?", "It is built not to. A fact is kept only when its exact words are on the original page, and the research shows the page behind every line."],
   ["Why is a company I know missing?", "Either nothing new has happened there, or it is outside our ICP. Search for it in the menu, or paste a story the app missed on All findings."],
   ["What if a website blocks the app?", "It skips that page. It never logs in or gets round a block. Administration shows which sources are working."],
@@ -299,7 +302,7 @@ export default function Guide({ can = () => true }: { can?: Can }) {
         <div className="hw-hero-copy">
           <h1>{tr("How it works")}</h1>
           <p className="hw-lede">{tr("Every morning, the app reads the market for you and tells you which banks and fintechs to call, and why.")}</p>
-          <p className="hw-sub">{tr("It reads public news, tenders, job ads and company websites, matches each story to a company on your list, and checks every fact against the page it came from. You decide who to contact.")}</p>
+          <p className="hw-sub">{tr("It reads news, tenders, job ads and company websites, and searches the web for companies no feed covers. It matches each story to a company on your list and checks every fact against the page it came from. You decide who to contact.")}</p>
           <div className="hw-cta">
             {can("today.read") && <Link className="btn primary" to="/today">{tr("Open Today")}</Link>}
             <a href="#steps">{tr("See the six steps")}</a>

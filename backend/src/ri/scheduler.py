@@ -35,6 +35,9 @@ LANES: tuple[Lane, ...] = (
     Lane("finance_pilot_scans", "Daily check of the top accounts' own pages", "Once a day, queues a read of the news, careers and supplier pages of the 25 priority accounts.",
          HOUR, can_pause=True, main=True, queues="account_scan"),
     Lane("watchlist_scans", "Weekly check of starred accounts", "Once a week, queues a read of the own pages of every starred account.", HOUR, can_pause=True, main=True, queues="account_scan"),
+    Lane("scan_rotation", "Rotating check of every target account's own pages",
+         "Every hour, queues a read of the news, careers and supplier pages of a few target accounts, the longest-unchecked first (about 20 a day), so every target gets its turn. Runs in the background.",
+         HOUR, can_pause=True, main=True, queues="account_scan_background"),
     Lane("market_tagged", "Market and region tags", "Gives each new finding its market, region and public or private lane."),
     Lane("public_bodies_tagged", "Public bodies", "Marks public-sector buyers so they are not offered as sales accounts."),
     Lane("retriaged", "Re-check skipped articles", "Articles the cheap word check skipped are checked again when the word list changes.", HOUR, adjustable=True),
@@ -114,6 +117,7 @@ def _figures(r: Any) -> dict[str, Any]:
     return {}
 
 
+PREFIXED_LANES = ("scan_rotation",)         # lanes whose result figures are named for the lane in the scheduler's output ("scan_rotation_queued"), so they cannot clash with another step's
 MORE_WORK = "system:more-work"      # a slow lane that stopped at its batch limit runs again at the next tick, not an hour later
 
 
@@ -343,12 +347,14 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
             return
         record_lane(conn, name, now, r, again=again)
         if isinstance(r, dict):
-            out.update({(k if name in ("expiry", "initiatives") else f"{name}_{k}" if k in ("scored", "cleared") else k): v for k, v in r.items()})
+            out.update({(k if name in ("expiry", "initiatives") else f"{name}_{k}" if (k in ("scored", "cleared") or name in PREFIXED_LANES) else k): v for k, v in r.items()})
         else:
             out[name] = r
 
     step("finance_pilot_scans", lambda: schedule_finance_pilot(conn, now))
     step("watchlist_scans", lambda: schedule_watchlist(conn, now))
+    from .sources.scan_rotation import schedule as schedule_scan_rotation
+    step("scan_rotation", lambda: schedule_scan_rotation(conn, now))      # after the daily and weekly checks: whatever they queued today is not doubled
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     from .market import tag_public_bodies
     step("public_bodies_tagged", lambda: tag_public_bodies(conn, 500))

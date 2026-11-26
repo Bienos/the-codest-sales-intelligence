@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import calendar
 from uuid import UUID
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -267,23 +267,98 @@ def register(app: FastAPI) -> None:
     # ------------------------------------------------------------ source library
     @app.get("/api/admin/library")
     def library(request: Request, p: Principal = Depends(require("today.read"))):
-        from ..connections import monitoring_mode
-
         with tx(request) as conn:
-            rows = qa(conn,
-                "SELECT s.source_id, s.display_name, s.source_tier, s.source_type, s.source_family, s.provider, s.countries, s.signal_rule_ids, s.collection_method, s.auth_mode, "
-                "s.retention_policy, s.licence_notes, s.poll_interval_s, s.status, s.cost_profile, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, h.state AS health, h.last_success_at, h.last_attempt_at, h.consecutive_failures, h.error_class, h.detail AS health_detail, "
-                "(SELECT count(*) FROM source_documents d WHERE d.source_id=s.source_id) AS documents, "
-                "(SELECT count(DISTINCT ed.event_id) FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id WHERE d.source_id=s.source_id) AS events, "
-                "(SELECT count(DISTINCT e.id) FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id "
-                "JOIN events e ON e.id=ed.event_id JOIN signals bs ON bs.event_id=e.id AND bs.organization_id=e.subject_org_id "
-                "WHERE d.source_id=s.source_id AND e.verification_status='verified' AND e.proven AND e.lifecycle_status='active' "
-                "AND NOT e.is_historical_replay AND coalesce(e.event_at,e.pub_at) >= now() - interval '30 days' "
-                "AND bs.status='active' AND bs.verification_status='verified' AND (bs.expires_at IS NULL OR bs.expires_at>now())) AS recent_buying_findings, "
-                "(SELECT coalesce(sum(cost_usd),0) FROM provider_usage u WHERE u.source_id=s.source_id AND u.period=%s) AS cost_usd_month, "
-                "(SELECT coalesce(sum(units),0) FROM provider_usage u WHERE u.source_id=s.source_id AND u.period=%s) AS units_month "
-                "FROM sources s LEFT JOIN source_health h USING (source_id) ORDER BY s.source_tier, s.source_family, s.display_name", (usage.period_now(), usage.period_now()))
-            return {"items": [dict(row, monitoring_mode=monitoring_mode(row)) for row in rows]}
+            return {"items": library_items(conn)}
+
+
+# ---------------------------------------------------------------------- what each source brought (the Library's "What it brought" line)
+
+BROUGHT_DAYS = 30                       # the window of "pages read" and "findings"
+LITTLE_MIN_PAGES = 20                   # a source that read this many pages in the window and found nothing about a target account ...
+LITTLE_RATIO_PAGES = 100                # ... or at least this many pages with fewer than one such finding per 100 pages, "finds little for our accounts"
+# Not judged by "findings about our accounts": tenders come from public buyers that are not accounts by nature; search, page checks and internal
+# sources are used on request, not read in bulk.
+NOT_JUDGED_FAMILIES = ("procurement", "discovery", "verification", "internal", "registry")
+NOT_JUDGED_METHODS = ("internal", "search")
+JOB_EVENT_TYPES = ("engineering_job_opened", "contractor_job_opened", "job_closed")
+# A job finding names the board it came from (attrs.provider), not a stored page. Same mapping as Administration, Data health; any other
+# career system "x" counts for the source "ats-x" when the registry has one.
+JOB_PROVIDER_SOURCE = {"arbeitnow": "jobs-arbeitnow-de", "jobtech": "jobs-jobtech-se"}
+
+
+def yield_note(src: dict[str, Any]) -> str | None:
+    """One quiet label for a source row: 'paused_after_review' (paused and a reason is on record) or 'finds_little' (read many pages, found little
+    about our target accounts). Nothing for a healthy source, a source nobody judges by this (tenders, search) or one with too little evidence."""
+    status = src.get("status")
+    if status == "paused":
+        return "paused_after_review" if src.get("pause_reason") else None
+    if status not in ("active", "degraded"):
+        return None
+    if src.get("source_family") in NOT_JUDGED_FAMILIES or src.get("collection_method") in NOT_JUDGED_METHODS:
+        return None
+    pages, target = int(src.get("pages_30d") or 0), int(src.get("findings_target_30d") or 0)
+    if (pages >= LITTLE_MIN_PAGES and target == 0) or (pages >= LITTLE_RATIO_PAGES and target * 100 < pages):
+        return "finds_little"
+    return None
+
+
+def library_items(conn, now: datetime | None = None) -> list[dict[str, Any]]:
+    """Every source with its setup, health and what it has read and found. A fixed number of grouped queries however many sources there are
+    (a correlated sub-query per source made this page take half a second on average and up to five seconds). Findings "about our accounts"
+    use the one definition of a target account (``target_sql``). Every key the page used before is kept; the 30-day figures are additions."""
+    from ..connections import monitoring_mode
+
+    now = now or datetime.now(timezone.utc)
+    since = now - timedelta(days=BROUGHT_DAYS)
+    rows = qa(conn,
+        "SELECT s.source_id, s.display_name, s.source_tier, s.source_type, s.source_family, s.provider, s.countries, s.signal_rule_ids, s.collection_method, s.auth_mode, "
+        "s.retention_policy, s.licence_notes, s.poll_interval_s, s.status, s.cost_profile, s.canonical_domain, s.config->>'url' AS url, s.config->>'url_basis' AS url_basis, s.config->'validation' AS validation, "
+        "coalesce(s.config->>'paused_reason', s.config->>'pause_reason') AS pause_reason_cfg, "
+        "h.state AS health, h.last_success_at, h.last_attempt_at, h.consecutive_failures, h.error_class, h.detail AS health_detail "
+        "FROM sources s LEFT JOIN source_health h USING (source_id) ORDER BY s.source_tier, s.source_family, s.display_name")
+    docs = {r["source_id"]: r for r in qa(conn, "SELECT source_id, count(*) AS documents, count(*) FILTER (WHERE fetched_at >= %s) AS pages_30d FROM source_documents GROUP BY source_id", (since,))}
+    # findings per source (through the pages they were read from): all time, last 30 days, and last 30 days about a target account
+    found = {r["source_id"]: r for r in qa(conn,
+        f"WITH tgt AS MATERIALIZED (SELECT o.id FROM organizations o WHERE {target_sql('o')}) "  # noqa: S608
+        "SELECT d.source_id, count(DISTINCT e.id) AS events, "
+        "count(DISTINCT e.id) FILTER (WHERE e.first_observed_at >= %(since)s AND NOT e.is_historical_replay) AS findings_30d, "
+        "count(DISTINCT e.id) FILTER (WHERE e.first_observed_at >= %(since)s AND NOT e.is_historical_replay AND t.id IS NOT NULL) AS findings_target_30d "
+        "FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id JOIN events e ON e.id=ed.event_id LEFT JOIN tgt t ON t.id=e.subject_org_id "
+        "GROUP BY d.source_id", {"since": since})}
+    # job findings name their board instead of a stored page; count the ones no page carries (so none is counted twice)
+    jobs: dict[str, dict[str, int]] = {}
+    for r in qa(conn,
+        f"WITH tgt AS MATERIALIZED (SELECT o.id FROM organizations o WHERE {target_sql('o')}) "  # noqa: S608
+        "SELECT e.attrs->>'provider' AS provider, count(*) AS findings_30d, count(*) FILTER (WHERE t.id IS NOT NULL) AS findings_target_30d "
+        "FROM events e LEFT JOIN tgt t ON t.id=e.subject_org_id "
+        "WHERE e.event_type = ANY(%(types)s) AND e.first_observed_at >= %(since)s AND NOT e.is_historical_replay "
+        "AND NOT EXISTS (SELECT 1 FROM event_documents x WHERE x.event_id=e.id) GROUP BY 1", {"types": list(JOB_EVENT_TYPES), "since": since}):
+        if r["provider"]:
+            cur = jobs.setdefault(JOB_PROVIDER_SOURCE.get(r["provider"]) or f"ats-{r['provider']}".replace("lever_eu", "lever"), {"findings_30d": 0, "findings_target_30d": 0})
+            cur["findings_30d"] += int(r["findings_30d"]); cur["findings_target_30d"] += int(r["findings_target_30d"])
+    buying = {r["source_id"]: int(r["n"]) for r in qa(conn,
+        "SELECT d.source_id, count(DISTINCT e.id) AS n FROM source_documents d JOIN event_documents ed ON ed.document_id=d.id "
+        "JOIN events e ON e.id=ed.event_id JOIN signals bs ON bs.event_id=e.id AND bs.organization_id=e.subject_org_id "
+        "WHERE e.verification_status='verified' AND e.proven AND e.lifecycle_status='active' AND NOT e.is_historical_replay "
+        "AND coalesce(e.event_at,e.pub_at) >= %s AND bs.status='active' AND bs.verification_status='verified' AND (bs.expires_at IS NULL OR bs.expires_at>%s) "
+        "GROUP BY d.source_id", (since, now))}
+    spend = {r["source_id"]: r for r in qa(conn, "SELECT source_id, coalesce(sum(cost_usd),0) AS cost_usd_month, coalesce(sum(units),0) AS units_month "
+                                                 "FROM provider_usage WHERE period=%s AND source_id IS NOT NULL GROUP BY source_id", (usage.period_now(),))}
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        sid = row["source_id"]
+        d, f, j, sp = docs.get(sid) or {}, found.get(sid) or {}, jobs.get(sid) or {}, spend.get(sid) or {}
+        pause = row.pop("pause_reason_cfg", None) or (row["health_detail"] if row["health"] == "paused" else None)
+        row.update(
+            documents=int(d.get("documents") or 0), events=int(f.get("events") or 0), recent_buying_findings=buying.get(sid, 0),
+            cost_usd_month=sp.get("cost_usd_month") or 0, units_month=sp.get("units_month") or 0,
+            pages_30d=int(d.get("pages_30d") or 0), findings_30d=int(f.get("findings_30d") or 0) + j.get("findings_30d", 0),
+            findings_target_30d=int(f.get("findings_target_30d") or 0) + j.get("findings_target_30d", 0),
+            pause_reason=(pause or "").strip() or None)
+        row["yield_note"] = yield_note(row)
+        row["monitoring_mode"] = monitoring_mode(row)
+        out.append(row)
+    return out
 
 
 def register_pipeline(app: FastAPI) -> None:

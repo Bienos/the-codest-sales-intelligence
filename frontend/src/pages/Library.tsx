@@ -1,4 +1,4 @@
-import { number, tr } from "../locale";
+import { counted, number, tr } from "../locale";
 import { ReactNode, useEffect, useState } from "react";
 import { api, fmtDateTime } from "../api";
 import { Badge, Err, humanize, Skeleton, reloadPage } from "../components/ui";
@@ -42,14 +42,14 @@ export function LGroup({ title, count, cols, open = true, note, children }: { ti
 }
 
 /** One row. Its details are only built when it is opened, so long lists stay quick. */
-export function LRow({ name, sub, kind, status, extra, extraLabel, children }: {
-  name: ReactNode; sub?: ReactNode; kind?: ReactNode; status?: [Dot, string] | null; extra?: ReactNode; extraLabel?: string; children: ReactNode;
+export function LRow({ name, sub, brought, kind, status, extra, extraLabel, children }: {
+  name: ReactNode; sub?: ReactNode; brought?: ReactNode; kind?: ReactNode; status?: [Dot, string] | null; extra?: ReactNode; extraLabel?: string; children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <details className="lrow" onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>
-        <span className="lrow-name"><span className="lrow-t">{name}</span>{sub && <span className="lrow-sub">{sub}</span>}</span>
+        <span className="lrow-name"><span className="lrow-t">{name}</span>{sub && <span className="lrow-sub">{sub}</span>}{brought}</span>
         <span className="lrow-kind">{kind}</span>
         <span className="lrow-status">{status && <Status s={status} />}</span>
         <span className="lrow-extra">{extraLabel && <span className="lrow-lab">{tr(extraLabel) + ": "}</span>}{extra}</span>
@@ -90,6 +90,29 @@ const cadence = (seconds: number) => {
   if (seconds === 3600) return ` · ${tr("hourly")}`;
   return seconds >= 86400 ? ` · ${tr("every {} days", Math.round(seconds / 86400))}` : ` · ${tr("every {} minutes", Math.max(1, Math.round(seconds / 60)))}`;
 };
+
+/** "What it brought": the pages a source read in the last 30 days, the findings that came from them and how many of those are about our target accounts.
+ *  One quiet label when it reads many pages and finds little for our accounts, or when it is paused with a reason. Nothing for sources that are not read in bulk. */
+function Brought({ s }: { s: any }) {
+  if (s.pages_30d === undefined) return null;
+  const pages = Number(s.pages_30d), found = Number(s.findings_30d), ours = Number(s.findings_target_30d);
+  const read = s.monitoring_mode === "scheduled" || s.monitoring_mode === "account";
+  if (!pages && !found && !read) return null;
+  const flag = s.yield_note === "finds_little" ? tr("Finds little for our accounts") : s.yield_note === "paused_after_review" ? tr("Paused after a review") : null;
+  return (
+    <span className="lrow-brought">
+      <span className="lrow-brought-k">{tr("What it brought (30 days)") + ":"}</span>{" "}
+      {pages || found
+        ? <>
+          <b>{tr("{} read", counted(pages, ["page", "pages"], ["strona", "strony", "stron"]))}</b>{", "}
+          <b>{counted(found, ["finding", "findings"], ["znalezisko", "znaleziska", "znalezisk"])}</b>
+          {found > 0 && <>{", "}<b>{tr("{} about our accounts", number(ours))}</b></>}
+        </>
+        : <span>{s.documents ? tr("Nothing read in the last 30 days") : tr("Nothing read yet")}</span>}
+      {flag && <span className="lrow-flag" title={s.yield_note === "paused_after_review" ? s.pause_reason ?? undefined : tr("It read many pages in the last 30 days and almost none were about our target accounts.")}>{flag}</span>}
+    </span>
+  );
+}
 
 /** Every source as one compact row, grouped by kind of source. In Administration (`admin`) each row also says what to do next and opens to its setup. */
 export default function Library({ render, query, setQuery, admin = false }: { render?: (s: any, reload: () => void) => ReactNode; query?: string; setQuery?: (v: string) => void; admin?: boolean }) {
@@ -136,7 +159,7 @@ export default function Library({ render, query, setQuery, admin = false }: { re
   const live = all.filter(isReporting).length;
   return (
     <>
-      <p className="lintro">{tr("{} sources, {} reporting successfully.", number(all.length), number(live)) + " "}{admin ? tr("Open a source to see what it needs next, test its page and switch it on.") : tr("Open a source to see its last test, what it feeds and whether monitoring is running. Company careers and supplier pages found for an account appear on that account.")}</p>
+      <p className="lintro">{tr("{} sources, {} reporting successfully.", number(all.length), number(live)) + " "}{admin ? tr("Open a source to see what it needs next, test its page and switch it on.") : tr("Open a source to see its last test, what it feeds and whether monitoring is running. Company careers and supplier pages found for an account appear on that account.")}{" " + tr("Each row says what the source brought in the last 30 days.")}</p>
       <LFilter q={q} setQ={setQ} placeholder="Search sources" count={tr("{} shown", number(items.length))} selects={[
         { label: "Kind of source", value: family, onChange: setFamily, options: [["", tr("Every kind")], ...families.map((f) => [f, tr(FAMILY[f] ?? humanize(f))] as [string, string])] },
         { label: "Status", value: status, onChange: setStatus, options: [["", tr("Any status")], ...statusOptions] },
@@ -148,7 +171,7 @@ export default function Library({ render, query, setQuery, admin = false }: { re
             const c = conn?.items[s.source_id];
             const setup = admin && render && s.canonical_domain && ["feed", "change_monitor"].includes(s.collection_method);
             return (
-              <LRow key={s.source_id} name={s.display_name} sub={s.provider ?? s.source_id} kind={FAMILY[s.source_family] ? tr(FAMILY[s.source_family]) : humanize(s.source_family)} status={state(s)}
+              <LRow key={s.source_id} name={s.display_name} sub={s.provider ?? s.source_id} brought={<Brought s={s} />} kind={FAMILY[s.source_family] ? tr(FAMILY[s.source_family]) : humanize(s.source_family)} status={state(s)}
                 extraLabel="Last successful check" extra={s.last_success_at ? fmtDateTime(s.last_success_at) : <span className="muted">{tr("None yet")}</span>}>
                 {c && (c.what_to_do || c.where_to_get) && <div className="lnext">
                   {c.what_to_do && <div><span className="lnext-k">{tr("What to do next")}</span>{tr(c.what_to_do)}</div>}
@@ -166,6 +189,13 @@ export default function Library({ render, query, setQuery, admin = false }: { re
                   ["Last attempt", s.last_attempt_at && fmtDateTime(s.last_attempt_at)],
                   ["Countries", s.countries?.length ? s.countries.join(", ") : null],
                   ["Feeds signals", s.signal_rule_ids?.length ? s.signal_rule_ids.map((r: string) => <span key={r} className="pill" title={r}>{signals[r] ?? r}</span>) : <span className="muted">{tr("None yet")}</span>],
+                  ["Why it is paused", s.status === "paused" && s.pause_reason && <span className="small">{s.pause_reason}</span>],
+                  ["What it brought", s.pages_30d !== undefined && (s.pages_30d > 0 || s.findings_30d > 0) && <>
+                    <div>{tr("{} read in the last 30 days", counted(Number(s.pages_30d), ["page", "pages"], ["strona", "strony", "stron"]))}</div>
+                    <div>{tr("{} found in the last 30 days", counted(Number(s.findings_30d), ["finding", "findings"], ["znalezisko", "znaleziska", "znalezisk"]))}</div>
+                    <div>{tr("{} about our target accounts", number(Number(s.findings_target_30d)))}</div>
+                    {s.yield_note === "finds_little" && <div className="small muted">{tr("It reads many pages and finds little for our accounts. Keep it only if it covers something we need.")}</div>}
+                  </>],
                   ["So far", <>{tr("{} pages read, {} findings", number(s.documents), number(s.events))}{Number(s.cost_usd_month) > 0 && <span className="small muted"> · ${Number(s.cost_usd_month).toFixed(3)}{" " + tr("this month")}</span>}</>],
                   ["Last 30 days", tr("{} verified findings with current buying signals", number(s.recent_buying_findings ?? 0))],
                   ["Permission", <span className="small">{s.licence_notes ?? humanize(s.retention_policy)}</span>],

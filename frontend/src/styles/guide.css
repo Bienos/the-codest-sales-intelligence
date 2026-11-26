@@ -17,7 +17,7 @@
 .hw-hero .hw-cta a:not(.btn):hover { color: var(--on-navy); }
 .hw-hero :focus-visible { outline-color: var(--white); }
 
-/* The machine: four sources -> the app -> three calls. Rows share one height so the wires line up with their boxes. */
+/* The machine: five sources -> the app -> three calls. Rows share one height so the wires line up with their boxes. */
 .hw-machine { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, .8fr) 44px minmax(0, 1.4fr); align-items: stretch; }
 .hw-feed, .hw-calls { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-rows: 1fr; }
 .hw-feed li, .hw-calls li { display: flex; align-items: center; padding: 5px 0; min-width: 0; }
@@ -35,6 +35,7 @@
 .hw-call { position: relative; display: grid; gap: 2px; width: 100%; padding: 10px 12px; background: var(--white); border-left: 4px solid var(--pink); color: var(--body); font-size: var(--fs-sm); line-height: 1.3; }
 .hw-call b { font-size: var(--fs-md); }
 .hw-call-k { justify-self: start; margin-bottom: 3px; padding: 2px 6px; background: var(--pink-solid); color: var(--white); font: 800 var(--fs-label)/1.3 var(--font-head); letter-spacing: .08em; text-transform: uppercase; }
+.hw-note { grid-column: 1 / -1; margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--navy-line-strong); color: var(--on-navy); font-size: var(--fs-md); max-width: 64ch; }
 .hw-machine figcaption { grid-column: 1 / -1; margin-top: 12px; color: var(--on-navy-muted); font-size: var(--fs-sm); }
 .hw-down { display: none; }
 
@@ -208,6 +209,7 @@
   .hw-machine { grid-template-columns: 1fr; }
   .hw-feed { grid-template-columns: 1fr 1fr; grid-auto-rows: auto; gap: 8px; }
   .hw-feed li, .hw-calls li { padding: 0; }
+  .hw-feed li:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .hw-calls { grid-auto-rows: auto; gap: 8px; }
   .hw-wires { display: none; }
   .hw-down { display: block; position: relative; justify-self: center; width: 2px; height: 30px; margin: 6px 0 12px; background: rgba(184, 125, 255, .5); }

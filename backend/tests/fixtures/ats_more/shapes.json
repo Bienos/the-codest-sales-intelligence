@@ -1,0 +1,182 @@
+{
+ "workday_list": {
+  "total": 5,
+  "jobPostings": [
+   {
+    "title": "Senior Java Engineer - Payments",
+    "externalPath": "/job/London-Canary-Wharf/Senior-Java-Engineer---Payments_R1001",
+    "locationsText": "London Canary Wharf",
+    "postedOn": "Posted Today",
+    "bulletFields": [
+     "R1001"
+    ]
+   },
+   {
+    "title": "QA Automation Engineer (f/m/x)",
+    "externalPath": "/job/Krakow/QA-Automation-Engineer_R1002-1",
+    "locationsText": "Krakow",
+    "postedOn": "Posted Yesterday",
+    "bulletFields": [
+     "R1002"
+    ]
+   },
+   {
+    "title": "Relationship Manager, Private Clients",
+    "externalPath": "/job/Frankfurt/Relationship-Manager_R1003",
+    "locationsText": "Frankfurt",
+    "postedOn": "Posted 3 Days Ago",
+    "bulletFields": [
+     "R1003"
+    ]
+   },
+   {
+    "title": "DevOps Contractor - Kubernetes",
+    "externalPath": "/job/Remote/DevOps-Contractor---Kubernetes_R1004",
+    "locationsText": "2 Locations",
+    "postedOn": "Posted 30+ Days Ago",
+    "bulletFields": [
+     "R1004"
+    ]
+   },
+   {
+    "title": "Branch Cashier",
+    "externalPath": "/job/Leeds/Branch-Cashier_R1005",
+    "locationsText": "Leeds",
+    "postedOn": "Posted 5 Days Ago",
+    "bulletFields": []
+   }
+  ],
+  "facets": [],
+  "userAuthenticated": false
+ },
+ "workday_detail": {
+  "jobPostingInfo": {
+   "id": "0123456789abcdef",
+   "title": "Senior Java Engineer - Payments",
+   "jobDescription": "<span><h2><b>About the role</b></h2></span><p>Build payment services in <b>Java</b> and Kotlin on AWS with Kafka and Kubernetes. ISO 20022 experience is a plus.</p><script>track()</script>",
+   "location": "London Canary Wharf",
+   "postedOn": "Posted Today",
+   "startDate": "2026-11-26",
+   "timeType": "Full time",
+   "jobReqId": "R1001",
+   "jobPostingId": "Senior-Java-Engineer---Payments_R1001",
+   "jobPostingSiteId": "Careers",
+   "country": {
+    "descriptor": "United Kingdom",
+    "id": "x"
+   },
+   "canApply": true,
+   "posted": true,
+   "externalUrl": "https://harbourline.wd3.myworkdayjobs.com/Careers/job/London-Canary-Wharf/Senior-Java-Engineer---Payments_R1001",
+   "endDate": "2026-12-20"
+  },
+  "hiringOrganization": {
+   "name": "Harbourline Bank plc",
+   "url": ""
+  },
+  "similarJobs": [],
+  "userAuthenticated": false
+ },
+ "recruitee": {
+  "offers": [
+   {
+    "id": 5001,
+    "guid": "abc12",
+    "slug": "backend-engineer-java",
+    "title": "Backend Engineer (Java)",
+    "department": "Engineering",
+    "location": "Rotterdam, Zuid-Holland, Netherlands",
+    "city": "Rotterdam",
+    "country": "Netherlands",
+    "country_code": "NL",
+    "employment_type_code": "fulltime_permanent",
+    "status": "published",
+    "published_at": "2026-11-24 10:10:44 UTC",
+    "created_at": "2026-11-20 09:00:00 UTC",
+    "updated_at": "2026-11-25 08:00:00 UTC",
+    "description": "<p>Work on our card platform with <b>Kotlin</b>, Kafka and AWS.</p>",
+    "requirements": "<ul><li>5 years of Java</li><li>Terraform</li></ul>",
+    "careers_url": "https://careers.marlowcredit.example/o/backend-engineer-java",
+    "company_name": "Marlow Credit"
+   },
+   {
+    "id": 5002,
+    "guid": "def34",
+    "slug": "data-analyst-contract",
+    "title": "Data Analyst (contract)",
+    "department": "Risk",
+    "location": "Utrecht, Netherlands",
+    "employment_type_code": "fulltime_fixed_term",
+    "status": "published",
+    "published_at": "2026-11-10 10:00:00 UTC",
+    "description": "<p>Twelve months.</p>",
+    "requirements": "",
+    "careers_url": "https://careers.marlowcredit.example/o/data-analyst-contract",
+    "company_name": "Marlow Credit"
+   },
+   {
+    "id": 5003,
+    "slug": "summer-intern",
+    "title": "Software Engineering Intern",
+    "department": "Engineering",
+    "employment_type_code": "internship",
+    "status": "published",
+    "published_at": "2026-11-01 10:00:00 UTC",
+    "description": "<p>Learn.</p>",
+    "company_name": "Marlow Credit"
+   },
+   {
+    "id": 5004,
+    "slug": "old-draft",
+    "title": "Draft Engineer",
+    "status": "draft",
+    "published_at": null,
+    "company_name": "Marlow Credit"
+   }
+  ]
+ },
+ "workable": {
+  "name": "Foxglove Capital",
+  "description": "Asset manager",
+  "jobs": [
+   {
+    "title": "Platform Engineer",
+    "shortcode": "A1B2C3D4E5",
+    "code": "",
+    "employment_type": "Full-time",
+    "telecommuting": false,
+    "department": "Technology",
+    "url": "https://apply.workable.com/j/A1B2C3D4E5",
+    "shortlink": "https://apply.workable.com/j/A1B2C3D4E5",
+    "application_url": "https://apply.workable.com/j/A1B2C3D4E5/apply",
+    "published_on": "2026-11-20",
+    "created_at": "2026-11-19",
+    "country": "United Kingdom",
+    "city": "Bristol",
+    "state": "England",
+    "function": "Engineering",
+    "industry": "Finance",
+    "locations": [
+     {
+      "country": "United Kingdom",
+      "countryCode": "GB",
+      "city": "Bristol",
+      "region": "England",
+      "hidden": false
+     }
+    ],
+    "description": "<p>Run <b>Terraform</b> and Kubernetes on Azure. Python and Go.</p>"
+   },
+   {
+    "title": "Fund Accountant (fixed-term contract)",
+    "shortcode": "F6G7H8I9J0",
+    "employment_type": "Contract",
+    "department": "Finance",
+    "url": "https://apply.workable.com/j/F6G7H8I9J0",
+    "published_on": "2026-11-02",
+    "country": "United Kingdom",
+    "city": "London"
+   }
+  ]
+ }
+}

@@ -34,12 +34,12 @@
 .ldomains .chip { padding: 4px 9px; min-height: 0; }
 
 /* columns are shared by the heading line and every row */
-.lgroup { --lcols: minmax(0, 2.5fr) minmax(0, 1.05fr) minmax(0, 1.25fr) minmax(0, 1.1fr) 12px; }
+.lgroup { --lcols: minmax(0, 3.2fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.1fr) 12px; }
 .lhead { display: grid; grid-template-columns: var(--lcols); gap: 14px; padding: 0 16px 6px 20px; font: 800 var(--fs-label)/1.2 var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .lrows { display: grid; gap: 6px; }
 
 /* the row */
-.lrow { background: var(--white); border: 1px solid var(--line); border-left: 4px solid var(--navy); content-visibility: auto; contain-intrinsic-block-size: auto 58px; }
+.lrow { background: var(--white); border: 1px solid var(--line); border-left: 4px solid var(--navy); content-visibility: auto; contain-intrinsic-block-size: auto 78px; }
 .lrow[open] { border-left-color: var(--pink); }
 .lrow > summary { list-style: none; display: grid; grid-template-columns: var(--lcols); gap: 14px; align-items: center; min-height: 56px; margin: 0; padding: 9px 16px;
   font: 400 var(--fs-sm)/1.35 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--body); }
@@ -53,6 +53,10 @@
 .lrow-kind, .lrow-extra { min-width: 0; overflow-wrap: anywhere; }
 .lrow-addr { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .lrow-lab { display: none; }
+/* "What it brought": one plain line under the name, and one quiet label when a source reads a lot and finds little, or is paused */
+.lrow-brought { margin-top: 2px; font-size: var(--fs-sm); line-height: 1.4; color: var(--muted); }
+.lrow-brought b { font-weight: 600; color: var(--navy); white-space: nowrap; }
+.lrow-flag { display: block; width: fit-content; margin-top: 4px; padding: 0 7px; border: 1px solid var(--line); background: var(--tint-1); color: var(--body); font-size: var(--fs-xs); line-height: 1.7; }
 .lrow .strength i { width: 10px; height: 10px; }
 
 /* inside an opened row */

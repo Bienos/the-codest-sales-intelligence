@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tt="https://teamtailor.com/locations">
+  <channel>
+    <title>Quillon Pay</title>
+    <description>Current job openings</description>
+    <link>https://quillon.teamtailor.com/jobs</link>
+    
+<item>
+      <title>Senior Backend Engineer</title>
+      <description>&lt;h3&gt;Join our payments core&lt;/h3&gt;&lt;p&gt;You will work with &lt;b&gt;Go&lt;/b&gt;, Kafka and PostgreSQL on AWS. We use Terraform &amp;amp; Kubernetes.&lt;/p&gt;</description>
+      <pubDate>Tue, 24 Nov 2026 10:33:49 +0100</pubDate>
+      <link>https://quillon.teamtailor.com/jobs/8786914-senior-backend-engineer</link>
+      <remoteStatus>hybrid</remoteStatus>
+      <guid>d3af95f8-ff4e-4b02-8671-0a7564ce307b</guid>
+      <tt:locations>
+        <tt:location>
+          <tt:name>Stockholm HQ</tt:name>
+          <tt:address>Examplegatan 16</tt:address>
+          <tt:zip>116 21</tt:zip>
+          <tt:city>Stockholm</tt:city>
+          <tt:country>Sweden</tt:country>
+        </tt:location>
+      </tt:locations>
+      <tt:department>Engineering</tt:department>
+      <tt:role/>
+      <tt:division/>
+    </item>
+<item>
+      <title>Interim Compliance Officer (contract)</title>
+      <description>&lt;p&gt;Six months.&lt;/p&gt;</description>
+      <pubDate>Mon, 02 Nov 2026 09:00:00 +0100</pubDate>
+      <link>https://quillon.teamtailor.com/jobs/8700001-interim-compliance-officer</link>
+      <guid>aa11bb22-0000-4000-8000-000000000001</guid>
+      <tt:locations/>
+      <tt:department>Compliance</tt:department>
+    </item>
+  </channel>
+</rss>
