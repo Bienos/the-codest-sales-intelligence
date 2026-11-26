@@ -1,4 +1,5 @@
 @import "../design-system/components.css";
+@import "../design-system/landing.css";
 @import "./components.css";
 @import "./styles/shell.css";
 
@@ -35,8 +36,10 @@
 .nav .language-switch { margin: 0 4px .8rem; align-self: flex-start; }
 .nav .language-switch button { color: var(--on-navy); }
 .nav .language-switch button[aria-pressed="true"] { color: var(--white); background: var(--navy-active); border-color: var(--navy-outline); }
+.land-nav .land-nav-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .3rem .8rem; }
 @media (max-width: 640px) {
   .language-switch button { min-height: 44px; }
+  .land-nav .land-nav-actions { justify-content: flex-start; }
 }
 
 
@@ -69,7 +72,22 @@
   .today-heading-inner { padding-block: 24px; }
 }
 
-.today-actions a { color: var(--white); display: inline-block; text-decoration-color: var(--pink); text-underline-offset: .28em; }
+.land-top { background: var(--navy); color: var(--white); }
+.land-top .land-nav { border-bottom: 1px solid var(--navy-line); }
+.land-top .land-nav .brand { padding: 0; margin: 0; border: 0; }
+.land-top .brand-logo { filter: none; }
+.land-top .brand-name { color: var(--white); }
+.land-top .brand-sub, .land-top .land-copy .eyebrow, .land-top .watching-k { color: var(--on-navy-muted); }
+.land-top .land-hero { min-height: clamp(550px, 70svh, 680px); padding: 32px 0 64px; background: radial-gradient(ellipse at 84% 25%, #363071 0, transparent 51%), var(--navy); }
+.land-top .land-hero-in { gap: clamp(26px, 6vw, 85px); }
+.land-top .land-copy h1 { margin: 12px 0 16px; color: var(--white); max-width: 15ch; text-wrap: balance; letter-spacing: -.025em; line-height: 1.02; }
+.land-top .land-copy p { color: var(--on-navy); line-height: 1.55; max-width: 47ch; }
+.land-top .watching-w { color: var(--white); }
+.land-top .auth-card { max-width: 400px; box-shadow: 8px 8px 0 0 #b87dff55; }
+.land-copy-actions a, .today-actions a { color: var(--white); display: inline-block; text-decoration-color: var(--pink); text-underline-offset: .28em; }
+.land-top .scroll-cue { display: none; }
+.land-top .auth-card iframe { max-width: 100%; }
+.land-top .land-jump { box-shadow: none; }
 
 .today-intro { margin: 12px 0 0; color: var(--on-navy); }
 .today-actions, .account-shortcuts, .archive-next { display: flex; flex-wrap: wrap; gap: 12px 20px; }
@@ -102,9 +120,16 @@
 .guide-secondary { grid-template-columns: repeat(auto-fit, minmax(min(100%, 275px), 1fr)); }
 
 @media (max-width: 980px) {
+  .land-top .land-hero { padding-block: 18px 44px; min-height: auto; }
+  .land-top .land-copy h1 { font-size: clamp(35px, 7vw, 54px); }
+  .land-top .watching { margin-top: 14px; }
 }
 @media (max-width: 480px) {
+  .land-top .land-nav { flex-wrap: wrap; gap: 10px; padding-block: 14px; }
+  .land-top .land-jump { display: none; }
+  .land-top .auth-card { padding: 22px 14px; }
   .today-summary, .admin-shortcuts, .guide-steps { grid-template-columns: 1fr; }
   .today-summary a { grid-template-columns: 1fr auto; align-items: center; }
 }
 
+@media (prefers-reduced-motion: reduce) { .ticker-set + .ticker-set { display: none; } }
