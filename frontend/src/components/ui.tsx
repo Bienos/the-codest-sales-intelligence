@@ -59,6 +59,22 @@ export const lab = (dict: keyof typeof LABELS, v?: string | null): string => { c
 /** Rule IDs such as PRG-01 mean nothing to a seller: group letters become words. */
 export const groupName = (g: string) => tr((LABELS.group as Record<string, string>)[g] ?? g);
 
+/** A company logo for a mark tile (the company marks of every page share this). Give it the logo address the API sends (https, may be missing).
+ *  `ok` is true once the picture has really loaded: the tile then turns white and shows `img`. Until then, and for good when the picture does not
+ *  load (LinkedIn addresses expire) or is only a one pixel placeholder, the tile keeps its coloured initials, so nothing jumps or goes blank.
+ *  The picture is decorative (alt is empty): the company name is always written next to the mark. */
+export function useLogo(url?: string | null): { ok: boolean; img: ReactNode } {
+  const [seen, setSeen] = useState<{ url: string; ok: boolean } | null>(null);
+  if (!url || (seen && seen.url === url && !seen.ok)) return { ok: false, img: null };
+  const ok = seen?.url === url && seen.ok;
+  const settle = (el: HTMLImageElement) => setSeen({ url, ok: !(el.naturalWidth > 0 && el.naturalWidth <= 2) });
+  return {
+    ok,
+    img: <img className={`logo-img${ok ? "" : " is-pending"}`} src={url} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer"
+      ref={(el) => { if (el && !ok && el.complete && el.naturalWidth > 0) settle(el); }} onLoad={(e) => settle(e.currentTarget)} onError={() => setSeen({ url, ok: false })} />,
+  };
+}
+
 export const PageHeader = ({ eyebrow, title, sub, right }: { eyebrow?: string; title: string; sub?: ReactNode; right?: ReactNode }) => (
   <div className="page-head row spread end">
     <div>{eyebrow && <div className="eyebrow">{tr(eyebrow)}</div>}<h1>{tr(title)}</h1>{sub && <p className="sub">{typeof sub === "string" ? tr(sub) : sub}</p>}</div>{right}

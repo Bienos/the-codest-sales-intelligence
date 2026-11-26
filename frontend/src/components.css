@@ -258,3 +258,10 @@ table.audience td { white-space: normal; overflow-wrap: anywhere; }
 /* account overview: what the lead list says, and who to contact */
 .list-signals li { margin-bottom: var(--space-2); }
 .contact-short li { margin-bottom: 4px; }
+
+/* ---------- company logos (shared by every company mark: Monogram, CompanyAvatar, Today's td-mono) ----------
+   A logo sits on a white tile with a thin line and a few pixels of padding; the coloured initials tile stays as the fallback until the picture has loaded
+   (or for good when it never does). The picture is never cropped or stretched: object-fit contain, so a wide wordmark stays whole inside a square tile.
+   Each tile sets --logo-pad for its size and draws its own white background and line when its `has-logo` class is on. */
+.logo-img { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; box-sizing: border-box; padding: var(--logo-pad, 4px); object-fit: contain; object-position: center; display: block; background: transparent; }
+.logo-img.is-pending { opacity: 0; }
