@@ -181,6 +181,25 @@ def _own_photo(results: list[dict[str, Any]], linkedin: str | None, confident: b
     return next((p for r in results if _same_profile(r["url"], linkedin) and (p := profile_photo(r.get("image")))), None)
 
 
+def photo_check(results: list[dict[str, Any]], linkedin: str | None, confident: bool) -> dict[str, str]:
+    """Why a picture was or was not kept, in a few plain states (never names or addresses): found | no_linkedin | page_not_found | no_image |
+    not_a_photo (LinkedIn only shared a placeholder, logo or banner) | unsure_identity."""
+    from ..enrichment.exa_people import profile_photo
+    from .exa_search import image_kind
+    if not linkedin:
+        return {"state": "no_linkedin"}
+    own = [r for r in results if _same_profile(r["url"], linkedin)]
+    if not own:
+        return {"state": "page_not_found"}
+    img = next((r.get("image") for r in own if r.get("image")), None)
+    if not img:
+        return {"state": "no_image"}
+    kind = image_kind(img)
+    if not confident:
+        return {"state": "unsure_identity", "kind": kind}
+    return {"state": "found" if profile_photo(img) else "not_a_photo", "kind": kind}
+
+
 def research_person(conn: Conn, person_id: str, *, searcher: ExaSearcher, call: Call, run: Callable[[Any], Any], now: datetime | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     rec = recorded_person(conn, person_id)
@@ -215,5 +234,5 @@ def research_person(conn: Conn, person_id: str, *, searcher: ExaSearcher, call: 
                 "sources": [], "dropped": 0, "model": None, "tokens_in": 0, "tokens_out": 0}
     parsed, tin, tout, model = ask_json(call, run, SYSTEM, user_prompt(src, rec, now))
     content, dropped = verify_person(parsed, src, now)
-    return {"content": {**base, **content}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout,
+    return {"content": {**base, **content, "photo_check": photo_check(results, rec.get("linkedin"), content["identity"]["confident"])}, "sources": source_list(src), "dropped": dropped, "model": model, "tokens_in": tin, "tokens_out": tout,
             "photo_url": _own_photo(results, rec.get("linkedin"), content["identity"]["confident"])}

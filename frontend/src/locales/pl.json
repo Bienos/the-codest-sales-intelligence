@@ -4804,5 +4804,9 @@
   "about {}": "ok. {}",
   "contract value": "wartość umowy",
   "{} more at this company": "Jeszcze {} w tej firmie",
-  "Fit": "Dopasowanie"
+  "Fit": "Dopasowanie",
+  "LinkedIn did not share a profile photo for this person: it only offered a placeholder or a logo, so initials are shown.": "LinkedIn nie udostępnił zdjęcia profilowego tej osoby: pokazał tylko szare zdjęcie zastępcze albo logo, więc widać inicjały.",
+  "Their LinkedIn page was found, but no picture came with it, so initials are shown.": "Znaleziono ich stronę LinkedIn, ale nie przyszedł z nią żaden obrazek, więc widać inicjały.",
+  "Their LinkedIn page was not among the search results, so no photo could be taken.": "Ich strony LinkedIn nie było wśród wyników wyszukiwania, więc nie dało się pobrać zdjęcia.",
+  "We could not be sure the pages are about this person, so no photo was taken.": "Nie mieliśmy pewności, że strony dotyczą tej osoby, więc nie pobrano zdjęcia."
 }

@@ -389,6 +389,18 @@ function RelationshipPanel({ rel, orgId, onSaved, onOwner }: { rel: any; orgId: 
   </section>;
 }
 
+/** Why a person has initials instead of a photo after research (the research records one plain state; nothing else about the picture is kept). */
+const PHOTO_NOTE: Record<string, string> = {
+  not_a_photo: "LinkedIn did not share a profile photo for this person: it only offered a placeholder or a logo, so initials are shown.",
+  no_image: "Their LinkedIn page was found, but no picture came with it, so initials are shown.",
+  page_not_found: "Their LinkedIn page was not among the search results, so no photo could be taken.",
+  unsure_identity: "We could not be sure the pages are about this person, so no photo was taken.",
+};
+function PhotoNote({ c }: { c?: { state?: string } | null }) {
+  const m = c?.state ? PHOTO_NOTE[c.state] : undefined;
+  return m ? <p className="small muted m-0">{tr(m)}</p> : null;
+}
+
 /* ------------------------------------------------------------------ research: what the profile is built on (the states are in ResearchState) */
 export function ResearchPanel({ r, canRun, start, busy, err }: { r: any; canRun: boolean; start: () => void; busy: boolean; err: unknown }) {
   const p = r?.profile;
@@ -398,6 +410,7 @@ export function ResearchPanel({ r, canRun, start, busy, err }: { r: any; canRun:
     <div className="ac-research">
       <p className="small m-0">{tr("Last researched {}. {} searches, {} pages read.", fmtDateTime(p.finished_at), p.searches, (p.sources ?? []).length)}
         {p.dropped > 0 && <> {tr("Left out because their page did not support them: {}.", p.dropped)}</>}</p>
+      <PhotoNote c={p.content?.photo_check} />
       {p.content?.partial && <p className="small m-0">{(p.content.notes ?? []).join(" ")}</p>}
       {canRun && !r.running && <div><button type="button" disabled={busy || !r.setup?.ready} onClick={start}>{tr("Research again")}</button></div>}
       {canRun && <ResearchSetup setup={r.setup} />}

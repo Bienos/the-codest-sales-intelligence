@@ -66,6 +66,26 @@ def image_url(v: Any) -> str | None:
     return v.strip() if isinstance(v, str) and v.strip().lower().startswith("https://") and len(v.strip()) <= 600 and not re.search(r"\s", v.strip()) else None
 
 
+def image_kind(url: str | None) -> str:
+    """A coarse label for what a picture address is, so a missing photo can be explained without keeping names or the tokens in the address:
+    profile-photo | company-logo | banner | linkedin-placeholder | other-site | other."""
+    from urllib.parse import urlparse
+    try:
+        u = urlparse(url or "")
+    except ValueError:
+        return "other"
+    host, path = (u.hostname or "").lower(), u.path.lower()
+    if re.search(r"company-logo|logo", path):
+        return "company-logo"
+    if re.search(r"displaybackgroundimage|background|banner", path):
+        return "banner"
+    if host == "static.licdn.com" or re.search(r"/sc/h/|ghost|default|placeholder", path):
+        return "linkedin-placeholder"
+    if host.endswith("licdn.com") and re.search(r"profile-(displayphoto|framedphoto)", path):
+        return "profile-photo"
+    return "other" if host.endswith("licdn.com") else "other-site"
+
+
 def normalise_result(r: dict[str, Any], purpose: str, text_cap: int = 2500) -> dict[str, Any] | None:
     url = r.get("url")
     if not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
@@ -119,7 +139,8 @@ class ExaSearcher:
         self.calls += 1
         self.cost += actual
         hosts = sorted({h for h in (urlparse(r["image"]).hostname for r in results if r.get("image")) if h})
-        self.log.append({"purpose": purpose, "results": len(results), "images": sum(1 for r in results if r.get("image")), "image_hosts": hosts[:4]})     # no names: only whether pictures came back, and from where
+        kinds = sorted({image_kind(r["image"]) for r in results if r.get("image")})
+        self.log.append({"purpose": purpose, "results": len(results), "images": sum(1 for r in results if r.get("image")), "image_hosts": hosts[:4], "image_kinds": kinds})     # no names: only whether pictures came back, from where, and what kind
         return results
 
 

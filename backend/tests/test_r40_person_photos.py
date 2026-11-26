@@ -131,3 +131,54 @@ def test_each_search_records_whether_pictures_came_back_and_from_where(conn, env
     li = next(x for x in searched if x["purpose"] == "linkedin")
     assert li["images"] == 1 and li["image_hosts"] == ["media.licdn.com"]
     assert all("images" in x for x in searched)
+
+
+# ------------------------------------------------------------------ why a picture was or was not kept (plain states, no names or addresses stored)
+def test_picture_addresses_are_labelled_coarsely():
+    from ri.research.exa_search import image_kind
+    assert image_kind(PHOTO) == "profile-photo"
+    assert image_kind("https://media.licdn.com/dms/image/v2/x/profile-framedphoto-shrink_200_200/0") == "profile-photo"
+    assert image_kind("https://media.licdn.com/dms/image/v2/x/company-logo_200_200/0") == "company-logo"
+    assert image_kind("https://media.licdn.com/dms/image/v2/x/profile-displaybackgroundimage-shrink_350_1400/0") == "banner"
+    assert image_kind("https://static.licdn.com/aero-v1/sc/h/9c8pery4andzj6ohjkjp54ma2") == "linkedin-placeholder"
+    assert image_kind("https://images.example.net/people/ada.jpg") == "other-site"
+    assert image_kind("https://media.licdn.com/dms/image/v2/x/something-else/0") == "other"
+    assert image_kind(None) == "other-site" or image_kind(None) == "other"
+
+
+def _photo_state(conn, env, pages, confident=True):
+    caps(conn)
+    ada = env["p"]["ada"]
+    rid = str(conn.execute("insert into person_profiles(person_id, organization_id, requested_by) values (%s,%s,'bdm@x') returning id", (ada, env["o"]["open"])).fetchone()["id"])
+    conn.commit()
+    reply = {"identity": {"confident": confident}, "current_role": {"title": "CTO", "remit": "Engineering", "source": "W1"}}
+    profile_jobs.person_profile(conn, {"payload": {"profile_id": rid}}, post_factory=fake_post(pages, []), call_factory=fake_model(reply))
+    row = q1(conn, "select content->'photo_check' as c, content->'searched' as s from person_profiles where id=%s", (rid,))
+    return row["c"], row["s"]
+
+
+def _page(image=None, url="https://www.linkedin.com/in/ada-clarke"):
+    r = {"url": url, "title": "Ada Clarke - CTO - Kestrel Pay | LinkedIn", "text": "CTO at Kestrel Pay since 2023."}
+    if image:
+        r["image"] = image
+    return {"Ada Clarke Kestrel Pay Ltd Chief": [r]}
+
+
+def test_the_research_says_when_the_photo_was_found(conn, env):
+    check, searched = _photo_state(conn, env, _page(PHOTO))
+    assert check == {"state": "found", "kind": "profile-photo"}
+    li = next(x for x in searched if x["purpose"] == "linkedin")
+    assert li["image_kinds"] == ["profile-photo"]
+
+
+def test_the_research_says_when_linkedin_only_shared_a_placeholder(conn, env):
+    check, searched = _photo_state(conn, env, _page("https://static.licdn.com/aero-v1/sc/h/9c8pery4andzj6ohjkjp54ma2"))
+    assert check == {"state": "not_a_photo", "kind": "linkedin-placeholder"}
+    assert q1(conn, "select photo_url from people where id=%s", (env["p"]["ada"],))["photo_url"] is None
+    assert next(x for x in searched if x["purpose"] == "linkedin")["image_kinds"] == ["linkedin-placeholder"]
+
+
+def test_the_research_says_when_the_page_came_without_a_picture_or_was_not_found_or_identity_is_unsure(conn, env):
+    assert _photo_state(conn, env, _page())[0] == {"state": "no_image"}
+    assert _photo_state(conn, env, _page(PHOTO_BEN, url="https://www.linkedin.com/in/ada-clarke-2"))[0] == {"state": "page_not_found"}
+    assert _photo_state(conn, env, _page(PHOTO), confident=False)[0] == {"state": "unsure_identity", "kind": "profile-photo"}
