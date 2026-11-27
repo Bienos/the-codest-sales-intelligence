@@ -1,0 +1,362 @@
+<title>Codest Revenue Forecast</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one scrolling dashboard. Hero forecast first, then the quarterly chart, funnel and sensitivity side by side, then the editable assumptions that drive everything. */
+:root{
+  --page:#f9f9f9; --surface:#ffffff; --ink:#191919; --ink2:#666666;
+  --grid:#e7e7e7; --axis:#c2c2c2; --border:rgba(11,11,11,.10);
+  --s1:#257de0; --s2:#f47230; --s8:#ec4647; --track:#cce3fd;
+  --good:#006c10; --warn:#fbb315; --crit:#dc3c3d; --wash:rgba(37,125,224,.07);
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --page:#0b0b0b; --surface:#191919; --ink:#efefef; --ink2:#9c9c9c;
+    --grid:#303030; --axis:#474747; --border:rgba(255,255,255,.10);
+    --s1:#338ced; --s2:#e76624; --s8:#eb6263; --track:#0e3d7e;
+    --good:#53c556; --wash:rgba(51,140,237,.12); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0b0b0b; --surface:#191919; --ink:#efefef; --ink2:#9c9c9c;
+  --grid:#303030; --axis:#474747; --border:rgba(255,255,255,.10);
+  --s1:#338ced; --s2:#e76624; --s8:#eb6263; --track:#0e3d7e;
+  --good:#53c556; --wash:rgba(51,140,237,.12); color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:20px;margin:0;font-weight:650;letter-spacing:-.01em}
+h2{font-size:15px;margin:0;font-weight:650}
+p{margin:0}
+.sub{color:var(--ink2);font-size:13px}
+header{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:2px 8px;border-radius:99px;border:1px solid var(--border);background:var(--surface);color:var(--ink2);white-space:nowrap}
+.tag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ink2)}
+.tag.live::before{background:var(--s1)} .tag.ph::before{background:var(--warn)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;min-width:0}
+.grid{display:grid;gap:12px;margin-bottom:12px}
+.g-top{grid-template-columns:minmax(0,1.15fr) minmax(0,2fr)}
+.g-2{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.hero .label{color:var(--ink2);font-size:13px}
+.hero .num{font-size:56px;line-height:1.05;font-weight:650;letter-spacing:-.02em;margin:6px 0 2px}
+.hero .num small{font-size:18px;color:var(--ink2);font-weight:500;margin-left:6px}
+.meter{height:8px;border-radius:99px;background:var(--track);overflow:hidden;margin:12px 0 6px}
+.meter i{display:block;height:100%;background:var(--s1);border-radius:99px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;min-width:0}
+.tile .label{color:var(--ink2);font-size:12.5px}
+.tile .val{font-size:26px;font-weight:620;margin:4px 0 2px;letter-spacing:-.01em}
+.tile .note{color:var(--ink2);font-size:12px}
+.head{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink2);margin:6px 0 4px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.chart{width:100%;position:relative}
+svg text{font-family:var(--font);font-size:12px}
+.t{fill:var(--ink2)} .tv{fill:var(--ink);font-weight:600}
+.gl{stroke:var(--grid);stroke-width:1} .ax{stroke:var(--axis);stroke-width:1}
+.hit{fill:transparent;cursor:default} .hit:focus{outline:none;stroke:var(--ink2);stroke-width:1.5}
+.whisk{stroke:var(--ink);stroke-width:2;stroke-linecap:round;fill:none}
+.pace{stroke:var(--ink);stroke-width:2;opacity:.55}
+details{margin-top:10px} summary{cursor:pointer;color:var(--ink2);font-size:12.5px}
+summary:focus-visible,button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--s1);outline-offset:2px}
+.scroll{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{font-weight:600;color:var(--ink2);text-align:right;padding:6px 8px;border-bottom:1px solid var(--axis);font-size:12px;white-space:nowrap}
+td{padding:6px 8px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap;font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}
+tr:last-child td{border-bottom:none}
+tfoot td{font-weight:600;border-top:1px solid var(--axis)}
+input[type=number],input[type=text]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:6px;padding:4px 6px;width:84px;text-align:right}
+input.nm{width:150px;text-align:left}
+input.w{width:100px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 16px;margin-bottom:14px}
+.fields label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink2)}
+.fields input{width:100%;text-align:left}
+button{font:inherit;font-size:12.5px;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{background:var(--wash)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:99px}
+.chip.warn{background:rgba(251,179,21,.22);color:var(--ink)} .chip.crit{background:rgba(220,60,61,.18);color:var(--ink)} .chip.ok{background:var(--wash);color:var(--ink)}
+.frow{display:grid;grid-template-columns:minmax(90px,150px) minmax(0,1fr) 44px 96px;gap:8px;align-items:center;margin:7px 0;font-size:13px}
+.frow .adv{white-space:nowrap}
+.frow .bar{height:22px;display:flex;align-items:center}
+.frow .bar i{display:block;height:22px;background:var(--s1);border-radius:0 4px 4px 0;min-width:2px}
+.frow .n{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.frow .adv{color:var(--ink2);font-size:12px;text-align:right}
+.trow{margin:9px 0}
+.trow .tl{font-size:12.5px;margin-bottom:3px}
+.trow .tl small{color:var(--ink2)}
+.ttrack{display:grid;grid-template-columns:1fr 1px 1fr;height:20px;align-items:center}
+.ttrack .axis{background:var(--axis);height:100%}
+.tneg,.tpos{display:flex;align-items:center;gap:6px;height:100%;min-width:0}
+.tneg{justify-content:flex-end} .tneg i,.tpos i{display:block;height:16px}
+.tneg i{background:var(--s8);border-radius:4px 0 0 4px} .tpos i{background:var(--s1);border-radius:0 4px 4px 0}
+.ttrack b{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bm{position:relative;height:28px;margin:18px 0 4px}
+.bm .rail{position:absolute;left:0;right:0;top:12px;height:4px;background:var(--grid);border-radius:2px}
+.bm .band{position:absolute;top:9px;height:10px;background:var(--track);border-radius:3px}
+.bm .dot{position:absolute;top:6px;width:16px;height:16px;border-radius:50%;background:var(--s1);border:2px solid var(--surface);transform:translateX(-8px)}
+.bm .dot.b{background:var(--s2)}
+.bm .tick{position:absolute;top:22px;font-size:11px;color:var(--ink2);transform:translateX(-50%)}
+#tip{position:fixed;z-index:50;pointer-events:none;background:var(--ink);color:var(--surface);padding:6px 9px;border-radius:6px;font-size:12px;max-width:260px;line-height:1.35;opacity:0;transition:opacity .08s}
+.foot{color:var(--ink2);font-size:12.5px;margin-top:20px;display:grid;gap:6px}
+.foot a{color:var(--s1)}
+@media (max-width:860px){.g-top{grid-template-columns:1fr}.hero .num{font-size:48px}}
+@media (prefers-reduced-motion:reduce){#tip{transition:none}}
+</style>
+
+<div class="wrap">
+<header>
+  <div>
+    <h1>Codest Revenue Forecast</h1>
+    <p class="sub">2027 closed-won revenue by quarter, simulated from open Pipedrive deals plus deals lemlist has not produced yet. Data as of 27 Nov 2026.</p>
+  </div>
+  <div class="tags">
+    <span class="tag ph">Placeholder inputs until Pipedrive history is connected</span>
+    <span class="tag live">Lemlist actuals: live read, 27 Nov 2026</span>
+  </div>
+</header>
+
+<div class="grid g-top">
+  <section class="card hero" aria-labelledby="hero-l">
+    <div class="label" id="hero-l">Likely 2027 closed-won revenue (median)</div>
+    <div class="num" id="hero-num">…</div>
+    <p class="sub" id="hero-range"></p>
+    <div class="meter" role="img" id="hero-meter" aria-label="Chance of reaching target"><i style="width:0"></i></div>
+    <p class="sub" id="hero-prob"></p>
+  </section>
+  <section class="kpis" id="kpis" aria-label="Key figures"></section>
+</div>
+
+<section class="card" style="margin-bottom:12px" aria-labelledby="qc-h">
+  <div class="head"><h2 id="qc-h">Closed-won revenue by quarter, 2027</h2><span class="sub">Computed · 2,000 simulated years</span></div>
+  <p class="sub">The December 2026 bar shows open deals expected to close before the year starts. It is not part of the 2027 total.</p>
+  <div class="legend" id="qc-legend"></div>
+  <div class="chart" id="qc"></div>
+  <details><summary>Table view</summary><div class="scroll" id="qc-table"></div></details>
+</section>
+
+<div class="grid g-2">
+  <section class="card" aria-labelledby="f-h">
+    <div class="head"><h2 id="f-h">Where deals drop out</h2><span class="sub">Computed · expected values</span></div>
+    <p class="sub" id="f-sub" style="margin-bottom:6px"></p>
+    <div id="funnel"></div>
+  </section>
+  <section class="card" aria-labelledby="s-h">
+    <div class="head"><h2 id="s-h">What moves the number</h2><span class="sub">Computed · each input ±20%</span></div>
+    <p class="sub" style="margin-bottom:4px">Change in average 2027 revenue. <span class="sw" style="background:var(--s1)"></span> raises it <span class="sw" style="background:var(--s8)"></span> lowers it.</p>
+    <div id="tornado"></div>
+    <p class="sub" style="margin-top:8px">Shorter stage times barely move the 2027 figure: new deals close sooner, but some open deals then close in December 2026, which falls outside 2027.</p>
+  </section>
+</div>
+
+<div class="grid g-2">
+  <section class="card" aria-labelledby="o-h">
+    <div class="head"><h2 id="o-h">Outbound so far</h2><span class="tag live">Lemlist live read · step 1 only</span></div>
+    <div class="scroll"><table id="ob"></table></div>
+    <div class="bm" id="bm" aria-hidden="true"></div>
+    <p class="sub">Orange dot: your current reply-rate assumption. Blue dot: observed 3.5% (8 replies on 226 sends). Band: 0.45% to 6%, the range quoted by the benchmark sources. Opens are left out because privacy proxies inflate them.</p>
+    <p style="margin-top:10px"><button id="useObs" type="button">Use observed 3.5% as reply rate</button></p>
+  </section>
+  <section class="card" aria-labelledby="a-h">
+    <div class="head"><h2 id="a-h">How to read this</h2><span class="tag ph">Method</span></div>
+    <p class="sub" style="color:var(--ink)">Each simulated year plays out every open deal and every deal lemlist and the webform are expected to create from December 2026 on. A deal either advances or drops at each stage, and each stage takes a random time around its median. A deal that reaches the end earns its value in the quarter it closes.</p>
+    <p class="sub" style="margin-top:8px">Bars show the average across 2,000 simulated years. The whisker is the P10 to P90 range: 8 in 10 simulated years land inside it. The median and the chance of hitting target come from the same runs.</p>
+    <p class="sub" style="margin-top:8px"><b>Every conversion, duration and deal count below is a placeholder.</b> Replace them with measured values once deal stage history is captured. Until a stage has about 20 to 30 real deals, treat its rate as a guess and read the range, not the median.</p>
+  </section>
+</div>
+
+<section class="card" aria-labelledby="e-h">
+  <div class="head"><h2 id="e-h">Assumptions</h2><span><button id="reset" type="button">Reset to placeholders</button></span></div>
+  <div class="fields">
+    <label>Currency<input type="text" id="in-cur" maxlength="5"></label>
+    <label>2027 target<input type="number" id="in-target" min="0" step="10000"></label>
+    <label>Average deal value<input type="number" id="in-value" min="0" step="5000"></label>
+    <label>Leads contacted per month<input type="number" id="in-leads" min="0" step="50"></label>
+    <label>Reply rate, % of leads<input type="number" id="in-reply" min="0" max="100" step="0.1"></label>
+    <label>Positive share of replies, %<input type="number" id="in-pos" min="0" max="100" step="1"></label>
+    <label>Positive reply becomes a deal, %<input type="number" id="in-create" min="0" max="100" step="1"></label>
+    <label>Inbound MQLs per month<input type="number" id="in-inbound" min="0" step="1"></label>
+  </div>
+  <div class="scroll"><table id="stages"></table></div>
+  <p class="sub" style="margin-top:8px">Stage names come from the Pipedrive stage map in the repo. Confirm whether DISCOVERY sits before or after SQL and edit the names to match. <i>Marketing Nurturing</i> is left out on purpose: treat it as a parking stage, not a step.</p>
+</section>
+
+<div class="foot">
+  <p>Sources: lemlist campaign statistics read through the lemlist API on 27 Nov 2026. Pipedrive stage names from <code>backend/src/ri/deal/progress.py</code>. Funnel, reply and cycle benchmarks, and the case for these metrics, are in <code>docs/sales-metrics-and-forecast.md</code>.</p>
+  <p>Not modelled yet: stage-to-stage differences by source or country, tenders, deal-value spread by service line, revenue recognised over time, and Marketing Nurturing re-entry. Lost deals are assumed to leave at the end of the stage they fail in.</p>
+</div>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+(function(){
+"use strict";
+/* ---------- state ---------- */
+var DEF={cur:"EUR",target:1000000,value:120000,leads:800,reply:2.5,pos:25,create:60,inbound:4,
+ stages:[{name:"Webform MQL",conv:55,dur:10,n:8,age:4},{name:"DISCOVERY",conv:55,dur:18,n:6,age:15},
+  {name:"SQL",conv:50,dur:25,n:4,age:20},{name:"Proposal/Shortlist",conv:55,dur:30,n:3,age:50},{name:"Commercials/NDA",conv:65,dur:21,n:2,age:10}]};
+var KEY="codest-forecast-v1";
+function clone(o){return JSON.parse(JSON.stringify(o))}
+function load(){try{var r=localStorage.getItem(KEY);if(r){var s=JSON.parse(r);if(s&&s.stages&&s.stages.length===5)return s}}catch(e){}return clone(DEF)}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var S=load();
+var OBS=[
+ {n:"DACH Procurement",leads:148,sent:118,rep:2,bnc:4},{n:"Nordics Procurement",leads:68,sent:68,rep:4,bnc:3},
+ {n:"Poland Procurement",leads:40,sent:40,rep:2,bnc:4},{n:"Engineering Leadership, 3 regions",leads:328,sent:0,rep:0,bnc:0}];
+
+/* ---------- helpers ---------- */
+function $(id){return document.getElementById(id)}
+function clamp(x,a,b){return Math.min(b,Math.max(a,x))}
+function num(v,f){var x=parseFloat(v);return isFinite(x)?x:f}
+function money(v){var a=Math.abs(v);if(a>=1e6)return (v/1e6).toFixed(2)+"M";if(a>=1e3)return Math.round(v/1e3)+"k";return String(Math.round(v))}
+function pct(x,d){return (x*100).toFixed(d==null?0:d)+"%"}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function signed(x){var r=Math.round(x*100);return (r>0?"+":r<0?"−":"")+Math.abs(r)+"%"}
+
+/* ---------- simulation (common random numbers: a draw depends only on run + entity, so what-if runs differ only by the input changed) ---------- */
+var T0=Date.UTC(2026,10,27),DAY=864e5,SIG=0.5,VSIG=0.4,NM=13,MS=[];
+for(var m=0;m<NM;m++){var a=Date.UTC(2026,11+m,1),b=Date.UTC(2026,12+m,1);MS.push({off:(a-T0)/DAY,len:(b-a)/DAY})}
+function rnd(a,b,c,d){var h=0x9e3779b9|0,v=[a,b,c,d];for(var i=0;i<4;i++){h^=(v[i]+0x7f4a7c15+(h<<6)+(h>>>2))|0;h=Math.imul(h^(h>>>16),0x85ebca6b);h=Math.imul(h^(h>>>13),0xc2b2ae35);h^=h>>>16}return ((h>>>0)+0.5)/4294967296}
+function norm(r,a,b,d){var u1=rnd(r,a,b,d),u2=rnd(r,a,b,d+1);return Math.sqrt(-2*Math.log(u1))*Math.cos(6.283185307*u2)}
+/* bucket 0 = 27 Nov to 31 Dec 2026 (outside the 2027 total), 1 to 4 = Q1 to Q4 2027 */
+function quarterOf(t){var d=new Date(T0+t*DAY),y=d.getUTCFullYear();return y===2026?0:y===2027?1+Math.floor(d.getUTCMonth()/3):-1}
+function poisson(lam,u){if(lam<=0)return 0;var p=Math.exp(-lam),F=p,k=0;while(u>F&&k<500){k++;p*=lam/k;F+=p}return k}
+function lamOf(P){return P.leads*P.reply*P.pos*P.create+P.inbound}
+function simDeal(P,run,ka,kb,k0,t0,age){var t=t0;for(var i=k0;i<5;i++){var d=P.dur[i]*Math.exp(SIG*norm(run,ka,kb,i*3));if(i===k0&&age>0)d=Math.max(3,d-age);t+=d;if(rnd(run,ka,kb,i*3+2)>P.conv[i])return -1}return t}
+function vmult(run,ka,kb){return Math.exp(VSIG*norm(run,ka,kb,20)-VSIG*VSIG/2)}
+function pctile(s,p){var i=(s.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return s[lo]+(s[hi]-s[lo])*(i-lo)}
+function buildP(S){
+ return {conv:S.stages.map(function(s){return clamp(num(s.conv,0)/100,0,1)}),dur:S.stages.map(function(s){return Math.max(1,num(s.dur,1))}),
+  value:Math.max(0,num(S.value,0)),leads:Math.max(0,num(S.leads,0)),reply:clamp(num(S.reply,0)/100,0,1),pos:clamp(num(S.pos,0)/100,0,1),
+  create:clamp(num(S.create,0)/100,0,1),inbound:Math.max(0,num(S.inbound,0)),target:Math.max(0,num(S.target,0)),
+  ex:S.stages.map(function(s){return {n:Math.max(0,Math.round(num(s.n,0))),age:Math.max(0,num(s.age,0))}})};
+}
+function simulate(P,N,lite){
+ var qs=[[],[],[],[],[]],tot=[],mEx=[0,0,0,0,0],mNew=[0,0,0,0,0],wins=0,hit=0,sumTot=0,lam=lamOf(P);
+ for(var run=0;run<N;run++){
+  var rq=[0,0,0,0,0];
+  for(var k=0;k<5;k++){var e=P.ex[k];for(var j=0;j<e.n;j++){var t=simDeal(P,run,1000+k,j,k,0,e.age);if(t<0)continue;var q=quarterOf(t);if(q<0)continue;var v=P.value*vmult(run,1000+k,j);rq[q]+=v;mEx[q]+=v;if(q>0)wins++}}
+  for(var m=0;m<NM;m++){var cnt=poisson(lam,rnd(run,m,7777,0));
+   for(var j2=0;j2<cnt;j2++){var t0=MS[m].off+rnd(run,m,j2,50)*MS[m].len,t2=simDeal(P,run,m,j2,0,t0,0);if(t2<0)continue;var q2=quarterOf(t2);if(q2<0)continue;var v2=P.value*vmult(run,m,j2);rq[q2]+=v2;mNew[q2]+=v2;if(q2>0)wins++}}
+  var T=rq[1]+rq[2]+rq[3]+rq[4];sumTot+=T;if(T>=P.target)hit++;
+  if(!lite){for(var i=0;i<5;i++)qs[i].push(rq[i]);tot.push(T)}
+ }
+ var out={mean:sumTot/N,prob:hit/N,wins:wins/N,mEx:mEx.map(function(x){return x/N}),mNew:mNew.map(function(x){return x/N})};
+ if(!lite){tot.sort(function(a,b){return a-b});out.tot={p10:pctile(tot,.1),p50:pctile(tot,.5),p90:pctile(tot,.9)};
+  out.q=qs.map(function(s,i){s.sort(function(a,b){return a-b});return {p10:pctile(s,.1),p50:pctile(s,.5),p90:pctile(s,.9),ex:out.mEx[i],nw:out.mNew[i],mean:out.mEx[i]+out.mNew[i]}})}
+ return out;
+}
+function pWinFrom(P){var r=[],p=1;for(var i=4;i>=0;i--){p*=P.conv[i];r[i]=p}return r}
+
+/* ---------- tooltip ---------- */
+var tip=$("tip");
+function showTip(el,x,y){tip.textContent=el.getAttribute("data-tip");tip.style.opacity=1;var w=tip.offsetWidth,h=tip.offsetHeight;tip.style.left=clamp(x+12,8,innerWidth-w-8)+"px";tip.style.top=clamp(y-h-10,8,innerHeight-h-8)+"px"}
+document.addEventListener("pointermove",function(e){var t=e.target.closest&&e.target.closest("[data-tip]");if(t)showTip(t,e.clientX,e.clientY);else tip.style.opacity=0});
+document.addEventListener("focusin",function(e){var t=e.target.closest&&e.target.closest("[data-tip]");if(t){var r=t.getBoundingClientRect();showTip(t,r.left+r.width/2,r.top)}});
+document.addEventListener("focusout",function(){tip.style.opacity=0});
+
+/* ---------- rendering ---------- */
+var R=null,P=null,cur="EUR";
+function niceStep(v){var e=Math.pow(10,Math.floor(Math.log10(v))),f=v/e;return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*e}
+function qlab(i){return i===0?"Dec 2026":"Q"+i+" 2027"}
+function renderQuarter(){
+ if(!R)return;var el=$("qc"),w=Math.max(300,el.clientWidth||700),h=300,ml=48,mr=12,mt=18,mb=34,iw=w-ml-mr,ih=h-mt-mb;
+ var pace=P.target/4,top=Math.max(pace*1.05,1);R.q.forEach(function(q){top=Math.max(top,q.p90,q.mean)});
+ var step=niceStep(top/4),max=Math.ceil(top/step)*step,y=function(v){return mt+ih-v/max*ih},band=iw/5,cw=24,s="";
+ for(var v=0;v<=max+1e-6;v+=step){s+='<line class="'+(v===0?"ax":"gl")+'" x1="'+ml+'" x2="'+(w-mr)+'" y1="'+y(v)+'" y2="'+y(v)+'"/><text class="t" x="'+(ml-8)+'" y="'+(y(v)+4)+'" text-anchor="end">'+money(v)+'</text>'}
+ s+='<line class="pace" x1="'+ml+'" x2="'+(w-mr)+'" y1="'+y(pace)+'" y2="'+y(pace)+'"/>';
+ R.q.forEach(function(q,i){
+  var cx=ml+band*i+band/2,x=cx-cw/2,hE=q.ex/max*ih,hN=q.nw/max*ih,yE=mt+ih-hE;
+  function tr(x0,y0,w0,h0,r){r=Math.min(r,h0);return "M"+x0+","+(y0+h0)+"V"+(y0+r)+"Q"+x0+","+y0+" "+(x0+r)+","+y0+"H"+(x0+w0-r)+"Q"+(x0+w0)+","+y0+" "+(x0+w0)+","+(y0+r)+"V"+(y0+h0)+"Z"}
+  var gap=hN>3&&hE>3?2:0;
+  if(hN>0.5){s+='<path d="'+tr(x,yE-hN,cw,hN-gap,4)+'" style="fill:var(--s2)"/>'}
+  if(hE>0.5){s+='<path d="'+(hN>0.5?"M"+x+","+(mt+ih)+"V"+yE+"H"+(x+cw)+"V"+(mt+ih)+"Z":tr(x,yE,cw,hE,4))+'" style="fill:var(--s1)"/>'}
+  var wx=cx+22;s+='<path class="whisk" d="M'+wx+','+y(q.p10)+'V'+y(q.p90)+'M'+(wx-4)+','+y(q.p10)+'H'+(wx+4)+'M'+(wx-4)+','+y(q.p90)+'H'+(wx+4)+'"/>';
+  s+='<text class="tv" x="'+(cx-6)+'" y="'+(y(q.mean)-7)+'" text-anchor="middle">'+money(q.mean)+'</text>';
+  var ql=qlab(i);
+  s+='<text class="t" x="'+cx+'" y="'+(h-10)+'" text-anchor="middle">'+ql+'</text>';
+  s+='<rect class="hit" tabindex="0" x="'+(ml+band*i)+'" y="'+mt+'" width="'+band+'" height="'+ih+'" data-tip="'+esc(ql+(i===0?" (not in the 2027 total)":"")+", average "+money(q.mean)+" "+cur+". Open pipeline "+money(q.ex)+", new deals "+money(q.nw)+". P10 "+money(q.p10)+", median "+money(q.p50)+", P90 "+money(q.p90))+'"/>';
+ });
+ el.innerHTML='<svg width="'+w+'" height="'+h+'" role="img" aria-label="Closed-won revenue by quarter 2027 with P10 to P90 range">'+s+'</svg>';
+}
+function renderAll(){
+ P=buildP(S);cur=S.cur||"";R=simulate(P,2000);
+ var pw=pWinFrom(P),open=0,wtd=0,nOpen=0;P.ex.forEach(function(e,i){open+=e.n*P.value;wtd+=e.n*P.value*pw[i];nOpen+=e.n});
+ var cycle=P.dur.reduce(function(a,b){return a+b},0),T=R.tot;
+ $("hero-num").innerHTML=money(T.p50)+"<small>"+esc(cur)+"</small>";
+ $("hero-range").textContent="8 in 10 simulated years land between "+money(T.p10)+" and "+money(T.p90)+". Average "+money(R.mean)+".";
+ $("hero-meter").firstElementChild.style.width=(R.prob*100)+"%";$("hero-meter").setAttribute("aria-label","Chance of reaching target: "+pct(R.prob));
+ $("hero-prob").textContent=P.target>0?"Chance of reaching the "+money(P.target)+" target: "+pct(R.prob)+". Computed from placeholder inputs.":"Set a target in the assumptions to see the chance of reaching it.";
+ var cov=P.target>0?open/P.target:0,wcov=P.target>0?wtd/P.target:0;
+ $("kpis").innerHTML=[
+  ["Expected deals won in 2027",R.wins.toFixed(1),"Average of simulated years"],
+  ["Open pipeline today",money(open)+" "+esc(cur),nOpen+" open deals · "+cov.toFixed(1)+"x target"],
+  ["Weighted open pipeline",money(wtd)+" "+esc(cur),pct(wcov)+" of target; the rest must come from new deals"],
+  ["Median sales cycle",Math.round(cycle)+" days","Sum of stage medians, MQL to won"]
+ ].map(function(k){return '<div class="tile"><div class="label">'+k[0]+'</div><div class="val">'+k[1]+'</div><div class="note">'+k[2]+'</div></div>'}).join("");
+ $("qc-legend").innerHTML='<span><i class="sw" style="background:var(--s1)"></i>Open pipeline today</span><span><i class="sw" style="background:var(--s2)"></i>Deals not yet created</span><span><svg width="12" height="14" aria-hidden="true"><path class="whisk" d="M6,1V13M2,1H10M2,13H10"/></svg>P10 to P90 range</span><span><svg width="18" height="10" aria-hidden="true"><line class="pace" x1="0" x2="18" y1="5" y2="5"/></svg>Even pace to target ('+money(P.target/4)+' per quarter)</span>';
+ renderQuarter();
+ $("qc-table").innerHTML='<table><thead><tr><th>Quarter</th><th>Average</th><th>Open pipeline</th><th>New deals</th><th>P10</th><th>Median</th><th>P90</th></tr></thead><tbody>'+R.q.map(function(q,i){return '<tr><td>'+qlab(i)+(i===0?' (not in 2027)':'')+'</td><td>'+money(q.mean)+'</td><td>'+money(q.ex)+'</td><td>'+money(q.nw)+'</td><td>'+money(q.p10)+'</td><td>'+money(q.p50)+'</td><td>'+money(q.p90)+'</td></tr>'}).join("")+'</tbody><tfoot><tr><td>2027 total</td><td>'+money(R.mean)+'</td><td>'+money(R.mEx.slice(1).reduce(function(a,b){return a+b},0))+'</td><td>'+money(R.mNew.slice(1).reduce(function(a,b){return a+b},0))+'</td><td>'+money(T.p10)+'</td><td>'+money(T.p50)+'</td><td>'+money(T.p90)+'</td></tr></tfoot></table><p class="sub" style="margin-top:6px">Quarter P10 to P90 values do not add up to the year, since a bad quarter and a good quarter rarely happen in the same simulated year. Currency: '+esc(cur)+'.</p>';
+ /* funnel */
+ var lam=lamOf(P),n0=lam*12,cnt=[n0];for(var i=0;i<5;i++)cnt.push(cnt[i]*P.conv[i]);
+ $("f-sub").textContent="Twelve months of new deals at "+lam.toFixed(1)+" per month ("+(lam-P.inbound).toFixed(1)+" from lemlist, "+P.inbound+" inbound). Bars are expected counts entering each stage.";
+ $("funnel").innerHTML=cnt.map(function(c,i){var nm=i<5?S.stages[i].name:"Won",adv=i<5?pct(P.conv[i])+" advance":"";
+  return '<div class="frow"><span>'+esc(nm)+'</span><div class="bar"><i style="width:'+(c/n0*100)+'%" data-tip="'+esc(nm+": "+c.toFixed(1)+" deals ("+pct(c/n0,1)+" of deals created)")+'" tabindex="0"></i></div><span class="n">'+c.toFixed(1)+'</span><span class="adv">'+adv+'</span></div>'}).join("")+'<p class="sub" style="margin-top:8px">Overall: '+pct(cnt[5]/n0,1)+' of new deals are won. Time from MQL to won: '+Math.round(cycle)+' days at the medians.</p>';
+ renderOutbound();renderStageOutputs(pw);
+ clearTimeout(renderAll.t);renderAll.t=setTimeout(renderTornado,30);
+}
+function renderTornado(){
+ var base=simulate(P,400,true).mean,rows=[];
+ function lab(f){var Q=JSON.parse(JSON.stringify(P));f(Q);return Q}
+ var defs=[["Leads contacted per month",function(Q,f){Q.leads*=f}],["Reply rate",function(Q,f){Q.reply=Math.min(1,Q.reply*f)}],["Positive share of replies",function(Q,f){Q.pos=Math.min(1,Q.pos*f)}],
+  ["Positive reply becomes a deal",function(Q,f){Q.create=Math.min(1,Q.create*f)}],["Inbound MQLs per month",function(Q,f){Q.inbound*=f}],["Average deal value",function(Q,f){Q.value*=f}],["Time spent in each stage",function(Q,f){Q.dur=Q.dur.map(function(d){return d*f})}]];
+ S.stages.forEach(function(s,i){defs.push([(i<4?s.name+" to "+S.stages[i+1].name:s.name+" to won"),function(Q,f){Q.conv[i]=Math.min(1,Q.conv[i]*f)}])});
+ defs.forEach(function(d){var lo=lab(function(Q){d[1](Q,.8)}),hi=lab(function(Q){d[1](Q,1.2)});var a=base>0?simulate(lo,400,true).mean/base-1:0,b=base>0?simulate(hi,400,true).mean/base-1:0;rows.push({n:d[0],a:a,b:b,m:Math.max(Math.abs(a),Math.abs(b))})});
+ rows.sort(function(x,y){return y.m-x.m});var mx=Math.max(.01,rows[0]?rows[0].m:.01);
+ $("tornado").innerHTML=rows.map(function(r){
+  var neg=Math.min(r.a,r.b),pos=Math.max(r.a,r.b),tipTxt=r.n+": 20% lower gives "+signed(r.a)+", 20% higher gives "+signed(r.b)+" in average 2027 revenue.";
+  return '<div class="trow"><div class="tl">'+esc(r.n)+'</div><div class="ttrack" data-tip="'+esc(tipTxt)+'" tabindex="0"><div class="tneg"><b>'+signed(neg)+'</b><i style="width:'+Math.abs(neg)/mx*62+'%"></i></div><div class="axis"></div><div class="tpos"><i style="width:'+Math.abs(pos)/mx*62+'%"></i><b>'+signed(pos)+'</b></div></div></div>'}).join("");
+}
+function renderOutbound(){
+ var tl=0,ts=0,tr=0,tb=0;
+ var body=OBS.map(function(o){tl+=o.leads;ts+=o.sent;tr+=o.rep;tb+=o.bnc;var bp=o.sent?o.bnc/o.sent:0,flag=bp>=.08?' <span class="chip warn"><span aria-hidden="true">▲</span> Check list quality</span>':"";
+  return '<tr><td>'+esc(o.n)+'</td><td>'+o.leads+'</td><td>'+o.sent+'</td><td>'+o.rep+'</td><td>'+(o.sent?pct(o.rep/o.sent,1):"not started")+'</td><td>'+(o.sent?pct(bp,1):"")+flag+'</td></tr>'}).join("");
+ $("ob").innerHTML='<thead><tr><th>Campaign</th><th>Leads</th><th>Sent</th><th>Replies</th><th>Reply rate</th><th>Bounced</th></tr></thead><tbody>'+body+'</tbody><tfoot><tr><td>All running</td><td>'+tl+'</td><td>'+ts+'</td><td>'+tr+'</td><td>'+pct(tr/ts,1)+'</td><td>'+pct(tb/ts,1)+'</td></tr></tfoot>';
+ var sc=function(v){return clamp(v/7,0,1)*100},cur2=num(S.reply,0);
+ $("bm").innerHTML='<div class="rail"></div><div class="band" style="left:'+sc(.45)+'%;width:'+(sc(6)-sc(.45))+'%"></div><div class="dot" style="left:'+sc(3.5)+'%"></div><div class="dot b" style="left:'+sc(cur2)+'%"></div>'+[0,2,4,6].map(function(t){return '<span class="tick" style="left:'+sc(t)+'%">'+t+'%</span>'}).join("");
+}
+function renderStageOutputs(pw){
+ for(var i=0;i<5;i++){var e=P.ex[i],wv=e.n*P.value*pw[i],aging=P.ex[i].age>1.5*P.dur[i]&&e.n>0;
+  $("o-p"+i).textContent=pct(pw[i],1);$("o-w"+i).textContent=money(wv);
+  $("o-f"+i).innerHTML=aging?'<span class="chip warn"><span aria-hidden="true">▲</span> Aging</span>':(e.n?'<span class="chip ok">On pace</span>':'');}
+}
+
+/* ---------- editor ---------- */
+function buildEditor(){
+ var rows=S.stages.map(function(s,i){return '<tr><td><input class="nm" type="text" id="st-name-'+i+'" aria-label="Stage '+(i+1)+' name"></td>'
+  +'<td><input type="number" id="st-conv-'+i+'" min="0" max="100" step="1" aria-label="Advance rate, %"></td><td><input type="number" id="st-dur-'+i+'" min="1" step="1" aria-label="Median days in stage"></td>'
+  +'<td><input type="number" id="st-n-'+i+'" min="0" step="1" aria-label="Open deals"></td><td><input type="number" id="st-age-'+i+'" min="0" step="1" aria-label="Average days in stage so far"></td>'
+  +'<td id="o-p'+i+'"></td><td id="o-w'+i+'"></td><td id="o-f'+i+'"></td></tr>'}).join("");
+ $("stages").innerHTML='<thead><tr><th>Stage</th><th>Advance, %</th><th>Median days</th><th>Open deals</th><th>Avg days in stage</th><th>Win chance from here</th><th>Weighted value</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody>';
+ fill();
+}
+function fill(){
+ ["cur","target","value","leads","reply","pos","create","inbound"].forEach(function(k){$("in-"+k).value=S[k]});
+ S.stages.forEach(function(s,i){$("st-name-"+i).value=s.name;$("st-conv-"+i).value=s.conv;$("st-dur-"+i).value=s.dur;$("st-n-"+i).value=s.n;$("st-age-"+i).value=s.age})
+}
+function read(){
+ S.cur=$("in-cur").value.trim().slice(0,5);
+ [["target",0],["value",0],["leads",0],["reply",0],["pos",0],["create",0],["inbound",0]].forEach(function(p){S[p[0]]=num($("in-"+p[0]).value,0)});
+ S.stages.forEach(function(s,i){s.name=$("st-name-"+i).value||("Stage "+(i+1));s.conv=num($("st-conv-"+i).value,0);s.dur=num($("st-dur-"+i).value,1);s.n=num($("st-n-"+i).value,0);s.age=num($("st-age-"+i).value,0)})
+}
+var tm;function onEdit(){read();save();clearTimeout(tm);tm=setTimeout(renderAll,150)}
+document.addEventListener("input",function(e){if(e.target.closest&&e.target.closest("#in-cur,#in-target,#in-value,#in-leads,#in-reply,#in-pos,#in-create,#in-inbound,#stages"))onEdit()});
+$("reset").addEventListener("click",function(){S=clone(DEF);save();fill();renderAll()});
+$("useObs").addEventListener("click",function(){S.reply=3.5;save();fill();renderAll()});
+if(window.ResizeObserver){var ro=new ResizeObserver(function(){renderQuarter()});ro.observe($("qc"))}
+buildEditor();renderAll();
+})();
+</script>
