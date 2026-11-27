@@ -185,7 +185,7 @@ def account_address(tokens: dict[str, Any], client_id: str) -> str | None:
     return None
 
 
-def revoke_token_sync(token: str) -> bool:
+def revoke_token(token: str) -> bool:
     """Best effort: tell Google to forget this refresh token. True when Google confirmed; never raises (a failure must not stop a disconnect)."""
     if not token:
         return False
@@ -198,8 +198,8 @@ def revoke_token_sync(token: str) -> bool:
         return False
 
 
-async def revoke_token(token: str) -> bool:
-    """Async twin of `revoke_token_sync` for async routes. Same promise: best effort, never raises."""
+async def revoke_token_async(token: str) -> bool:
+    """Async twin of `revoke_token` for async routes. Same promise: best effort, never raises."""
     if not token:
         return False
     try:
@@ -260,7 +260,7 @@ def parse_metadata(body: dict[str, Any]) -> MessageMeta:
     if when is None:
         try:
             when = parsedate_to_datetime((headers.get("date") or [""])[0])
-            when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+            when = (when if when.tzinfo else when.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
         except (TypeError, ValueError, IndexError):
             when = datetime.now(timezone.utc)
     labels = tuple(str(x) for x in (body.get("labelIds") or []) if isinstance(x, str))
@@ -310,7 +310,7 @@ class GmailClient:
         if reason == "invalid_grant" or r.status_code == 400:
             raise GmailAuthError("Google no longer accepts this connection (access was removed, expired or the password changed).", reason or "invalid_grant")
         if reason in ("invalid_client", "unauthorized_client", "access_denied") or r.status_code in (401, 403):
-            raise GmailConfigError("Google did not accept this app's sign-in settings (client id or secret).", reason)
+            raise GmailConfigError("Google did not accept this app's sign-in settings (client id or secret). An administrator needs to check them.", reason)
         raise GmailUnavailable("Google refused to renew the access for now.", reason)
 
     # ---- one call, with pacing, the one allowed token refresh on 401, and backoff on 429 / 5xx / network trouble
@@ -358,7 +358,7 @@ class GmailClient:
         if r.status_code == 404:
             raise GmailNotFound("That message is gone.", reason)
         if r.status_code == 403 and reason in ("accessNotConfigured", "SERVICE_DISABLED"):
-            raise GmailConfigError("The Gmail API is not switched on for the company's Google project.", reason)
+            raise GmailConfigError("The Gmail API is not switched on for the company's Google project. An administrator needs to switch it on.", reason)
         if r.status_code in (401, 403):
             raise GmailConfigError("Google did not allow reading this mailbox. Connect Gmail again and allow read access.", reason)
         raise GmailError(f"Google did not accept the request ({r.status_code}).", reason)
@@ -368,7 +368,7 @@ class GmailClient:
         """Message ids matching a Gmail search, newest first (spam and trash are left out by Gmail). Second value: True when more pages exist beyond `max_pages`."""
         ids: list[str] = []
         token: str | None = None
-        for page in range(max_pages):
+        for _ in range(max_pages):
             params: dict[str, Any] = {"q": q, "maxResults": page_size, "fields": "messages/id,nextPageToken"}
             if token:
                 params["pageToken"] = token

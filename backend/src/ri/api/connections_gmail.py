@@ -7,7 +7,7 @@ GET  /api/me/connections/gmail/callback   -> where Google sends the browser back
                                              writes an audit entry, queues a first sync and sends the browser to /connections?connected=gmail
                                              (or /connections?error=<plain reason>). No token ever appears in an address, a response or a log.
 The scope is exactly gmail.readonly (plus openid email). The settings, sync and disconnect routes belong to api/connections_api.py; its disconnect
-calls `gmail_api.revoke_token_sync` (or `revoke_token`) to ask Google to forget the token first."""
+calls `gmail_api.revoke_token` to ask Google to forget the token first."""
 from __future__ import annotations
 
 import base64

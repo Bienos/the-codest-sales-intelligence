@@ -37,8 +37,9 @@
 /* status: who it is connected as, when it last ran, what is wrong */
 .cn-status { display: grid; gap: 6px; }
 .cn-status p { margin: 0; }
-.cn-who { display: flex; gap: 10px; align-items: baseline; color: var(--navy); line-height: 1.45; }
-.cn-dot { flex: none; align-self: center; width: 10px; height: 10px; background: var(--off); }
+.cn-who { color: var(--navy); line-height: 1.45; }
+.cn-who b { overflow-wrap: anywhere; }
+.cn-dot { display: inline-block; width: 10px; height: 10px; margin-right: 10px; background: var(--off); }
 .cn-dot.ok { background: var(--dot-ok); }
 .cn-meta { color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; }
 .cn-attn { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; background: var(--tint-3); border-left: 4px solid var(--orange); color: var(--navy); font-size: var(--fs-sm); line-height: 1.5; }
@@ -50,7 +51,7 @@
 /* actions: a full-width stack on a phone, a row on a wider screen */
 .cn-actions { display: grid; gap: 8px; }
 .cn-actions button, .cn-secret-row button { min-height: 48px; }
-.cn-quiet { justify-self: start; min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--navy); font: 800 var(--fs-xs) var(--font-head); letter-spacing: .06em; text-transform: uppercase;
+.cn-quiet { justify-self: start; min-height: 44px; padding: 0; border: 0; background: none; color: var(--navy); font: 800 var(--fs-xs) var(--font-head); letter-spacing: .06em; text-transform: uppercase;
   text-decoration: underline; text-decoration-color: var(--pink); text-decoration-thickness: 2px; text-underline-offset: 4px; }
 .cn-quiet:hover { background: none; color: var(--pink-solid); }
 
@@ -61,16 +62,16 @@
 
 /* the on/off switch (square, like everything else) */
 .cn-switch { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 14px; align-items: start; padding: 10px 0; min-height: 48px; cursor: pointer; border-block: 1px solid var(--line); }
-.cn-switch input { -webkit-appearance: none; appearance: none; position: relative; flex: none; width: 48px; height: 28px; margin: 2px 0 0; padding: 0; border: 2px solid var(--navy); border-radius: 0; background: var(--white); cursor: pointer; }
-.cn-switch input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: var(--navy); transition: transform .15s; }
-.cn-switch input:checked { background: var(--pink-solid); border-color: var(--pink-solid); }
-.cn-switch input:checked::after { transform: translateX(20px); background: var(--white); }
-.cn-switch input:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
-.cn-switch input:disabled { opacity: .45; cursor: not-allowed; }
+.cn-switch input[type="checkbox"] { -webkit-appearance: none; appearance: none; position: relative; flex: none; width: 48px; height: 28px; margin: 2px 0 0; padding: 0; border: 2px solid var(--navy); border-radius: 0; background: var(--white); cursor: pointer; }
+.cn-switch input[type="checkbox"]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; background: var(--navy); transition: transform .15s; }
+.cn-switch input[type="checkbox"]:checked { background: var(--pink-solid); border-color: var(--pink-solid); }
+.cn-switch input[type="checkbox"]:checked::after { transform: translateX(20px); background: var(--white); }
+.cn-switch input[type="checkbox"]:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+.cn-switch input[type="checkbox"]:disabled { opacity: .45; cursor: not-allowed; }
 .cn-switch > span { display: grid; gap: 4px; min-width: 0; line-height: 1.4; }
 .cn-switch b { color: var(--navy); }
 .cn-switch small { font-size: var(--fs-sm); color: var(--muted); line-height: 1.5; }
-@media (prefers-reduced-motion: reduce) { .cn-switch input::after { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .cn-switch input[type="checkbox"]::after { transition: none; } }
 
 /* disconnect and replace: ask first */
 .cn-confirm { display: grid; gap: 10px; padding: 12px 14px; background: var(--tint-3); border-left: 5px solid var(--pink-solid); color: var(--navy); line-height: 1.5; }
@@ -91,6 +92,9 @@
 /* Bluedot: the latest deliveries (collapsed), each with its raw JSON in a box of its own */
 .cn-events { border-block: 1px solid var(--line); }
 .cn-events > summary { display: flex; align-items: center; min-height: 48px; cursor: pointer; color: var(--navy); font-weight: 600; }
+.cn-events > summary::after { content: ""; flex: none; width: 8px; height: 8px; margin: 0 6px 4px auto; border-right: 2px solid var(--navy); border-bottom: 2px solid var(--navy); transform: rotate(45deg); }
+.cn-events[open] > summary::after { margin-bottom: -4px; transform: rotate(225deg); }
+.cn-events > summary::-webkit-details-marker { display: none; }
 .cn-events > summary:focus-visible { outline: 3px solid var(--purple); outline-offset: -3px; }
 .cn-events[open] > summary { margin-bottom: 4px; }
 .cn-events > .cn-hint { margin-bottom: 10px; }
@@ -132,8 +136,8 @@
 
 /* ---------- Conversations: a calm list, newest first ---------- */
 .cn-conv .ac-purpose { margin-bottom: 12px; }
-.cn-sum { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.5; color: var(--body); }
-.cn-sum b { color: var(--navy); font-weight: 600; }
+.cn-conv .cn-sum { margin: 0 0 12px; font-size: var(--fs-sm); line-height: 1.5; color: var(--body); }
+.cn-conv .cn-sum b { color: var(--navy); font-weight: 600; }
 .cn-list { list-style: none; margin: 0; padding: 0; }
 .cn-row { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .cn-row:first-child { border-top: 0; padding-top: 0; }
@@ -143,20 +147,19 @@
 .cn-row.meeting .cn-ic { background: var(--navy); border-color: var(--navy); color: var(--white); }
 .cn-row.hidden .cn-ic { background: var(--white); border-style: dashed; color: var(--muted); }
 .cn-rb { min-width: 0; }
-.cn-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 12px; line-height: 1.4; }
+.cn-top { line-height: 1.4; }
 .cn-top b { color: var(--navy); font-weight: 600; font-size: var(--fs-sm); }
-.cn-top time { flex: none; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
-.cn-title { margin: 2px 0 0; font-size: var(--fs-sm); line-height: 1.4; color: var(--navy); }
-.cn-gist { margin: 2px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--body); white-space: pre-line; overflow-wrap: anywhere;
+.cn-top time { margin-left: 8px; font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
+.cn-conv .cn-title { margin: 2px 0 0; font-size: var(--fs-sm); line-height: 1.4; color: var(--navy); }
+.cn-conv .cn-gist { margin: 2px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--body); white-space: pre-line; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
-.cn-gist.open { display: block; -webkit-line-clamp: unset; }
-.cn-more, .cn-all { display: inline-flex; align-items: center; min-height: 40px; }
-.cn-by { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--muted); }
-.cn-hid { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--muted); }
+.cn-conv .cn-gist.open { display: block; -webkit-line-clamp: unset; }
+.cn-more, .cn-all { display: inline-flex; align-items: center; min-height: 32px; }
+.cn-conv .cn-by { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--muted); }
+.cn-conv .cn-hid { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--muted); }
 .cn-hid .cn-ico { width: 16px; height: 16px; margin-top: 3px; }
-.cn-empty, .cn-quietline { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
-.cn-conv .ac-purpose + .cn-empty { margin-top: 0; }
+.cn-conv .cn-empty, .cn-conv .cn-quietline { margin: 0; font-size: var(--fs-sm); line-height: 1.5; }
 @media (max-width: 640px) {
-  .cn-conv .linkish { min-height: 40px; padding: 0; }
+  .cn-conv .linkish, .cn-more, .cn-all { min-height: 40px; padding: 0; }
   .cn-empty a { display: inline-flex; align-items: center; min-height: 40px; }
 }

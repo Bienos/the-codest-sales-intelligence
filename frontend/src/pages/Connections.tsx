@@ -378,7 +378,7 @@ function BluedotCard({ c, vault, reload }: CardProps) {
 /* ------------------------------------------------------------------ conversations: shown on the person page and the company page */
 type Who = { name?: string | null; email?: string | null };
 type ConvItem = { id: string; channel: "email" | "lemlist" | "meeting"; occurred_at: string; direction?: "in" | "out" | "both" | null; title?: string | null; gist?: string | null;
-  owner: Who; mine?: boolean; detail_hidden?: boolean; person?: { id: string; name: string } | null };
+  owner: Who; mine?: boolean; detail_hidden?: boolean; person?: { id: string; name: string } | null; people?: { id: string; name: string }[] };
 type ConvData = { summary: { last_contact_at?: string | null; last_contact_by?: Who | null; emails?: number; meetings?: number; campaign_events?: number }; items: ConvItem[] };
 
 const whoName = (w?: Who | null) => w?.name?.trim() || (w?.email ? w.email.split("@")[0] : tr("A colleague"));
@@ -388,7 +388,10 @@ const CHANNEL_ICON = { email: Ico.mail, lemlist: Ico.campaign, meeting: Ico.meet
 function whatLine(it: ConvItem, other: string): string {
   const owner = it.mine ? tr("You") : whoName(it.owner);
   const person = it.person?.name || other;
-  if (it.channel === "meeting") return it.person?.name ? tr("Meeting with {}", person) : tr("Meeting");
+  if (it.channel === "meeting") {                                   // on a company page one meeting lists everyone we know who was in it
+    const names = (it.people?.length ? it.people : it.person ? [it.person] : []).map((x) => x.name).filter(Boolean);
+    return names.length ? tr("Meeting with {}", names.join(", ")) : tr("Meeting");
+  }
   if (it.channel === "lemlist") return it.direction === "in" ? tr("{} replied to a campaign email", person) : it.direction === "out" ? tr("Campaign email sent to {}", person) : tr("Campaign activity with {}", person);
   if (it.direction === "in") return it.mine ? tr("{} emailed you", person) : tr("{} emailed {}", person, owner);
   if (it.direction === "both") return tr("{} and {} exchanged emails", owner, person);

@@ -6,9 +6,11 @@ pages that repeatedly fail are marked degraded - we do NOT bypass blocks, paywal
 """
 from __future__ import annotations
 
+import html as html_lib
 import re
 import urllib.robotparser
 import xml.etree.ElementTree as ET
+from functools import lru_cache
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 
@@ -19,6 +21,28 @@ from .http import UA, classify
 from .util import excerpt, parse_dt, sha, utcnow
 
 _DROP = {"script", "style", "noscript", "nav", "footer", "header", "form", "iframe", "svg"}
+CONTENT_ENCODED = "{http://purl.org/rss/1.0/modules/content/}encoded"
+CONTENT_EXCERPT = 1500          # characters kept of an item's body when the feed gives no description (a short excerpt, as for every licensed feed)
+
+
+def plain_excerpt(markup: str | None, limit: int = CONTENT_EXCERPT) -> str:
+    """Visible text of a snippet of HTML, shortened. Used for feeds that carry the article only as `content:encoded` (Medium, some blogs)."""
+    return re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", markup or ""))).strip()[:limit]
+
+
+@lru_cache(maxsize=1)
+def first_party_publishers() -> dict[str, str]:
+    """Registry sources that are ONE company's own feed (family `company_ir`, e.g. an engineering blog), by source id -> the company's name.
+    The reader tells the model who published an item ("Published by Wise."), so a post that only says "we" is still about the right company.
+    Read from the shipped registry file; `corporate-ir-newsrooms` (every account) gets its publisher from the account scan instead."""
+    import yaml
+    from .registry import SEED
+    try:
+        rows = yaml.safe_load(SEED.read_text(encoding="utf-8"))["sources"]
+    except (OSError, KeyError, yaml.YAMLError):
+        return {}
+    return {r["source_id"]: r["provider"] for r in rows if r.get("source_family") == "company_ir" and r.get("provider") and r["source_id"] != "corporate-ir-newsrooms"
+            and (r.get("collection_method") == "feed")}
 
 
 class _Extract(HTMLParser):
@@ -232,9 +256,10 @@ class PageWatchConnector:
 class FeedConnector:
     """RSS 2.0 / Atom. `external_id` = guid/id, falling back to link. publication date preserved separately."""
 
-    def __init__(self, client: httpx.AsyncClient, url: str, *, source_id: str, now_fn=utcnow, robots: RobotsCache | None = None):
+    def __init__(self, client: httpx.AsyncClient, url: str, *, source_id: str, now_fn=utcnow, robots: RobotsCache | None = None, publisher: str | None = None):
         self.client, self.url, self.source_id, self.now = client, url, source_id, now_fn
         self.robots = robots or RobotsCache()
+        self.publisher = publisher or first_party_publishers().get(source_id)       # set only for a company's own feed: it names who published each item
 
     def describe(self) -> SourceDescriptor:
         return SourceDescriptor(self.source_id, "feed", "feed", "S2", "1")
@@ -252,7 +277,7 @@ class FeedConnector:
         resp = await self.client.get(self.url, headers={"User-Agent": UA}, follow_redirects=True)
         classify(resp)
         try:
-            root = ET.fromstring(xml_safe(resp.text).lstrip("﻿ \t\r\n"))      # many WordPress feeds start with a blank line before <?xml
+            root = ET.fromstring(xml_safe(resp.text).lstrip("\ufeff \t\r\n"))      # many WordPress feeds start with a blank line before <?xml
         except ET.ParseError as exc:
             raise SchemaDrift(f"feed is not valid XML: {exc}") from exc
         items = []
@@ -286,8 +311,14 @@ class FeedConnector:
             guid = g("guid", "id") or link
             if not guid:
                 continue
-            items.append(RawItem(guid, g("pubDate", "updated"), {"title": g("title", "title"), "link": link,
-                                                             "summary": g("description", "summary"), "published": g("pubDate", "published") or g("pubDate", "updated")}, link))
+            summary, content = g("description", "summary"), None
+            if not summary:                 # no description: take a short excerpt of the full text (content:encoded, or Atom <content>) instead of the title alone
+                body = e.find(CONTENT_ENCODED)
+                if body is None:
+                    body = e.find("a:content", ns)
+                content = plain_excerpt(body.text) if body is not None and body.text else None
+            items.append(RawItem(guid, g("pubDate", "updated"), {"title": g("title", "title"), "link": link, "summary": summary, "content": content,
+                                                             "published": g("pubDate", "published") or g("pubDate", "updated")}, link))
         return FetchBatch(items, None, False, self.now(), "1", quota_usage={"requests": 1})
 
     async def fetch_by_id(self, external_id: str) -> RawItem | None:
@@ -296,14 +327,17 @@ class FeedConnector:
 
     def canonicalize(self, item: RawItem) -> SourceDocumentDraft:
         p = item.payload
-        text = re.sub(r"<[^>]+>", " ", p.get("summary") or "")
+        text = re.sub(r"<[^>]+>", " ", p.get("summary") or "") or (p.get("content") or "")      # the description; failing that the excerpt of the full text
         text = re.sub(r"\s+", " ", f"{p.get('title') or ''}. {text}").strip()
+        if self.publisher:
+            text = f"Published by {self.publisher}. {text}"
         pub = None
         if p.get("published"):
+            when = re.sub(r"<[^>]+>", "", p["published"]).strip()         # some feeds wrap the date in a <time> tag
             try:
                 from email.utils import parsedate_to_datetime
-                pub = parsedate_to_datetime(p["published"])
+                pub = parsedate_to_datetime(when)
             except (TypeError, ValueError):
-                pub = parse_dt(p["published"])
+                pub = parse_dt(when)
         return SourceDocumentDraft(item.external_id, sha(item.external_id, p.get("title"), p.get("summary")), urljoin(self.url, p["link"]) if p.get("link") else None,
                                    p.get("title"), pub, text, excerpt(text))

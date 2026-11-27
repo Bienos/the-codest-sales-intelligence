@@ -277,7 +277,7 @@ class GermanNoticeConnector:
                 n["dropped_no_deadline"] += 1
                 continue
             parsed.append(rec)
-        parsed.sort(key=lambda r: (r["issued"] or started, r["version"]))          # a correction made later the same day wins
+        parsed.sort(key=lambda r: (r["issued"] or r["published"] or started, int(re.sub(r"\D", "", r["version"]) or 0)))          # a later version of a notice is applied last
         items = [RawItem(external_id=r["notice_id"], version=f"{r['version']}", payload={**r, "deadline": pick_deadline(r["deadlines"], started)}) for r in parsed]
         n["kept"] = len(items)
         nxt = day + timedelta(days=1)

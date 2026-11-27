@@ -39,6 +39,7 @@ MAX_MESSAGES_PER_RUN = 150                 # messages read per run
 MAX_LIST_PAGES = 10                        # search result pages per group (100 messages each)
 TITLE_MAX, GIST_MAX = 300, 200
 NO_SUBJECT = "(no subject)"
+IN_FLIGHT = ("scheduled", "retryable_failed", "claimed", "fetching", "parsing", "verifying", "committing")
 SAFE_ADDRESS = re.compile(r"^[a-z0-9][a-z0-9._-]*@[a-z0-9-]+(\.[a-z0-9-]+)+$")     # nothing that could change a Gmail search (spaces, quotes, brackets, colons)
 
 AUTH_MESSAGE = "Google no longer accepts this connection (access was removed, expired or the password changed). Connect Gmail again."
@@ -137,10 +138,12 @@ def _clean(text: str, limit: int) -> str:
 
 
 def queue_sync(conn: Conn, user_id: str, *, now: datetime | None = None) -> bool:
-    """Queue one sync for this person now (idempotent within the same minute). True when a job was created."""
+    """Queue a sync for this person right now (after connecting). Nothing is added while an earlier sync still waits or runs; the same minute is the same job."""
     now = now or datetime.now(timezone.utc)
-    _, created = enqueue(conn, "gmail_sync", {"user_id": str(user_id)}, idempotency_key=f"usersync:gmail:{user_id}:{now:%Y%m%d%H%M}", max_attempts=2,
-                         correlation_id="gmail-connection")
+    if q1(conn, "SELECT 1 FROM jobs WHERE kind='gmail_sync' AND payload->>'user_id'=%s AND status = ANY(%s) LIMIT 1", (str(user_id), list(IN_FLIGHT))):
+        return False
+    _, created = enqueue(conn, "gmail_sync", {"user_id": str(user_id)}, idempotency_key=f"usersync:gmail:{user_id}:first:{now:%Y%m%d%H%M}", max_attempts=2,
+                         correlation_id="first-connection")
     return created
 
 
@@ -150,7 +153,7 @@ def revoke_for(conn: Conn, vault_key: str | None, user_id: str) -> bool:
         token = store.secret(conn, vault_key, user_id, PROVIDER)
     except vault.VaultError:
         return False
-    return gmail_api.revoke_token_sync(token) if token else False
+    return gmail_api.revoke_token(token) if token else False
 
 
 def _known(conn: Conn, user_id: str, ids: list[str]) -> set[str]:
@@ -304,7 +307,7 @@ def run(conn: Conn, job: dict[str, Any], *, settings: Any, now: datetime | None 
         return _fail(conn, uid, now, AUTH_MESSAGE, out)
     except GmailConfigError as exc:
         conn.rollback()
-        return _fail(conn, uid, now, f"{exc} Ask an administrator, then connect Gmail again if it still fails.", out)
+        return _fail(conn, uid, now, str(exc), out)
 
     finished = stopped is None and len(todo) <= len(batch)
     store.record_sync(conn, uid, PROVIDER, now, cursor=state(finished))

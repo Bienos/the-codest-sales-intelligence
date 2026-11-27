@@ -28,6 +28,7 @@ from .auth import principal_dep
 VIEW_FIELDS = ("provider", "status", "account_label", "connected_at", "last_sync_at", "last_error", "settings", "has_webhook", "stored")
 NAMES = {"gmail": "Gmail", "lemlist": "Lemlist", "bluedot": "Bluedot"}
 IN_FLIGHT = ("scheduled", "retryable_failed", "claimed", "fetching", "parsing", "verifying", "committing")
+MAX_WEBHOOK_BYTES = 1_000_000
 NO_VAULT = "Personal connections are not switched on yet: the server has no key to keep credentials safe (an administrator sets RI_VAULT_KEY)."
 
 
@@ -144,21 +145,23 @@ def register_connections(app: FastAPI, settings: Settings) -> None:
         if not row:
             raise HTTPException(404, "not found")
         raw = await request.body()
-        try:
-            payload: Any = json.loads(raw.decode("utf-8")) if raw.strip() else {}
-            ok_json = True
-        except (ValueError, RecursionError):
-            payload, ok_json = {"_not_json": True, "text": raw[:2000].decode("utf-8", "replace")}, False
+        note: str | None = None
+        if len(raw) > MAX_WEBHOOK_BYTES:                     # the middleware checks the declared size; this covers a body sent in chunks
+            payload, note = {"_too_large": True, "bytes": len(raw)}, "the delivery was too large to read, so only its size was kept"
+        else:
+            try:
+                payload = json.loads(raw.decode("utf-8")) if raw.strip() else {}
+            except (ValueError, RecursionError):
+                payload, note = {"_not_json": True, "text": raw[:2000].decode("utf-8", "replace")}, bluedot.NOTE_NOT_JSON
         with tx(request) as conn:
             # re-check inside the same transaction as the write: a token disconnected a moment ago must not store anything
             row = store.by_webhook_token(conn, token)
             if not row:
                 raise HTTPException(404, "not found")
-            uid = str(row["user_id"])
-            if ok_json:
-                bluedot.handle_delivery(conn, uid, payload)
+            if note:
+                bluedot.store_raw(conn, str(row["user_id"]), payload, handled=False, note=note)
             else:
-                bluedot.store_raw(conn, uid, payload, handled=False, note=bluedot.NOTE_NOT_JSON)
+                bluedot.handle_delivery(conn, str(row["user_id"]), payload)
         return {"ok": True}
 
     @app.get("/api/me/connections/bluedot/events")

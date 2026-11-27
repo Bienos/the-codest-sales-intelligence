@@ -237,8 +237,17 @@ def test_only_the_last_ten_deliveries_and_at_most_20_kb_each_are_kept(env, conn)
     events = env["c"].get("/api/me/connections/bluedot/events", headers=h).json()["items"]
     assert len(events) == 10
     assert events[0]["payload"]["_trimmed"] is True and events[0]["payload"]["original_bytes"] > 20 * 1024 and "title" in events[0]["payload"]["top_level_keys"]
-    assert [e["payload"]["title"] for e in events[1:]] == [f"Call {i}" for i in range(13, 5, -1)]
+    assert [e["payload"]["title"] for e in events[1:]] == [f"Call {i}" for i in range(13, 4, -1)]
     assert q1(conn, "SELECT count(*) AS n FROM connection_events")["n"] == 10
+
+
+def test_a_body_sent_in_chunks_past_the_size_limit_is_kept_only_as_its_size(env, conn):
+    token = env["c"].post("/api/me/connections/bluedot/token", headers=env["h"]("ann")).json()["webhook_url"].rsplit("/", 1)[1]
+    r = env["c"].post(f"/webhooks/bluedot/{token}", content=(b"x" * 100_000 for _ in range(11)), headers={"Content-Type": "application/json"})
+    assert r.status_code == 200 and r.json() == {"ok": True}
+    ev = env["c"].get("/api/me/connections/bluedot/events", headers=env["h"]("ann")).json()["items"][0]
+    assert ev["payload"] == {"_too_large": True, "bytes": 1_100_000} and ev["handled"] is False and "too large" in ev["note"]
+    assert env["c"].post(f"/webhooks/bluedot/{token}", content=b"x" * 1_100_000, headers={"Content-Type": "application/json"}).status_code == 413     # a declared size is refused up front
 
 
 def test_a_matching_delivery_through_the_webhook_stores_a_team_visible_meeting(env, conn):
@@ -353,7 +362,14 @@ def test_settings_are_only_for_gmail_and_only_for_a_connection_that_exists(env, 
 
 
 # ------------------------------------------------------------------ sync now
-def test_sync_now_queues_once_and_only_for_a_connected_lemlist_or_gmail(env, conn):
+class _FrozenClock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return NOW
+
+
+def test_sync_now_queues_once_and_only_for_a_connected_lemlist_or_gmail(env, conn, monkeypatch):
+    monkeypatch.setattr("ri.api.connections_api.datetime", _FrozenClock)         # the "same minute" must not depend on when the test runs
     h = env["h"]("ann")
     assert env["c"].post("/api/me/connections/lemlist/sync", headers=h).status_code == 409                  # not connected
     assert env["c"].post("/api/me/connections/bluedot/sync", headers=h).status_code == 400

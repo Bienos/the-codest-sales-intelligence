@@ -85,6 +85,8 @@ def register_conversations(app: FastAPI) -> None:
             # Rows matched to the company itself, and rows of people who work there and have not been matched to another company.
             staff = [str(r["person_id"]) for r in qa(conn, "SELECT DISTINCT e.person_id FROM employment e JOIN people pe ON pe.id=e.person_id "
                                                            "WHERE e.organization_id=%s AND pe.erased_at IS NULL AND NOT pe.suppressed", (oid,))]
-            out = _timeline(conn, p, "ci.organization_id = %s OR (ci.organization_id IS NULL AND ci.person_id = ANY(%s::uuid[]))", [oid, staff], collapse_meetings=True)
+            # Written as two indexed lookups (company, people) plus a filter, so Postgres combines the two indexes instead of scanning every unmatched row.
+            out = _timeline(conn, p, "(ci.organization_id = %s OR ci.person_id = ANY(%s::uuid[])) AND (ci.organization_id IS NULL OR ci.organization_id = %s)", [oid, staff, oid],
+                            collapse_meetings=True)
             audit(conn, actor=p.email, operation="pii_read", record_type="organization_conversations", record_id=oid, detail={"count": len(out["items"])})
             return out

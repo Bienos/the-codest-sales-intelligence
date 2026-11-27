@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from functools import lru_cache
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Iterator
@@ -29,6 +30,8 @@ GIST_CHARS = 600
 MAX_DEPTH = 3                      # how far below the top of a delivery a field is looked for
 MAX_ATTENDEES = 100
 MAX_DELIVERIES = 20                # a delivery that carries a batch of meetings: at most this many are read
+MAX_DICTS = 300                    # objects looked at inside one meeting, and keys looked at inside one object: a hostile or huge delivery cannot make reading slow
+MAX_KEYS = 300
 
 NOTE_NO_MATCH = "no attendee matched a contact in our database"
 NOTE_NO_ATTENDEES = "no attendees were found in this delivery"
@@ -54,6 +57,7 @@ PERSONISH = {"organizer", "host", "owner", "user", "creator", "author", "sender"
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-']+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)*\.[A-Za-z]{2,}")
 
 
+@lru_cache(maxsize=8192)
 def _norm(key: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(key).lower())
 
@@ -94,14 +98,14 @@ def deliveries(payload: Any) -> list[dict[str, Any]]:
         return [d for d in payload if isinstance(d, dict)][:MAX_DELIVERIES]
     if not isinstance(payload, dict):
         return []
-    for key, value in payload.items():
+    for key, value in list(payload.items())[:MAX_KEYS]:
         if _norm(key) in CONTAINERS and isinstance(value, list) and value and all(isinstance(v, dict) for v in value) and not _has_any(payload, ATTENDEES + SUMMARY):
             return list(value)[:MAX_DELIVERIES]
     return [payload]
 
 
 def _has_any(d: dict[str, Any], names: tuple[str, ...]) -> bool:
-    return any(_norm(k) in names and v not in (None, "", [], {}) for k, v in d.items())
+    return any(_norm(k) in names and v not in (None, "", [], {}) for k, v in list(d.items())[:MAX_KEYS])
 
 
 def _dicts(root: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
@@ -110,36 +114,50 @@ def _dicts(root: dict[str, Any]) -> list[tuple[int, dict[str, Any]]]:
     for depth in range(1, MAX_DEPTH + 1):
         nxt = []
         for d in layer:
-            for key, value in d.items():
-                if isinstance(value, dict) and _norm(key) not in PERSONISH:
+            for key, value in list(d.items())[:MAX_KEYS]:
+                if isinstance(value, dict) and _norm(key) not in PERSONISH and len(out) < MAX_DICTS:
                     nxt.append(value)
                     out.append((depth, value))
         layer = nxt
     return out
 
 
-def _lookup(d: dict[str, Any], name: str) -> Iterator[Any]:
-    for key, value in d.items():
-        if _norm(key) == name and value not in (None, "", [], {}):
-            yield value
+def _nmap(d: dict[str, Any], cache: dict[int, dict[str, Any]] | None = None) -> dict[str, Any]:
+    """An object's non-empty values by normalised key (the first of two keys that normalise alike wins)."""
+    if cache is not None and id(d) in cache:
+        return cache[id(d)]
+    m: dict[str, Any] = {}
+    for k, v in list(d.items())[:MAX_KEYS]:
+        if v not in (None, "", [], {}):
+            m.setdefault(_norm(k), v)
+    if cache is not None:
+        cache[id(d)] = m
+    return m
 
 
-def _pick(names: tuple[str, ...], scope: dict[str, Any], all_dicts: list[tuple[int, dict[str, Any]]], accept) -> Any:
+def _lookup(d: dict[str, Any], name: str, cache: dict[int, dict[str, Any]] | None = None) -> Iterator[Any]:
+    value = _nmap(d, cache).get(name)
+    if value is not None:
+        yield value
+
+
+def _pick(names: tuple[str, ...], scope: dict[str, Any], all_dicts: list[tuple[int, dict[str, Any]]], accept, cache: dict[int, dict[str, Any]]) -> Any:
     """The first acceptable value: the meeting's own object first (names in order of preference), then the other objects, shallowest first."""
     for d in [scope] + [x for _, x in all_dicts if x is not scope]:
         for name in names:
-            for value in _lookup(d, name):
+            for value in _lookup(d, name, cache):
                 got = accept(value)
                 if got is not None:
                     return got
     return None
 
 
-def _scope(all_dicts: list[tuple[int, dict[str, Any]]]) -> dict[str, Any]:
+def _scope(all_dicts: list[tuple[int, dict[str, Any]]], cache: dict[int, dict[str, Any]]) -> dict[str, Any]:
     """The object that most looks like the meeting itself (most of the known kinds of field), the shallowest on a tie."""
     best, best_score = all_dicts[0][1], -1
     for _, d in all_dicts:
-        score = sum(1 for group in (TITLE, SUMMARY, START, ATTENDEES, URL) if any(True for name in group for _ in _lookup(d, name)))
+        m = _nmap(d, cache)
+        score = sum(1 for group in (TITLE, SUMMARY, START, ATTENDEES, URL) if any(name in m for name in group))
         if score > best_score:
             best, best_score = d, score
     return best
@@ -260,13 +278,12 @@ def people_of(value: Any, depth: int = 0) -> list[str]:
 
 def parse_meeting(d: dict[str, Any]) -> dict[str, Any]:
     """The meeting's fields; anything not found is None (attendees: an empty list)."""
-    all_dicts = _dicts(d)
-    scope = _scope(all_dicts)
-    mid = _pick(ID_SPECIFIC, scope, all_dicts, _id_of) or _pick(ID_GENERIC, scope, all_dicts, _id_of)
-    attendees = _pick(ATTENDEES, scope, all_dicts, lambda v: people_of(v) or None) or []
-    return {"id": mid, "title": _pick(TITLE, scope, all_dicts, _title_of),
-            "summary": trim_text(_pick(SUMMARY, scope, all_dicts, text_of)), "start": _pick(START, scope, all_dicts, when_of),
-            "attendees": attendees, "url": _pick(URL, scope, all_dicts, safe_url)}
+    all_dicts, cache = _dicts(d), {}
+    scope = _scope(all_dicts, cache)
+    mid = _pick(ID_SPECIFIC, scope, all_dicts, _id_of, cache) or _pick(ID_GENERIC, scope, all_dicts, _id_of, cache)
+    attendees = _pick(ATTENDEES, scope, all_dicts, lambda v: people_of(v) or None, cache) or []
+    return {"id": mid, "title": _pick(TITLE, scope, all_dicts, _title_of, cache), "summary": trim_text(_pick(SUMMARY, scope, all_dicts, text_of, cache)),
+            "start": _pick(START, scope, all_dicts, when_of, cache), "attendees": attendees, "url": _pick(URL, scope, all_dicts, safe_url, cache)}
 
 
 # ------------------------------------------------------------------ storing
@@ -311,6 +328,7 @@ def handle_delivery(conn: Conn, user_id: str, payload: Any) -> dict[str, Any]:
     """Keep the raw delivery, read it, and store one meeting interaction per attendee we know. Never raises on an odd payload.
     Returns {"handled": bool, "note": str|None, "matched": n, "created": n, "updated": n, "meetings": n}; `handled` is true when somebody matched."""
     now = datetime.now(timezone.utc)
+    payload = clean(payload)                           # no NUL characters, NaN or absurd nesting reach the parser or the database
     result: dict[str, Any] = {"handled": False, "note": None, "matched": 0, "created": 0, "updated": 0, "meetings": 0}
     notes: list[str] = []
     try:
