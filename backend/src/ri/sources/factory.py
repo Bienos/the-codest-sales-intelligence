@@ -38,6 +38,16 @@ def build_connector(conn: Conn, source_id: str):
         return JobTechConnector(client, queries=cfg.get("queries"))
     if source_id == "jobs-arbeitnow-de":
         return ArbeitnowConnector(client)
+    # round 8: remote-job boards and the German national tender service (sources/jobs_market.py, sources/tenders_more.py)
+    if source_id == "jobs-jobicy-remote":
+        from .jobs_market import JobicyConnector
+        return JobicyConnector(client)
+    if source_id == "jobs-remoteok":
+        from .jobs_market import RemoteOkConnector
+        return RemoteOkConnector(client)
+    if source_id == "procurement-de-bekanntmachung":
+        from .tenders_more import GermanNoticeConnector
+        return GermanNoticeConnector(client, backfill_days=int(cfg.get("backfill_days") or 21))
     url = cfg.get("url")
     if url:
         if src["collection_method"] == "feed":

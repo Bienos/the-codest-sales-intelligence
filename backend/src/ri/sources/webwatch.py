@@ -252,7 +252,7 @@ class FeedConnector:
         resp = await self.client.get(self.url, headers={"User-Agent": UA}, follow_redirects=True)
         classify(resp)
         try:
-            root = ET.fromstring(xml_safe(resp.text))
+            root = ET.fromstring(xml_safe(resp.text).lstrip("﻿ \t\r\n"))      # many WordPress feeds start with a blank line before <?xml
         except ET.ParseError as exc:
             raise SchemaDrift(f"feed is not valid XML: {exc}") from exc
         items = []

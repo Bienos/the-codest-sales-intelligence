@@ -713,7 +713,8 @@ def _purpose_of(operation: str) -> tuple[str, str]:
 # Job boards report findings through their own records (a job finding carries the provider, not a stored page).
 JOB_PROVIDER_SOURCE = {"arbeitnow": "jobs-arbeitnow-de", "jobtech": "jobs-jobtech-se", "greenhouse": "ats-greenhouse", "lever": "ats-lever",
                        "ashby": "ats-ashby", "smartrecruiters": "ats-smartrecruiters", "workday": "ats-workday", "personio": "ats-personio",
-                       "teamtailor": "ats-teamtailor", "recruitee": "ats-recruitee", "workable": "ats-workable"}
+                       "teamtailor": "ats-teamtailor", "recruitee": "ats-recruitee", "workable": "ats-workable",
+                       "jobicy": "jobs-jobicy-remote", "remoteok": "jobs-remoteok"}
 PER_ACCOUNT_SOURCES = ("corporate-ir-newsrooms", "ats-greenhouse", "ats-lever", "ats-ashby", "ats-smartrecruiters", "ats-workday",
                        "ats-personio", "ats-teamtailor", "ats-recruitee", "ats-workable")
 CADENCE_CHOICES = (21600, 43200, 86400, 172800, 604800)          # 6 h, 12 h, 1 day, 2 days, a week

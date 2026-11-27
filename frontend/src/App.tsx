@@ -16,6 +16,7 @@ import Knowledge from "./pages/Knowledge";
 import People from "./pages/People";
 import Person from "./pages/Person";
 import Tenders from "./pages/Tenders";
+import Connections from "./pages/Connections";
 import BuyingSignals, { IconSignals } from "./pages/BuyingSignals";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
 import { Err, Skeleton, lab, useScrollHints, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, Brand } from "./components/ui";
@@ -125,7 +126,10 @@ export default function App() {
           <div className="who">
             <span className="who-lang"><LanguageSwitcher /></span>
             <div className="who-id"><b>{me.email}</b><span>{lab("role", me.role)}</span></div>
-            <button type="button" className="who-out" onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>{tr("Sign out")}</button>
+            <div className="who-acts">
+              <NavLink to="/connections" className={({ isActive }) => `who-link${isActive ? " active" : ""}`}>{tr("My connections")}</NavLink>
+              <button type="button" className="who-out" onClick={() => { clearToken(); setMe(null); setNeedLogin(true); }}>{tr("Sign out")}</button>
+            </div>
           </div>
         </div>
       </nav>
@@ -141,6 +145,7 @@ export default function App() {
           <Route path="/campaigns/new" element={<div className="page"><NewCampaign /></div>} />
           <Route path="/campaigns/:id" element={<div className="page"><CampaignDetail key={loc.pathname} canDecide={can("approvals.decide")} /></div>} />
           <Route path="/guide" element={<Guide can={can} />} />
+          <Route path="/connections" element={<div className="page"><Connections /></div>} />
           <Route path="/feed" element={<div className="page"><Feed /></div>} />
           <Route path="/renewals" element={<Navigate to="/accounts" replace />} />
           <Route path="/search" element={<div className="page"><Search /></div>} />

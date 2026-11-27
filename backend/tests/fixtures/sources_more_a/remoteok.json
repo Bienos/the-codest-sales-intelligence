@@ -1,0 +1,128 @@
+[
+ {
+  "last_updated": 1795759200,
+  "legal": "API Terms of Service: Please link back (with follow, and without nofollow!) to the URL on Remote OK and mention Remote OK as a source, so we get traffic back from your site."
+ },
+ {
+  "slug": "remote-staff-platform-engineer-harbourline-bank-5001",
+  "id": "5001",
+  "epoch": "1795672800",
+  "date": "2026-11-26T06:00:00+00:00",
+  "company": "Harbourline Bank",
+  "company_logo": "",
+  "position": "Staff Platform Engineer",
+  "tags": [
+   "engineer",
+   "java"
+  ],
+  "description": "<p><strong>About Harbourline Bank</strong></p>\n<p>Harbourline Bank is a digital bank for small businesses. Our payments platform processes card payments and open banking transfers across Europe.</p>\n<p>You will build Java and Kafka services on AWS and Kubernetes.</p>",
+  "location": "UK Only",
+  "apply_url": "https://remoteOK.com/l/5001",
+  "original": true,
+  "salary_min": 0,
+  "salary_max": 0,
+  "logo": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-staff-platform-engineer-harbourline-bank-5001"
+ },
+ {
+  "slug": "remote-backend-developer-quillon-payments-5002",
+  "id": "5002",
+  "epoch": "1795683600",
+  "date": "2026-11-26T09:00:00+00:00",
+  "company": "Quillon Payments",
+  "company_logo": "",
+  "position": "Backend Developer",
+  "tags": [
+   "contract",
+   "python"
+  ],
+  "description": "<div>Quillon Payments is a payments company with a card issuing platform and a lending product.</div>",
+  "location": "Worldwide",
+  "apply_url": "https://remoteOK.com/l/5002",
+  "original": true,
+  "salary_min": 0,
+  "salary_max": 0,
+  "logo": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-backend-developer-quillon-payments-5002"
+ },
+ {
+  "slug": "remote-growth-marketer-orchid-5003",
+  "id": "5003",
+  "epoch": "1795687200",
+  "date": "2026-11-26T10:00:00+00:00",
+  "company": "Orchid Marketing",
+  "company_logo": "",
+  "position": "Growth Marketer",
+  "tags": [
+   "marketing"
+  ],
+  "description": "<div>We grow brands.</div>",
+  "location": "Worldwide",
+  "apply_url": "https://remoteOK.com/l/5003",
+  "original": true,
+  "salary_min": 0,
+  "salary_max": 0,
+  "logo": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-growth-marketer-orchid-5003"
+ },
+ {
+  "slug": "remote-software-engineer-kestrel-insurance-5004",
+  "id": "5004",
+  "epoch": "1795586400",
+  "date": "2026-11-25T06:00:00+00:00",
+  "company": "Kestrel Insurance",
+  "company_logo": "",
+  "position": "Software Engineer",
+  "tags": [
+   "engineer"
+  ],
+  "description": "<div>Kestrel Insurance is an insurance company and insurer for fleets.</div>",
+  "location": "USA",
+  "apply_url": "https://remoteOK.com/l/5004",
+  "original": true,
+  "salary_min": 0,
+  "salary_max": 0,
+  "logo": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-software-engineer-kestrel-insurance-5004"
+ },
+ {
+  "slug": "remote-java-developer-harbourline-bank-5005",
+  "id": "5005",
+  "epoch": "1790834400",
+  "date": "2026-10-01T06:00:00+00:00",
+  "company": "Harbourline Bank",
+  "company_logo": "",
+  "position": "Java Developer",
+  "tags": [
+   "java"
+  ],
+  "description": "<p><strong>About Harbourline Bank</strong></p>\n<p>Harbourline Bank is a digital bank for small businesses. Our payments platform processes card payments and open banking transfers across Europe.</p>\n<p>You will build Java and Kafka services on AWS and Kubernetes.</p>",
+  "location": "Europe",
+  "apply_url": "https://remoteOK.com/l/5005",
+  "original": true,
+  "salary_min": 0,
+  "salary_max": 0,
+  "logo": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-java-developer-harbourline-bank-5005"
+ },
+ {
+  "slug": "remote-embedded-software-engineer-meadowbrook-5006",
+  "id": "5006",
+  "epoch": "1795608000",
+  "date": "2026-11-25T12:00:00+00:00",
+  "company": "Meadowbrook Robotics",
+  "company_logo": "",
+  "position": "Embedded Software Engineer",
+  "tags": [
+   "embedded"
+  ],
+  "description": "<p>Meadowbrook Robotics builds warehouse robots. Benefits: pension, insurance, banking app discount and payments in time.</p><p>Python and C++.</p>",
+  "location": "Europe",
+  "apply_url": "https://remoteOK.com/l/5006",
+  "original": true,
+  "salary_min": 0,
+  "salary_max": 0,
+  "logo": "",
+  "url": "https://remoteOK.com/remote-jobs/remote-embedded-software-engineer-meadowbrook-5006"
+ }
+]

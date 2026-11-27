@@ -1,0 +1,221 @@
+{
+ "page1": {
+  "apiVersion": "2.3.05",
+  "documentationUrl": "https://jobi.cy/apidocs",
+  "friendlyNotice": "Thanks for using Jobicy API! Please ensure Jobicy is clearly credited with a direct link to the source.",
+  "jobCount": 6,
+  "lastUpdate": "2026-11-26T14:23:39+00:00",
+  "nextCursor": "TOKEN_PAGE_2",
+  "hasMore": true,
+  "appliedFilters": {
+   "count": 100,
+   "industry": "engineering"
+  },
+  "statusCode": 200,
+  "success": true,
+  "jobs": [
+   {
+    "id": 9001,
+    "url": "https://jobicy.com/jobs/9001-senior-backend-engineer-java",
+    "jobSlug": "9001-senior-backend-engineer-java",
+    "jobTitle": "Senior Backend Engineer (Java)",
+    "companyName": "Harbourline Bank",
+    "jobIndustry": [
+     "Software Engineering"
+    ],
+    "jobType": [
+     "Full-Time"
+    ],
+    "jobGeo": "UK",
+    "jobLevel": "Senior",
+    "jobDescription": "<p><strong>About Harbourline Bank</strong></p>\n<p>Harbourline Bank is a digital bank for small businesses. Our payments platform processes card payments and open banking transfers across Europe.</p>\n<p>You will build Java and Kafka services on AWS and Kubernetes.</p>",
+    "pubDate": "2026-11-26T08:00:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   },
+   {
+    "id": 9002,
+    "url": "https://jobicy.com/jobs/9002-data-engineer",
+    "jobSlug": "9002-data-engineer",
+    "jobTitle": "Data Engineer",
+    "companyName": "Quillon &#038; Payments",
+    "jobIndustry": [
+     "Software Engineering"
+    ],
+    "jobType": [
+     "Contract"
+    ],
+    "jobGeo": "Europe",
+    "jobLevel": "Mid",
+    "jobDescription": "<p>Quillon Payments &amp; Cards is a payments company. We run a real-time payments platform and a card issuing service.</p><p>You will work with Python, Terraform and Kafka.</p>",
+    "pubDate": "2026-11-25T15:30:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   },
+   {
+    "id": 9003,
+    "url": "https://jobicy.com/jobs/9003-software-engineer",
+    "jobSlug": "9003-software-engineer",
+    "jobTitle": "Software Engineer",
+    "companyName": "Meadowbrook Robotics",
+    "jobIndustry": [
+     "Software Engineering"
+    ],
+    "jobType": [
+     "Full-Time"
+    ],
+    "jobGeo": "Anywhere",
+    "jobLevel": "Senior",
+    "jobDescription": "<p>Meadowbrook Robotics builds warehouse robots. Benefits: pension, insurance, banking app discount and payments in time.</p><p>Python and C++.</p>",
+    "pubDate": "2026-11-25T10:00:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   },
+   {
+    "id": 9004,
+    "url": "https://jobicy.com/jobs/9004-sales-engineer",
+    "jobSlug": "9004-sales-engineer",
+    "jobTitle": "Sales Engineer",
+    "companyName": "Kestrel Insurance",
+    "jobIndustry": [
+     "Software Engineering"
+    ],
+    "jobType": [
+     "Full-Time"
+    ],
+    "jobGeo": "Germany",
+    "jobLevel": "Senior",
+    "jobDescription": "<p>Kestrel Insurance sells insurance and pension products.</p>",
+    "pubDate": "2026-11-24T10:00:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   },
+   {
+    "id": 9005,
+    "url": "https://jobicy.com/jobs/9005-devops-engineer",
+    "jobSlug": "9005-devops-engineer",
+    "jobTitle": "DevOps Engineer",
+    "companyName": "Harbourline Bank",
+    "jobIndustry": [
+     "Software Engineering"
+    ],
+    "jobType": [
+     "Full-Time"
+    ],
+    "jobGeo": "USA",
+    "jobLevel": "Senior",
+    "jobDescription": "<p><strong>About Harbourline Bank</strong></p>\n<p>Harbourline Bank is a digital bank for small businesses. Our payments platform processes card payments and open banking transfers across Europe.</p>\n<p>You will build Java and Kafka services on AWS and Kubernetes.</p>",
+    "pubDate": "2026-11-24T09:00:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   },
+   {
+    "id": 9006,
+    "url": "https://jobicy.com/jobs/9006-backend-engineer",
+    "jobSlug": "9006-backend-engineer",
+    "jobTitle": "Backend Engineer",
+    "companyName": "Norfolk Staffing Group",
+    "jobIndustry": [
+     "Software Engineering"
+    ],
+    "jobType": [
+     "Full-Time"
+    ],
+    "jobGeo": "Poland",
+    "jobLevel": "Senior",
+    "jobDescription": "<p>Our client is a leading bank in Warsaw. We recruit engineers.</p>",
+    "pubDate": "2026-11-23T09:00:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   }
+  ]
+ },
+ "page2": {
+  "apiVersion": "2.3.05",
+  "documentationUrl": "https://jobi.cy/apidocs",
+  "friendlyNotice": "Thanks for using Jobicy API! Please ensure Jobicy is clearly credited with a direct link to the source.",
+  "jobCount": 2,
+  "lastUpdate": "2026-11-26T14:23:39+00:00",
+  "nextCursor": null,
+  "hasMore": false,
+  "appliedFilters": {
+   "count": 100,
+   "industry": "engineering"
+  },
+  "statusCode": 200,
+  "success": true,
+  "jobs": [
+   {
+    "id": 9007,
+    "url": "https://jobicy.com/jobs/9007-platform-engineer",
+    "jobSlug": "9007-platform-engineer",
+    "jobTitle": "Platform Engineer",
+    "companyName": "Fjord Bank ASA",
+    "jobIndustry": [
+     "Software Engineering"
+    ],
+    "jobType": [
+     "Full-Time",
+     "Part-Time"
+    ],
+    "jobGeo": "Norway, Sweden",
+    "jobLevel": "Senior",
+    "jobDescription": "<p>Fjord Bank ASA is a Nordic bank. You will run our core banking platform on Kubernetes.</p>",
+    "pubDate": "2026-11-22T09:00:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   },
+   {
+    "id": 9008,
+    "url": "https://jobicy.com/jobs/9008-qa-engineer",
+    "jobSlug": "9008-qa-engineer",
+    "jobTitle": "QA Engineer",
+    "companyName": "Harbourline Bank",
+    "jobIndustry": [
+     "QA & Testing"
+    ],
+    "jobType": [
+     "Full-Time"
+    ],
+    "jobGeo": "UK",
+    "jobLevel": "Senior",
+    "jobDescription": "<p><strong>About Harbourline Bank</strong></p>\n<p>Harbourline Bank is a digital bank for small businesses. Our payments platform processes card payments and open banking transfers across Europe.</p>\n<p>You will build Java and Kafka services on AWS and Kubernetes.</p>",
+    "pubDate": "2026-11-10T09:00:00+00:00",
+    "companyLogo": "https://jobicy.com/data/logos/example.png",
+    "jobExcerpt": "An invented advert for tests.",
+    "salaryMin": "0",
+    "salaryMax": "0",
+    "salaryCurrency": "GBP",
+    "salaryPeriod": "yearly"
+   }
+  ]
+ }
+}
