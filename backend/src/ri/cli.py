@@ -12,7 +12,7 @@ from .db import connect
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ri")
-    ap.add_argument("cmd", choices=["migrate", "seed", "import-sheets", "sync-crm", "schedule", "worker", "digest", "serve"])
+    ap.add_argument("cmd", choices=["migrate", "seed", "import-sheets", "sync-crm", "backfill-deal-history", "schedule", "worker", "digest", "serve"])
     ap.add_argument("arg", nargs="?")
     a = ap.parse_args(argv)
     s = Settings.from_env(require_auth=(a.cmd == "serve"))      # only the web app handles logins; worker/scheduler/migrate must not need them
@@ -67,6 +67,14 @@ def main(argv: list[str] | None = None) -> int:
                 return 3
             print(sync_incremental(conn, reader), process_inbox(conn))
             conn.commit()
+        elif a.cmd == "backfill-deal-history":      # one call per deal to Pipedrive's history; re-run until "remaining" is 0
+            from .crm.pipedrive import PipedriveReader, backfill_deal_history
+            try:
+                reader = PipedriveReader(os.environ.get("PIPEDRIVE_DOMAIN"), s.pipedrive_api_token)
+            except Exception as exc:  # noqa: BLE001
+                print(f"BLOCKED: {exc}", file=sys.stderr)
+                return 3
+            print(backfill_deal_history(conn, reader, limit=int(a.arg or 500)))
         elif a.cmd == "schedule":
             from .scheduler import crm_sync_step, exa_budget_set, lemlist_sync_step, run_maintenance, schedule_due
             from .heartbeat import beat
@@ -81,6 +89,13 @@ def main(argv: list[str] | None = None) -> int:
             res.update(crm_sync_step(conn, s))
             res.update(lemlist_sync_step(conn, s))
             conn.commit()
+            try:      # once a day: the open pipeline as it stands, and the day's forecast (scored later against what closed)
+                from .forecast.service import daily_step
+                res.update(daily_step(conn, s))
+                conn.commit()
+            except Exception as exc:  # noqa: BLE001  (never stops scheduling)
+                conn.rollback()
+                res["forecast_daily_error"] = f"{type(exc).__name__}: {exc}"[:200]
             try:
                 from .canary import run_canary
                 from .notify.digest import SlackWebhookSink

@@ -1,6 +1,24 @@
 # Sales metrics and forecast design
 
-Status: proposal, 2026-11-27. Nothing here is built or deployed. Numbers marked **observed** come from a live lemlist read today or from this repo. Numbers marked **benchmark** are third-party and unverified. Anything marked **assumption** is a placeholder until your Pipedrive history replaces it.
+Status, 2026-11-27: steps 2 to 5 of the build order (section 11) are **built and tested, not deployed**. See "Switching it on" below. Numbers marked **observed** come from a live lemlist read today or from this repo. Numbers marked **benchmark** are third-party and unverified. Anything marked **assumption** is a placeholder until your Pipedrive history replaces it.
+
+## Switching it on
+
+What exists in the code:
+- **Migration `0064_deal_history_forecast`** (additive): deal dates on `crm_deals`, `crm_stages`, the append-only `deal_stage_transitions`, `deal_snapshots_daily`, `forecast_settings`, `forecast_log`.
+- **Capture** (`backend/src/ri/crm/pipedrive.py`): the hourly sync and the `deal` webhook log every stage and status change. The sync also reads the stage list, so stages have names and an order.
+- **Backfill**: `python -m ri.cli backfill-deal-history [N]` reads Pipedrive's per-deal history (`/v1/deals/{id}/flow`), N deals per run (default 500). Re-run until `remaining` is 0. The flow parser is written to the shape described in Pipedrive's developer forum and tested on fixtures, **not against your live account yet**.
+- **Daily step** (in `ri.cli schedule`): once a day it copies the open pipeline and logs the day's forecast, so forecasts can be scored later.
+- **Forecast** (`backend/src/ri/forecast/`): measured stage rates and durations, blended with editable priors by sample size; lemlist actuals from `lemlist_activities`; a numpy Monte Carlo (1,000 runs) with a ±20% sensitivity per input.
+- **API**: `GET /api/forecast`, `PUT /api/forecast/settings`. Sales managers and admins only, because the totals are team-wide.
+- **Page**: Forecast in the Work menu (`frontend/src/pages/Forecast.tsx`), with Polish strings.
+
+To turn it on in an environment:
+1. Deploy, then run the migration. It runs as part of the normal `migrate`.
+2. Make sure `PIPEDRIVE_DOMAIN` and `PIPEDRIVE_API_TOKEN` are set; `RI_PIPEDRIVE_PIPELINE_ID` (default 2) picks the pipeline.
+3. Register the Pipedrive `deal` webhook to `/webhooks/pipedrive` if it is not already, so every move is seen, not only the hourly snapshot.
+4. Run `sync-crm` once, then `backfill-deal-history` until nothing remains.
+5. Open Forecast, set the target, check the stage order, and check which stages are "parking" and "won". The defaults are Marketing Nurturing and Active Delivery.
 
 ## 1. Summary
 

@@ -602,4 +602,5 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from .solutions import register_solutions; register_solutions(app)      # noqa: E702  (what fits them best; the person's sales brief)
     from .regulatory_calendar import register_regulatory_calendar; register_regulatory_calendar(app)      # noqa: E702  (EU deadlines pinned to accounts)
     from .feedback_api import register_feedback; register_feedback(app)      # noqa: E702  (was this useful? per item, and per rule in the Library)
+    from .forecast import register as register_forecast; register_forecast(app)      # noqa: E702  (revenue forecast: funnel history, outbound, simulated year)
     return app

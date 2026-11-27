@@ -12,6 +12,7 @@ import hmac
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from typing import Any, Iterator
 
 import httpx
@@ -39,8 +40,11 @@ class PipedriveReader:
         self.http, self.token, self.retries = http or httpx.Client(timeout=30), token, retries
 
     def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        return self._get_url(f"{self.base}{path}", params)
+
+    def _get_url(self, url: str, params: dict[str, Any]) -> dict[str, Any]:
         for attempt in range(self.retries + 1):
-            r = self.http.get(f"{self.base}{path}", params=params, headers={"x-api-token": self.token})
+            r = self.http.get(url, params=params, headers={"x-api-token": self.token})
             if r.status_code == 429 or r.status_code >= 500:
                 if attempt == self.retries:
                     raise CrmError(f"Pipedrive {r.status_code} after retries")
@@ -64,6 +68,18 @@ class PipedriveReader:
             cursor = (body.get("additional_data") or {}).get("next_cursor")
             if not cursor:
                 return
+
+    def deal_flow(self, deal_id: int, *, page: int = 100) -> list[dict[str, Any]]:
+        """A deal's change history. Only API v1 has it, one deal per call (there is no bulk endpoint); offset paging."""
+        url, start, out = f"{self.base.replace('/api/v2', '/api/v1')}/deals/{int(deal_id)}/flow", 0, []
+        while True:
+            body = self._get_url(url, {"start": start, "limit": page})
+            out.extend(body["data"] or [])
+            pg = (body.get("additional_data") or {}).get("pagination") or {}
+            if not pg.get("more_items_in_collection"):
+                return out
+            nxt = pg.get("next_start")
+            start = int(nxt) if nxt is not None and int(nxt) > start else start + page
 
 
 class PipedriveWriter:
@@ -155,21 +171,173 @@ def upsert_person(conn: Conn, p: dict[str, Any]) -> None:
         conn.execute("UPDATE people SET suppressed=true, suppression_reason='crm opt-out' WHERE id IN (SELECT person_id FROM crm_persons WHERE crm_id=%s AND person_id IS NOT NULL)", (p["id"],))
 
 
-def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = None) -> None:
+DEAL_STATUSES = ("open", "won", "lost")
+
+
+def _ts(v: Any) -> datetime | None:
+    """Pipedrive times: v2 sends ISO 8601 with Z, v1 sends 'YYYY-MM-DD HH:MM:SS' in UTC. Anything unreadable is None."""
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    s = str(v).strip().replace("Z", "+00:00")
+    if "T" not in s and " " in s:
+        s = s.replace(" ", "T", 1)
+    try:
+        t = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def _day(v: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(v)[:10]) if v else None
+    except ValueError:
+        return None
+
+
+def _int(v: Any) -> int | None:
+    try:
+        return int(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _add_transitions(conn: Conn, deal_id: int, rows: list[tuple[Any, ...]], *, pipeline_id: Any, value: Any, currency: Any) -> int:
+    """rows: (from_stage, to_stage, from_status, to_status, at, source). Duplicates of an already logged change are ignored."""
+    n = 0
+    for fs, ts, fst, tst, at, src in rows:
+        if ts is None or tst not in DEAL_STATUSES or at is None:
+            continue
+        n += conn.execute("INSERT INTO deal_stage_transitions(crm_deal_id, pipeline_id, from_stage_id, to_stage_id, from_status, to_status, at, source, value, currency) "
+                          "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                          (deal_id, pipeline_id, fs, ts, fst, tst, at, src, value, currency)).rowcount or 0
+    return n
+
+
+def record_deal_change(conn: Conn, d: dict[str, Any], prev: dict[str, Any] | None, source: str, now: datetime | None = None) -> int:
+    """Log what changed between the mirror's last copy of a deal (`prev`) and the copy just received. Several moves between two hourly
+    syncs show as one; webhooks see each move. A deal met for the first time is logged as 'first_seen' (or 'created' when it never moved)."""
+    stage, status = _int(d.get("stage_id")), d.get("status")
+    if stage is None or status not in DEAL_STATUSES:
+        return 0
+    now = now or datetime.now(timezone.utc)
+    add, moved, upd = _ts(d.get("add_time")), _ts(d.get("stage_change_time")), _ts(d.get("update_time"))
+    closed_at = _ts(d.get("won_time") if status == "won" else d.get("lost_time") if status == "lost" else None) or upd or now
+    logged = q1(conn, "SELECT 1 FROM deal_stage_transitions WHERE crm_deal_id=%s LIMIT 1", (d["id"],))
+    rows: list[tuple[Any, ...]] = []
+    if prev is None or not logged:
+        rows.append((None, stage, None, "open", add, "created") if moved is None and add else (None, stage, None, "open", moved or upd or now, "first_seen"))
+        if status != "open":
+            rows.append((stage, stage, "open", status, closed_at, "first_seen"))
+    else:
+        p_stage, p_status = _int(prev.get("stage_id")), prev.get("status") or "open"
+        if p_stage != stage:
+            rows.append((p_stage, stage, p_status, p_status, moved or upd or now, source))
+        if p_status != status:
+            rows.append((stage, stage, p_status, status, closed_at if status != "open" else (upd or now), source))
+    return _add_transitions(conn, d["id"], rows, pipeline_id=_int(d.get("pipeline_id")), value=d.get("value"), currency=d.get("currency"))
+
+
+def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = None, *, source: str = "sync") -> None:
     if d.get("is_deleted"):
         conn.execute("DELETE FROM crm_deals WHERE crm_id=%s", (d["id"],))
         return
+    prev = q1(conn, "SELECT stage_id, status FROM crm_deals WHERE crm_id=%s", (d["id"],))
+    stage_name = (stages or {}).get(d.get("stage_id"))
+    if stage_name is None and d.get("stage_id") is not None:
+        row = q1(conn, "SELECT name FROM crm_stages WHERE crm_id=%s", (_int(d.get("stage_id")),))
+        stage_name = row["name"] if row else None
+    origin, channel = d.get("origin"), d.get("channel")
     conn.execute(
-        "INSERT INTO crm_deals(crm_id, crm_org_id, title, owner_id, stage_id, stage_name, pipeline_id, status, value, currency, update_time, raw, synced_at) "
-        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now()) ON CONFLICT (crm_id) DO UPDATE SET crm_org_id=EXCLUDED.crm_org_id, title=EXCLUDED.title, owner_id=EXCLUDED.owner_id, "
-        "stage_id=EXCLUDED.stage_id, stage_name=EXCLUDED.stage_name, status=EXCLUDED.status, value=EXCLUDED.value, update_time=EXCLUDED.update_time, synced_at=now()",
-        (d["id"], d.get("org_id"), d.get("title") or "", d.get("owner_id"), d.get("stage_id"), (stages or {}).get(d.get("stage_id")), d.get("pipeline_id"),
-         d.get("status"), d.get("value"), d.get("currency"), d.get("update_time"), jb({"id": d["id"]})))
+        "INSERT INTO crm_deals(crm_id, crm_org_id, title, owner_id, stage_id, stage_name, pipeline_id, status, value, currency, update_time, raw, synced_at, "
+        "add_time, stage_change_time, won_time, lost_time, lost_reason, expected_close_date, origin, channel) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now(),%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (crm_id) DO UPDATE SET crm_org_id=EXCLUDED.crm_org_id, title=EXCLUDED.title, owner_id=EXCLUDED.owner_id, "
+        "stage_id=EXCLUDED.stage_id, stage_name=COALESCE(EXCLUDED.stage_name, crm_deals.stage_name), pipeline_id=COALESCE(EXCLUDED.pipeline_id, crm_deals.pipeline_id), "
+        "status=EXCLUDED.status, value=EXCLUDED.value, currency=COALESCE(EXCLUDED.currency, crm_deals.currency), update_time=EXCLUDED.update_time, synced_at=now(), "
+        "add_time=COALESCE(EXCLUDED.add_time, crm_deals.add_time), stage_change_time=COALESCE(EXCLUDED.stage_change_time, crm_deals.stage_change_time), "
+        "won_time=CASE WHEN EXCLUDED.status='won' THEN COALESCE(EXCLUDED.won_time, crm_deals.won_time) END, "
+        "lost_time=CASE WHEN EXCLUDED.status='lost' THEN COALESCE(EXCLUDED.lost_time, crm_deals.lost_time) END, "
+        "lost_reason=CASE WHEN EXCLUDED.status='lost' THEN COALESCE(EXCLUDED.lost_reason, crm_deals.lost_reason) END, "
+        "expected_close_date=EXCLUDED.expected_close_date, origin=COALESCE(EXCLUDED.origin, crm_deals.origin), channel=COALESCE(EXCLUDED.channel, crm_deals.channel)",
+        (d["id"], d.get("org_id"), d.get("title") or "", d.get("owner_id"), d.get("stage_id"), stage_name, d.get("pipeline_id"),
+         d.get("status"), d.get("value"), d.get("currency"), d.get("update_time"), jb({"id": d["id"]}),
+         _ts(d.get("add_time")), _ts(d.get("stage_change_time")), _ts(d.get("won_time")), _ts(d.get("lost_time")), (d.get("lost_reason") or None),
+         _day(d.get("expected_close_date")), str(origin)[:80] if origin not in (None, "") else None, str(channel)[:80] if channel not in (None, "") else None))
+    record_deal_change(conn, d, prev, source)
 
 
-def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, str] | None = None) -> dict[str, int]:
+def sync_stages(conn: Conn, reader: PipedriveReader) -> int:
+    n = 0
+    for s in reader.paged("/stages"):
+        conn.execute("INSERT INTO crm_stages(crm_id, pipeline_id, name, order_nr, deal_probability, is_deleted, synced_at) VALUES (%s,%s,%s,%s,%s,%s,now()) "
+                     "ON CONFLICT (crm_id) DO UPDATE SET pipeline_id=EXCLUDED.pipeline_id, name=EXCLUDED.name, order_nr=EXCLUDED.order_nr, "
+                     "deal_probability=EXCLUDED.deal_probability, is_deleted=EXCLUDED.is_deleted, synced_at=now()",
+                     (s["id"], _int(s.get("pipeline_id")), s.get("name") or f"Stage {s['id']}", _int(s.get("order_nr")), _int(s.get("deal_probability")),
+                      bool(s.get("is_deleted") or s.get("active_flag") is False)))
+        n += 1
+    return n
+
+
+def history_from_flow(deal: dict[str, Any], flow: list[dict[str, Any]]) -> list[tuple[Any, ...]]:
+    """Turn Pipedrive's deal flow (v1 `dealChange` items) into transition rows: the stage the deal was created in, then every stage
+    and status change in time order. Field values arrive as strings."""
+    changes = []
+    for it in flow:
+        if not isinstance(it, dict) or it.get("object") != "dealChange":
+            continue
+        x = it.get("data") or {}
+        if x.get("field_key") not in ("stage_id", "status"):
+            continue
+        at = _ts(x.get("log_time") or it.get("timestamp"))
+        if at:
+            changes.append((at, _int(x.get("id")) or 0, x["field_key"], x.get("old_value"), x.get("new_value")))
+    changes.sort(key=lambda c: (c[0], c[1]))
+    first_stage = next((_int(c[3]) for c in changes if c[2] == "stage_id" and _int(c[3]) is not None), None) or _int(deal.get("stage_id"))
+    first_status = next((c[3] for c in changes if c[2] == "status" and c[3] in DEAL_STATUSES), None) or "open"
+    rows: list[tuple[Any, ...]] = []
+    created = _ts(deal.get("add_time"))
+    if created and first_stage is not None:
+        rows.append((None, first_stage, None, first_status, created, "backfill"))
+    stage, status = first_stage, first_status
+    for at, _, key, _old, new in changes:
+        if key == "stage_id" and _int(new) is not None and _int(new) != stage:
+            rows.append((stage, _int(new), status, status, at, "backfill"))
+            stage = _int(new)
+        elif key == "status" and new in DEAL_STATUSES and new != status:
+            rows.append((stage, stage, status, new, at, "backfill"))
+            status = new
+    return rows
+
+
+def backfill_deal_history(conn: Conn, reader: PipedriveReader, *, limit: int = 200) -> dict[str, int]:
+    """Read Pipedrive's history for deals not read yet, one call per deal. Each deal commits on its own, so a run can stop at any time."""
+    done = added = 0
+    for d in qa(conn, "SELECT crm_id, stage_id, status, pipeline_id, value, currency, add_time FROM crm_deals WHERE history_backfilled_at IS NULL ORDER BY crm_id LIMIT %s", (limit,)):
+        flow = reader.deal_flow(d["crm_id"])
+        with conn.transaction():
+            added += _add_transitions(conn, d["crm_id"], history_from_flow(d, flow), pipeline_id=d["pipeline_id"], value=d["value"], currency=d["currency"])
+            conn.execute("UPDATE crm_deals SET history_backfilled_at=now() WHERE crm_id=%s", (d["crm_id"],))
+        conn.commit()
+        done += 1
+    left = q1(conn, "SELECT count(*) AS n FROM crm_deals WHERE history_backfilled_at IS NULL")
+    return {"deals": done, "transitions": added, "remaining": int(left["n"]) if left else 0}
+
+
+def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, str] | None = None) -> dict[str, Any]:
     """Watermark-based; the watermark advances only after a durable commit. Periodic full reconcile repairs missed webhooks."""
-    out = {"organizations": 0, "persons": 0, "deals": 0}
+    out: dict[str, Any] = {"organizations": 0, "persons": 0, "deals": 0}
+    try:          # the stage list gives stage names and their order; a failure here must not stop the mirror
+        with conn.transaction():
+            out["stages"] = sync_stages(conn, reader)
+        conn.commit()
+    except ConnectorBlocked:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        out["stages_error"] = f"{type(exc).__name__}: {exc}"[:200]
+    if stages is None:
+        stages = {r["crm_id"]: r["name"] for r in qa(conn, "SELECT crm_id, name FROM crm_stages")}
     for entity, path, fn in (("organizations", "/organizations", upsert_org), ("persons", "/persons", upsert_person),
                              ("deals", "/deals", lambda c, r: upsert_deal(c, r, stages))):
         wm = q1(conn, "SELECT watermark FROM sync_state WHERE system='pipedrive' AND entity=%s", (entity,))
@@ -221,7 +389,7 @@ def process_inbox(conn: Conn, limit: int = 100) -> dict[str, int]:
                 elif ent == "person":
                     upsert_person(conn, data)
                 elif ent == "deal":
-                    upsert_deal(conn, data)
+                    upsert_deal(conn, data, source="webhook")
                 else:
                     raise CrmError(f"unsupported entity {ent}")
                 conn.execute("UPDATE crm_webhook_inbox SET status='processed', processed_at=now() WHERE id=%s", (ev["id"],))

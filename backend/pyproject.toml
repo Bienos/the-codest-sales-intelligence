@@ -15,6 +15,7 @@ dependencies = [
   "openpyxl>=3.1",
   "python-multipart>=0.0.9",
   "defusedxml>=0.7",              # openpyxl uses it automatically: blocks XML entity expansion in uploaded workbooks
+  "numpy>=1.26",                  # the revenue forecast's simulation (ri/forecast)
 ]
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10", "types-PyYAML"]
