@@ -6,7 +6,9 @@
   POST /api/people/{pid}/email-thread/refresh     read that person's Lemlist conversation again (rate-limited, read-only towards Lemlist)
   POST /api/people/{pid}/email-thread/reply       answer their newest reply in its Lemlist thread (the sender's signature appended once)
   GET  /api/me/email-signature[?person=]          the signature under my replies (saved, or the suggestion; see ri.outbound.signature)
-  PUT  /api/me/email-signature                    keep my signature (plain text, at most 600 characters; '' means none)
+  PUT  /api/me/email-signature                    keep my signature (typed text, or HTML pasted from my mail program, cleaned to safe tags; '' means none)
+  POST /api/me/email-signature/preview            what a pasted signature looks like once cleaned (nothing is saved)
+  POST /api/me/email-signature/import-gmail       take the signature from my connected Gmail account (its default send-as address)
 
 Reading needs `contacts.read` and the person's row scope (the person page's rules; an erased person is "not found"). Sending also needs
 `draft.create` (the permission behind every outreach step), the outbound switch, and a person who wrote to us and is not on the
@@ -19,7 +21,9 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..access import Principal
+from .. import vault
 from ..audit import audit
+from ..connections import gmail_api, store
 from ..db import q1
 from ..outbound import replies as rp
 from ..outbound import signature as sig
@@ -29,8 +33,23 @@ from .profiles import _visible_person
 SEND_PERMISSION = "draft.create"
 
 
+class _Fixed:
+    """What Google already answered, handed to ri.outbound.signature.import_from_gmail so the answer is read once."""
+
+    def __init__(self, address: str | None, raw: str):
+        self._a, self._r = address, raw
+
+    def send_as_signature(self) -> tuple[str | None, str]:
+        return self._a, self._r
+
+
 class SignatureIn(BaseModel):
     text: str = Field(default="", max_length=sig.MAX_SIGNATURE + 400)        # checked again (normalised, lines, plain text) by sig.validate
+    html: str | None = Field(default=None, max_length=300_000)                # pasted from a mail program: cleaned to safe tags by sig.rich_from_html
+
+
+class SignaturePreviewIn(BaseModel):
+    html: str = Field(max_length=300_000)
 
 
 class ReplyIn(BaseModel):
@@ -84,10 +103,43 @@ def register_replies(app: FastAPI) -> None:
     def save_my_signature(body: SignatureIn, request: Request, p: Principal = Depends(principal_dep)):
         with tx(request) as conn:
             try:
-                out = sig.save(conn, user_id=p.user_id, actor=p.email, text=body.text)
+                out = sig.save(conn, user_id=p.user_id, actor=p.email, text=body.text, html=body.html)
             except sig.SignatureError as exc:
                 raise HTTPException(400, str(exc)) from exc
             return out
+
+    @app.post("/api/me/email-signature/preview")
+    def preview_my_signature(body: SignaturePreviewIn, p: Principal = Depends(principal_dep)):
+        """What a pasted signature would look like once cleaned (nothing is saved): the safe HTML, its plain-text reading, and how many pictures
+        could not be kept."""
+        try:
+            return sig.rich_from_html(body.html)
+        except sig.SignatureError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/me/email-signature/import-gmail")
+    def import_my_signature_from_gmail(request: Request, p: Principal = Depends(principal_dep)):
+        """Read the signature of MY connected Gmail account (read-only towards Google) and keep it as my signature, replacing the one I had."""
+        s = request.app.state.settings
+        if not (vault.available(s.vault_key) and s.google_client_id and s.google_client_secret):
+            raise HTTPException(409, "Gmail is not set up on the server yet. An administrator needs to finish the Google setup.")
+        with tx(request) as conn:                                  # the token is read first and nothing stays open while Google answers
+            try:
+                token = store.secret(conn, s.vault_key, p.user_id, "gmail")
+            except vault.VaultError:
+                raise HTTPException(409, "We could not open the saved Gmail permission. Connect Gmail again.") from None
+        if not token:
+            raise HTTPException(409, "Connect your work Gmail first (see My connections), then import the signature.")
+        try:
+            with gmail_api.GmailClient(token, s.google_client_id, s.google_client_secret) as gm:
+                address, raw = gm.send_as_signature()
+        except (gmail_api.GmailAuthError, gmail_api.GmailConfigError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except gmail_api.GmailError as exc:
+            raise HTTPException(503, "Google could not be reached just now. Try again in a minute.") from exc
+        with tx(request) as conn:
+            res = sig.import_from_gmail(conn, user_id=p.user_id, actor=p.email, client=_Fixed(address, raw)) or {}
+            return {**sig.for_user(conn, user_id=p.user_id, email=p.email), **res}
 
     @app.get("/api/people/{pid}/email-thread")
     def email_thread(pid: str, request: Request, p: Principal = Depends(require("contacts.read"))):

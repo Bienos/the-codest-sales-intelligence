@@ -563,10 +563,32 @@ def make_client(settings: Any) -> Any:
     return LemlistClient(key, http=httpx.Client(timeout=15), retries=1) if key else None
 
 
+# What a normal Gmail email looks like: Arial, small text, one <div> per line and an empty <div><br></div> for a blank line. The user asked for
+# 12 px as the largest size, so the whole email (words and signature) is set once, on the outer <div>, and nothing inside is bigger.
+EMAIL_FONT = "Arial,Helvetica,sans-serif"
+EMAIL_SIZE_PX = 12
+EMAIL_STYLE = f"font-family:{EMAIL_FONT};font-size:{EMAIL_SIZE_PX}px;line-height:1.5;color:#222222"
+
+
 def to_html(text: str) -> str:
-    """Plain text to the simple HTML Lemlist sends: paragraphs on blank lines, line breaks kept, everything escaped."""
-    paras = [p for p in re.split(r"\n{2,}", text.strip()) if p.strip()]
-    return "".join(f"<p>{'<br>'.join(htmllib.escape(line) for line in p.split(chr(10)))}</p>" for p in paras)
+    """Plain text to Gmail-style HTML: one <div> per line, a blank line as <div><br></div> (never two in a row), everything escaped."""
+    out: list[str] = []
+    blank = True                                                   # no empty line at the very top
+    for line in (text or "").replace("\r\n", "\n").strip().split("\n"):
+        if line.strip():
+            out.append(f"<div>{htmllib.escape(line.rstrip())}</div>")
+            blank = False
+        elif not blank:
+            out.append("<div><br></div>")
+            blank = True
+    while out and out[-1] == "<div><br></div>":
+        out.pop()
+    return "".join(out)
+
+
+def email_html(inner: str) -> str:
+    """The whole email Lemlist sends: the words and the signature inside one Gmail-style block (Arial, 12 px)."""
+    return f'<div dir="ltr" style="{EMAIL_STYLE}">{inner}</div>'
 
 
 def _lemlist_words(exc: LemlistError) -> tuple[str, str]:
@@ -636,7 +658,8 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
     if sender is None or (contact, lead) == (None, None):          # blocked_code has said so already; never send from a guessed mailbox
         raise ReplyError(409, BLOCKED["no_mailbox"])
     # the footer: this person's signature (or the same suggestion the box showed), once, unless the words already end with it
-    footer = sig.to_add(body, sig.for_user(conn, user_id=user_id, email=actor, person_id=pid)["text"])
+    info = sig.for_user(conn, user_id=user_id, email=actor, person_id=pid)
+    footer = sig.to_add(body, info["text"])
     row = conn.execute(
         "INSERT INTO lemlist_replies(idempotency_key, reply_to_activity_id, person_id, body_text, body_hash, signature_text, send_user_id, send_user_email, "
         "send_user_mailbox_id, lemlist_contact_id, lemlist_lead_id, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
@@ -650,7 +673,7 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
     status, error = "sent", None
     try:
         res = client.send_email(send_user_id=sender["user_id"], send_user_email=sender["email"], send_user_mailbox_id=sender["mailbox_id"],
-                                message_html=to_html(body) + (sig.html(footer) if footer else ""), reply_to_activity_id=activity_id,
+                                message_html=email_html(to_html(body) + sig.html_for(info, footer)), reply_to_activity_id=activity_id,
                                 contact_id=contact, lead_id=None if contact else lead)
         if isinstance(res, dict) and res.get("ok") is False:
             status, error = "failed", "Lemlist did not accept the email, so nothing was sent."

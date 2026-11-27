@@ -40,7 +40,7 @@ def _campaign_email(conn, aid, html, step, days_ago, **over):
 
 # ------------------------------------------------------------------------------------------------ what Lemlist does
 def test_lemlist_adds_no_signature_so_the_app_does():
-    assert sig.LEMLIST_ADDS_SIGNATURE is False and sig.MAX_SIGNATURE == 600
+    assert sig.LEMLIST_ADDS_SIGNATURE is False and sig.MAX_SIGNATURE == 2000
 
 
 # ------------------------------------------------------------------------------------------------ the suggestion
@@ -62,8 +62,8 @@ def test_sign_off_is_read_from_our_own_campaign_emails_only_when_reliable():
 
 def test_suggestion_comes_from_the_mailbox_that_answers_else_name_company_website(world, conn):
     _store_reply(conn)
-    assert _get(world) == {"text": "bdm\nThe Codest\nthecodest.co", "source": "default", "from": None, "saved": False, "updated_at": None,
-                           "max": 600, "lemlist_adds": False}
+    assert _get(world) == {"text": "bdm\nThe Codest\nthecodest.co", "source": "default", "from": None, "saved": False, "updated_at": None, "html": None,
+                           "max": 2000, "lemlist_adds": False, "font_max_px": 12}
     _campaign_email(conn, "act_SentToOla000001", OURS_1, 0, 5)
     _campaign_email(conn, "act_SentToOla000002", OURS_2, 1, 2)
     s = _get(world, person=world["pid"])
@@ -83,13 +83,13 @@ def test_signature_is_kept_per_person_as_plain_text_and_audited_by_length(world,
     assert _get(world)["text"] == "Tom Field <CTO>\nThe Codest & co\n\n+48 600 000 000"
     assert _get(world, who="admin")["saved"] is False                         # each person has their own
     a = conn.execute("select actor, detail from audit_events where operation='email_signature_saved'").fetchone()
-    assert a["actor"] == "bdm@x" and a["detail"] == {"chars": len("Tom Field <CTO>\nThe Codest & co\n\n+48 600 000 000")}
-    assert _put(world, "x" * 601).status_code == 400
-    assert _put(world, "\n".join(["line"] * 11)).status_code == 400
+    assert a["actor"] == "bdm@x" and a["detail"] == {"chars": len("Tom Field <CTO>\nThe Codest & co\n\n+48 600 000 000"), "formatted": False}
+    assert _put(world, "x" * 2001).status_code == 400
+    assert _put(world, "\n".join(["line"] * 31)).status_code == 400
     assert "plain text" in _put(world, 'Tom <img src="https://track.example/p.gif">').json()["detail"]
     # saving again replaces it; an empty one means "no signature" and is not replaced by a suggestion
-    assert _put(world, "").json() | {"updated_at": None} == {"text": "", "saved": True, "source": "saved", "from": None, "updated_at": None,
-                                                           "max": 600, "lemlist_adds": False}
+    assert _put(world, "").json() | {"updated_at": None} == {"text": "", "html": None, "saved": True, "source": "saved", "from": None, "updated_at": None,
+                                                           "max": 2000, "lemlist_adds": False, "font_max_px": 12}
     assert conn.execute("select count(*) n from user_email_signatures").fetchone()["n"] == 1
 
 
@@ -100,7 +100,8 @@ def test_signature_is_appended_once_escaped_and_shown_in_the_thread(world, conn)
     r = _send(world, text=TEXT)
     assert r.status_code == 200, r.text
     [kw] = world["fake"].sent
-    assert kw["message_html"] == "<p>Hi Ola,<br>Tuesday at 10:00 works.</p><p>Tom</p><p>Tom Field &lt;CTO&gt;<br>The Codest &amp; co</p>"
+    assert kw["message_html"] == rp.email_html("<div>Hi Ola,</div><div>Tuesday at 10:00 works.</div><div><br></div><div>Tom</div><div><br></div>"
+                                               "<div>Tom Field &lt;CTO&gt;</div><div>The Codest &amp; co</div>")
     assert kw["message_html"].count("Tom Field") == 1 and "<img" not in kw["message_html"]
     row = conn.execute("select body_text, signature_text from lemlist_replies").fetchone()
     assert (row["body_text"], row["signature_text"]) == (TEXT, "Tom Field <CTO>\nThe Codest & co")
@@ -126,20 +127,20 @@ def test_never_doubled_when_the_words_already_end_with_it_or_lemlist_adds_one(wo
     _put(world, "Tom Field\nThe Codest")
     r = _send(world, text="Hi Ola,\nTuesday works.\n\nTom Field\nThe Codest", key="draft-0001-sign")
     assert r.status_code == 200, r.text
-    assert world["fake"].sent[0]["message_html"] == "<p>Hi Ola,<br>Tuesday works.</p><p>Tom Field<br>The Codest</p>"
+    assert world["fake"].sent[0]["message_html"] == rp.email_html("<div>Hi Ola,</div><div>Tuesday works.</div><div><br></div><div>Tom Field</div><div>The Codest</div>")
     assert conn.execute("select signature_text from lemlist_replies").fetchone()["signature_text"] is None
     # if Lemlist ever adds the sender's own signature, ours is not added on top
     monkeypatch.setattr(sig, "LEMLIST_ADDS_SIGNATURE", True)
     assert _get(world)["lemlist_adds"] is True
     r = _send(world, text="Wednesday works too.", key="draft-0002-sign")
-    assert r.status_code == 200 and world["fake"].sent[1]["message_html"] == "<p>Wednesday works too.</p>"
+    assert r.status_code == 200 and world["fake"].sent[1]["message_html"] == rp.email_html("<div>Wednesday works too.</div>")
 
 
 def test_an_empty_signature_sends_the_words_alone(world, conn):
     _store_reply(conn)
     _put(world, "")
     assert _send(world, text=TEXT).status_code == 200
-    assert world["fake"].sent[0]["message_html"] == "<p>Hi Ola,<br>Tuesday at 10:00 works.</p><p>Tom</p>"
+    assert world["fake"].sent[0]["message_html"] == rp.email_html("<div>Hi Ola,</div><div>Tuesday at 10:00 works.</div><div><br></div><div>Tom</div>")
 
 
 def test_a_definite_refusal_then_the_same_draft_again_carries_one_signature(world, conn):
@@ -149,7 +150,7 @@ def test_a_definite_refusal_then_the_same_draft_again_carries_one_signature(worl
     assert _send(world, text=TEXT).status_code == 409
     world["fake"].send_error = None
     assert _send(world, text=TEXT).json()["status"] == "sent"
-    assert [k["message_html"].count("<p>Tom Field</p>") for k in world["fake"].sent] == [1, 1]
+    assert [k["message_html"].count("<div>Tom Field</div>") for k in world["fake"].sent] == [1, 1]
     assert conn.execute("select count(*) n from lemlist_replies").fetchone()["n"] == 1
 
 
@@ -173,5 +174,5 @@ def test_migration_0059_is_additive_and_safe_to_run_again(conn):
     conn.execute(sql)
     conn.commit()
     cols = {r["column_name"] for r in conn.execute("select column_name from information_schema.columns where table_name='user_email_signatures'")}
-    assert cols == {"user_id", "signature", "source", "updated_by", "updated_at"}
+    assert cols >= {"user_id", "signature", "source", "updated_by", "updated_at"}          # 0060 adds signature_html
     assert conn.execute("select 1 from information_schema.columns where table_name='lemlist_replies' and column_name='signature_text'").fetchone()

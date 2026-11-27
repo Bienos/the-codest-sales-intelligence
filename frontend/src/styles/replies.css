@@ -228,3 +228,16 @@ button.rp-discard:hover { background: none; color: var(--navy); }
 
 /* inside another panel: the same thread, a little tighter */
 .rp-embedded { margin-top: 12px; }
+
+/* the signature as it will look in the recipient's mail: Arial, 12 px at most, light ground whatever the app theme */
+.es-rich { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); background: #fff; color: #222; font: 12px/1.5 Arial, Helvetica, sans-serif; overflow-wrap: anywhere; overflow-x: auto; }
+.es-rich a, .es-rich a:hover { color: #1155cc; text-decoration: underline; text-decoration-color: currentColor; text-underline-offset: auto; text-decoration-thickness: auto; }
+.es-rich img { max-width: 100%; height: auto; }
+.es-rich table { border-collapse: collapse; }
+.rp-sig .es-rich { margin: 6px 0 0; }
+.es-paste { min-height: 56px; box-sizing: border-box; padding: 10px 12px; border: 1px dashed var(--navy); background: var(--white); color: var(--muted); font-size: 16px; line-height: 1.45;
+  cursor: text; caret-color: transparent; overflow-wrap: anywhere; }
+.es-paste:empty::before { content: attr(data-placeholder); color: var(--muted); font-size: var(--fs-sm); }
+.es-paste:focus-visible { outline: 3px solid var(--navy); outline-offset: 1px; }
+.es-info { color: var(--navy); }
+.rp-fmt { margin: 0 14px; padding: 4px 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }

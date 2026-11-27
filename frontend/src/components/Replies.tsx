@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, post } from "../api";
 import { counted, getLanguage, tr } from "../locale";
-import { Signature, SignatureEditor, signatureSource, useSignature } from "./EmailSignature";
+import { Signature, SignatureEditor, SignaturePreview, signatureSource, useSignature } from "./EmailSignature";
 import "../styles/replies.css";
 
 /** The emails between one person and us, read like a good mail client, and a composer that answers in the same Lemlist thread.
@@ -295,11 +295,12 @@ export function ReplyComposer({ personId, personName, reply, config, signature, 
             {sig && !sig.lemlist_adds && <button type="button" className="rp-sig-edit" onClick={() => setEditSig(true)}>{I.pen}{tr("Edit signature")}</button>}
           </div>
           {!sig ? <p className="rp-sig-src">{tr("Loading")}…</p> : <>
-            {sig.text && <p className="rp-sig-t">{sig.text}</p>}
+            {sig.text && <SignaturePreview html={sig.html} text={sig.text} />}
             {(!sig.saved || !sig.text || sig.lemlist_adds) && <p className="rp-sig-src">{signatureSource(sig)}</p>}
           </>}
         </>}
       </div>
+      <p className="rp-fmt">{tr("Sent like a normal Gmail email: Arial, never larger than 12 px.")}</p>
       <div className="rp-acts">
         <button type="button" className="primary rp-send" aria-busy={busy} disabled={busy || !config} onClick={() => void send()}>
           {I.send}{busy ? tr("Sending…") : tr("Send")}</button>

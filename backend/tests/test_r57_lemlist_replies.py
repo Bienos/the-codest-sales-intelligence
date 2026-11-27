@@ -215,7 +215,8 @@ def test_send_threads_from_the_campaign_mailbox_once_per_draft_and_is_audited(wo
     assert kw["reply_to_activity_id"] == REPLY_ID and kw["contact_id"] == "ctc_Ola000000001" and kw["lead_id"] is None
     assert (kw["send_user_id"], kw["send_user_email"], kw["send_user_mailbox_id"]) == ("usr_Tom000000001", "tom@sender.example", "usm_Tom000000001")
     # the words, then the signature (round 11: nobody saved one yet, so the suggestion: their name, The Codest, the website)
-    assert kw["message_html"] == "<p>Hi Ola,<br>Tuesday at 10:00 works. &lt;b&gt;Speak then&lt;/b&gt;.</p><p>Tom</p><p>bdm<br>The Codest<br>thecodest.co</p>"
+    assert kw["message_html"] == rp.email_html("<div>Hi Ola,</div><div>Tuesday at 10:00 works. &lt;b&gt;Speak then&lt;/b&gt;.</div><div><br></div><div>Tom</div>"
+                                               "<div><br></div><div>bdm</div><div>The Codest</div><div>thecodest.co</div>")
     # a double click (same draft key) never sends twice
     again = _send(world)
     assert again.status_code == 200 and again.json()["repeat"] is True and len(world["fake"].sent) == 1

@@ -171,6 +171,18 @@ def _fail(conn: Conn, user_id: str, now: datetime, message: str, out: dict[str, 
 
 
 # ---------------------------------------------------------------- the job
+def _signature_once(conn: Conn, uid: str, email: str, gm: Any) -> None:
+    """The first time Gmail is connected (and no signature is kept yet): take the signature from this Gmail account as the default under
+    replies sent from the app. Never replaces one that is kept, never fails the sync: the "Import from Gmail" button reports what went wrong."""
+    from ..outbound import signature as sig
+    try:
+        if sig.stored(conn, uid) is None:
+            sig.import_from_gmail(conn, user_id=uid, actor=email, client=gm, only_if_none=True)
+        conn.commit()
+    except Exception:  # noqa: BLE001 - best effort
+        conn.rollback()
+
+
 def run(conn: Conn, job: dict[str, Any], *, settings: Any, now: datetime | None = None) -> dict[str, Any]:
     """Background job `gmail_sync` for `job["payload"]["user_id"]`. Commits as it goes. Returns counts: contacts checked, messages seen, new interactions,
     and `more` = True when it stopped early (limit, Google asked us to slow down, more contacts wait for the next run)."""
@@ -235,6 +247,7 @@ def run(conn: Conn, job: dict[str, Any], *, settings: Any, now: datetime | None 
     org_by_address: dict[str, str | None] = {}
     try:
         with gmail_api.GmailClient(token, settings.google_client_id, settings.google_client_secret) as gm:
+            _signature_once(conn, uid, user["email"], gm)
             for group in groups:
                 if fetched >= MAX_MESSAGES_PER_RUN:
                     stopped = "message limit"

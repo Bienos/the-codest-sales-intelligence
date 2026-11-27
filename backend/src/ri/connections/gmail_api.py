@@ -379,6 +379,18 @@ class GmailClient:
                 return ids, False
         return ids, True
 
+    def send_as_signature(self) -> tuple[str | None, str]:
+        """(address, signature HTML) of the account's default send-as address, from Gmail's settings (users.settings.sendAs, read-only: the
+        gmail.readonly scope this app already asks for). The signature is "" when none is set. Nothing is ever written to Gmail."""
+        body = self._json(self._send("GET", f"{API}/settings/sendAs", params={"fields": "sendAs(sendAsEmail,isPrimary,isDefault,signature)"}))
+        items = [x for x in (body.get("sendAs") or []) if isinstance(x, dict)]
+        pick = next((x for x in items if x.get("isDefault")), None) or next((x for x in items if x.get("isPrimary")), None) or (items[0] if items else None)
+        if not pick:
+            return None, ""
+        addr = pick.get("sendAsEmail")
+        sig = pick.get("signature")
+        return (addr if isinstance(addr, str) else None), (sig if isinstance(sig, str) else "")
+
     def get_metadata(self, message_id: str) -> MessageMeta:
         """Headers and Gmail's snippet only (format=metadata): the body and attachments are never requested."""
         params = [("format", "metadata"), *[("metadataHeaders", h) for h in METADATA_HEADERS], ("fields", "id,threadId,labelIds,snippet,internalDate,payload/headers")]
