@@ -98,3 +98,7 @@
   .lfilter select { flex: none; width: 100%; }
   .lfilter-n { grid-column: 1 / -1; margin-left: 0; }
 }
+
+/* What sellers said about each kind of signal (the Was this useful? answers) */
+.lfeedback { border-left: 5px solid var(--purple); background: var(--tint-2); padding: 10px 14px; margin: 12px 0 16px; }
+.lfeedback h3 { margin: 0 0 4px; font-size: var(--fs-md); }

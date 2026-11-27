@@ -20,7 +20,7 @@ from ri.sources.registry import seed_registry
 
 SECRET = "r" * 40
 NOW = datetime(2026, 11, 27, 10, 0, tzinfo=timezone.utc)
-UPCOMING = {"ipr-non-euro-receive", "ipr-pi-emi", "ipr-non-euro-send", "amlr", "eudi-wallet"}
+UPCOMING = {"ipr-non-euro-receive", "ipr-pi-emi", "ipr-non-euro-send", "amlr", "eudi-wallet", "ai-act-high-risk"}
 
 
 def _events(conn, **where):
@@ -68,7 +68,9 @@ def test_the_calendar_loads_and_every_adopted_deadline_has_a_date_and_a_source()
     assert by["ipr-non-euro-receive"].date == date(2027, 1, 9) and by["ipr-non-euro-receive"].countries == {"PL", "SE", "DK", "CZ", "HU", "RO"}
     assert by["ipr-non-euro-send"].date == date(2027, 7, 9) and by["ipr-pi-emi"].date == date(2027, 4, 9)
     assert by["ipr-vop-euro"].date == date(2025, 10, 9) and by["amlr"].date == date(2027, 7, 10) and by["eudi-wallet"].date == date(2027, 12, 24)
-    assert by["ai-act-high-risk"].certainty == "provisional" and "check whether it was adopted" in by["ai-act-high-risk"].note.lower()
+    # adopted on 24 July 2026 (Regulation (EU) 2026/1744); the wording keeps it to AI used for these decisions
+    assert by["ai-act-high-risk"].certainty == "adopted" and by["ai-act-high-risk"].date == date(2027, 12, 2) and not by["ai-act-high-risk"].approximate
+    assert "creditworthiness" in by["ai-act-high-risk"].must and "2026/1744" in by["ai-act-high-risk"].note
     assert by["psd3-psr"].certainty == "possible" and by["psd3-psr"].approximate
     assert not ({"GB", "CH", "NO"} & set().union(*(d.countries for d in cal.deadlines)))      # EU law only
 
@@ -117,16 +119,16 @@ def test_the_lane_pins_upcoming_adopted_deadlines_to_target_accounts_and_is_idem
     by_org = {}
     for r in rows:
         by_org.setdefault(str(r["subject_org_id"]), set()).add(r["attrs"]["deadline_id"])
-    assert by_org[orgs["pl_bank"]] == {"ipr-non-euro-receive", "ipr-non-euro-send", "amlr", "eudi-wallet"}
-    assert by_org[orgs["de_bank"]] == {"amlr", "eudi-wallet"}
-    assert by_org[orgs["pl_pay"]] == {"ipr-pi-emi", "ipr-non-euro-send", "amlr", "eudi-wallet"}
-    assert by_org[orgs["de_ins"]] == {"amlr"}
-    assert by_org[orgs["owned"]] == {"amlr", "eudi-wallet"}             # the lane works for everyone; pages follow each person's scope
+    assert by_org[orgs["pl_bank"]] == {"ipr-non-euro-receive", "ipr-non-euro-send", "amlr", "eudi-wallet", "ai-act-high-risk"}
+    assert by_org[orgs["de_bank"]] == {"amlr", "eudi-wallet", "ai-act-high-risk"}
+    assert by_org[orgs["pl_pay"]] == {"ipr-pi-emi", "ipr-non-euro-send", "amlr", "eudi-wallet"}        # a payment firm: not the AI Act entry
+    assert by_org[orgs["de_ins"]] == {"amlr", "ai-act-high-risk"}
+    assert by_org[orgs["owned"]] == {"amlr", "eudi-wallet", "ai-act-high-risk"}             # the lane works for everyone; pages follow each person's scope
     assert not {orgs["gb_bank"], orgs["se_fintech"], orgs["pl_out"]} & set(by_org)     # outside the EU, no known kind, not a target
     assert not {orgs["central"], orgs["statutory"]} & set(by_org)                       # a central bank, a statutory health insurer
-    # past (verification of payee in the euro area), provisional (AI Act) and possible (PSD3) deadlines are never pinned
+    # past (verification of payee in the euro area) and possible (PSD3) deadlines are never pinned
     assert {r["attrs"]["deadline_id"] for r in rows} == UPCOMING
-    assert out == {"accounts_pinned": 5, "deadlines_pinned": 5, "events_written": 13, "events_ended": 0, "more_to_pin": False}
+    assert out == {"accounts_pinned": 5, "deadlines_pinned": 6, "events_written": 17, "events_ended": 0, "more_to_pin": False}
 
     ev = next(r for r in rows if r["event_key"] == f"deadline:ipr-non-euro-receive:{orgs['pl_bank']}")
     assert ev["event_at"] == datetime(2027, 1, 9, tzinfo=timezone.utc) and ev["event_at_known"]
@@ -149,7 +151,7 @@ def test_the_lane_pins_upcoming_adopted_deadlines_to_target_accounts_and_is_idem
     assert [r["id"] for r in rows2] == [r["id"] for r in rows]          # same rows, no duplicates
     assert again["events_written"] == 0 and again["accounts_pinned"] == 5
     assert next(r for r in rows2 if r["id"] == ev["id"])["attrs"]["days_left"] == 42
-    assert conn.execute("select count(*) n from claims where predicate='regulatory_deadline'").fetchone()["n"] == 5    # one per deadline
+    assert conn.execute("select count(*) n from claims where predicate='regulatory_deadline'").fetchone()["n"] == 6    # one per deadline
 
 
 def test_an_account_that_stops_applying_or_a_deadline_that_passes_is_kept_and_marked_expired(conn, orgs):
@@ -190,7 +192,7 @@ def test_only_deadlines_within_18_months_are_pinned_and_a_run_stops_at_its_limit
 def test_the_scheduler_runs_it_as_a_daily_lane_with_a_plain_result(conn, orgs):
     run_maintenance(conn, NOW)
     lane = conn.execute("select * from scheduler_lanes where lane='deadlines_pinned'").fetchone()
-    assert lane["last_error"] is None and lane["last_result"]["accounts_pinned"] == 5 and lane["last_result"]["deadlines_pinned"] == 5
+    assert lane["last_error"] is None and lane["last_result"]["accounts_pinned"] == 5 and lane["last_result"]["deadlines_pinned"] == 6
     run_maintenance(conn, NOW + timedelta(hours=2))                      # daily: not again two hours later
     assert conn.execute("select runs from scheduler_lanes where lane='deadlines_pinned'").fetchone()["runs"] == 1
     conn.execute("update scheduler_lanes set enabled=false where lane='deadlines_pinned'")      # a person can pause it
@@ -217,7 +219,7 @@ def test_the_calendar_page_lists_every_deadline_with_our_accounts_in_the_persons
     items = {i["id"]: i for i in body["items"]}
     assert set(items) >= UPCOMING | {"ipr-vop-euro", "ai-act-high-risk", "psd3-psr"}          # every certainty
     assert items["ipr-vop-euro"]["past"] and not items["amlr"]["past"] and items["psd3-psr"]["approximate"]
-    assert not items["ai-act-high-risk"]["pinned"] and not items["psd3-psr"]["pinned"] and not items["ipr-vop-euro"]["pinned"]
+    assert items["ai-act-high-risk"]["pinned"] and not items["psd3-psr"]["pinned"] and not items["ipr-vop-euro"]["pinned"]
     assert items["ipr-non-euro-receive"]["accounts"]["count"] == 1
     assert [a["name"] for a in items["ipr-non-euro-receive"]["accounts"]["sample"]] == ["Wisla Savings Bank"]
     assert items["amlr"]["accounts"]["count"] == 5 and items["amlr"]["accounts"]["by_kind"] == {"bank": 3, "payments": 1, "insurer": 1}
@@ -241,7 +243,7 @@ def test_the_company_page_lists_the_deadlines_that_apply_to_it(api, conn):
     got = {i["id"]: i for i in body["items"]}
     assert {"ipr-non-euro-receive", "ipr-non-euro-send", "amlr", "eudi-wallet", "ai-act-high-risk", "psd3-psr"} <= set(got)
     assert "ipr-vop-euro" not in got and got["amlr"]["why"] == "bank in Poland"
-    assert not got["ai-act-high-risk"]["on_account"] and not got["psd3-psr"]["on_account"]
+    assert got["ai-act-high-risk"]["on_account"] and not got["psd3-psr"]["on_account"]
     assert [i["date"] for i in body["items"] if not i["past"]] == sorted(i["date"] for i in body["items"] if not i["past"])
     assert c.get(f"/api/accounts/{o['gb_bank']}/deadlines", headers=h("bdm")).json()["items"] == []
     central = c.get(f"/api/accounts/{o['central']}/deadlines", headers=h("bdm")).json()

@@ -308,3 +308,8 @@
 .sb-level .strength i, .ps-sig-tag .strength i { width: 9px; height: 9px; border-width: 1.5px; }
 .ps-sig-tag .strength i { border-color: var(--pink-solid); }
 .ps-sig-tag .strength i.on { background: var(--pink-solid); }
+
+/* Email rules panel: record a person's consent */
+.ps-consent { display: grid; gap: 6px; margin-top: 8px; }
+.ps-consent textarea { width: 100%; font: inherit; font-size: var(--fs-sm); padding: 8px; border: 1px solid var(--line); background: var(--white); color: var(--navy); resize: vertical; }
+.ps-consent button { justify-self: start; }

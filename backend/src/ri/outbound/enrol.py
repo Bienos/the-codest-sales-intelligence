@@ -14,6 +14,7 @@ from .. import approvals as appr
 from ..audit import audit
 from ..config import Settings
 from ..db import Conn, jb, q1, qa
+from . import email_rules
 from .lemlist import LemlistClient, LemlistError
 
 KIND, SYSTEM, OP = "sequence_enrolment", "lemlist", "enrol"
@@ -28,13 +29,18 @@ RANK = {"pushed": 0, "replied": 1, "not_interested": 2, "interested": 3, "bounce
 
 
 def plan_contacts(conn: Conn, org_id: str, *, resume_draft: str | None = None) -> dict[str, Any]:
-    """Who at this company can be emailed, and why not for the rest."""
-    rows = qa(conn, "SELECT p.id, p.full_name, p.work_email, p.email_verification_status AS st, p.suppressed, p.erased_at, e.title, e.buyer_lane FROM employment e JOIN people p ON p.id=e.person_id "
-                    "WHERE e.organization_id=%s ORDER BY p.full_name", (org_id,))
+    """Who at this company can be emailed, and why not for the rest. The country rule (rules/email_rules.yaml) is applied last: someone with a
+    usable address in a country where cold email needs consent, and no consent recorded, is listed under `consent_needed`, never `eligible`."""
+    rows = qa(conn, "SELECT p.id, p.full_name, p.work_email, p.email_verification_status AS st, p.suppressed, p.erased_at, p.email_consent_at, e.title, e.buyer_lane "
+                    "FROM employment e JOIN people p ON p.id=e.person_id WHERE e.organization_id=%s ORDER BY p.full_name", (org_id,))
     blocked_emails = {r["e"] for r in qa(conn, "SELECT lower(trim(email)) AS e FROM outbound_enrolments WHERE status IN ('unsubscribed','bounced')")}
     enrolled_emails = {r["e"] for r in qa(conn, """SELECT lower(trim(email)) AS e FROM outbound_enrolments
                       WHERE status <> 'failed' AND campaign_draft_id IS DISTINCT FROM %s::uuid""", (resume_draft,))}
-    out: dict[str, Any] = {"eligible": [], "needs_verification": [], "no_email": 0, "suppressed": 0, "manual_review": 0, "already_enrolled": 0}
+    org = q1(conn, "SELECT country_code FROM organizations WHERE id=%s", (org_id,)) or {}
+    rules = email_rules.load()
+    rule = email_rules.rule_for(org.get("country_code"), rules)
+    out: dict[str, Any] = {"eligible": [], "needs_verification": [], "no_email": 0, "suppressed": 0, "manual_review": 0, "already_enrolled": 0,
+                           "consent_needed": [], "email_rule": rule}
     for r in rows:
         card = {"id": str(r["id"]), "name": r["full_name"], "title": r["title"], "lane": r["buyer_lane"], "email_status": r["st"]}
         email = (r["work_email"] or "").strip()
@@ -46,6 +52,8 @@ def plan_contacts(conn: Conn, org_id: str, *, resume_draft: str | None = None) -
             out["no_email"] += 1
         elif r["st"] == "Needs Manual Review":
             out["manual_review"] += 1
+        elif not (ok := email_rules.check(org.get("country_code"), email, r["email_consent_at"], rules))[0]:
+            out["consent_needed"].append({**card, "reason": ok[1]})
         else:
             out["eligible"].append({**card, "email": email, "verified": r["st"] == "Verified"})
             if r["st"] != "Verified":
@@ -82,6 +90,9 @@ def request_enrolment(conn: Conn, draft_id: str, person_ids: list[str], *, by: s
     plan = plan_contacts(conn, str(d["organization_id"]))
     chosen = [c for c in plan["eligible"] if c["id"] in set(person_ids)]
     if not chosen:
+        held = [c for c in plan["consent_needed"] if c["id"] in set(person_ids)]
+        if held:
+            raise appr.ApprovalError(email_rules.blocked_reason(plan["email_rule"], len(held)))
         raise appr.ApprovalError("none of the selected contacts has an email address that can be used")
     steps, prev = [], 0
     for s in d["steps"]:

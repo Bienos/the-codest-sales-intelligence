@@ -280,7 +280,7 @@ LITTLE_RATIO_PAGES = 100                # ... or at least this many pages with f
 # sources are used on request, not read in bulk.
 NOT_JUDGED_FAMILIES = ("procurement", "discovery", "verification", "internal", "registry")
 NOT_JUDGED_METHODS = ("internal", "search")
-JOB_EVENT_TYPES = ("engineering_job_opened", "contractor_job_opened", "job_closed")
+JOB_EVENT_TYPES = ("engineering_job_opened", "contractor_job_opened", "job_hard_to_fill", "job_closed")
 # A job finding names the board it came from (attrs.provider), not a stored page. Same mapping as Administration, Data health; any other
 # career system "x" counts for the source "ats-x" when the registry has one.
 JOB_PROVIDER_SOURCE = {"arbeitnow": "jobs-arbeitnow-de", "jobtech": "jobs-jobtech-se", "jobicy": "jobs-jobicy-remote", "remoteok": "jobs-remoteok"}
@@ -489,7 +489,7 @@ def finding_kinds(conn, p: Principal, *, days: int, region: str, qualification: 
         AND e.verification_status='verified' AND e.lifecycle_status='active' AND NOT e.is_historical_replay
         AND e.lane IS DISTINCT FROM 'public' AND e.event_type NOT LIKE 'procurement_%%'
         AND e.event_type NOT IN ('crm_buyer_response','relationship_changed') AND s.rule_id NOT LIKE 'NEG-%%'
-        AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened')
+        AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened','job_hard_to_fill')
              OR (coalesce(e.attrs->>'title','') !~* %s AND (NOT (e.attrs ? 'job_id') OR EXISTS (SELECT 1 FROM job_postings j
                  WHERE j.provider=e.attrs->>'provider' AND j.board=e.attrs->>'board' AND j.job_id=e.attrs->>'job_id' AND j.open_status='open'))))
         AND NOT (e.id=ANY(%s::uuid[]))

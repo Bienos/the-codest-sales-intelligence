@@ -87,6 +87,34 @@
     - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
     - {kind: ambiguous, name: role_already_closed, set: {open_status: closed}, expect: none}
     - {kind: expiry, name: older_than_30_days, top: {days_ago: 40}, expect: none, trace: expired}
+- rule: CAP-03
+  base: {event_type: job_hard_to_fill, source_tier: S2, days_ago: 2, attrs: {title: Senior Java Engineer (m/w/d), open_status: open, days_open: 75, reposted: false}}
+  cases:
+    - {kind: positive, name: open_75_days, expect: match, tier: D3}
+    - {kind: positive, name: exactly_60_days, set: {days_open: 60}, expect: match}
+    - {kind: positive, name: reposted_after_closing, set: {days_open: 12, reposted: true}, expect: match}
+    - {kind: negative, name: open_only_45_days, set: {days_open: 45}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: talent_pool_ad, set: {title: Talent Pool Software Engineering}, expect: none, trace: excluded}
+    - {kind: negative, name: role_closed_since, set: {open_status: closed}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: ordinary_new_ad, top: {event_type: engineering_job_opened}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none, trace: event_unverified}
+    - {kind: ambiguous, name: working_student_reposted, set: {title: Working Student Backend, reposted: true}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: aggregator_copy, top: {source_tier: S4}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: seen_more_than_30_days_ago, top: {days_ago: 35}, expect: none, trace: expired}
+- rule: CAP-04
+  base: {event_type: engineering_job_opened, source_tier: S2, days_ago: 5, cluster_count: 2, attrs: {title: Backend Engineer, team: Payments, open_status: open, tech_keywords: [java, kafka]}}
+  cases:
+    - {kind: positive, name: second_java_role_completes_cluster, expect: match, tier: D3}
+    - {kind: positive, name: rails_in_keywords, set: {title: Software Engineer, tech_keywords: [rails]}, expect: match}
+    - {kind: positive, name: react_in_title_only, set: {title: Senior React Developer, tech_keywords: []}, expect: match}
+    - {kind: positive, name: contractor_python_role, top: {event_type: contractor_job_opened}, set: {tech_keywords: [python]}, expect: match}
+    - {kind: negative, name: only_one_role_in_our_stack, top: {cluster_count: 1}, expect: none}
+    - {kind: negative, name: dotnet_stack, set: {title: .NET Developer, tech_keywords: [.net, azure]}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: javascript_is_not_java, set: {title: JavaScript Developer, tech_keywords: [node]}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: cluster_already_fired, top: {cluster_count: 3}, expect: none}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: internship_in_python, set: {title: Python Intern}, expect: none, trace: excluded}
+    - {kind: expiry, name: older_than_45_days, top: {days_ago: 50}, expect: none, trace: expired}
 - rule: CAP-05
   base: {event_type: engineering_job_opened, source_tier: S2, days_ago: 5, attrs: {title: LLM Platform Engineer, tech_keywords: [llm], open_status: open}}
   cases:
@@ -100,6 +128,19 @@
     - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
     - {kind: ambiguous, name: working_student, set: {title: Working Student GenAI}, expect: none, trace: excluded}
     - {kind: expiry, name: older_than_60_days, top: {days_ago: 70}, expect: none, trace: expired}
+- rule: CAP-06
+  base: {event_type: engineering_job_opened, source_tier: S2, days_ago: 5, attrs: {title: Test Automation Engineer, open_status: open, tech_keywords: [playwright]}}
+  cases:
+    - {kind: positive, name: test_automation_engineer, expect: match, tier: D3}
+    - {kind: positive, name: site_reliability_engineer, set: {title: Site Reliability Engineer, tech_keywords: [kubernetes]}, expect: match}
+    - {kind: positive, name: sdet_contract, top: {event_type: contractor_job_opened}, set: {title: SDET (contract), tech_keywords: []}, expect: match}
+    - {kind: positive, name: selenium_in_keywords, set: {title: Software Engineer in Test, tech_keywords: [selenium]}, expect: match}
+    - {kind: negative, name: product_manager, set: {title: Product Manager, tech_keywords: []}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: manual_tester, set: {title: Manual Tester, tech_keywords: []}, expect: none, trace: excluded}
+    - {kind: negative, name: role_closed, set: {open_status: closed}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: ambiguous, name: penetration_tester, set: {title: Penetration Tester, tech_keywords: []}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: expiry, name: older_than_45_days, top: {days_ago: 50}, expect: none, trace: expired}
 - rule: PRG-01
   base: {event_type: programme_announced, source_tier: S3, days_ago: 20, attrs: {programme_domain: core_banking, named_systems: [Temenos Transact], has_dated_milestones: true, programme_status: implementation}}
   cases:

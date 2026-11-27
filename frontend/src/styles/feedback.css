@@ -1,0 +1,12 @@
+/* "Was this useful?" on Today and Buying signals items (components/Feedback.tsx). Quiet by design: it sits under the evidence, not over it.
+   Prefixed sfb- ("signal feedback"): .fb is already the finding card. */
+.sfb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 10px 0 0; padding: 0; border: 0; background: none; font-size: var(--fs-sm); color: var(--muted); }
+.sfb .sfb-q { color: var(--muted); }
+.sfb .sfb-btn, .sfb .sfb-chip { font: inherit; font-size: var(--fs-sm); min-height: 32px; padding: 4px 12px; border: 1px solid var(--line); background: var(--white); color: var(--navy);
+  text-decoration: none; cursor: pointer; }
+.sfb .sfb-btn:hover, .sfb .sfb-chip:hover { border-color: var(--navy); }
+.sfb .sfb-btn:disabled, .sfb .sfb-chip:disabled, .sfb .sfb-undo:disabled { opacity: .6; cursor: default; }
+.sfb .sfb-undo { font: inherit; font-size: var(--fs-sm); border: 0; background: none; padding: 4px 2px; color: var(--navy); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.sfb .sfb-why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-basis: 100%; }
+.sfb .sfb-err { color: var(--pink-solid); }
+@media (max-width: 640px) { .sfb .sfb-btn, .sfb .sfb-chip { min-height: 44px; } }

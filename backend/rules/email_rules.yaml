@@ -1,0 +1,86 @@
+# Cold email rules by country, for a named person's work address at a company (B2B). Read by src/ri/outbound/email_rules.py.
+# The country is the company's headquarters country on the lead list (organizations.country_code): people records hold no country of their own.
+#
+# Owner: sales leadership, with legal counsel. This is a summary of public guidance as of 27 Nov 2026, not legal advice. Change a country only
+# after counsel confirms, and keep the source. Every campaign push and every enrolment re-reads this file.
+#
+#   allowed           cold email is allowed with an opt-out in every email
+#   consent           prior consent is needed: only people with consent recorded in the app (on their page) are emailed
+#   consent_personal  consent is needed for a personal address (firstname.lastname@...); a generic role address (info@, sales@...) may be
+#                     emailed with an opt-out
+# A country that is not listed, and a company with no country, is "not checked": nobody there is emailed until the country is added here.
+instead: "Use LinkedIn, an introduction, an event or a phone call, or record the person's consent on their page."
+instead_pl: "Użyj LinkedIn, przedstawienia przez kogoś, wydarzenia lub telefonu albo zapisz zgodę tej osoby na jej stronie."
+countries:
+  GB:
+    rule: allowed
+    name: United Kingdom
+    note: "Allowed to companies and LLPs with an opt-out (PECR). Sole traders and ordinary partnerships need consent. Fines can reach £17.5m or 4% of turnover."
+    name_pl: Wielka Brytania
+    note_pl: "Dozwolone do spółek i LLP z możliwością wypisania się (PECR). Jednoosobowe firmy i zwykłe spółki osobowe wymagają zgody. Kary sięgają 17,5 mln GBP lub 4% obrotu."
+    sources: [https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/business-to-business-marketing/]
+  SE:
+    rule: allowed
+    name: Sweden
+    note: "Allowed when the email is relevant to the person's role, with an opt-out."
+    name_pl: Szwecja
+    note_pl: "Dozwolone, gdy e-mail dotyczy roli tej osoby, z możliwością wypisania się."
+    sources: [https://res.cloudinary.com/fieldfisher/image/upload/v1706627634/PDFs/EU_e-marketing_requirements_-_January_2024_lqpl6s.pdf]
+  DE:
+    rule: consent
+    name: Germany
+    note: "Email advertising needs prior express consent, also to business contacts (UWG §7)."
+    name_pl: Niemcy
+    note_pl: "Reklama e-mailowa wymaga wcześniejszej wyraźnej zgody, także wobec kontaktów biznesowych (UWG §7)."
+    sources: [https://www.ihk-muenchen.de/ratgeber/recht/werbung-fairer-wettbewerb/marketing-per-email-telefon-brief-etc/]
+  AT:
+    rule: consent
+    name: Austria
+    note: "Prior consent is needed, also to business contacts."
+    name_pl: Austria
+    note_pl: "Potrzebna wcześniejsza zgoda, także wobec kontaktów biznesowych."
+    sources: [https://res.cloudinary.com/fieldfisher/image/upload/v1706627634/PDFs/EU_e-marketing_requirements_-_January_2024_lqpl6s.pdf]
+  CH:
+    rule: consent
+    name: Switzerland
+    note: "Prior consent is needed for marketing email."
+    name_pl: Szwajcaria
+    note_pl: "Marketing e-mailowy wymaga wcześniejszej zgody."
+    sources: [https://res.cloudinary.com/fieldfisher/image/upload/v1706627634/PDFs/EU_e-marketing_requirements_-_January_2024_lqpl6s.pdf]
+  DK:
+    rule: consent
+    name: Denmark
+    note: "Prior consent is needed, also to business contacts."
+    name_pl: Dania
+    note_pl: "Potrzebna wcześniejsza zgoda, także wobec kontaktów biznesowych."
+    sources: [https://res.cloudinary.com/fieldfisher/image/upload/v1706627634/PDFs/EU_e-marketing_requirements_-_January_2024_lqpl6s.pdf]
+  NL:
+    rule: consent
+    name: Netherlands
+    note: "Prior consent is needed; the soft opt-in for existing customers is narrow."
+    name_pl: Holandia
+    note_pl: "Potrzebna wcześniejsza zgoda; wyjątek dla obecnych klientów jest wąski."
+    sources: [https://res.cloudinary.com/fieldfisher/image/upload/v1706627634/PDFs/EU_e-marketing_requirements_-_January_2024_lqpl6s.pdf]
+  PL:
+    rule: consent
+    name: Poland
+    note: "Since 10 Nov 2024 the Electronic Communications Law (art. 398) needs prior consent for direct marketing by email, also to business contacts."
+    name_pl: Polska
+    note_pl: "Od 10 listopada 2024 Prawo komunikacji elektronicznej (art. 398) wymaga wcześniejszej zgody na marketing bezpośredni e-mailem, także wobec kontaktów biznesowych."
+    sources: [https://lexlege.pl/komunik-elektr/art-398/]
+  FI:
+    rule: consent_personal
+    name: Finland
+    note: "Consent is needed for a personal address. A generic role address may be emailed with an opt-out."
+    name_pl: Finlandia
+    note_pl: "Na adres osobisty potrzebna zgoda. Na ogólny adres działu można pisać z możliwością wypisania się."
+    sources: [https://res.cloudinary.com/fieldfisher/image/upload/v1706627634/PDFs/EU_e-marketing_requirements_-_January_2024_lqpl6s.pdf]
+  "NO":
+    rule: consent_personal
+    name: Norway
+    note: "Consent is needed for a personal address. A generic role address may be emailed with an opt-out."
+    name_pl: Norwegia
+    note_pl: "Na adres osobisty potrzebna zgoda. Na ogólny adres działu można pisać z możliwością wypisania się."
+    sources: [https://res.cloudinary.com/fieldfisher/image/upload/v1706627634/PDFs/EU_e-marketing_requirements_-_January_2024_lqpl6s.pdf]
+# Local parts that mark a generic role address (compared without case, before the @).
+generic_local_parts: [info, contact, hello, sales, office, kontakt, biuro, post, mail, enquiries, inquiries, team, admin, procurement, purchasing, einkauf, zakupy, inkop, innkjop]

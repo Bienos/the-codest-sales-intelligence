@@ -179,18 +179,20 @@ deadlines:
     short_pl: "AI Act: AI wysokiego ryzyka"
     regulation: "EU AI Act"
     date: 2027-12-02
-    certainty: provisional
+    certainty: adopted
     countries: eu
     kinds: [bank, insurer]
     applies_to: "Banks and insurers that use AI to score creditworthiness or to price life and health insurance"
     applies_to_pl: "Banki i ubezpieczyciele, którzy używają AI do oceny zdolności kredytowej lub wyceny ubezpieczeń na życie i zdrowotnych"
-    must: "meet the AI Act rules for high-risk AI systems"
-    must_pl: "spełnić wymogi AI Act dla systemów AI wysokiego ryzyka"
+    must: "meet the AI Act rules for high-risk AI in any system that scores creditworthiness or prices life and health insurance"
+    must_pl: "spełnić wymogi AI Act dla AI wysokiego ryzyka w każdym systemie, który ocenia zdolność kredytową lub wycenia ubezpieczenia na życie i zdrowotne"
     ask_for: "Head of data and AI"
     ask_for_pl: "Szef danych i AI"
-    note: "A political deal of 7 May 2026 moved this date. AI built into products moves to 2 August 2028. If the deal was not formally adopted before 2 August 2026, the original timeline applies. Check whether it was adopted."
-    note_pl: "Porozumienie polityczne z 7 maja 2026 przesunęło tę datę. AI wbudowana w produkty: 2 sierpnia 2028. Jeśli porozumienia nie przyjęto formalnie przed 2 sierpnia 2026, obowiązuje pierwotny harmonogram. Sprawdź, czy zostało przyjęte."
+    note: "Law since 27 July 2026: the Digital Omnibus on AI (Regulation (EU) 2026/1744, published 24 July 2026) moved this date from 2 August 2026. AI built into products moves to 2 August 2028. It only matters where they use AI for these decisions: ask first."
+    note_pl: "Prawo od 27 lipca 2026: Digital Omnibus on AI (rozporządzenie (UE) 2026/1744, opublikowane 24 lipca 2026) przesunął tę datę z 2 sierpnia 2026. AI wbudowana w produkty: 2 sierpnia 2028. Ma znaczenie tylko tam, gdzie używają AI do takich decyzji: najpierw zapytaj."
     sources:
+      - https://www.whitecase.com/insight-alert/eu-ai-omnibus-enters-force-amending-ai-act
+      - https://www.lewissilkin.com/en/insights/2026/07/27/the-digital-omnibus-on-ai-enters-into-force-today-102nedo
       - https://www.pinsentmasons.com/out-law/news/rules-high-risk-ai-delayed-under-eu-omnibus-deal
 
   - id: psd3-psr

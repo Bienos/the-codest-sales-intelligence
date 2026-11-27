@@ -129,6 +129,45 @@ rules:
     commercial_questions: ["Is the role open to supplier/agency engagement or direct freelancers only?", "What is the named system and programme?"]
     related_play: SP-01
     buyer_roles: [engineering_director, delivery_director]
+  - id: CAP-03
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [job_hard_to_fill]
+    source_tiers: [S2]
+    required_fields: [title]
+    # made by the daily lane hard_to_fill_roles (src/ri/signals/hiring.py) from stored job ads: still listed after 60+ days, or posted again after an earlier ad closed
+    match: {all: [{attr: open_status, eq: open}, {any: [{attr: days_open, gte: 60}, {attr: reposted, is_true: true}]}]}
+    exclusions: [{attr: title, contains_any: [intern, internship, working student, werkstudent, trainee, praktikum, talent pool, talent community, open application, general application, spontaneous application, initiativbewerbung]}]
+    demand_tier: D3
+    strength: 1
+    min_verification: verified
+    expiry: {mode: vacancy_closure, days: 30}
+    reason_code: hard_to_fill_role
+    commercial_questions: ["Is the role still unfilled because the skill is scarce, or because the budget or scope changed?", "Would they take an external engineer for it while they keep looking?"]
+    related_play: SP-01
+    buyer_roles: [engineering_manager, engineering_director]
+    negative_rules: [NEG-02]
+  - id: CAP-04
+    version: 1.0.0
+    status: active
+    kind: cluster
+    required_event_types: [engineering_job_opened, contractor_job_opened]
+    source_tiers: [S2]
+    required_fields: [title]
+    # the stacks where we hold proof (rules/codest_capabilities.yaml); one ad alone is weak, so it takes two at one company within 45 days
+    match: {all: [{attr: open_status, eq: open}, {any: [{attr: tech_keywords, contains_any: [ruby on rails, rails, python, java, react, vue, typescript, aws]}, {attr: title, contains_any: [ruby, rails, python, java, react, vue, typescript, aws]}]}]}
+    exclusions: [{attr: title, contains_any: [intern, internship, working student, werkstudent, trainee, praktikum]}]
+    cluster: {group_by: [subject_org_id], min_count: 2, window_days: 45, count_matching: true}
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 45}
+    reason_code: hiring_in_our_stack
+    commercial_questions: ["Which team and product are the roles for?", "Would engineers who already work in this stack shorten the wait for hires?"]
+    related_play: SP-01
+    buyer_roles: [engineering_director, discipline_lead]
+    negative_rules: [NEG-02]
   - id: CAP-05
     version: 1.0.0
     status: active
@@ -146,6 +185,24 @@ rules:
     commercial_questions: ["Is the AI work tied to a named product?", "Is delivery in-house or partner-led?"]
     related_play: SP-07
     buyer_roles: [ai_owner, engineering_director]
+    negative_rules: [NEG-02]
+  - id: CAP-06
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [engineering_job_opened, contractor_job_opened]
+    source_tiers: [S2]
+    required_fields: [title]
+    match: {all: [{any: [{attr: title, contains_any: [test automation, qa automation, automation tester, sdet, qa engineer, quality engineer, quality assurance engineer, test engineer, software tester, site reliability, sre, performance engineer, release engineer, release manager, testautomatisierung, tester]}, {attr: tech_keywords, contains_any: [sre, test automation, playwright, selenium]}]}, {attr: open_status, eq: open}]}
+    exclusions: [{attr: title, contains_any: [intern, internship, working student, werkstudent, trainee, praktikum, manual tester, penetration tester]}]
+    demand_tier: D3
+    strength: 1
+    min_verification: verified
+    expiry: {mode: vacancy_closure, days: 45}
+    reason_code: quality_or_reliability_roles
+    commercial_questions: ["Is release quality or reliability the problem behind the role?", "Would a QA or test-automation team that owns the regression suite help sooner than a hire?"]
+    related_play: SP-01
+    buyer_roles: [quality_lead, platform_lead]
     negative_rules: [NEG-02]
   - id: PRG-01
     version: 1.0.0

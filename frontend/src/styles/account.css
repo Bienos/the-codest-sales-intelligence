@@ -687,3 +687,6 @@ a.ac-cite:hover { border-color: var(--purple); color: var(--navy); background: v
   .ac-pages li { padding: 2px 0; }
   .ac-pages a { display: inline-block; padding: 10px 0; }
 }
+
+/* Held back by the country's email rules (rules/email_rules.yaml) */
+.callout.warn { border-left-color: var(--orange); background: var(--tint-3); color: var(--navy); }

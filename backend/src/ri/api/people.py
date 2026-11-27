@@ -7,12 +7,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 
 from ..access import Principal, org_scope_sql
 from ..audit import audit
 from ..db import q1, qa
 from ..jobs.queue import enqueue
 from ..market import region_for
+from ..outbound import email_rules
 from ..people import SYSTEM_LABEL, email_state, engagement
 from ..signals.seller import leading_signals
 from .auth import require
@@ -130,6 +132,10 @@ def _filter(rows, *, source: str, email: str, eng: str, region: str, signal: str
     return out
 
 
+class ConsentIn(BaseModel):
+    note: str = Field(min_length=3, max_length=500)       # how and when the person agreed, in the seller's words
+
+
 def register_people(app: FastAPI) -> None:
     def tx(request: Request):
         return request.app.state.db.tx()
@@ -211,3 +217,43 @@ def register_people(app: FastAPI) -> None:
                              "LEFT JOIN signal_campaigns sc ON sc.id=oe.signal_campaign_id WHERE oe.person_id=%s ORDER BY oe.created_at DESC", (pid,))
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=pid, detail={})
             return {"sources": [{**s, "label": SYSTEM_LABEL.get(s["system"], s["system"])} for s in sources], "activity": activity, "enrolments": enrol}
+
+    def _consent_target(conn, p: Principal, pid: str) -> dict[str, Any]:
+        """The person and their company's country, when the person is in the caller's scope (404 otherwise, never a hint that they exist)."""
+        where, params = org_scope_sql(p, "e.organization_id")
+        r = q1(conn, f"""SELECT pe.id, pe.work_email, pe.email_consent_at, pe.email_consent_by, pe.email_consent_note, o.country_code
+                         FROM people pe JOIN employment e ON e.person_id=pe.id JOIN organizations o ON o.id=e.organization_id
+                         WHERE pe.id::text=%s AND pe.erased_at IS NULL AND ({where}) ORDER BY o.in_master_list DESC LIMIT 1""", [pid, *params])   # noqa: S608
+        if not r:
+            raise HTTPException(404, "not found")
+        return r
+
+    def _rule_view(r: dict[str, Any]) -> dict[str, Any]:
+        ok, why = email_rules.check(r["country_code"], r["work_email"], r["email_consent_at"])
+        consent = {"at": r["email_consent_at"], "by": r["email_consent_by"], "note": r["email_consent_note"]} if r["email_consent_at"] else None
+        return {"rule": email_rules.rule_for(r["country_code"]), "may_email": ok, "reason": why, "consent": consent,
+                "generic_address": email_rules.is_generic(r["work_email"])}
+
+    @app.get("/api/people/{pid}/email-rule")
+    def email_rule(pid: str, request: Request, p: Principal = Depends(require("contacts.read"))):
+        """May we cold email this person: the country rule for their company, and any consent recorded. The address itself is never returned."""
+        with tx(request) as conn:
+            return _rule_view(_consent_target(conn, p, pid))
+
+    @app.post("/api/people/{pid}/email-consent")
+    def record_consent(pid: str, body: ConsentIn, request: Request, p: Principal = Depends(require("draft.create"))):
+        with tx(request) as conn:
+            _consent_target(conn, p, pid)
+            conn.execute("UPDATE people SET email_consent_at=now(), email_consent_by=%s, email_consent_note=%s WHERE id=%s", (p.email, body.note.strip(), pid))
+            audit(conn, actor=p.email, operation="email_consent_recorded", record_type="person", record_id=pid, detail={"note": body.note.strip()[:500]})
+            return _rule_view(_consent_target(conn, p, pid))
+
+    @app.delete("/api/people/{pid}/email-consent")
+    def withdraw_consent(pid: str, request: Request, p: Principal = Depends(require("draft.create"))):
+        with tx(request) as conn:
+            r = _consent_target(conn, p, pid)
+            if r["email_consent_at"]:
+                conn.execute("UPDATE people SET email_consent_at=NULL, email_consent_by=%s, email_consent_note=%s WHERE id=%s",
+                             (p.email, f"Withdrawn on {datetime.now(timezone.utc):%Y-%m-%d}.", pid))
+                audit(conn, actor=p.email, operation="email_consent_withdrawn", record_type="person", record_id=pid, detail={})
+            return _rule_view(_consent_target(conn, p, pid))

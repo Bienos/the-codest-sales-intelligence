@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { Err, humanize, Skeleton, reloadPage, Strength, Tabs } from "../components/ui";
 import Library, { Dot, LEmpty, LFacts, LFilter, LGroup, LRow, shortUrl, TIERS } from "./Library";
+import { reasonLabel } from "../components/Feedback";
 
 type Tab = "signals" | "sources" | "urls";
 
@@ -19,6 +20,12 @@ function Signals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null);
   const dq = useDebounced(q);
   useEffect(() => { api(`/api/library/signals?q=${encodeURIComponent(dq)}&group=${encodeURIComponent(group)}&status=${status}`).then(setD).catch(setErr); }, [dq, group, status]);
+  const [votes, setVotes] = useState<any[]>([]);
+  useEffect(() => { api("/api/feedback/by-rule?days=90").then((r) => setVotes(r.items ?? [])).catch(() => setVotes([])); }, []);
+  const byRule = new Map<string, any>(votes.filter((v) => v.rule_id).map((v) => [v.rule_id, v]));
+  /** "3 of 4 found it useful. Against: out of date (1)." for one rule or kind of item. */
+  const said = (v: any) => [tr("{} of {} found it useful", number(v.useful), number(v.votes)),
+    ...(Object.keys(v.reasons ?? {}).length ? [tr("Against: {}", Object.entries(v.reasons).sort((x: any, y: any) => y[1] - x[1]).map(([k, n]) => `${reasonLabel(k).toLowerCase()} (${n})`).join(", "))] : [])].join(". ") + ".";
   if (err) return <Err e={err} onRetry={reloadPage} />;
   if (!d) return <Skeleton />;
   const groups = (d.groups as string[]).map((g) => [g, d.items.filter((s: any) => s.grp === g)] as [string, any[]]).filter(([, l]) => l.length);
@@ -29,6 +36,11 @@ function Signals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
         { label: "Signal group", value: group, onChange: setGroup, options: [["", tr("Every group")], ...d.groups.map((g: string) => [g, tr(g)] as [string, string])] },
         { label: "Status", value: status, onChange: setStatus, options: [["", tr("Any status")], ["active", tr("On: detected automatically")], ["defined_not_activated", tr("Not yet on")]] },
       ]} />
+      {votes.length > 0 && <section className="lfeedback" aria-labelledby="lfb-h">
+        <h3 id="lfb-h">{tr("What sellers said, last 90 days")}</h3>
+        <p className="small muted mt-0">{tr("From the Was this useful? answers on Today and Buying signals. Replies and meetings count for more than these answers.")}</p>
+        <ul className="tight small">{votes.slice(0, 12).map((v) => <li key={v.key}><b>{v.rule_id ? `${v.rule_id} ${v.name ?? ""}` : tr(v.name)}</b>: {said(v)}</li>)}</ul>
+      </section>}
       {d.items.length === 0 && <LEmpty>{tr("No signals match these filters.")}</LEmpty>}
       {groups.map(([g, list]) => (
         <LGroup key={g} title={g} count={list.length} cols={["Signal", "Strength", "Status", "Stays relevant"]}>
@@ -43,6 +55,7 @@ function Signals({ q, setQ }: { q: string; setQ: (v: string) => void }) {
                 ["What cancels it", s.stop_effect],
                 ["Stays relevant for", <>{tr("{} days", s.fresh_for_days)}{s.window_note ? `. ${s.window_note}` : ""}</>],
                 ["Comes from", s.fed_by?.length ? s.fed_by.map((f: string) => <span key={f} className="pill">{f}</span>) : <span className="muted">{tr("No source connected yet")}</span>],
+                ["What sellers said", byRule.get(s.rule_id) ? said(byRule.get(s.rule_id)) : <span className="muted">{tr("No answers yet")}</span>],
               ]} />
             </LRow>))}
         </LGroup>))}

@@ -1,6 +1,6 @@
 # How the platform works, and what runs by itself
 
-Updated 26 Nov 2026. The live version of the source and task tables below is **Administration, Sources & data, Data health**, which reads real figures.
+Updated 27 Nov 2026. The live version of the source and task tables below is **Administration, Sources & data, Data health**, which reads real figures.
 
 ## The flow in one line
 **A source or workbook, then a page is read, then a quoted claim, then a verified finding, then a buying signal, then a programme, then seven gates, then an opportunity card on Today, then a draft that a second person approves.**
@@ -35,11 +35,19 @@ Rules for every page: robots.txt and AI content signals are obeyed, no login is 
 | Web search | Once a day, when the Exa key and a monthly cap are set | Yes |
 | Read a page, keep only quoted claims | Every source run and page check | Yes |
 | Finding, signal, programme, card, score | Every verified finding, straight away | Yes |
+| Find hard-to-fill roles | Scheduler, once a day: engineering ads at our accounts still open after 60 days, or posted again after an earlier ad for the same role closed (rule CAP-03) | Yes |
 | Expire old signals, move programmes on | Scheduler | Yes |
 | Daily digest to Slack | Scheduler, only if a Slack webhook is set | If set |
 | Import the workbooks | A person uploads them, or Google Sheets sync | Manual unless sync is set up |
 | Send an email | Nothing. The platform never sends | Never |
+| Add someone to a Lemlist campaign | A seller, then a second person approves. The country email rules are checked when it is requested and again just before the push | Never by itself |
 | Approve a draft | A second person | Always a person |
+
+## Email rules by country
+Before anyone is added to a Lemlist campaign, the company's country is checked against `backend/rules/email_rules.yaml`. Cold email is allowed with an opt-out in the UK and Sweden. Germany, Austria, Switzerland, Denmark, the Netherlands and Poland need the person's prior consent, and Finland and Norway need it for a personal address. A seller records consent on the person's page, with how and when it was given. A country the file does not list, or a company with no country, is held back until it is added. The file is a summary of public guidance, not legal advice: sales leadership changes it after counsel confirms. Replies to someone who wrote to us are not checked.
+
+## Was this useful?
+Every buying signal and tender on Today and Buying signals has "Was this useful?" under its evidence. "No" asks why (wrong company, out of date, not our kind of work, job ad not real, already talking to them, no real need). The answer never hides the item. Library, Signals shows per rule how often sellers found it useful and the reasons against it, for tuning the rules. Replies and meetings count for more than these answers.
 
 ## Limits on the parts that cost money
 - **Exa: $20 a month.** Automatic searches stop at 60% of it ($12). The rest is kept for sellers pressing "Research with Exa", so those buttons always work.
