@@ -133,3 +133,21 @@ def test_people_without_either_page_get_nothing(api, conn):
     conn.commit()
     c, h = api["c"], api["h"]
     assert get(c, "marketing", h, "2027-01-01", "2027-01-31").status_code == 403
+
+
+def test_each_deadline_has_a_short_label_for_the_month_grid(api):
+    """The grid shows a deadline as a small pill ("IPR: send + VoP"): every deadline carries one in both languages, on both endpoints."""
+    from ri import regulatory_calendar as rc
+    c, h = api["c"], api["h"]
+    dl = get(c, "admin", h, "2027-07-01", "2027-07-31", layers="regulatory").json()["days"][0]["items"][0]
+    assert dl["id"] == "ipr-non-euro-send" and dl["short"] == "IPR: send + VoP" and dl["short_pl"] == "IPR: wysyłka + weryfikacja"
+    every = c.get("/api/regulatory-calendar", headers=h("admin")).json()["items"]
+    assert len(every) >= 8 and all(0 < len(i["short"]) <= rc.SHORT_MAX and 0 < len(i["short_pl"]) <= rc.SHORT_MAX for i in every)
+    # an entry without its own label gets the regulation's abbreviation and its title; a label that is too long is an error
+    base = {"groups": {"eu": ["DE"]}, "kinds": {"bank": {"label": "bank", "segments": ["Banking"]}}}
+    ok = {"id": "x-rule", "title": "Pay faster", "title_pl": "Płać szybciej", "regulation": "Faster Payments Act (FPA)", "date": "2027-01-01",
+          "certainty": "adopted", "countries": "eu", "kinds": ["bank"], "applies_to": "Banks", "must": "do x", "sources": ["https://example.org/x"]}
+    assert rc.short_label(rc.parse({**base, "deadlines": [ok]}).deadlines[0]) == ("FPA: Pay faster", "FPA: Płać szybciej")
+    assert rc.short_label(rc.parse({**base, "deadlines": [{**ok, "regulation": "Faster Payments Act"}]}).deadlines[0]) == ("Pay faster", "Płać szybciej")
+    with pytest.raises(ValueError, match="x-rule"):
+        rc.parse({**base, "deadlines": [{**ok, "short": "A label far too long for one small pill in a grid"}]})

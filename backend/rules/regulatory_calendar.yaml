@@ -4,6 +4,8 @@
 # Each entry:
 #   id           short stable name (lower case, digits and dashes). Used in event keys ("deadline:<id>:<company id>"): never rename one.
 #   title        plain name of the deadline (title_pl: the Polish name)
+#   short        optional label of at most 32 characters for the month grid, e.g. "IPR: send + VoP" (short_pl: the Polish label);
+#                without one the page uses the regulation's abbreviation and the title
 #   regulation   the law it comes from, as a seller would say it
 #   date         ISO date. approximate: true when the law does not fix the day yet (the page then shows "about <year>")
 #   certainty    adopted     = in force law with a fixed date: pinned to our accounts and can reach Today
@@ -47,6 +49,8 @@ deadlines:
   - id: ipr-vop-euro
     title: "Verification of payee in the euro area"
     title_pl: "Weryfikacja odbiorcy w strefie euro"
+    short: "IPR: payee check (euro)"
+    short_pl: "IPR: weryfikacja odbiorcy €"
     regulation: "Instant Payments Regulation (IPR)"
     date: 2025-10-09
     certainty: adopted
@@ -66,6 +70,8 @@ deadlines:
   - id: ipr-non-euro-receive
     title: "Instant euro payments: receive them (EU countries outside the euro)"
     title_pl: "Natychmiastowe przelewy w euro: odbiór (kraje UE spoza strefy euro)"
+    short: "IPR: receive instant €"
+    short_pl: "IPR: odbiór przelewów €"
     regulation: "Instant Payments Regulation (IPR)"
     date: 2027-01-09
     certainty: adopted
@@ -86,6 +92,8 @@ deadlines:
   - id: ipr-pi-emi
     title: "Instant euro payments: payment and e-money institutions"
     title_pl: "Natychmiastowe przelewy w euro: instytucje płatnicze i pieniądza elektronicznego"
+    short: "IPR: payment firms"
+    short_pl: "IPR: firmy płatnicze"
     regulation: "Instant Payments Regulation (IPR)"
     date: 2027-04-09
     certainty: adopted
@@ -105,6 +113,8 @@ deadlines:
   - id: ipr-non-euro-send
     title: "Instant euro payments: send them and check the payee (EU countries outside the euro)"
     title_pl: "Natychmiastowe przelewy w euro: wysyłka i weryfikacja odbiorcy (kraje UE spoza strefy euro)"
+    short: "IPR: send + VoP"
+    short_pl: "IPR: wysyłka + weryfikacja"
     regulation: "Instant Payments Regulation (IPR)"
     date: 2027-07-09
     certainty: adopted
@@ -123,6 +133,8 @@ deadlines:
   - id: amlr
     title: "New EU anti-money-laundering rulebook"
     title_pl: "Nowe unijne przepisy przeciw praniu pieniędzy"
+    short: "AMLR rulebook"
+    short_pl: "AMLR: nowe zasady"
     regulation: "Anti-Money Laundering Regulation (AMLR)"
     date: 2027-07-10
     certainty: adopted
@@ -142,6 +154,8 @@ deadlines:
   - id: eudi-wallet
     title: "Accept the EU Digital Identity Wallet"
     title_pl: "Akceptacja europejskiego portfela tożsamości cyfrowej"
+    short: "EUDI wallet"
+    short_pl: "Portfel EUDI"
     regulation: "EU Digital Identity Wallet rules (EUDI)"
     date: 2027-12-24
     certainty: adopted
@@ -161,6 +175,8 @@ deadlines:
   - id: ai-act-high-risk
     title: "AI Act: rules for high-risk AI (credit scoring, insurance pricing)"
     title_pl: "AI Act: zasady dla AI wysokiego ryzyka (ocena zdolności kredytowej, wycena ubezpieczeń)"
+    short: "AI Act: high-risk AI"
+    short_pl: "AI Act: AI wysokiego ryzyka"
     regulation: "EU AI Act"
     date: 2027-12-02
     certainty: provisional
@@ -180,6 +196,8 @@ deadlines:
   - id: psd3-psr
     title: "PSD3 and the Payment Services Regulation"
     title_pl: "PSD3 i rozporządzenie o usługach płatniczych (PSR)"
+    short: "PSD3 and PSR"
+    short_pl: "PSD3 i PSR"
     regulation: "PSD3 and Payment Services Regulation (PSR)"
     date: 2028-06-30
     approximate: true

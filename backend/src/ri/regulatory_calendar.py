@@ -49,6 +49,7 @@ PIN_MONTHS = 18            # adopted deadlines within this many months are pinne
 MIN_DAYS_LEFT = 2          # a deadline is unpinned the day before it: a daily lane then never leaves it showing as news once it has passed
 RUN_LIMIT = 800            # new or changed events written per run (each goes through the event checks); the rest follow at the next tick
 SAMPLE = 6                 # account names shown per deadline on the calendar
+SHORT_MAX = 32             # characters in a deadline's short label (the Calendar page's month grid)
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,60}$")
 _ISO2 = re.compile(r"^[A-Z]{2}$")
 
@@ -102,6 +103,8 @@ class Deadline:
     ask_for: str = ""
     ask_for_pl: str = ""
     groups: tuple[str, ...] = field(default_factory=tuple)      # the country groups it was written with ("eu"), for the page
+    short: str = ""                                              # the month grid's label ("IPR: send + VoP"); see short_label()
+    short_pl: str = ""
 
     def days_left(self, today: date) -> int:
         return (self.date - today).days
@@ -187,12 +190,15 @@ def parse(raw: dict[str, Any]) -> Calendar:
         for f in ("title", "regulation", "applies_to", "must"):
             if not _text(e.get(f)):
                 raise ValueError(f"regulatory calendar: {did} has no {f}")
+        if any(len(_text(e.get(f))) > SHORT_MAX for f in ("short", "short_pl")):
+            raise ValueError(f"regulatory calendar: {did} short label is longer than {SHORT_MAX} characters")
         out.append(Deadline(
             id=did, title=_text(e["title"]), title_pl=_text(e.get("title_pl") or e["title"]), regulation=_text(e["regulation"]), date=when,
             certainty=certainty, countries=frozenset(countries), kinds=dk, applies_to=_text(e["applies_to"]),
             applies_to_pl=_text(e.get("applies_to_pl") or e["applies_to"]), must=_text(e["must"]).rstrip("."), must_pl=_text(e.get("must_pl") or e["must"]).rstrip("."),
             sources=sources, approximate=bool(e.get("approximate")), note=_text(e.get("note")), note_pl=_text(e.get("note_pl") or e.get("note")),
-            ask_for=_text(e.get("ask_for")), ask_for_pl=_text(e.get("ask_for_pl") or e.get("ask_for")), groups=tuple(used_groups)))
+            ask_for=_text(e.get("ask_for")), ask_for_pl=_text(e.get("ask_for_pl") or e.get("ask_for")), groups=tuple(used_groups),
+            short=_text(e.get("short")), short_pl=_text(e.get("short_pl") or e.get("short"))))
     out.sort(key=lambda d: (d.date, d.id))
     skip = tuple((re.compile(str(x["names"]), re.I), _text(x["reason"]), _text(x.get("reason_pl") or x["reason"])) for x in raw.get("not_covered") or [])
     return Calendar(tuple(out), kinds, skip)
@@ -363,10 +369,20 @@ def pin(conn: Conn, now: datetime | None = None, *, limit: int = RUN_LIMIT, cal:
 
 # ------------------------------------------------------------------ what the pages read
 
+def short_label(d: Deadline) -> tuple[str, str]:
+    """The month grid's label: the file's own ``short``, else the regulation's abbreviation and the title ("IPR: Instant euro payments...")."""
+    if d.short:
+        return d.short, d.short_pl or d.short
+    abbr = re.findall(r"\(([^()]{2,12})\)", d.regulation)
+    return (f"{abbr[-1]}: {d.title}", f"{abbr[-1]}: {d.title_pl}") if abbr else (d.title, d.title_pl)
+
+
 def _deadline_json(d: Deadline, today: date) -> dict[str, Any]:
     left = d.days_left(today)
+    short, short_pl = short_label(d)
     return {
-        "id": d.id, "title": d.title, "title_pl": d.title_pl, "regulation": d.regulation, "date": d.date.isoformat(), "year": d.date.year,
+        "id": d.id, "title": d.title, "title_pl": d.title_pl, "short": short, "short_pl": short_pl, "regulation": d.regulation,
+        "date": d.date.isoformat(), "year": d.date.year,
         "approximate": d.approximate, "certainty": d.certainty, "past": left < 0, "days_left": left, "pinned": d.pinnable(today),
         "countries": sorted(d.countries), "country_groups": list(d.groups), "kinds": list(d.kinds), "applies_to": d.applies_to,
         "applies_to_pl": d.applies_to_pl, "must": d.must, "must_pl": d.must_pl,

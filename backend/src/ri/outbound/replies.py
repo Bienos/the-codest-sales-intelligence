@@ -42,6 +42,7 @@ from .email_text import (  # noqa: F401
     strip_history,
     tidy,
 )
+from . import signature as sig
 from .lemlist import LemlistError
 
 log = logging.getLogger(__name__)
@@ -354,7 +355,7 @@ def blocked_code(conn: Conn, r: dict[str, Any], person: dict[str, Any]) -> str |
     return None
 
 
-_ACT_COLS = ("la.id, la.type, la.person_id, la.campaign_id, la.campaign_name, la.happened_at, la.subject, la.body_text, la.body_source, la.body_attempts, "
+_ACT_COLS = ("la.id, la.type, la.person_id, la.email, la.campaign_id, la.campaign_name, la.happened_at, la.subject, la.body_text, la.body_source, la.body_attempts, "
              "la.lemlist_team_id, la.lemlist_contact_id, la.lemlist_lead_id, la.send_user_id, la.send_user_email, la.send_user_mailbox_id, la.send_user_name, "
              "la.sequence_step, la.step_id, la.body_clean_version, la.body_text_original, la.body_raw_format, "
              f"CASE WHEN coalesce(la.body_clean_version, 0) < {CLEAN_VERSION} THEN la.body_raw END AS body_raw")   # the original only when it is needed
@@ -380,6 +381,8 @@ def _reply_view(conn: Conn, r: dict[str, Any], person: dict[str, Any]) -> dict[s
     return {"activity_id": r["id"], "at": r["happened_at"], "campaign": r.get("campaign_name"), "subject": r.get("subject"),
             "text": words(r), "text_state": _text_state(r), "lemlist_url": lemlist_url(team, contact),
             "sender": {"name": sender.get("name"), "email": sender["email"]} if sender else None,
+            # who the answer goes to: the address that wrote to us (Lemlist answers the contact of this thread), else the one we hold
+            "to": {"name": person.get("full_name"), "email": _email(r.get("email")) or _email(person.get("work_email"))},
             "blocked": blocked_code(conn, r, person),
             "answered": {"status": answered["status"], "at": answered["sent_at"] or answered["created_at"], "by": answered["created_by"]} if answered else None}
 
@@ -400,6 +403,11 @@ def _same(a: str | None, b: str | None) -> bool:
     return bool(norm(a)) and norm(a) == norm(b)
 
 
+def _ours(a: str | None, o: dict[str, Any]) -> bool:
+    """An email Lemlist sent back is our own answer from here: the same words, with or without the signature appended to them."""
+    return _same(a, o.get("body_text")) or bool(o.get("signature_text")) and _same(a, sig.full_text(o.get("body_text"), o.get("signature_text")))
+
+
 def step_fields(a: dict[str, Any]) -> tuple[int | None, str | None]:
     """(sequenceStep as Lemlist sends it, counted from 0; stepId) of an activity, for storing with any activity type."""
     return _step(a.get("sequenceStep")), _id(a.get("stepId"))
@@ -414,6 +422,20 @@ def _campaign_names(conn: Conn, acts: list[dict[str, Any]]) -> dict[str, str]:
                           "ORDER BY campaign_id, happened_at DESC NULLS LAST", (missing,)):
             names[str(r["campaign_id"])] = r["campaign_name"]
     return names
+
+
+def _step_totals(conn: Conn, campaign_ids: list[str]) -> dict[str, int]:
+    """How many emails each campaign's sequence has, as far as we know: the steps of a campaign started from this app, else the furthest
+    step Lemlist has sent anyone in it. Used for "Step 2 of 3"; a campaign we know nothing more about shows "Step 2"."""
+    ids = list(dict.fromkeys(c for c in campaign_ids if c))
+    if not ids:
+        return {}
+    out = {str(r["campaign_id"]): int(r["n"]) + 1 for r in qa(conn, "SELECT campaign_id, max(sequence_step) AS n FROM lemlist_activities WHERE type='emailsSent' "
+                                                                  "AND sequence_step IS NOT NULL AND campaign_id = ANY(%s) GROUP BY 1", (ids,))}
+    for r in qa(conn, "SELECT lemlist_campaign_id AS c, jsonb_array_length(steps) AS n FROM signal_campaigns WHERE lemlist_campaign_id = ANY(%s) "
+                      "AND jsonb_typeof(steps) = 'array'", (ids,)):
+        out[str(r["c"])] = max(out.get(str(r["c"]), 0), int(r["n"] or 0))
+    return {k: v for k, v in out.items() if v > 0}
 
 
 def _engagement(sent: list[dict[str, Any]], events: list[dict[str, Any]]) -> None:
@@ -467,26 +489,30 @@ def thread(conn: Conn, person: dict[str, Any]) -> dict[str, Any]:
                                   "ORDER BY la.happened_at DESC NULLS LAST LIMIT %s", (pid, THREAD_LIMIT))))           # noqa: S608
     events = qa(conn, "SELECT type, campaign_id, happened_at, sequence_step, step_id FROM lemlist_activities WHERE person_id=%s AND type = ANY(%s) "
                       "ORDER BY happened_at NULLS FIRST LIMIT 2000", (pid, list(ENGAGEMENT)))
-    ours = qa(conn, "SELECT r.id, r.reply_to_activity_id, r.body_text, r.status, r.error, r.created_by, r.created_at, r.sent_at, r.send_user_email, "
-                    "u.display_name AS by_name, la.subject AS re_subject FROM lemlist_replies r LEFT JOIN users u ON lower(u.email)=lower(r.created_by) "
-                    "LEFT JOIN lemlist_activities la ON la.id=r.reply_to_activity_id WHERE r.person_id=%s ORDER BY r.created_at DESC LIMIT 30", (pid,))
+    ours = qa(conn, "SELECT r.id, r.reply_to_activity_id, r.body_text, r.signature_text, r.status, r.error, r.created_by, r.created_at, r.sent_at, "
+                    "r.send_user_email, la.send_user_name AS mailbox_name, u.display_name AS by_name, la.subject AS re_subject FROM lemlist_replies r "
+                    "LEFT JOIN users u ON lower(u.email)=lower(r.created_by) LEFT JOIN lemlist_activities la ON la.id=r.reply_to_activity_id "
+                    "WHERE r.person_id=%s ORDER BY r.created_at DESC LIMIT 30", (pid,))
     names = _campaign_names(conn, acts)
+    totals = _step_totals(conn, [str(a["campaign_id"]) for a in acts if a.get("campaign_id")])
     name = person.get("full_name")
     items: list[dict[str, Any]] = []
     for o in ours:
         items.append({"id": str(o["id"]), "kind": "answer", "via": "app", "at": o["sent_at"] or o["created_at"], "subject": o["re_subject"],
-                      "text": o["body_text"], "text_state": "full", "status": o["status"], "error": o["error"] if o["status"] in ("failed", "unknown") else None,
-                      "by": o["created_by"], "by_name": o["by_name"], "from": {"name": o["by_name"], "email": o["send_user_email"]}, "to": {"name": name},
+                      "text": o["body_text"], "signature": o["signature_text"], "text_state": "full", "status": o["status"],
+                      "error": o["error"] if o["status"] in ("failed", "unknown") else None, "by": o["created_by"], "by_name": o["by_name"],
+                      "from": {"name": o["mailbox_name"] or o["by_name"], "email": o["send_user_email"]}, "to": {"name": name},
                       "reply_to": o["reply_to_activity_id"]})
     sent: list[dict[str, Any]] = []
     for a in acts:
         mine = a["type"] == SENT
-        if mine and any(_same(a.get("body_text"), o["body_text"]) for o in ours):
+        if mine and any(_ours(a.get("body_text"), o) for o in ours):
             continue                                               # our own answer, read back from the Lemlist inbox: shown once, from our record
         cid = str(a["campaign_id"]) if a.get("campaign_id") else None
         step = a.get("sequence_step")
         item = {"id": a["id"], "kind": "sent" if mine else "reply", "at": a["happened_at"], "campaign": names.get(cid or "") or a.get("campaign_name"),
-                "campaign_id": cid, "step": step + 1 if isinstance(step, int) else None, "subject": a.get("subject"), "text": words(a),
+                "campaign_id": cid, "step": step + 1 if isinstance(step, int) else None, "steps": totals.get(cid or "") if mine else None,
+                "subject": a.get("subject"), "text": words(a),
                 "text_state": _text_state(a) if not mine else ("full" if a.get("body_text") else "missing")}
         if mine:
             item.update({"via": "campaign" if cid else "lemlist", "from": {"name": a.get("send_user_name"), "email": a.get("send_user_email")}, "to": {"name": name},
@@ -590,7 +616,7 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
         if prior["reply_to_activity_id"] != activity_id:
             raise ReplyError(409, "This draft belongs to another conversation. Reload the page and write it again.")
         if prior["status"] == "sent":
-            return {"status": "sent", "id": str(prior["id"]), "repeat": True, "sent_at": prior["sent_at"]}
+            return {"status": "sent", "id": str(prior["id"]), "repeat": True, "sent_at": prior["sent_at"], "from": prior["send_user_email"]}
         stale = prior["created_at"] < datetime.now(timezone.utc) - timedelta(minutes=5)
         if prior["status"] == "unknown" or (prior["status"] == "sending" and stale):
             raise ReplyError(409, UNKNOWN)
@@ -609,12 +635,14 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
     contact, lead = _contact(conn, r)
     if sender is None or (contact, lead) == (None, None):          # blocked_code has said so already; never send from a guessed mailbox
         raise ReplyError(409, BLOCKED["no_mailbox"])
+    # the footer: this person's signature (or the same suggestion the box showed), once, unless the words already end with it
+    footer = sig.to_add(body, sig.for_user(conn, user_id=user_id, email=actor, person_id=pid)["text"])
     row = conn.execute(
-        "INSERT INTO lemlist_replies(idempotency_key, reply_to_activity_id, person_id, body_text, body_hash, send_user_id, send_user_email, send_user_mailbox_id, "
-        "lemlist_contact_id, lemlist_lead_id, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
-        "ON CONFLICT (idempotency_key) DO UPDATE SET status='sending', error=NULL, body_text=EXCLUDED.body_text, body_hash=EXCLUDED.body_hash, created_at=now() "
-        "WHERE lemlist_replies.status='failed' RETURNING id",
-        (full_key, activity_id, pid, body, digest, sender["user_id"], sender["email"], sender["mailbox_id"], contact, lead, actor)).fetchone()
+        "INSERT INTO lemlist_replies(idempotency_key, reply_to_activity_id, person_id, body_text, body_hash, signature_text, send_user_id, send_user_email, "
+        "send_user_mailbox_id, lemlist_contact_id, lemlist_lead_id, created_by) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+        "ON CONFLICT (idempotency_key) DO UPDATE SET status='sending', error=NULL, body_text=EXCLUDED.body_text, body_hash=EXCLUDED.body_hash, "
+        "signature_text=EXCLUDED.signature_text, created_at=now() WHERE lemlist_replies.status='failed' RETURNING id",
+        (full_key, activity_id, pid, body, digest, footer, sender["user_id"], sender["email"], sender["mailbox_id"], contact, lead, actor)).fetchone()
     if not row:
         raise ReplyError(409, "This reply is being sent. Wait a moment.")
     rid = str(row["id"])
@@ -622,7 +650,8 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
     status, error = "sent", None
     try:
         res = client.send_email(send_user_id=sender["user_id"], send_user_email=sender["email"], send_user_mailbox_id=sender["mailbox_id"],
-                                message_html=to_html(body), reply_to_activity_id=activity_id, contact_id=contact, lead_id=None if contact else lead)
+                                message_html=to_html(body) + (sig.html(footer) if footer else ""), reply_to_activity_id=activity_id,
+                                contact_id=contact, lead_id=None if contact else lead)
         if isinstance(res, dict) and res.get("ok") is False:
             status, error = "failed", "Lemlist did not accept the email, so nothing was sent."
     except LemlistError as exc:
@@ -634,7 +663,8 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
         status, error = "unknown", UNKNOWN
     conn.execute("UPDATE lemlist_replies SET status=%s, error=%s, sent_at=CASE WHEN %s='sent' THEN now() END WHERE id=%s", (status, error, status, rid))
     audit(conn, actor=actor, operation="lemlist_reply_sent" if status == "sent" else "lemlist_reply_failed", record_type="person", record_id=pid,
-          detail={"activity_id": activity_id, "reply_id": rid, "chars": len(body), "status": status, "mailbox_id": sender["mailbox_id"]})
+          detail={"activity_id": activity_id, "reply_id": rid, "chars": len(body), "signature_chars": len(footer or ""), "status": status,
+                  "mailbox_id": sender["mailbox_id"]})
     conn.commit()
     if status != "sent":
         raise ReplyError(502 if status == "unknown" else 409, error or UNKNOWN)
@@ -644,4 +674,5 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
     except Exception:                                              # noqa: BLE001 - the email went out; the hourly sync writes the row
         conn.rollback()
         log.exception("lemlist answer timeline")
-    return {"status": "sent", "id": rid, "repeat": False}
+    sent_at = (q1(conn, "SELECT sent_at FROM lemlist_replies WHERE id=%s", (rid,)) or {}).get("sent_at")
+    return {"status": "sent", "id": rid, "repeat": False, "sent_at": sent_at, "from": sender["email"]}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { counted, getLanguage, number, tr, useLanguage } from "../locale";
@@ -6,15 +6,16 @@ import { Err, Skeleton, reloadPage, safeHref } from "../components/ui";
 import { countryName } from "./targetMarket";
 import "../styles/calendar.css";
 
-/** The deadline calendar: a month view (regulatory deadlines and the closing dates of open tenders from ICP buyers, day by day) and a list
- *  of the regulatory deadlines grouped by year. The regulatory calendar is data in the repository (backend/rules/regulatory_calendar.yaml);
- *  GET /api/regulatory-calendar adds our accounts, GET /api/calendar/events gives the month view its days. */
+/** The deadline calendar: a month view (regulatory deadlines and the closing dates of open tenders from ICP buyers, day by day, with the
+ *  month's agenda beside the grid) and a list of the regulatory deadlines grouped by year. The regulatory calendar is data in the repository
+ *  (backend/rules/regulatory_calendar.yaml); GET /api/regulatory-calendar adds our accounts, GET /api/calendar/events gives the month view
+ *  its days. */
 
 type Certainty = "adopted" | "provisional" | "possible";
 type Account = { id: string; name: string; country: string; kind: string; logo_url?: string | null };
 export type Deadline = {
-  id: string; title: string; title_pl: string; regulation: string; date: string; year: number; approximate: boolean; certainty: Certainty;
-  past: boolean; days_left: number; pinned: boolean; countries: string[]; kinds: string[];
+  id: string; title: string; title_pl: string; short?: string; short_pl?: string; regulation: string; date: string; year: number; approximate: boolean;
+  certainty: Certainty; past: boolean; days_left: number; pinned: boolean; countries: string[]; kinds: string[];
   applies_to: string; applies_to_pl: string; must: string; must_pl: string; say: string; say_pl: string;
   ask_for: string | null; ask_for_pl: string | null; note: string | null; note_pl: string | null; sources: string[];
   accounts?: { count: number; by_kind: Record<string, number>; sample: Account[] };
@@ -58,6 +59,8 @@ export function CertaintyBadge({ d }: { d: Deadline }) {
   const [label, hint] = CERTAINTY[d.certainty];
   return <span className={`rc-badge rc-${d.past ? "past" : d.certainty}`} title={tr(hint)}>{d.past ? tr("In force") : tr(label)}</span>;
 }
+/** The month grid's label: "IPR: send + VoP". */
+const shortOf = (d: Deadline) => pick(d.short || d.title, d.short_pl || d.title_pl);
 
 function Sources({ urls }: { urls: string[] }) {
   const ok = urls.map((u) => [u, safeHref(u)] as const).filter(([, h]) => h);
@@ -66,11 +69,12 @@ function Sources({ urls }: { urls: string[] }) {
     {ok.map(([u, h]) => <a key={u} href={h} target="_blank" rel="noreferrer noopener">{host(u)} ↗</a>)}</p>;
 }
 
+const ACC_WORDS: [[string, string], [string, string, string]] = [["of our target accounts", "of our target accounts"], ["naszej firmy docelowej", "naszych firm docelowych", "naszych firm docelowych"]];
 const accountsLine = (count: number) => (count > 0
-  ? <>{tr("Applies to")} <b>{counted(count, ["of our target accounts", "of our target accounts"], ["naszej firmy docelowej", "naszych firm docelowych", "naszych firm docelowych"])}</b></>
+  ? <>{tr("Applies to")} <b>{counted(count, ...ACC_WORDS)}</b></>
   : tr("None of our target accounts"));
 
-/** What a deadline asks for, who to ask, our accounts it applies to and its sources: the timeline card and the month view's details. */
+/** What a deadline asks for, who to ask, our accounts it applies to and its sources: a card's details. */
 function DeadlineBody({ d, kind, kinds, countShown = false }: { d: Deadline; kind: string; kinds: Record<string, Kind>; countShown?: boolean }) {
   const acc = d.accounts ?? { count: 0, by_kind: {}, sample: [] };
   const count = kind ? acc.by_kind[kind] ?? 0 : acc.count;
@@ -93,28 +97,38 @@ function DeadlineBody({ d, kind, kinds, countShown = false }: { d: Deadline; kin
   </>;
 }
 
-function Item({ d, kind, kinds }: { d: Deadline; kind: string; kinds: Record<string, Kind> }) {
-  return (
-    <li className={`rc-item rc-c-${d.past ? "past" : d.certainty}`}>
-      <div className="rc-when" aria-hidden="true">
-        {d.approximate ? <><b>≈</b><span>{d.year}</span></> : <><b>{fmt(d.date, { day: "numeric" })}</b><span>{fmt(d.date, { month: "short" })}</span></>}
-      </div>
-      <article className="rc-card" aria-labelledby={`rc-${d.id}`}>
-        <div className="rc-top"><CertaintyBadge d={d} /><span className="rc-left">{leftText(d)}</span></div>
-        <h3 id={`rc-${d.id}`}>{pick(d.title, d.title_pl)}</h3>
-        <p className="rc-reg">{d.regulation} · <time dateTime={d.date}>{whenText(d)}</time></p>
-        <DeadlineBody d={d} kind={kind} kinds={kinds} />
-      </article>
-    </li>
-  );
-}
-
-/* ======================================================================================= the page */
+/* ======================================================================================= shared pieces */
 
 type View = "month" | "list";
 const VIEW_KEY = "ri_calendar_view";
 const readView = (): View => { try { return localStorage.getItem(VIEW_KEY) === "list" ? "list" : "month"; } catch { return "month"; } };
 const saveView = (v: View) => { try { localStorage.setItem(VIEW_KEY, v); } catch { /* remembered for this visit only */ } };
+
+const GridGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" /><path d="M1.5 6.5h13M6 6.5v8M10.5 6.5v8M1.5 10.5h13" /></svg>;
+const ListGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M5.5 3.5h9M5.5 8h9M5.5 12.5h9M1.5 3.5h2M1.5 8h2M1.5 12.5h2" /></svg>;
+const Chevron = ({ dir }: { dir: "left" | "right" | "down" }) => (
+  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+    <path d={dir === "left" ? "M10 3 5 8l5 5" : dir === "right" ? "m6 3 5 5-5 5" : "m3.5 6 4.5 4.5L12.5 6"} /></svg>
+);
+const Alert = () => <svg className="ag-alert" viewBox="0 0 14 14" width="14" height="14" aria-hidden="true" focusable="false"><rect x=".5" y=".5" width="13" height="13" /><path d="M7 3v5M7 9.6v1.6" /></svg>;
+
+function ViewToggle({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+  return (
+    <div className="cal-view" role="group" aria-label={tr("View")}>
+      <button type="button" aria-pressed={view === "month"} onClick={() => onChange("month")}><GridGlyph /><span>{tr("Month")}</span></button>
+      <button type="button" aria-pressed={view === "list"} onClick={() => onChange("list")}><ListGlyph /><span>{tr("List")}</span></button>
+    </div>
+  );
+}
+
+/** A number in bold and its noun: "<b>4</b> tender deadlines". */
+function Count({ n, words }: { n: number; words: [[string, string], [string, string, string]] }) {
+  const all = counted(n, ...words);
+  const num = number(n);
+  return <span className="cal-n"><b>{num}</b>{all.slice(num.length)}</span>;
+}
+
+/* ======================================================================================= the page */
 
 export default function Calendar() {
   useLanguage();
@@ -128,27 +142,85 @@ export default function Calendar() {
     setView(v); saveView(v);
     if (params.has("view")) { const next = new URLSearchParams(params); next.delete("view"); setParams(next, { replace: true }); }
   };
+  const toggle = <ViewToggle view={view} onChange={choose} />;
   const head = (
     <div className="page-head rc-head">
-      <div><div className="eyebrow">{tr("Calendar")}</div><h1>{tr("Deadline calendar")}</h1>
-        <p className="sub">{tr("Dates to sell on: EU laws that give banks, payment firms and insurers a fixed date for IT work, and the closing dates of open tenders from buyers in our ICP.")}</p></div>
-      <div className="rc-view" role="group" aria-label={tr("View")}>
-        <button type="button" aria-pressed={view === "month"} onClick={() => choose("month")}><GridGlyph />{tr("Month")}</button>
-        <button type="button" aria-pressed={view === "list"} onClick={() => choose("list")}><ListGlyph />{tr("List")}</button>
-      </div>
+      <div className="eyebrow">{tr("Calendar")}</div><h1>{tr("Deadline calendar")}</h1>
+      <p className="sub">{tr("Dates to sell on: EU laws that give banks, payment firms and insurers a fixed date for IT work, and the closing dates of open tenders from buyers in our ICP.")}</p>
     </div>
   );
   if (err) return <>{head}<Err e={err} onRetry={reloadPage} /></>;
   if (!d) return <div className="rc">{head}<Skeleton label={tr("Loading the deadlines")} /></div>;
-  return <div className={`rc rc-is-${view}`}>{head}{view === "month" ? <MonthView cal={d} /> : <ListView d={d} />}</div>;
+  return <div className={`rc rc-is-${view}`}>{head}{view === "month" ? <MonthView cal={d} toggle={toggle} /> : <ListView d={d} toggle={toggle} />}</div>;
 }
 
-const GridGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="12" /><path d="M1.5 6.5h13M6 6.5v8M10.5 6.5v8M1.5 10.5h13" /></svg>;
-const ListGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M5.5 3.5h9M5.5 8h9M5.5 12.5h9M1.5 3.5h2M1.5 8h2M1.5 12.5h2" /></svg>;
+/* ======================================================================================= cards (the agenda and the list) */
 
-/** The regulatory deadlines as a timeline grouped by year (the page as it was first built). */
-function ListView({ d }: { d: Cal }) {
+/** A day as a block: "30 / Mon" (or "9 / Jan" in the list). Today is filled. */
+function DateBlock({ top, bottom, today = false, approx = false }: { top: ReactNode; bottom: ReactNode; today?: boolean; approx?: boolean }) {
+  return <span className={`ag-date-in${today ? " is-today" : ""}${approx ? " is-approx" : ""}`} aria-hidden="true"><b>{top}</b><span>{bottom}</span></span>;
+}
+
+/** A regulatory deadline as a card: what, when, how many of our accounts, what they must build; the sources and the accounts open in place. */
+function RegCard({ d, kinds, open, onToggle, idKey, kind = "", when }: {
+  d: Deadline; kinds: Record<string, Kind>; open: boolean; onToggle: () => void; idKey: string; kind?: string; when?: string;
+}) {
+  const id = `ag-d-${idKey}`;
+  const acc = d.accounts ?? { count: 0, by_kind: {}, sample: [] };
+  const count = kind ? acc.by_kind[kind] ?? 0 : acc.count;
+  const hollow = !d.past && d.certainty !== "adopted";
+  return (
+    <li className={`ag-card ag-reg${d.past ? " is-past" : ""}${hollow ? " is-unsure" : ""}`}>
+      <p className="ag-top">
+        <span className="ag-type"><Mark layer="regulatory" hollow={hollow} />{tr("Regulatory")}</span>
+        <CertaintyBadge d={d} />
+        <span className="ag-left">{when ?? leftText(d)}</span>
+      </p>
+      <h4>{pick(d.title, d.title_pl)}</h4>
+      <p className="ag-meta">{d.regulation}</p>
+      <p className="ag-must">{tr("They must {}.", pick(d.must, d.must_pl))}</p>
+      <p className="ag-acc">{accountsLine(count)}</p>
+      <button type="button" className="linkish ag-toggle" aria-expanded={open} aria-controls={id} onClick={onToggle}>
+        {open ? tr("Hide the details") : tr("Details and sources")}<Chevron dir="down" /></button>
+      {open && <div className="ag-detail" id={id}><DeadlineBody d={d} kind={kind} kinds={kinds} countShown /></div>}
+    </li>
+  );
+}
+
+/** A tender closing on the day: who is buying, what, where, roughly for how much, how long is left, and where to read it. */
+function TenderCard({ t, today }: { t: TenderItem; today: string }) {
+  const n = daysBetween(today, t.date);
+  const urgent = n < 7;
+  const closes = n <= 0 ? tr("Closes today") : n === 1 ? tr("Closes tomorrow") : tr("Closes in {} days", n);
+  const href = safeHref(tedPage(t.url));
+  const kind = t.kind && BUYER_KIND[t.kind] ? tr(BUYER_KIND[t.kind]) : null;
+  const where = [countryName(t.country), t.value_eur != null ? tr("about {}", euros(t.value_eur)) : null].filter(Boolean).join(" · ");
+  return (
+    <li className={`ag-card ag-ten${urgent ? " is-urgent" : ""}`}>
+      <p className="ag-top">
+        <span className="ag-type"><Mark layer="tenders" />{tr("Tender")}</span>
+        {kind && <span className="ag-kind">{kind}</span>}
+        {t.fit && FIT_LABEL[t.fit] && <span className={`cm-fit cm-fit-${t.fit}`}>{tr(FIT_LABEL[t.fit])}</span>}
+        <span className={`ag-left${urgent ? " is-urgent" : ""}`}>{urgent && <Alert />}{urgent ? tr("Urgent: {}", closes.charAt(0).toLowerCase() + closes.slice(1)) : closes}</span>
+      </p>
+      <p className="ag-buyer">{t.buyer}</p>
+      <h4>{pick(t.title, t.title_pl)}</h4>
+      {where && <p className="ag-meta">{where}</p>}
+      <p className="ag-links">
+        {href && <a href={href} target="_blank" rel="noreferrer noopener">{tr("Open the tender")} ↗</a>}
+        {t.account && <Link to={`/accounts/${t.account.id}`}>{tr("Company page")}</Link>}
+        <Link to={`/tenders?who=all&region=all&soon=1&q=${encodeURIComponent(buyerSearch(t.buyer))}`}>{tr("This buyer's open tenders")}</Link>
+      </p>
+    </li>
+  );
+}
+
+/* ======================================================================================= the list view */
+
+/** The regulatory deadlines as cards grouped by year, in the agenda's style. */
+function ListView({ d, toggle }: { d: Cal; toggle: ReactNode }) {
   const [kind, setKind] = useState("");
+  const [open, setOpen] = useState<string | null>(null);
   const groups = useMemo(() => {
     const shown = d.items.filter((x) => !kind || x.kinds.includes(kind));
     const ahead = shown.filter((x) => !x.past);
@@ -160,28 +232,47 @@ function ListView({ d }: { d: Cal }) {
   }, [d, kind]);
   const next = d.items.find((x) => !x.past && x.certainty === "adopted");
   const kinds = Object.entries(d.kinds);
-  return <>
-    <h2 className="rc-list-h">{tr("Regulatory deadlines")}</h2>
-    <ul className="rc-stats" aria-label={tr("At a glance")}>
-      {next && <li><span>{tr("Next fixed date")}</span><b>{whenText(next)}</b><small>{leftText(next)}</small></li>}
-      <li><span>{tr("Fixed dates in the next {} months", d.pin_months)}</span><b>{number(d.counts.pinned)}</b><small>{tr("pinned to our accounts")}</small></li>
-      <li><span>{tr("Our accounts affected")}</span><b>{number(d.counts.accounts)}</b><small>{tr("target accounts with at least one date ahead")}</small></li>
-    </ul>
-    <p className="rc-how">{tr("Adopted dates in the next {} months show on each account's page, and up to two a day reach Today. Provisional and approximate dates are shown here only: check them before you use them.", d.pin_months)}</p>
-    <div className="chips rc-filter" role="group" aria-label={tr("Kind of firm")}>
-      <button type="button" className="chip" aria-pressed={!kind} onClick={() => setKind("")}>{tr("All firms")}</button>
-      {kinds.map(([k, v]) => <button key={k} type="button" className="chip" aria-pressed={kind === k} onClick={() => setKind(kind === k ? "" : k)}>{cap(pick(v.plural, v.plural_pl))}</button>)}
+  const ahead = d.items.filter((x) => !x.past).length;
+  return <div className="cl">
+    <div className="cm-bar">
+      <h2 className="cl-title">{tr("Regulatory deadlines")}</h2>
+      <div className="cm-tools">{toggle}</div>
+    </div>
+    <p className="cm-sum">
+      <Count n={ahead} words={[["deadline ahead", "deadlines ahead"], ["termin przed nami", "terminy przed nami", "terminów przed nami"]]} />
+      <span className="cm-sep" aria-hidden="true" />
+      <span className="cal-n"><b>{number(d.counts.accounts)}</b> {tr("of our target accounts affected")}</span>
+      {next && <><span className="cm-sep" aria-hidden="true" /><span>{tr("Next fixed date")}: <b>{whenText(next)}</b> ({leftText(next).toLowerCase()})</span></>}
+    </p>
+    <div className="cl-filter">
+      <div className="chips" role="group" aria-label={tr("Kind of firm")}>
+        <button type="button" className="chip" aria-pressed={!kind} onClick={() => setKind("")}>{tr("All firms")}</button>
+        {kinds.map(([k, v]) => <button key={k} type="button" className="chip" aria-pressed={kind === k} onClick={() => setKind(kind === k ? "" : k)}>{cap(pick(v.plural, v.plural_pl))}</button>)}
+      </div>
+      <p className="rc-how">{tr("Adopted dates in the next {} months show on each account's page, and up to two a day reach Today. Provisional and approximate dates are shown here only: check them before you use them.", d.pin_months)}</p>
     </div>
     {groups.length === 0 && <p className="rc-empty">{tr("No deadlines for this kind of firm.")}</p>}
     {groups.map(([label, list]) => (
-      <section key={label} className="rc-year" aria-labelledby={`rc-y-${label}`}>
-        <h2 id={`rc-y-${label}`}>{label}<small>{counted(list.length, ["deadline", "deadlines"], ["termin", "terminy", "terminów"])}</small></h2>
-        <ol className="rc-line">{list.map((x) => <Item key={x.id} d={x} kind={kind} kinds={d.kinds} />)}</ol>
+      <section key={label} className="cl-year" aria-labelledby={`cl-y-${label}`}>
+        <h3 id={`cl-y-${label}`}>{label}<small>{counted(list.length, ["deadline", "deadlines"], ["termin", "terminy", "terminów"])}</small></h3>
+        <ol className="ag-days">
+          {list.map((x) => (
+            <li key={x.id} className={`ag-day${x.past ? " is-past" : ""}`}>
+              <span className="ag-date">{x.approximate
+                ? <DateBlock top="≈" bottom={x.year} approx />
+                : <DateBlock top={fmt(x.date, { day: "numeric" })} bottom={fmt(x.date, { month: "short" }).replace(/\.$/, "")} />}</span>
+              <ul className="ag-cards">
+                <RegCard d={x} kinds={d.kinds} kind={kind} idKey={`l-${x.id}`} open={open === x.id} onToggle={() => setOpen(open === x.id ? null : x.id)}
+                  when={`${whenText(x)} · ${leftText(x)}`} />
+              </ul>
+            </li>
+          ))}
+        </ol>
       </section>
     ))}
     <p className="rc-foot">{tr("Who a deadline applies to comes from the company's country and its sector on the lead list (banking, payments, insurance). Fintech and software companies are not matched: the list does not say which of them hold a licence.")}
       {d.counts.left_out > 0 && <> {tr("{} central banks, statutory insurers and public bodies on the list are left out: these rules are about commercial banks, payment firms and life insurers.", number(d.counts.left_out))}</>}</p>
-  </>;
+  </div>;
 }
 
 /* ======================================================================================= the month view */
@@ -203,7 +294,6 @@ type Events = { from: string; to: string; today: string; layers: Layer[]; unavai
 const LAYERS_KEY = "ri_calendar_layers";
 const PER_DAY = 4;               // items per day the month asks for (the rest are counted)
 const ALL_OF_A_DAY = 50;         // one day opened in full
-const IN_CELL = 3;               // lines a day cell shows on a wide screen (two and "+N more" when there are more)
 const readLayers = (): Record<Layer, boolean> => {
   try {
     const raw = JSON.parse(localStorage.getItem(LAYERS_KEY) ?? "null") as Partial<Record<Layer, boolean>> | null;
@@ -232,6 +322,7 @@ function gridDays(k: string): string[] {
   return Array.from({ length: weeks * 7 }, (_, i) => addDays(first, i - lead));
 }
 const dayFmt = (s: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(loc(), o).format(dateOf(s));
+const shortWd = (s: string) => cap(dayFmt(s, { weekday: "short" })).replace(/\.$/, "");
 const okDay = (s: string | null) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && isoOf(dateOf(s)) === s ? s : null);
 const okMonth = (s: string | null) => (s && /^\d{4}-(0[1-9]|1[0-2])$/.test(s) ? s : null);
 const reducedMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -261,6 +352,16 @@ const euros = (v: number) => {
 };
 /** The words of a buyer's name the Open tenders search can find it by. */
 const buyerSearch = (buyer: string) => buyer.replace(/[^\p{L}\p{N}]+/gu, " ").split(" ").filter((w) => w.length >= 2).slice(0, 4).join(" ");
+const LEGAL_FORM = /[\s,]+(s\.\s?a\.|sa|ag|plc|ltd\.?|limited|oyj|oy|ab|asa|a\/s|a\.\s?s\.|gmbh|e\.\s?g\.|eg|s\.p\.a\.|spa|n\.v\.|nv|b\.v\.|bv|se|kgaa|zrt\.?|nyrt\.?|sp\.\s?z\s?o\.\s?o\.)$/i;
+/** A buyer's name short enough for a grid pill: the part before a comma, without the legal form, and in normal case when written in capitals. */
+function buyerShort(name: string): string {
+  let s = (name.split(/,|;|\(| [–—] /)[0] ?? "").trim();
+  for (let i = 0; i < 2; i++) s = s.replace(LEGAL_FORM, "").trim();
+  if (s.length > 4 && s === s.toUpperCase() && s !== s.toLowerCase()) {
+    s = s.split(" ").map((w) => (w.length <= 3 ? w : w.charAt(0) + w.slice(1).toLowerCase())).join(" ");
+  }
+  return s || name;
+}
 
 /** A layer's marker: a diamond for a regulatory deadline (hollow while it still has to be confirmed), a triangle for a tender. Never colour alone. */
 function Mark({ layer, hollow = false }: { layer: Layer; hollow?: boolean }) {
@@ -271,9 +372,10 @@ function Mark({ layer, hollow = false }: { layer: Layer; hollow?: boolean }) {
   );
 }
 const hollowOf = (i: DayItem) => i.layer === "regulatory" && !i.past && i.certainty !== "adopted";
-const cellText = (i: DayItem) => (i.layer === "regulatory" ? pick(i.title, i.title_pl) : i.buyer);
+const pillText = (i: DayItem) => (i.layer === "regulatory" ? shortOf(i) : buyerShort(i.buyer));
+const itemKey = (i: DayItem) => `${i.layer}-${i.id}`;
 
-function MonthView({ cal }: { cal: Cal }) {
+function MonthView({ cal, toggle }: { cal: Cal; toggle: ReactNode }) {
   useLanguage();
   const today = useMemo(() => isoOf(new Date()), []);
   const thisMonth = today.slice(0, 7);
@@ -290,14 +392,17 @@ function MonthView({ cal }: { cal: Cal }) {
   const [busyDay, setBusyDay] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [said, setSaid] = useState("");
+  const [picker, setPicker] = useState(false);
+  const [pkYear, setPkYear] = useState(() => Number(month.slice(0, 4)));
   const cache = useRef(new Map<string, Events>());
   const pickFirst = useRef(!okDay(params.get("day")) && month !== thisMonth);
   const touched = useRef(false);
   const moveFocus = useRef(false);
   const gridRef = useRef<HTMLDivElement>(null);
-  const panelHead = useRef<HTMLHeadingElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const pickBtn = useRef<HTMLButtonElement>(null);
+  const pickBox = useRef<HTMLDivElement>(null);
   const grid = useMemo(() => gridDays(month), [month]);
-  const year = Number(month.slice(0, 4));
 
   // the visible weeks, once per month (kept while the page is open)
   useEffect(() => {
@@ -310,14 +415,14 @@ function MonthView({ cal }: { cal: Cal }) {
       .catch((e) => { if (!ctl.signal.aborted) setErr(e); });
     return () => ctl.abort();
   }, [month, grid, attempt]);
-  // how much each month of the year holds, for the month strip
+  // how much each month of a year holds, for the month picker (fetched when the picker shows that year)
   useEffect(() => {
-    if (years[year]) return;
+    if (!picker || years[pkYear]) return;
     const ctl = new AbortController();
-    api<Events>(`/api/calendar/events?from=${year}-01-01&to=${year}-12-31&per_day=0`, { signal: ctl.signal })
-      .then((x) => setYears((m) => ({ ...m, [year]: x.months }))).catch(() => undefined);
+    api<Events>(`/api/calendar/events?from=${pkYear}-01-01&to=${pkYear}-12-31&per_day=0`, { signal: ctl.signal })
+      .then((x) => setYears((m) => ({ ...m, [pkYear]: x.months }))).catch(() => undefined);
     return () => ctl.abort();
-  }, [year, years]);
+  }, [picker, pkYear, years]);
   // the address keeps the month and day once the person moves (so Back and a shared link land on the same day)
   useEffect(() => { if (touched.current) setParams({ month, day }, { replace: true }); }, [month, day, setParams]);
   // arrow keys: focus follows the day (after the grid has been drawn for its month)
@@ -326,6 +431,18 @@ function MonthView({ cal }: { cal: Cal }) {
     moveFocus.current = false;
     gridRef.current?.querySelector<HTMLButtonElement>(`[data-day="${focus}"]`)?.focus();
   }, [focus, month]);
+  // the picker closes on a click elsewhere; it opens on the month shown, with focus on it
+  useEffect(() => {
+    if (!picker) return;
+    pickBox.current?.querySelector<HTMLButtonElement>("[aria-current='true'], .cm-pk-months button")?.focus();
+    const away = (e: Event) => {
+      const t = e.target as Node;
+      if (!pickBox.current?.contains(t) && !pickBtn.current?.contains(t)) setPicker(false);
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("touchstart", away);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("touchstart", away); };
+  }, [picker]);
 
   const allowed = data?.layers ?? LAYERS;
   const on = useCallback((l: Layer) => layers[l] && allowed.includes(l), [layers, allowed]);
@@ -346,11 +463,16 @@ function MonthView({ cal }: { cal: Cal }) {
     if (first) { setDay(first.date); setFocus(first.date); }
   }, [data, day, month, grid, visible]);
 
+  const toTop = () => {                                       // the chosen day is pinned at the top of the agenda
+    const p = panelRef.current;
+    if (p && p.scrollHeight > p.clientHeight) p.scrollTo({ top: 0, behavior: reducedMotion() ? "auto" : "smooth" });
+  };
   const go = (k: string, target?: string) => {
     touched.current = true;
     const t = target ?? (k === thisMonth ? today : `${k}-01`);
     pickFirst.current = !target && k !== thisMonth;
-    setMonth(k); setDay(t); setFocus(t); setOpen(null);
+    setMonth(k); setDay(t); setFocus(t); setOpen(null); setPicker(false);
+    toTop();
   };
   const choose = (s: string, e?: MouseEvent) => {
     touched.current = true;
@@ -358,10 +480,11 @@ function MonthView({ cal }: { cal: Cal }) {
     if (!s.startsWith(month)) setMonth(s.slice(0, 7));          // a day of the month before or after
     const v = visible(s);
     setSaid(`${dayFmt(s, { day: "numeric", month: "long" })}: ${countsText(v.counts, on) || tr("nothing due")}`);
-    if (e && e.detail > 0) {                                     // tapped or clicked: make sure the day's list can be seen
+    toTop();
+    if (e && e.detail > 0) {                                     // tapped or clicked: make sure the day's list can be seen (phones: it is under the grid)
       window.requestAnimationFrame(() => {
-        const r = panelHead.current?.getBoundingClientRect();
-        if (r && r.top > window.innerHeight - 96) window.scrollBy({ top: r.top - window.innerHeight + 240, behavior: reducedMotion() ? "auto" : "smooth" });
+        const r = document.getElementById("ag-sel-h")?.getBoundingClientRect();
+        if (r && r.top > window.innerHeight - 96) window.scrollBy({ top: r.top - window.innerHeight + 260, behavior: reducedMotion() ? "auto" : "smooth" });
       });
     }
   };
@@ -377,182 +500,217 @@ function MonthView({ cal }: { cal: Cal }) {
     moveFocus.current = true;
     touched.current = true;
     setFocus(next);
-    if (!grid.includes(next) || e.key.startsWith("Page")) {            // another month: the chosen day comes along, so the list below matches the grid
+    if (!grid.includes(next) || e.key.startsWith("Page")) {            // another month: the chosen day comes along, so the agenda matches the grid
       setMonth(next.slice(0, 7)); setDay(next); setOpen(null);
     }
   };
-  const toggle = (l: Layer) => { const v = { ...layers, [l]: !layers[l] }; setLayers(v); saveLayers(v); };
+  const toggleLayer = (l: Layer) => { const v = { ...layers, [l]: !layers[l] }; setLayers(v); saveLayers(v); };
   const loadAll = (s: string) => {
     setBusyDay(s);
     api<Events>(`/api/calendar/events?from=${s}&to=${s}&per_day=${ALL_OF_A_DAY}`)
       .then((x) => { const one = x.days[0]; if (one) setFull((m) => ({ ...m, [s]: one })); })
       .catch(() => undefined).finally(() => setBusyDay(null));
   };
+  const openPicker = () => { setPkYear(Number(month.slice(0, 4))); setPicker(!picker); };
+  const pickerKey = (e: KeyboardEvent<HTMLDivElement>) => { if (e.key === "Escape") { e.stopPropagation(); setPicker(false); pickBtn.current?.focus(); } };
 
   const weekdays = Array.from({ length: 7 }, (_, i) => addDays("2024-01-01", i));      // 1 January 2024 was a Monday
   const monthTitle = cap(dayFmt(`${month}-01`, { month: "long", year: "numeric" }));
   const inMonth: Counts = {};
   for (const x of data?.days ?? []) if (x.date.startsWith(month)) for (const l of LAYERS) inMonth[l] = (inMonth[l] ?? 0) + (x.counts[l] ?? 0);
+  const year = Number(month.slice(0, 4));
   const firstYear = Math.min(...cal.items.map((x) => x.year), year, Number(thisMonth.slice(0, 4)));
   const lastYear = Math.max(...cal.items.map((x) => x.year), year, Number(thisMonth.slice(0, 4)) + 1);
   const yearList = Array.from({ length: lastYear - firstYear + 1 }, (_, i) => firstYear + i);
-  const strip = years[year];
   const undated = (data?.undated ?? []).filter((x) => on("regulatory") && x.year === year);
   const sel = visible(day);
-  const nextDay = sel.total ? null : (data?.days ?? []).find((x) => x.date > day && visible(x.date).total > 0)?.date ?? null;
+  const ahead = (data?.days ?? []).filter((x) => visible(x.date).total > 0);
+  const nextDay = sel.total ? null : ahead.find((x) => x.date > day)?.date ?? null;
   const tabStop = grid.includes(focus) ? focus : `${month}-01`;
   const nothingOn = !LAYERS.some(on);
+  const monthDays = ahead.filter((x) => x.date.startsWith(month)).map((x) => x.date);
+  const restDays = monthDays.filter((s) => s !== day);
+  // "next": the first day from today (or from the month's start, for a month ahead) with something on it
+  const from = month === thisMonth ? today : month > thisMonth ? `${month}-01` : null;
+  const nextUp = from ? ahead.find((x) => x.date >= from)?.date ?? null : null;
+  const nextItem = nextUp ? visible(nextUp).items[0] : null;
+  const loading = !data && !err;
+
+  const summary = nothingOn ? <span>{tr("Switch on at least one kind of date above.")}</span>
+    : loading ? <span>{tr("Loading the month")}</span>
+      : err ? null
+        : <>
+          {LAYERS.some((l) => on(l) && (inMonth[l] ?? 0) > 0)
+            ? LAYERS.filter(on).map((l, i) => <span key={l} className="cm-sum-part">{i > 0 && <span className="cm-sep" aria-hidden="true" />}<Mark layer={l} /><Count n={inMonth[l] ?? 0} words={WORDS[l]} /></span>)
+            : <span>{tr("Nothing due in {}.", monthTitle)}</span>}
+          {nextUp && nextItem && <span className="cm-sum-part">
+            <span className="cm-sep" aria-hidden="true" />
+            <span>{tr("Next")}:</span>
+            <button type="button" className="linkish cm-next" onClick={() => choose(nextUp)}>
+              {dayFmt(nextUp, { day: "numeric", month: "short" }).replace(/\.$/, "")}, {nextItem.layer === "tenders" ? nextItem.buyer : shortOf(nextItem)}</button>
+            {nextUp >= today && <span className="cm-in">({nextUp === today ? tr("today") : nextUp === addDays(today, 1) ? tr("tomorrow") : tr("in {} days", daysBetween(today, nextUp))})</span>}
+          </span>}
+        </>;
+
+  const cardsOf = (s: string, items: DayItem[]) => items.map((i) => i.layer === "regulatory"
+    ? <RegCard key={itemKey(i)} d={i} kinds={cal.kinds} idKey={`${s}-${i.id}`} open={open === `${s}-${i.id}`} onToggle={() => setOpen(open === `${s}-${i.id}` ? null : `${s}-${i.id}`)} />
+    : <TenderCard key={itemKey(i)} t={i} today={today} />);
 
   return (
     <div className="cm">
       <div className="cm-bar">
         <div className="cm-nav">
-          <button type="button" className="cm-step" aria-label={tr("Previous month")} onClick={() => go(addMonths(month, -1))}>
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg></button>
-          <h2 id="cm-title" aria-live="polite">{monthTitle}</h2>
-          <button type="button" className="cm-step" aria-label={tr("Next month")} onClick={() => go(addMonths(month, 1))}>
-            <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg></button>
+          <button type="button" className="cm-step" aria-label={tr("Previous month")} onClick={() => go(addMonths(month, -1))}><Chevron dir="left" /></button>
+          <button type="button" className="cm-step" aria-label={tr("Next month")} onClick={() => go(addMonths(month, 1))}><Chevron dir="right" /></button>
+          <h2 id="cm-title" className="cm-title">
+            <button type="button" ref={pickBtn} className="cm-pick" aria-expanded={picker} aria-controls="cm-picker" onClick={openPicker}
+              aria-label={`${monthTitle}. ${tr("Jump to a month")}`}>
+              <span aria-live="polite">{monthTitle}</span><Chevron dir="down" /></button>
+          </h2>
           <button type="button" className="cm-today" onClick={() => go(thisMonth, today)} disabled={month === thisMonth && day === today}>{tr("Today")}</button>
+          {picker && (
+            <div id="cm-picker" className="cm-picker" ref={pickBox} role="dialog" aria-label={tr("Jump to a month")} onKeyDown={pickerKey}>
+              <div className="cm-pk-years" role="group" aria-label={tr("Year")}>
+                {yearList.map((y) => <button key={y} type="button" aria-pressed={y === pkYear} onClick={() => setPkYear(y)}>{y}</button>)}
+              </div>
+              <ol className="cm-pk-months">
+                {Array.from({ length: 12 }, (_, i) => `${pkYear}-${pad(i + 1)}`).map((k) => {
+                  const c = years[pkYear]?.[k] ?? {};
+                  const what = countsText(c, on);
+                  return <li key={k}><button type="button" aria-current={k === month ? "true" : undefined} className={k === thisMonth ? "is-now" : undefined}
+                    aria-label={`${cap(dayFmt(`${k}-01`, { month: "long", year: "numeric" }))}${what ? `: ${what}` : ""}`} onClick={() => { go(k); pickBtn.current?.focus(); }}>
+                    <span>{cap(dayFmt(`${k}-01`, { month: "short" })).replace(/\.$/, "")}</span>
+                    <span className="cm-mm">{on("regulatory") && (c.regulatory ?? 0) > 0 && <Mark layer="regulatory" />}{on("tenders") && (c.tenders ?? 0) > 0 && <Mark layer="tenders" />}</span>
+                  </button></li>;
+                })}
+              </ol>
+            </div>
+          )}
         </div>
-        <fieldset className="cm-layers">
-          <legend>{tr("Show on the calendar")}</legend>
-          {LAYERS.filter((l) => allowed.includes(l)).map((l) => (
-            <label key={l} className={`cm-layer${layers[l] ? " is-on" : ""}`}>
-              <input type="checkbox" checked={layers[l]} onChange={() => toggle(l)} />
-              <Mark layer={l} />
-              <span>{l === "regulatory" ? tr("Regulatory deadlines") : tr("Tender deadlines")}</span>
-              {data && <b aria-label={tr("{} this month", inMonth[l] ?? 0)}>{number(inMonth[l] ?? 0)}</b>}
-            </label>
-          ))}
-        </fieldset>
+        <div className="cm-tools">
+          <div className="cm-chips" role="group" aria-label={tr("Show on the calendar")}>
+            {LAYERS.filter((l) => allowed.includes(l)).map((l) => (
+              <button key={l} type="button" className={`cm-chip cm-chip-${l}`} aria-pressed={layers[l]} onClick={() => toggleLayer(l)}
+                aria-label={`${l === "regulatory" ? tr("Regulatory deadlines") : tr("Tender deadlines")}${data ? `: ${tr("{} this month", inMonth[l] ?? 0)}` : ""}`}>
+                <span className="cm-chip-box" aria-hidden="true" />
+                <Mark layer={l} />
+                <span className="cm-chip-t" aria-hidden="true">{l === "regulatory" ? tr("Regulatory") : tr("Tenders")}</span>
+                {data && <b aria-hidden="true">{number(inMonth[l] ?? 0)}</b>}
+              </button>
+            ))}
+          </div>
+          {toggle}
+        </div>
       </div>
-      <p className="cm-key">
-        <span><Mark layer="regulatory" /> {tr("EU law with a fixed date")}</span>
-        <span><Mark layer="regulatory" hollow /> {tr("Date still to be confirmed")}</span>
-        {allowed.includes("tenders") && <span><Mark layer="tenders" /> {tr("Open tender closes (buyers in our ICP: banks, insurers, payment firms and more)")}</span>}
-      </p>
 
-      <nav className="cm-jump" aria-label={tr("Jump to a month")}>
-        <div className="cm-years" role="group" aria-label={tr("Year")}>
-          {yearList.map((y) => <button key={y} type="button" aria-pressed={y === year} onClick={() => go(`${y}-${month.slice(5)}`)}>{y}</button>)}
-        </div>
-        <ol className="cm-months">
-          {Array.from({ length: 12 }, (_, i) => `${year}-${pad(i + 1)}`).map((k) => {
-            const c = strip?.[k] ?? {};
-            const what = countsText(c, on);
-            return <li key={k}><button type="button" aria-current={k === month ? "true" : undefined} className={k === thisMonth ? "is-now" : undefined}
-              aria-label={`${cap(dayFmt(`${k}-01`, { month: "long", year: "numeric" }))}${what ? `: ${what}` : ""}`} onClick={() => go(k)}>
-              <span>{cap(dayFmt(`${k}-01`, { month: "short" })).replace(/\.$/, "")}</span>
-              <span className="cm-mm">{on("regulatory") && (c.regulatory ?? 0) > 0 && <Mark layer="regulatory" />}{on("tenders") && (c.tenders ?? 0) > 0 && <Mark layer="tenders" />}</span>
-            </button></li>;
-          })}
-        </ol>
-      </nav>
-
-      <p className="cm-sum">{nothingOn ? tr("Switch on at least one kind of date above.")
-        : !data ? (err ? "" : tr("Loading the month"))
-          : countsText(inMonth, on) ? tr("In {}: {}.", monthTitle, countsText(inMonth, on)) : tr("Nothing due in {}.", monthTitle)}</p>
+      <p className="cm-sum" aria-live="polite">{summary}</p>
       {err != null && <Err e={err} onRetry={() => { cache.current.delete(month); setAttempt((n) => n + 1); }} />}
 
-      <div className="cm-grid" role="grid" aria-labelledby="cm-title" aria-busy={!data && !err} ref={gridRef} onKeyDown={onKey}>
-        <div className="cm-row cm-wd" role="row">
-          {weekdays.map((w, i) => <div key={w} role="columnheader" className={i >= 5 ? "is-weekend" : undefined}>
-            <abbr title={cap(dayFmt(w, { weekday: "long" }))}>{cap(dayFmt(w, { weekday: "short" })).replace(/\.$/, "")}</abbr></div>)}
-        </div>
-        {Array.from({ length: grid.length / 7 }, (_, w) => (
-          <div key={grid[w * 7]} className="cm-row" role="row">
-            {grid.slice(w * 7, w * 7 + 7).map((s) => {
-              const v = visible(s);
-              const lines = v.items.length + v.more <= IN_CELL ? v.items : v.items.slice(0, IN_CELL - 1);
-              const rest = v.total - lines.length;
-              const cls = ["cm-day", s.startsWith(month) ? "" : "is-other", weekday(s) >= 5 ? "is-weekend" : "", s === today ? "is-today" : "",
-                s === day ? "is-selected" : "", s < today ? "is-past" : "", v.total ? "has-items" : ""].filter(Boolean).join(" ");
-              const what = countsText(v.counts, on);
-              return (
-                <div key={s} role="gridcell" aria-selected={s === day} className={cls}>
-                  <button type="button" data-day={s} tabIndex={s === tabStop ? 0 : -1} aria-current={s === today ? "date" : undefined} aria-controls="cm-panel"
-                    aria-label={`${cap(dayFmt(s, { weekday: "long", day: "numeric", month: "long", year: "numeric" }))}${s === today ? `, ${tr("today")}` : ""}. ${what || tr("Nothing due.")}`}
-                    onClick={(e) => choose(s, e)}>
-                    <span className="cm-num" aria-hidden="true">{Number(s.slice(8))}</span>
-                    {v.total > 0 && <span className="cm-lines" aria-hidden="true">
-                      {lines.map((i) => <span key={`${i.layer}-${i.id}`} className={`cm-line cm-line-${i.layer}`}><Mark layer={i.layer} hollow={hollowOf(i)} /><span className="cm-t">{cellText(i)}</span></span>)}
-                      {rest > 0 && <span className="cm-rest">+{rest}<span className="cm-t"> {tr("more")}</span></span>}
-                    </span>}
-                  </button>
-                </div>
-              );
-            })}
+      <div className="cm-body">
+        <div className="cm-grid" role="grid" aria-labelledby="cm-title" aria-busy={loading} ref={gridRef} onKeyDown={onKey}>
+          <div className="cm-row cm-wd" role="row">
+            {weekdays.map((w, i) => <div key={w} role="columnheader" className={i >= 5 ? "is-weekend" : undefined}>
+              <abbr title={cap(dayFmt(w, { weekday: "long" }))}>{shortWd(w)}</abbr></div>)}
           </div>
-        ))}
+          {Array.from({ length: grid.length / 7 }, (_, w) => (
+            <div key={grid[w * 7]} className="cm-row" role="row">
+              {grid.slice(w * 7, w * 7 + 7).map((s, col) => {
+                const v = visible(s);
+                const heat = v.total >= 4 ? 3 : v.total >= 2 ? 2 : v.total ? 1 : 0;
+                const cls = ["cm-day", s.startsWith(month) ? "" : "is-other", weekday(s) >= 5 ? "is-weekend" : "", s === today ? "is-today" : "",
+                  s === day ? "is-selected" : "", s < today ? "is-past" : "", heat ? `heat-${heat}` : "", col >= 4 ? "tip-left" : "", w >= grid.length / 7 - 2 ? "tip-up" : ""]
+                  .filter(Boolean).join(" ");
+                const what = countsText(v.counts, on);
+                return (
+                  <div key={s} role="gridcell" aria-selected={s === day} className={cls}>
+                    <button type="button" data-day={s} tabIndex={s === tabStop ? 0 : -1} aria-current={s === today ? "date" : undefined} aria-controls="cm-panel"
+                      aria-label={`${cap(dayFmt(s, { weekday: "long", day: "numeric", month: "long", year: "numeric" }))}${s === today ? `, ${tr("today")}` : ""}. ${what || tr("Nothing due.")}`}
+                      onClick={(e) => choose(s, e)}>
+                      <span className="cm-num" aria-hidden="true">{Number(s.slice(8))}</span>
+                      {v.total > 0 && <span className="cm-pills" aria-hidden="true">
+                        {v.items.slice(0, 3).map((i, n) => (
+                          <span key={itemKey(i)} className={`cm-pill cm-pill-${i.layer}${hollowOf(i) ? " is-hollow" : ""}${n === 2 ? " is-3rd" : ""}`}>
+                            <Mark layer={i.layer} hollow={hollowOf(i)} /><span className="cm-t">{pillText(i)}</span></span>
+                        ))}
+                        {v.total > 2 && <span className="cm-rest cm-rest-wide">+{v.total - 2}<span className="cm-t"> {tr("more")}</span></span>}
+                        {v.total > 3 && <span className="cm-rest cm-rest-narrow">+{v.total - 3}</span>}
+                      </span>}
+                      {v.total > 0 && <span className="cm-tip" aria-hidden="true">
+                        <span className="cm-tip-h">{cap(dayFmt(s, { weekday: "long", day: "numeric", month: "long" }))}<span>{cap(what)}</span></span>
+                        {v.items.map((i) => (
+                          <span key={itemKey(i)} className="cm-tip-i">
+                            <Mark layer={i.layer} hollow={hollowOf(i)} />
+                            <span><b>{i.layer === "regulatory" ? shortOf(i) : i.buyer}</b>
+                              <span>{i.layer === "regulatory" ? `${pick(i.title, i.title_pl)} · ${accountsCount(i)}` : [pick(i.title, i.title_pl), i.value_eur != null ? tr("about {}", euros(i.value_eur)) : null].filter(Boolean).join(" · ")}</span></span>
+                          </span>
+                        ))}
+                        {v.more > 0 && <span className="cm-tip-more">{tr("and {} more", v.more)}</span>}
+                      </span>}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <p className="sr" aria-live="polite">{said}</p>
+
+        <section id="cm-panel" className="cm-agenda" ref={panelRef} aria-label={tr("Agenda")}>
+          <div className="ag-sel">
+            <h3 id="ag-sel-h" className="ag-sel-h">
+              <DateBlock top={Number(day.slice(8))} bottom={shortWd(day)} today={day === today} />
+              <span className="ag-sel-t">{cap(dayFmt(day, { weekday: "long", day: "numeric", month: "long", year: "numeric" }))}
+                {day === today && <span className="cm-tag">{tr("Today")}</span>}</span>
+            </h3>
+            {loading ? <Skeleton rows={2} label={tr("Loading the month")} />
+              : sel.total === 0 ? <p className="ag-none">{nothingOn ? tr("Switch on at least one kind of date above.") : tr("Nothing due on this day.")}
+                {nextDay && <> <button type="button" className="linkish" onClick={() => choose(nextDay)}>{tr("Next date: {}", dayFmt(nextDay, { weekday: "long", day: "numeric", month: "long" }))}</button></>}</p>
+                : <>
+                  <ul className="ag-cards">{cardsOf(day, sel.items)}</ul>
+                  {sel.more > 0 && (sel.items.length < ALL_OF_A_DAY
+                    ? <p className="cm-more"><button type="button" onClick={() => loadAll(day)} disabled={busyDay === day}>{busyDay === day ? tr("Loading") : tr("Show {} more", sel.more)}</button></p>
+                    : <p className="cm-more"><Link to="/tenders?who=all&region=all&within=7&soon=1">{tr("See the rest in open tenders")}</Link></p>)}
+                </>}
+          </div>
+
+          {!loading && !nothingOn && (restDays.length > 0 || undated.length > 0) && <div className="ag-month">
+            {restDays.length > 0 && <>
+              <h3 className="ag-month-h">{monthDays.includes(day) ? tr("Rest of {}", monthTitle) : tr("All of {}", monthTitle)}</h3>
+              <ol className="ag-days">
+                {restDays.map((s) => {
+                  const v = visible(s);
+                  return (
+                    <li key={s} className={`ag-day${s < today ? " is-past" : ""}`}>
+                      <button type="button" className="ag-date" onClick={(e) => choose(s, e)}
+                        aria-label={`${cap(dayFmt(s, { weekday: "long", day: "numeric", month: "long" }))}: ${tr("show this day")}`}>
+                        <DateBlock top={Number(s.slice(8))} bottom={shortWd(s)} today={s === today} /></button>
+                      <div className="ag-day-body">
+                        <ul className="ag-cards">{cardsOf(s, v.items)}</ul>
+                        {v.more > 0 && <p className="cm-more"><button type="button" className="linkish" onClick={() => { choose(s); loadAll(s); }}>{tr("{} more on this day", v.more)}</button></p>}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            </>}
+            {undated.length > 0 && <>
+              <h3 className="ag-month-h">{tr("Expected in {}, day not fixed yet", year)}</h3>
+              <ol className="ag-days">
+                <li className="ag-day">
+                  <span className="ag-date"><DateBlock top="≈" bottom={year} approx /></span>
+                  <ul className="ag-cards">{undated.map((x) => <RegCard key={x.id} d={x} kinds={cal.kinds} idKey={`u-${x.id}`} when={whenText(x)}
+                    open={open === `u-${x.id}`} onToggle={() => setOpen(open === `u-${x.id}` ? null : `u-${x.id}`)} />)}</ul>
+                </li>
+              </ol>
+            </>}
+          </div>}
+        </section>
       </div>
-      <p className="sr" aria-live="polite">{said}</p>
-
-      {undated.length > 0 && <div className="cm-undated">
-        <h3>{tr("Expected in {}, day not fixed yet", year)}</h3>
-        <ul>{undated.map((x) => <RegRow key={x.id} d={x} kinds={cal.kinds} open={open === `u-${x.id}`} onToggle={() => setOpen(open === `u-${x.id}` ? null : `u-${x.id}`)} undated />)}</ul>
-      </div>}
-
-      <section id="cm-panel" className="cm-panel" aria-labelledby="cm-panel-h">
-        <h3 id="cm-panel-h" ref={panelHead}>{cap(dayFmt(day, { weekday: "long", day: "numeric", month: "long", year: "numeric" }))}
-          {day === today && <span className="cm-tag">{tr("Today")}</span>}</h3>
-        {!data && !err ? <p className="cm-panel-sum">{tr("Loading the month")}</p>
-          : sel.total === 0 ? <p className="cm-panel-sum">{nothingOn ? tr("Switch on at least one kind of date above.") : tr("Nothing due on this day.")}
-            {nextDay && <> <button type="button" className="linkish" onClick={() => choose(nextDay)}>{tr("Next date: {}", dayFmt(nextDay, { weekday: "long", day: "numeric", month: "long" }))}</button></>}</p>
-          : <p className="cm-panel-sum">{cap(countsText(sel.counts, on))}.</p>}
-        {sel.items.length > 0 && <ul className="cm-items">
-          {sel.items.map((i) => i.layer === "regulatory"
-            ? <RegRow key={`r-${i.id}`} d={i} kinds={cal.kinds} open={open === i.id} onToggle={() => setOpen(open === i.id ? null : i.id)} />
-            : <TenderRow key={`t-${i.id}`} t={i} today={today} />)}
-        </ul>}
-        {sel.more > 0 && (sel.items.length < ALL_OF_A_DAY
-          ? <p className="cm-more"><button type="button" onClick={() => loadAll(day)} disabled={busyDay === day}>{busyDay === day ? tr("Loading") : tr("Show {} more", sel.more)}</button></p>
-          : <p className="cm-more"><Link to="/tenders?who=all&region=all&within=7&soon=1">{tr("See the rest in open tenders")}</Link></p>)}
-      </section>
     </div>
   );
 }
 
-/** A regulatory deadline in the day's list: what it is, how far away, how many of our accounts; the details and sources open in place. */
-function RegRow({ d, kinds, open, onToggle, undated = false }: { d: RegItem; kinds: Record<string, Kind>; open: boolean; onToggle: () => void; undated?: boolean }) {
-  const id = `cm-d-${undated ? "u-" : ""}${d.id}`;
-  return (
-    <li className="cm-item cm-item-regulatory">
-      <Mark layer="regulatory" hollow={!d.past && d.certainty !== "adopted"} />
-      <div className="cm-item-body">
-        <p className="cm-item-top"><CertaintyBadge d={d} /><span>{undated ? whenText(d) : leftText(d)}</span></p>
-        <h4>{pick(d.title, d.title_pl)}</h4>
-        <p className="cm-item-meta">{d.regulation} · {accountsLine(d.accounts?.count ?? 0)}</p>
-        <button type="button" className="linkish cm-toggle" aria-expanded={open} aria-controls={id} onClick={onToggle}>
-          {open ? tr("Hide the details") : tr("Details and sources")}</button>
-        {open && <div className="cm-detail" id={id}><DeadlineBody d={d} kind="" kinds={kinds} countShown /></div>}
-      </div>
-    </li>
-  );
-}
-
-/** A tender closing on the day: who is buying, what, roughly for how much, and where to read it. */
-function TenderRow({ t, today }: { t: TenderItem; today: string }) {
-  const n = daysBetween(today, t.date);
-  const closes = n <= 0 ? tr("Closes today") : n === 1 ? tr("Closes tomorrow") : tr("Closes in {} days", n);
-  const href = safeHref(tedPage(t.url));
-  const kind = t.kind && BUYER_KIND[t.kind] ? tr(BUYER_KIND[t.kind]) : null;
-  return (
-    <li className="cm-item cm-item-tenders">
-      <Mark layer="tenders" />
-      <div className="cm-item-body">
-        <p className="cm-item-top">{kind && <span className="cm-kind">{kind}</span>}{t.fit && FIT_LABEL[t.fit] && <span className={`cm-fit cm-fit-${t.fit}`}>{tr(FIT_LABEL[t.fit])}</span>}
-          <span>{closes}</span></p>
-        <h4>{pick(t.title, t.title_pl)}</h4>
-        <p className="cm-item-meta">{[t.buyer, countryName(t.country), t.value_eur != null ? tr("about {}", euros(t.value_eur)) : null].filter(Boolean).join(" · ")}</p>
-        <p className="cm-links">
-          {href && <a href={href} target="_blank" rel="noreferrer noopener">{tr("Open the tender")} ↗</a>}
-          {t.account && <Link to={`/accounts/${t.account.id}`}>{tr("Company page")}</Link>}
-          <Link to={`/tenders?who=all&region=all&soon=1&q=${encodeURIComponent(buyerSearch(t.buyer))}`}>{tr("This buyer's open tenders")}</Link>
-        </p>
-      </div>
-    </li>
-  );
-}
+const accountsCount = (d: Deadline) => ((d.accounts?.count ?? 0) > 0 ? tr("{} of our accounts", number(d.accounts?.count ?? 0)) : tr("none of our accounts"));
 
 const MINI = 3;          // deadlines shown on the company page before "Show more"
 

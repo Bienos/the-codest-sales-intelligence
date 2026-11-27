@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from ..db import Conn, jb, q1, qa
+from .signature import full_text
 
 BATCH = 300
 GIST = 600
@@ -109,7 +110,7 @@ def record_timeline(conn: Conn, *, person_ids: list[str] | None = None, limit: i
                         FROM lemlist_activities la JOIN people pe ON pe.id = la.person_id
                         WHERE la.type IN ('emailsSent','emailsReplied') AND la.timeline_at IS NULL AND la.happened_at IS NOT NULL AND {_ELIGIBLE} {scope}
                         ORDER BY la.happened_at DESC LIMIT %s""", [*params, limit])                                       # noqa: S608
-    answers = qa(conn, f"""SELECT r.id, r.person_id, r.body_text, r.created_by, coalesce(r.sent_at, r.created_at) AS at, la.subject, la.campaign_id, la.campaign_name
+    answers = qa(conn, f"""SELECT r.id, r.person_id, r.body_text, r.signature_text, r.created_by, coalesce(r.sent_at, r.created_at) AS at, la.subject, la.campaign_id, la.campaign_name
                            FROM lemlist_replies r JOIN people pe ON pe.id = r.person_id LEFT JOIN lemlist_activities la ON la.id = r.reply_to_activity_id
                            WHERE r.status = 'sent' AND r.timeline_at IS NULL AND {_ELIGIBLE} {scope.replace('la.person_id', 'r.person_id')}
                            ORDER BY r.created_at DESC LIMIT %s""", [*params, limit])                                    # noqa: S608
@@ -117,10 +118,13 @@ def record_timeline(conn: Conn, *, person_ids: list[str] | None = None, limit: i
     owners = _Owners(conn)
     orgs: dict[str, str | None] = {}
     senders: dict[tuple[str, str | None], dict[str, Any] | None] = {}
-    mine = {str(r["person_id"]): [r["body_text"]] for r in answers}
-    for r in qa(conn, "SELECT person_id, body_text FROM lemlist_replies WHERE status='sent' AND person_id = ANY(%s::uuid[])",
+    # our answers from here, as typed and as sent (with the signature): Lemlist sends them back as campaign-less emails
+    mine: dict[str, list[str]] = {}
+    for r in answers:
+        mine.setdefault(str(r["person_id"]), []).extend([r["body_text"], full_text(r["body_text"], r["signature_text"])])
+    for r in qa(conn, "SELECT person_id, body_text, signature_text FROM lemlist_replies WHERE status='sent' AND person_id = ANY(%s::uuid[])",
                 (list({str(a["person_id"]) for a in acts}),)) if acts else []:
-        mine.setdefault(str(r["person_id"]), []).append(r["body_text"])
+        mine.setdefault(str(r["person_id"]), []).extend([r["body_text"], full_text(r["body_text"], r["signature_text"])])
     for a in acts:
         pid, aid = str(a["person_id"]), str(a["id"])
         if a["type"] == "emailsSent" and any(_same_text(a["body_text"], t) for t in mine.get(pid, [])):
