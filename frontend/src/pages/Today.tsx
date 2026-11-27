@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, post } from "../api";
 import { counted, getLanguage, number, tr, useLanguage } from "../locale";
 import { Err, Skeleton, safeHref, useLogo } from "../components/ui";
+import { ReplyBox, ReplyText, firstWords, useReplyConfig } from "../components/Replies";
+import type { ReplyInfo } from "../components/Replies";
 import { countryName } from "./targetMarket";
 import "../styles/today.css";
 
@@ -20,7 +22,8 @@ type Action = {
   happened?: string | null; deadline?: string | null; days_left?: number | null; strength: number;
   source?: { name: string | null; url: string | null } | null; who?: string | null; opener?: string | null; opener_kind?: "line" | "step";
   rule_id?: string | null; more?: number; person?: Person | null; engagement?: { opens: number; clicks: number } | null;
-  contacts: Contact[]; fit: Fit | null;
+  contacts: Contact[]; fit: Fit | null; regulation?: boolean;
+  reply?: ReplyInfo | null;           // a reply item: what they wrote and whether it can be answered from here
 };
 type Done = { key: string; outcome: Mark; kind: Kind; slot: Slot; organization_id: string | null; label: string | null; at: string; logo_url?: string | null };
 type NewKind = "signal" | "tender" | "reply" | "campaign";
@@ -116,10 +119,12 @@ function whyLong(a: Action): string {
   if (w === "deadline") return a.days_left == null ? tr("Open tender") : a.days_left <= 0 ? tr("Tender closes today")
     : a.days_left === 1 ? tr("Tender closes tomorrow") : tr("Tender closes in {} days", a.days_left);
   if (w === "follow_up") return a.engagement?.clicks ? tr("Clicked your email {}", ago(a.happened)) : tr("Opened your email {} times", a.engagement?.opens ?? 2);
+  if (a.regulation) return a.days_left == null ? tr("Legal deadline") : tr("Legal deadline in {} days", a.days_left);
   return w === "strong" ? tr("Strong signal, {}", ago(a.happened)) : tr("New signal, {}", ago(a.happened));
 }
 /** One plain sentence: why this item is on today's list. */
 function whyReason(a: Action): string {
+  if (a.regulation) return tr("A law gives them a fixed date for this work. Ask whether it is covered.");
   switch (whyOf(a)) {
     case "reply": return tr("They answered our email. Replies go cold fast, so they come first.");
     case "deadline": return tr("The deadline is close and a bid takes time to prepare.");
@@ -135,10 +140,11 @@ function repeats(why: string, shown: string): boolean {
   return core.length > 10 && shown.toLowerCase().includes(core);
 }
 /** The right-hand cue on a row: the deadline, or how fresh the news is. */
-const cue = (a: Action) => (a.kind === "tender" && a.days_left != null ? inDays(a.days_left) : ago(a.happened));
+const cue = (a: Action) => ((a.kind === "tender" || a.regulation) && a.days_left != null ? inDays(a.days_left) : ago(a.happened));
 /** One line on a list row: what happened, in plain words (the full text is in the brief). */
 function rowLine(a: Action): string {
-  if (a.kind === "reply" && a.person) return tr("{} answered our email.", a.person.name);
+  if (a.kind === "reply" && a.person) return a.reply?.text ? tr("{} wrote: “{}”", firstName(a.person.name), firstWords(a.reply.text, 80))
+    : tr("{} answered our email.", a.person.name);
   if (a.kind === "follow_up" && a.person) return tr("{} opened our email but has not answered.", a.person.name);
   return (a.kind === "tender" ? a.title : a.text ?? a.title ?? "")?.replace(/[.\s]+$/, "") ?? "";
 }
@@ -388,7 +394,7 @@ function Row({ a, rank, selected, onSelect }: { a: Action; rank: number; selecte
       <span className="td-row-main">
         <span className="td-row-name">{nameOf(a)}</span>
         <span className="td-row-why">
-          <Chip w={w}>{tr(WHY_SHORT[w])}</Chip>
+          <Chip w={w}>{a.regulation ? tr("Legal deadline") : tr(WHY_SHORT[w])}</Chip>
           <span className={`td-row-cue${soon ? " is-soon" : ""}`}>{cue(a)}</span>
         </span>
         {line && <span className="td-row-line">{line}</span>}
@@ -430,6 +436,7 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
   if (org && (a.contacts.length > 0 || person)) more.push({ label: tr("Everyone we know at {}", org.name), to: `/accounts/${org.id}?tab=people` });
   if (canCampaign && a.rule_id) more.push({ label: tr("Start a campaign about this"), to: `/campaigns/new?rules=${a.rule_id}` });
   if (a.kind === "tender") more.push({ label: tr("All open tenders"), to: "/tenders" });
+  else if (a.regulation) more.push({ label: tr("All regulatory deadlines"), to: "/calendar" });
   else if (a.kind === "signal") more.push({ label: tr("All buying signals"), to: "/signals" });
   const text = a.kind === "reply" && a.person
     ? tr("{} answered our email from the campaign “{}”.", a.person.name, a.title ?? "")
@@ -438,10 +445,17 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
         counted(a.engagement?.opens ?? 0, ["time", "times"], ["raz", "razy", "razy"]), counted(a.engagement?.clicks ?? 0, ["time", "times"], ["raz", "razy", "razy"]))
       : a.text;
   const headline = a.title && a.kind !== "reply" && a.kind !== "follow_up" ? a.title.replace(/[.\s]+$/, "") : null;
+  // a reply we hold in Lemlist: answer it right here (the box opens under their words), or open the person's page for the whole thread
+  const said = a.kind === "reply" && a.person ? a.reply ?? null : null;
+  const [replying, setReplying] = useState(false);
+  const replyConfig = useReplyConfig(Boolean(said));
 
   const actionBar = <div className="td-b-acts">
     <span className="td-b-main">
-      {go.href
+      {said && a.person
+        ? <><button type="button" className="btn primary" aria-expanded={replying} aria-controls="td-reply" onClick={() => { setReplying(true); opened(); }}>{tr("Reply to this email")}</button>
+          <Link className="btn rp-open" to={`/people/${a.person.id}`}>{tr("Open person")}</Link></>
+        : go.href
         ? <a className="btn primary" href={go.href} target="_blank" rel="noopener noreferrer" onClick={opened}>{go.label} ↗</a>
         : <Link className="btn primary" to={go.to!} onClick={opened}>{go.label}</Link>}
       <MoreMenu items={more} />
@@ -485,8 +499,14 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
           {(a.happened || src) && <p className="td-b-src">
             {a.happened && <span>{day(a.happened, { weekday: "short", day: "numeric", month: "long" })}</span>}
             {src && <a href={src} target="_blank" rel="noopener noreferrer" onClick={opened}>{a.source?.name || tr("Original page")} ↗</a>}
-            {(a.more ?? 0) > 0 && org && <Link to={`/accounts/${org.id}`}>{tr("{} more news items", a.more)}</Link>}
+            {(a.more ?? 0) > 0 && org && <Link to={`/accounts/${org.id}`}>{a.regulation ? tr("{} more deadlines", a.more) : tr("{} more news items", a.more)}</Link>}
           </p>}
+          {said && a.person && <div className="td-b-reply" id="td-reply">
+            <h4 className="td-b-reply-h">{tr("What {} wrote", firstName(a.person.name))}</h4>
+            <ReplyText text={said.text} state={said.text_state} lemlistUrl={said.lemlist_url} />
+            {said.answered && <p className="rp-none">{said.answered.status === "sent" ? tr("Answered from here {}.", ago(said.answered.at)) : tr("An answer from here was not confirmed. Check Lemlist.")}</p>}
+            {replying && <ReplyBox personId={a.person.id} personName={a.person.name} reply={said} config={replyConfig} autoFocus />}
+          </div>}
         </section>
 
         {a.fit && <section className="td-b-sec td-b-fit">

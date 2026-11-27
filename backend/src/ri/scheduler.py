@@ -58,6 +58,9 @@ LANES: tuple[Lane, ...] = (
          queues="sources_validate_daily"),
     Lane("candidates", "New companies from findings", "Turns qualified new company names found in the news into candidate accounts.", can_pause=True),
     Lane("candidate_gate", "Candidate check", "Re-checks candidate companies against the target market rules."),
+    Lane("deadlines_pinned", "Regulatory deadlines on accounts",
+         "Once a day, pins each upcoming EU deadline from the regulatory calendar to the target accounts it applies to (country and kind of firm), so sellers see what each must build and by when.",
+         86400, can_pause=True, main=True),
     Lane("degraded_sources", "Late sources", "Marks a source that missed its scheduled reads as late."),
     Lane("expiry", "Signal expiry", "Ends buying signals whose time window has passed."),
     Lane("initiatives", "Programme deadlines", "Moves programmes on when their next milestone date has passed."),
@@ -384,6 +387,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("source_check_queued", lambda: schedule_source_check(conn, now))        # once a day: test every source, switch on the safe ones that pass
     step("candidates", lambda: promote_candidates(conn, 40))
     step("candidate_gate", lambda: reclassify_candidates(conn, 300))
+    from .regulatory_calendar import pin as pin_deadlines
+    step("deadlines_pinned", lambda: pin_deadlines(conn, now), more=lambda r: bool((r or {}).get("more_to_pin")))      # after the target checks above
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))
     step("expiry", lambda: sweep_expiry(conn, now))
     step("initiatives", lambda: refresh(conn, now))

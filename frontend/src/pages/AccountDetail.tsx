@@ -6,6 +6,7 @@ import { AccountFindings } from "../components/Findings";
 import { FAMILY, familyOf, SHORT } from "../components/Signals";
 import { countryName, staffCount } from "./targetMarket";
 import { Conversations } from "./Connections";
+import { AccountDeadlines } from "./Calendar";
 import { Badge, Err, humanize, Skeleton, reloadPage, safeHref, Tabs, TIER, useLogo } from "../components/ui";
 import "../styles/account.css";
 
@@ -804,6 +805,7 @@ function Overview({ d, research, rel, orgId, me, canRun, startResearch, research
         <KeyPeople people={people} goto={goto} canSee={me.permissions.includes("contacts.read")} />
         <Conversations scope="account" id={orgId} name={d.account.display_name} />
         <RelationshipPanel rel={rel} orgId={orgId} onSaved={reloadRel} onOwner={onOwner} />
+        <AccountDeadlines orgId={orgId} />
         <ResearchPanel r={research} canRun={false} start={startResearch} busy={researchBusy} err={researchErr} />
       </aside>
     </div>

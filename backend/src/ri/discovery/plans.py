@@ -189,6 +189,7 @@ def _coverage_sql(select: str, tail: str = "") -> str:
                            FROM discovery_plans p WHERE p.organization_id=o.id AND p.theme=%(theme)s) dp ON true
         WHERE {target_sql('o')} AND NOT coalesce(sc.stopped, false)
           AND NOT EXISTS (SELECT 1 FROM events e WHERE e.subject_org_id=o.id AND NOT e.is_historical_replay AND e.lifecycle_status='active'
+                          AND e.event_type <> 'deadline_approaching'      -- a calendar deadline pinned to the account is not news about it
                           AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > %(since)s)
           AND (dp.plans = 0 OR dp.enabled_plans > 0)
         {tail}"""

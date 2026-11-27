@@ -16,6 +16,7 @@ import Knowledge from "./pages/Knowledge";
 import People from "./pages/People";
 import Person from "./pages/Person";
 import Tenders from "./pages/Tenders";
+import Calendar, { IconCalendar } from "./pages/Calendar";
 import Connections from "./pages/Connections";
 import BuyingSignals, { IconSignals } from "./pages/BuyingSignals";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
@@ -117,6 +118,7 @@ export default function App() {
           {can("draft.create") && link("/campaigns", tr("Campaigns"), IconCampaign)}
           {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}
           {(can("today.read") || can("explorer.read")) && link("/tenders", tr("Open tenders"), IconTender)}
+          {can("accounts.read") && link("/calendar", tr("Regulatory deadlines"), IconCalendar)}
           <span className="nav-group">{tr("Look up")}</span>
           {link("/library", tr("Library"), IconLibrary)}
           {link("/knowledge", tr("Knowledge base"), IconKnowledge)}
@@ -139,6 +141,7 @@ export default function App() {
           <Route path="/today" element={<Today canReview={can("research.request")} canCampaign={can("draft.create")} />} />
           <Route path="/signals" element={<BuyingSignals canCampaign={can("draft.create")} canPeople={can("contacts.read")} />} />
           <Route path="/tenders" element={<div className="page"><Tenders canRefresh={can("admin.sources")} /></div>} />
+          <Route path="/calendar" element={<div className="page"><Calendar /></div>} />
           <Route path="/people" element={<div className="page"><People /></div>} />
           <Route path="/people/:id" element={<div className="page"><Person key={loc.pathname} /></div>} />
           <Route path="/campaigns" element={<div className="page"><CampaignList /></div>} />

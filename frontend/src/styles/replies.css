@@ -1,0 +1,50 @@
+/* What someone wrote back to our campaign, and the reply box (Today and the person page). Square corners; pink only on the Send button. */
+
+.rp-words, .rp-box, .rp-list, .rp-msg { min-width: 0; max-width: 100%; }
+
+/* the padding sits on the wrapper, so the four-line cut never lets a fifth line show through it */
+.rp-quote { padding: 12px 14px; background: var(--tint-2); border-left: 3px solid var(--purple); min-width: 0; }
+.rp-text { margin: 0; color: var(--navy);
+  font: 400 var(--fs-md)/1.55 var(--font-body); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--rp-lines, 4); line-clamp: var(--rp-lines, 4); overflow: hidden; }
+.rp-text.open { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
+.rp-more { margin-top: 6px; }
+.rp-none { margin: 6px 0 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.rp-none a, .rp-alt { color: var(--navy); text-decoration: underline; text-decoration-color: var(--pink); text-underline-offset: .2em; }
+.rp-none a:focus-visible, .rp-alt:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+
+.rp-box { margin-top: 14px; display: grid; gap: 8px; }
+.rp-box label { font: 800 var(--fs-xs)/1.2 var(--font-head); letter-spacing: .07em; text-transform: uppercase; color: var(--navy); }
+.rp-box textarea { width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical; margin: 0; padding: 10px 12px; border: 2px solid var(--navy); border-radius: 0;
+  background: var(--white); color: var(--navy); font: 400 var(--fs-input)/1.5 var(--font-body); }
+.rp-box textarea:focus-visible { outline: 3px solid var(--purple); outline-offset: 1px; }
+.rp-hint { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
+.rp-box-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.rp-box-acts button.primary { margin: 0 var(--offset) var(--offset) 0; }
+.rp-alt { font-size: var(--fs-sm); }
+.rp-note { margin: 0; overflow-wrap: anywhere; }
+
+/* the thread on the person page: our emails on a pale navy rule, theirs on purple */
+.rp-thread h2 { margin-top: 0; }
+.rp-earlier { display: inline-block; margin: 0 0 10px; }
+.rp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.rp-msg { padding: 10px 0 0; border-top: 1px solid var(--line); }
+.rp-msg:first-child { border-top: 0; padding-top: 0; }
+.rp-msg-h { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; color: var(--navy); font-size: var(--fs-sm); }
+.rp-msg-h time { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.rp-msg-s { margin: 2px 0 6px; color: var(--muted); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.rp-sent .rp-quote, .rp-answer .rp-quote { background: var(--tint-1); border-left-color: var(--navy); }
+.rp-answer.is-off .rp-quote { border-left-color: var(--off); }
+
+@media (max-width: 600px) {
+  .rp-box-acts button.primary { flex: 1 1 100%; }
+  .rp-quote { padding: 10px 12px; }
+}
+
+/* Today: their words under "What happened", and the second button next to "Reply" */
+.td-b-reply { margin-top: 14px; min-width: 0; }
+.td-b-reply-h { margin: 0 0 6px; font: 800 var(--fs-xs)/1.2 var(--font-head); letter-spacing: .07em; text-transform: uppercase; color: var(--navy); }
+.td-b-acts a.btn.rp-open { min-height: 42px; box-sizing: border-box; padding: 11px 16px; }
+@media (max-width: 860px) {
+  .td-b-acts a.btn.rp-open { flex: 0 0 auto; padding: 11px 12px; }
+}

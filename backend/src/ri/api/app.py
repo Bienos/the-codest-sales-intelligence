@@ -595,8 +595,10 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from .connections_api import register_connections; register_connections(app, settings)      # noqa: E702  (each person's own Gmail, Lemlist and Bluedot connections)
     from .connections_gmail import register_gmail; register_gmail(app, settings)      # noqa: E702
     from .conversations import register_conversations; register_conversations(app)      # noqa: E702  (the shared timeline of conversations per person and company)
+    from .replies import register_replies; register_replies(app)      # noqa: E702  (what people wrote back to our campaigns, and answering in the same thread)
     from .profiles import register_profiles; register_profiles(app)      # noqa: E702  (company research, people, relationship, owner)
     from .admin_ops import register as register_admin_ops; register_admin_ops(app)      # noqa: E702  (automatic matching, source checks, failures, usage)
     from .today import register_today; register_today(app)      # noqa: E702  (Today: who to contact today, and why)
     from .solutions import register_solutions; register_solutions(app)      # noqa: E702  (what fits them best; the person's sales brief)
+    from .regulatory_calendar import register_regulatory_calendar; register_regulatory_calendar(app)      # noqa: E702  (EU deadlines pinned to accounts)
     return app

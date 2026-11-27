@@ -706,7 +706,7 @@ def register_feed(app: FastAPI) -> None:
             rows = qa(conn,
                 f"WITH candidates AS (SELECT e.id, {fd.STORY_KEY_SQL} AS story_key, "
                 f"coalesce(e.event_at, e.pub_at, e.first_observed_at) AS happened FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id "
-                f"WHERE {VIEWS[view]} AND {eligibility} AND e.lifecycle_status='active' AND NOT e.is_historical_replay AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
+                f"WHERE {VIEWS[view]} AND {eligibility} AND e.lifecycle_status='active' AND NOT e.is_historical_replay AND e.event_type <> 'deadline_approaching' AND coalesce(e.event_at, e.pub_at, e.first_observed_at) > now() - make_interval(days => %s) "
                 f"AND (e.subject_org_id IS NULL OR ({ew})) AND ({tw}) AND (NOT %s OR e.subject_org_id IS NOT NULL) "
                 f"AND (%s='' OR %s='public' OR ({sector})=%s) "
                 f"AND (%s::text[] IS NULL OR EXISTS (SELECT 1 FROM signals s WHERE s.event_id=e.id AND ({active}) AND s.rule_id = ANY(%s))) "
@@ -762,7 +762,7 @@ def register_feed(app: FastAPI) -> None:
                 counts = q1(conn, "SELECT " + ", ".join(
                     f"count(DISTINCT {fd.STORY_KEY_SQL}) FILTER (WHERE {w}" + (f" AND (%s='' OR ({sector})=%s)" if k != "public" else "") + f") AS {k}"
                     for k, w in VIEWS.items()
-                ) + f" FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE e.lifecycle_status='active' AND NOT e.is_historical_replay "
+                ) + f" FROM events e LEFT JOIN organizations o ON o.id=e.subject_org_id WHERE e.lifecycle_status='active' AND NOT e.is_historical_replay AND e.event_type <> 'deadline_approaching' "
                     f"AND coalesce(e.event_at,e.pub_at,e.first_observed_at)>now()-make_interval(days=>%s) "
                     f"AND (e.subject_org_id IS NULL OR ({ew}))", [focus, focus] * (len(VIEWS)-1) + [days, *ep]) or {}
         return {"view": view, "view_counts": counts, "items": items, "count": len(items), "leads": [dict(x, reason=(x["result"] or {}).get("reason")) for x in leads], "coverage": cov, "totals": totals,

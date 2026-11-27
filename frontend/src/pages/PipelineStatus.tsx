@@ -623,6 +623,9 @@ const laneResult = (key: string, r: Record<string, unknown>): string => {
     if (typeof r.held_by === "string" && HELD_BY[r.held_by]) bits.push(tr(HELD_BY[r.held_by]));
     return bits.join(" · ");
   }
+  if (key === "deadlines_pinned" && typeof r?.accounts_pinned === "number") {      // the regulatory calendar: accounts and deadlines, not bare counters
+    return tr("{} accounts pinned to {} deadlines", number(r.accounts_pinned), number(Number(r.deadlines_pinned ?? 0)));
+  }
   if (typeof r?.accounts_still_without_a_search === "number") {
     return [tr("{} accounts searched in the last day", number(Number(r.accounts_searched ?? 0))), tr("{} still waiting for their first search", number(r.accounts_still_without_a_search))].join(" · ");
   }

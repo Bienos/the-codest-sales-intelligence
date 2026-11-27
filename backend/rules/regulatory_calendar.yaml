@@ -1,0 +1,199 @@
+# Regulatory deadline calendar: hard EU dates that force banks, payment firms and insurers to spend on IT.
+# Read by src/ri/regulatory_calendar.py. Every entry was researched by a person; do not add a deadline from memory.
+#
+# Each entry:
+#   id           short stable name (lower case, digits and dashes). Used in event keys ("deadline:<id>:<company id>"): never rename one.
+#   title        plain name of the deadline (title_pl: the Polish name)
+#   regulation   the law it comes from, as a seller would say it
+#   date         ISO date. approximate: true when the law does not fix the day yet (the page then shows "about <year>")
+#   certainty    adopted     = in force law with a fixed date: pinned to our accounts and can reach Today
+#                provisional = agreed politically, not formally adopted: shown, never pinned ("check whether it was adopted")
+#                possible    = expected, no fixed date: shown, never pinned
+#   countries    ISO country codes, or the name of a group below
+#   kinds        kinds of firm (below) it applies to
+#   applies_to   who it applies to, in one plain line (applies_to_pl)
+#   must         what they must do, as a verb phrase after "must" (must_pl: the Polish phrase after "trzeba")
+#   ask_for      who to ask for at the company (ask_for_pl)
+#   note         anything a seller should know before using it (note_pl)
+#   sources      https links; the first one is the main source
+#
+# Kinds of firm are read from the company's segment on the lead list (organizations.segment, compared without case).
+# "Fintech" is deliberately not mapped: on the lead list it mixes brokers, lenders, leasing firms and debt collectors, and the list does not say
+# which of them hold a payment or e-money licence.
+
+groups:
+  eu: [AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LV, LT, LU, MT, NL, PL, PT, RO, SK, SI, ES, SE]
+  euro_area: [AT, BE, HR, CY, EE, FI, FR, DE, GR, IE, IT, LV, LT, LU, MT, NL, PT, SK, SI, ES]      # as on 9 October 2025
+  non_euro_eu: [PL, SE, DK, CZ, HU, RO]                                                          # the EU countries outside the euro area that matter to us
+
+kinds:
+  bank: {label: bank, label_pl: bank, plural: banks, plural_pl: banki, segments: [Banking, Bank, Banks]}
+  payments: {label: payment company, label_pl: firma płatnicza, plural: payment and e-money firms, plural_pl: firmy płatnicze i instytucje pieniądza elektronicznego,
+             segments: [Payments, Payment, E-money]}
+  insurer: {label: insurer, label_pl: ubezpieczyciel, plural: insurers, plural_pl: ubezpieczyciele, segments: [Insurance, Insurer, Insurers, Life insurance]}
+
+# Companies these rules are not about, by name. The lead list may keep them as target accounts, but no deadline is pinned to them (and they
+# are not counted): central banks are not the commercial banks these rules address, and statutory health, pension and accident insurers are
+# not the life insurers the anti-money-laundering rules cover. Public bodies (ri.market.is_public_body) are left out the same way.
+not_covered:
+  - reason: central bank
+    reason_pl: bank centralny
+    names: '\b(central bank|centralbank|zentralbank|bundesbank|riksbank|nationalbank|banque de france|banca d.italia|banco de espa[nñ]a|banco de portugal|nederlandsche bank|national bank of belgium|nationale bank van belgi|banque nationale de belgique|bank of finland|suomen pankki|banque centrale|(?<!national )bank of greece|narodowy bank polski|n[aá]rodn[ií] banka|nemzeti bank|banca na[tţț]ional[aă]|banka slovenije|latvijas banka|lietuvos bankas|eesti pank|bulgarian national bank)\b'
+  - reason: statutory health, pension or accident insurer
+    reason_pl: ustawowy ubezpieczyciel zdrowotny, emerytalny lub wypadkowy
+    names: '(krankenkasse|gesundheitskasse|\bAOK\b|\bBKK\b|\bIKK\b|\bBARMER\b|\bDAK\b|\bKKH\b|knappschaft|rentenversicherung|pensionsversicherung|unfallversicherung|berufsgenossenschaft|pensionsmyndigheten|\bZUS\b|\bKRUS\b|sozialversicherung)'
+
+deadlines:
+  - id: ipr-vop-euro
+    title: "Verification of payee in the euro area"
+    title_pl: "Weryfikacja odbiorcy w strefie euro"
+    regulation: "Instant Payments Regulation (IPR)"
+    date: 2025-10-09
+    certainty: adopted
+    countries: euro_area
+    kinds: [bank]
+    applies_to: "Banks in the euro area"
+    applies_to_pl: "Banki w strefie euro"
+    must: "check that the payee's name matches the account number before a euro transfer is sent (verification of payee)"
+    must_pl: "sprawdzać, czy nazwa odbiorcy zgadza się z numerem rachunku, zanim przelew w euro zostanie wysłany (weryfikacja odbiorcy)"
+    ask_for: "Head of payments"
+    ask_for_pl: "Szef płatności"
+    note: "Already in force. Shown for context only."
+    note_pl: "Już obowiązuje. Pokazane tylko jako tło."
+    sources:
+      - https://www.ecb.europa.eu/paym/retail/instant_payments/html/instant_payments_regulation.pl.html
+
+  - id: ipr-non-euro-receive
+    title: "Instant euro payments: receive them (EU countries outside the euro)"
+    title_pl: "Natychmiastowe przelewy w euro: odbiór (kraje UE spoza strefy euro)"
+    regulation: "Instant Payments Regulation (IPR)"
+    date: 2027-01-09
+    certainty: adopted
+    countries: non_euro_eu
+    kinds: [bank]
+    applies_to: "Banks in EU countries outside the euro area (Poland, Sweden, Denmark, Czechia, Hungary, Romania)"
+    applies_to_pl: "Banki w krajach UE spoza strefy euro (Polska, Szwecja, Dania, Czechy, Węgry, Rumunia)"
+    must: "be able to receive instant euro transfers"
+    must_pl: "umieć przyjmować natychmiastowe przelewy w euro"
+    ask_for: "Head of payments"
+    ask_for_pl: "Szef płatności"
+    note: "Payment and e-money institutions have until 9 April 2027."
+    note_pl: "Instytucje płatnicze i instytucje pieniądza elektronicznego mają czas do 9 kwietnia 2027."
+    sources:
+      - https://www.ecb.europa.eu/paym/retail/instant_payments/html/instant_payments_regulation.pl.html
+      - https://worldline.com/en/home/main-navigation/resources/blogs/2025/instant-payments-regulation-a-key-development-for-non-eurozone-eu-countries
+
+  - id: ipr-pi-emi
+    title: "Instant euro payments: payment and e-money institutions"
+    title_pl: "Natychmiastowe przelewy w euro: instytucje płatnicze i pieniądza elektronicznego"
+    regulation: "Instant Payments Regulation (IPR)"
+    date: 2027-04-09
+    certainty: adopted
+    countries: eu
+    kinds: [payments]
+    applies_to: "Payment and e-money institutions in every EU country"
+    applies_to_pl: "Instytucje płatnicze i instytucje pieniądza elektronicznego we wszystkich krajach UE"
+    must: "be able to receive instant euro transfers, and in the euro area also send them"
+    must_pl: "umieć przyjmować natychmiastowe przelewy w euro, a w strefie euro także je wysyłać"
+    ask_for: "Head of payments"
+    ask_for_pl: "Szef płatności"
+    note: "Outside the euro area they must send instant euro transfers by 9 July 2027."
+    note_pl: "Poza strefą euro wysyłanie natychmiastowych przelewów w euro obowiązuje od 9 lipca 2027."
+    sources:
+      - https://www.ecb.europa.eu/paym/retail/instant_payments/html/instant_payments_regulation.pl.html
+
+  - id: ipr-non-euro-send
+    title: "Instant euro payments: send them and check the payee (EU countries outside the euro)"
+    title_pl: "Natychmiastowe przelewy w euro: wysyłka i weryfikacja odbiorcy (kraje UE spoza strefy euro)"
+    regulation: "Instant Payments Regulation (IPR)"
+    date: 2027-07-09
+    certainty: adopted
+    countries: non_euro_eu
+    kinds: [bank, payments]
+    applies_to: "Banks and payment firms in EU countries outside the euro area (Poland, Sweden, Denmark, Czechia, Hungary, Romania)"
+    applies_to_pl: "Banki i firmy płatnicze w krajach UE spoza strefy euro (Polska, Szwecja, Dania, Czechy, Węgry, Rumunia)"
+    must: "be able to send instant euro transfers and check the payee's name before each euro transfer (verification of payee)"
+    must_pl: "umieć wysyłać natychmiastowe przelewy w euro i sprawdzać nazwę odbiorcy przed każdym przelewem w euro (weryfikacja odbiorcy)"
+    ask_for: "Head of payments"
+    ask_for_pl: "Szef płatności"
+    sources:
+      - https://www.ecb.europa.eu/paym/retail/instant_payments/html/instant_payments_regulation.pl.html
+      - https://worldline.com/en/home/main-navigation/resources/blogs/2025/instant-payments-regulation-a-key-development-for-non-eurozone-eu-countries
+
+  - id: amlr
+    title: "New EU anti-money-laundering rulebook"
+    title_pl: "Nowe unijne przepisy przeciw praniu pieniędzy"
+    regulation: "Anti-Money Laundering Regulation (AMLR)"
+    date: 2027-07-10
+    certainty: adopted
+    countries: eu
+    kinds: [bank, payments, insurer]
+    applies_to: "Banks, payment and e-money firms, and life insurers in every EU country"
+    applies_to_pl: "Banki, firmy płatnicze i pieniądza elektronicznego oraz ubezpieczyciele na życie we wszystkich krajach UE"
+    must: "bring anti-money-laundering checks in line with the single EU rulebook"
+    must_pl: "dostosować kontrole przeciw praniu pieniędzy do jednolitych przepisów UE"
+    ask_for: "Head of financial crime or compliance technology"
+    ask_for_pl: "Szef technologii compliance lub przeciwdziałania przestępstwom finansowym"
+    note: "For insurers it covers life insurance business."
+    note_pl: "U ubezpieczycieli dotyczy ubezpieczeń na życie."
+    sources:
+      - https://eur-lex.europa.eu/eli/reg/2024/1624/oj
+
+  - id: eudi-wallet
+    title: "Accept the EU Digital Identity Wallet"
+    title_pl: "Akceptacja europejskiego portfela tożsamości cyfrowej"
+    regulation: "EU Digital Identity Wallet rules (EUDI)"
+    date: 2027-12-24
+    certainty: adopted
+    countries: eu
+    kinds: [bank, payments]
+    applies_to: "Banks and other regulated firms that must use strong customer authentication, in every EU country"
+    applies_to_pl: "Banki i inne regulowane firmy, które muszą stosować silne uwierzytelnianie klienta, we wszystkich krajach UE"
+    must: "accept the EU Digital Identity Wallet when a customer wants to use it"
+    must_pl: "akceptować europejski portfel tożsamości cyfrowej, gdy klient chce z niego skorzystać"
+    ask_for: "Head of digital channels"
+    ask_for_pl: "Szef kanałów cyfrowych"
+    note: "Every EU country must offer its citizens a wallet by December 2026."
+    note_pl: "Każdy kraj UE musi udostępnić obywatelom portfel do grudnia 2026."
+    sources:
+      - https://fintech.global/2026/09/04/what-banks-need-to-know-before-the-eudi-wallet-deadline/
+
+  - id: ai-act-high-risk
+    title: "AI Act: rules for high-risk AI (credit scoring, insurance pricing)"
+    title_pl: "AI Act: zasady dla AI wysokiego ryzyka (ocena zdolności kredytowej, wycena ubezpieczeń)"
+    regulation: "EU AI Act"
+    date: 2027-12-02
+    certainty: provisional
+    countries: eu
+    kinds: [bank, insurer]
+    applies_to: "Banks and insurers that use AI to score creditworthiness or to price life and health insurance"
+    applies_to_pl: "Banki i ubezpieczyciele, którzy używają AI do oceny zdolności kredytowej lub wyceny ubezpieczeń na życie i zdrowotnych"
+    must: "meet the AI Act rules for high-risk AI systems"
+    must_pl: "spełnić wymogi AI Act dla systemów AI wysokiego ryzyka"
+    ask_for: "Head of data and AI"
+    ask_for_pl: "Szef danych i AI"
+    note: "A political deal of 7 May 2026 moved this date. AI built into products moves to 2 August 2028. If the deal was not formally adopted before 2 August 2026, the original timeline applies. Check whether it was adopted."
+    note_pl: "Porozumienie polityczne z 7 maja 2026 przesunęło tę datę. AI wbudowana w produkty: 2 sierpnia 2028. Jeśli porozumienia nie przyjęto formalnie przed 2 sierpnia 2026, obowiązuje pierwotny harmonogram. Sprawdź, czy zostało przyjęte."
+    sources:
+      - https://www.pinsentmasons.com/out-law/news/rules-high-risk-ai-delayed-under-eu-omnibus-deal
+
+  - id: psd3-psr
+    title: "PSD3 and the Payment Services Regulation"
+    title_pl: "PSD3 i rozporządzenie o usługach płatniczych (PSR)"
+    regulation: "PSD3 and Payment Services Regulation (PSR)"
+    date: 2028-06-30
+    approximate: true
+    certainty: possible
+    countries: eu
+    kinds: [bank, payments]
+    applies_to: "Banks and payment firms in every EU country"
+    applies_to_pl: "Banki i firmy płatnicze we wszystkich krajach UE"
+    must: "check that the payee's name matches the IBAN and share fraud information with other payment firms"
+    must_pl: "sprawdzać, czy nazwa odbiorcy zgadza się z numerem IBAN, i dzielić się informacjami o oszustwach z innymi firmami płatniczymi"
+    ask_for: "Head of payments"
+    ask_for_pl: "Szef płatności"
+    note: "Provisional deal of 27 November 2025. Formal adoption is expected in 2026, and the rules apply 21 months after they come into force, so about 2028. The exact date is not known yet."
+    note_pl: "Wstępne porozumienie z 27 listopada 2025. Formalne przyjęcie spodziewane w 2026, a przepisy zaczną obowiązywać 21 miesięcy po wejściu w życie, czyli około 2028. Dokładna data nie jest jeszcze znana."
+    sources:
+      - https://www.europarl.europa.eu/news/en/press-room/20251121IPR31540/payment-services-deal-more-protection-from-online-fraud-and-hidden-fees
+      - https://www.matheson.com/insights/the-third-payment-services-directive-and-payment-services-regulation/

@@ -138,6 +138,9 @@ def apply_lemlist_activity(conn: Conn, a: dict[str, Any]) -> dict[str, Any]:
         record_source(conn, pid, "lemlist", str(a.get("campaignId")), {"campaign": a.get("campaignName")})
     row = conn.execute("INSERT INTO lemlist_activities(id, type, email, campaign_id, campaign_name, person_id, happened_at) VALUES (%s,%s,%s,%s,%s,%s,%s) "
                        "ON CONFLICT (id) DO NOTHING RETURNING id", (aid, typ, email, a.get("campaignId"), a.get("campaignName"), pid, happened or datetime.now(timezone.utc))).fetchone()
+    if typ in ("emailsSent", "emailsReplied"):
+        from .outbound.replies import remember
+        remember(conn, aid, a, "activity")           # the words (when Lemlist sends them) and the ids needed to answer in the same thread
     tracked: dict[str, Any] = {}
     if row and typ in TRACKED:
         tracked = record_event(conn, {"type": typ, "leadEmail": email, "campaignId": a.get("campaignId"), "_id": aid})

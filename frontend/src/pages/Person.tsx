@@ -7,6 +7,7 @@ import { SHORT } from "../components/Signals";
 import { Avatar, COMMITTEE, COMMITTEE_ICON, COMMITTEE_ORDER, Cite, DateTile, EmailMark, Ic, Monogram, ResearchPanel, ResearchState, Sec, fmtDay, host, initials, usePoll } from "./AccountDetail";
 import { countryName, staffCount } from "./targetMarket";
 import { Conversations } from "./Connections";
+import { EmailThread } from "../components/Replies";
 import "../styles/account.css";
 import "../styles/person.css";
 
@@ -446,6 +447,7 @@ export default function Person() {
         {c?.identity && !c.identity.confident && !c.empty && <p className="ps-check"><Ic.alert />{tr("Check first: the pages may be about someone else with the same name.")} {c.identity.note ?? ""}</p>}
         <SalesBrief b={brief} first={first} err={bErr} retry={() => void loadBrief()} extraGaps={c?.open_questions ?? []} title={title} researched={Boolean(r.profile)}
           seen={[strongest(acc, company)?.title, company?.signal?.summary, ...(brief?.openers ?? []).map((o) => o.text)].filter(Boolean) as string[]} />
+        <EmailThread personId={p.id} name={p.name} />
         <Conversations scope="person" id={p.id} name={p.name} />
         {researchBusy && <ResearchState r={r} kind="person" name={p.name} canRun={d.can_research} start={start} busy={busy} err={rErr} />}
         {!r.profile && !researchBusy && <ResearchInvite r={r} first={first} canRun={d.can_research} start={start} busy={busy} err={rErr} />}

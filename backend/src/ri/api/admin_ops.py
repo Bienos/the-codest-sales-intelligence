@@ -281,7 +281,7 @@ USEFUL_LABEL = {"reading": "findings", "web_search": "pages found", "tenders": "
 
 def _useful(conn: Conn, start: datetime) -> dict[str, int | None]:
     queries = {
-        "reading": "SELECT count(*) AS n FROM events WHERE first_observed_at >= %(s)s AND NOT is_historical_replay",
+        "reading": "SELECT count(*) AS n FROM events WHERE first_observed_at >= %(s)s AND NOT is_historical_replay AND event_type <> 'deadline_approaching'",
         "web_search": "SELECT count(*) AS n FROM verification_requests WHERE origin='exa_discovery' AND created_at >= %(s)s",
         "tenders": "SELECT count(*) AS n FROM procurement_notices WHERE summary IS NOT NULL AND summary_at >= %(s)s",
         "company": "SELECT (SELECT count(*) FROM account_profiles WHERE status='done' AND finished_at >= %(s)s) + (SELECT count(*) FROM account_briefs WHERE status='done' AND finished_at >= %(s)s) AS n",

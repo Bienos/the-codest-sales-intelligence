@@ -308,12 +308,17 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         return {"sync": res, "inbox": process_inbox(conn)}
 
     def lemlist_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
-        """Lemlist activity (opens, replies, bounces, unsubscribes) back into the people database. Read-only towards Lemlist."""
+        """Lemlist activity (opens, replies, bounces, unsubscribes) back into the people database, then the words of replies that came
+        without them. Read-only towards Lemlist."""
         from ..config import Settings
         from ..outbound.lemlist import LemlistClient
+        from ..outbound.replies import fill_reply_bodies
         from ..people import sync_lemlist
         s = Settings.from_env(require_auth=False)
-        return sync_lemlist(conn, LemlistClient(s.lemlist_api_key))
+        client = LemlistClient(s.lemlist_api_key)
+        res: dict[str, Any] = dict(sync_lemlist(conn, client))
+        res["reply_text"] = fill_reply_bodies(conn, client)
+        return res
 
     crm_sync.own_transactions = True  # type: ignore[attr-defined]
     lemlist_sync.own_transactions = True  # type: ignore[attr-defined]

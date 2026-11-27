@@ -53,6 +53,8 @@ log = logging.getLogger(__name__)
 DO_LIMIT = 7            # items in "Do today"
 TENDER_CAP = 3          # at most this many tenders in "Do today", so fresh signals still show
 FOLLOW_CAP = 2          # at most this many follow-ups in "Do today"
+DEADLINE_CAP = 2        # at most this many regulatory deadlines a day, on the list and in "up next" together (hundreds of accounts share each one)
+DEADLINE_TODAY_CAP = 1  # and at most this many of them in "Do today"
 QUEUE_LIMIT = 14        # further items, in the same order, for "show more"
 NEW_LIMIT = 60          # lines in "New since your last visit" (the page shows the first few)
 FRESH_DAYS = 21         # a signal older than this is no longer a reason to write today
@@ -445,12 +447,16 @@ def brief(conn: Conn, p: Principal, *, now: datetime | None = None) -> dict[str,
 
     # 1. replies: the person is waiting for an answer
     if contacts:
-        for r in _replies(conn, p, now - timedelta(days=max(REPLY_DAYS, (now - since).days + 1))):
+        from ..outbound.replies import latest_replies
+        answered = _replies(conn, p, now - timedelta(days=max(REPLY_DAYS, (now - since).days + 1)))
+        said = latest_replies(conn, [r["person_id"] for r in answered])     # what they wrote, and whether it can be answered from here
+        for r in answered:
             o = targets.get(r["oid"]) or (q1(conn, "SELECT id::text AS id, display_name AS name, country_code AS country, logo_url, list_priority, list_score, "
                                                    "relationship, 0 AS people, 0 AS people_with_email FROM organizations WHERE id=%s", (r["oid"],)) if r["oid"] else None)
             key = f"reply:{r['person_id']}:{r['at']:%Y%m%d}"
             item = {"key": key, "kind": "reply", "organization": _org(o, contacts), "title": r["campaign_name"], "text": None,
-                    "happened": r["at"], "person": {"id": r["person_id"], "name": r["full_name"], "title": r["title"]}, "strength": 3}
+                    "happened": r["at"], "person": {"id": r["person_id"], "name": r["full_name"], "title": r["title"]}, "strength": 3,
+                    "reply": said.get(r["person_id"])}
             if r["at"] >= now - timedelta(days=REPLY_DAYS):
                 candidates.append({**item, "rank": (0, -r["at"].timestamp())})
             if r["at"] >= since:
@@ -542,6 +548,32 @@ def brief(conn: Conn, p: Principal, *, now: datetime | None = None) -> dict[str,
             news.append({"key": key, "kind": item["kind"], "at": s["happened"], "organization": item["organization"], "text": s["text"],
                          "url": s["url"]})
 
+    # 5. regulatory deadlines pinned to target accounts (ri.regulatory_calendar): a law gives the company a fixed date for IT work. A deadline
+    # alone is context, not a buying signal, and hundreds of accounts share each one, so at most DEADLINE_CAP a day (those marked done or
+    # "not now" today count), only at companies with nothing else on the list: the soonest deadline first, then the lead list's priority.
+    # They rank after replies, close tenders, strong fresh news and follow-ups but before ordinary fresh news, and at most
+    # DEADLINE_TODAY_CAP of them is in "Do today" (the other waits at the top of "up next"). A company whose deadline was put aside stays
+    # quiet for that while.
+    room = DEADLINE_CAP - sum(1 for d in done_today if d["key"].startswith("deadline:"))
+    if room > 0:
+        from ..regulatory_calendar import day_en, today_events
+        taken = {(c.get("organization") or {}).get("id") for c in candidates}
+        put_aside = {k.split(":")[2] for k in hidden if k.startswith("deadline:") and k.count(":") >= 2}
+        picks = [e for e in today_events(conn, [oid for oid in targets if oid not in taken and oid not in put_aside], now) if e["event_key"] not in hidden]
+        picks.sort(key=lambda e: (e["event_at"], _PRIORITY.get(targets[e["oid"]]["list_priority"] or "", 9), -(targets[e["oid"]]["list_score"] or 0)))
+        for ev in picks[:room]:
+            at = ev["attrs"] or {}
+            url = _safe_url(at.get("source_url"))
+            days_left = max(0, (ev["event_at"].date() - now.date()).days)
+            when = day_en(ev["event_at"].date())
+            candidates.append({"key": ev["event_key"], "kind": "signal", "regulation": True, "organization": _org(targets[ev["oid"]], contacts),
+                               "title": _clean(at.get("deadline_title")) or None, "text": _clean(ev["summary"]), "happened": ev["first_observed_at"],
+                               "deadline": ev["event_at"], "days_left": days_left, "strength": 2, "source": {"name": _host(url), "url": url} if url else None,
+                               "who": _clean(at.get("ask_for")) or None, "opener_kind": "line", "rule_id": None, "more": max(0, int(ev["n"]) - 1),
+                               "opener": f"You have until {when} to {at.get('must') or 'meet the new EU rule'}, under the {at.get('regulation') or 'new EU rules'}. "
+                                         "Is that work covered, or would an extra team help?",
+                               "rank": (3.6, days_left, _PRIORITY.get(targets[ev["oid"]]["list_priority"] or "", 9))})
+
     # choose: most urgent first, one item per company, nothing the person put aside; at most TENDER_CAP tenders and FOLLOW_CAP
     # follow-ups in today's list, so fresh signals still show. Today's list holds DO_LIMIT items less those already dealt with today,
     # so it does not refill while the person works through it. What does not fit waits in `queue` in the same order.
@@ -558,12 +590,16 @@ def brief(conn: Conn, p: Principal, *, now: datetime | None = None) -> dict[str,
     done_kinds = [d["kind"] for d in done_today if d["slot"] == "today"]
     limit = max(0, DO_LIMIT - len(done_kinds))
     caps = {"tender": TENDER_CAP, "follow_up": FOLLOW_CAP}
+    deadlines_done = sum(1 for d in done_today if d["slot"] == "today" and d["key"].startswith("deadline:"))
     actions: list[dict[str, Any]] = []
     rest: list[dict[str, Any]] = []
     for c in eligible:
         # what was dealt with today still counts towards the caps, so the rest of the list stays as it was this morning
         used = sum(a["kind"] == c["kind"] for a in actions) + done_kinds.count(c["kind"])
-        if len(actions) < limit and not (c["kind"] in caps and used >= caps[c["kind"]]):
+        capped = c["kind"] in caps and used >= caps[c["kind"]]
+        if c.get("regulation"):
+            capped = sum(1 for a in actions if a.get("regulation")) + deadlines_done >= DEADLINE_TODAY_CAP
+        if len(actions) < limit and not capped:
             actions.append(c)
         else:
             rest.append(c)
