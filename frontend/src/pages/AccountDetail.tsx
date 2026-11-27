@@ -965,12 +965,17 @@ function SendPanel({ draft, orgId, can }: { draft: any; orgId: string; can: bool
   return (
     <div className="card mt-3">
       <div className="row spread"><b>{tr("Prepare a Lemlist campaign")}</b>{typeof en.lemlist_configured === "boolean" && <Badge kind={ready ? "ok" : "warn"}>{ready ? tr("Ready for approval") : tr("Lemlist setup required")}</Badge>}</div>
-      <p className="small muted mt-1 mb-2">{tr("Everyone with an email address can be added. We build the campaign in Lemlist but do not launch it: a person presses Launch there.") + " "}
+      <p className="small muted mt-1 mb-2">{tr("Everyone with an email address can be added when the email rules of the company's country allow it. We build the campaign in Lemlist but do not launch it: a person presses Launch there.") + " "}
         {en.outbound_enabled === false && tr("Sending is switched off for now.") + " "}{en.lemlist_configured === false && tr("Lemlist is not connected yet.")}</p>
       {plan.eligible.length === 0 && <p className="small">{tr("No contacts are eligible for this campaign.")}</p>}
       {plan.eligible.map((c: any) => <label key={c.id} className="row small gap-2 mb-1 ac-pick"><input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} disabled={!can || !ready} /><span>{c.name}{c.title ? `, ${c.title}` : ""}</span>
         <EmailMark has /></label>)}
       {unavailable.length > 0 && <p className="small muted">{tr("Unavailable for outreach:") + " "}{unavailable.join(", ")}.</p>}
+      {(plan.consent_needed ?? []).length > 0 && <div className="callout warn small mb-2" role="note">
+        <p className="m-0"><b>{plan.email_rule?.rule === "not_checked" ? tr("Held back: email rules not checked for this country") : tr("Held back: cold email here needs the person's consent")}</b></p>
+        <p className="mt-1 mb-1">{getLanguage() === "pl" ? plan.email_rule?.note_pl ?? plan.email_rule?.note : plan.email_rule?.note} {getLanguage() === "pl" ? plan.email_rule?.instead_pl : plan.email_rule?.instead}</p>
+        <ul className="tight m-0">{plan.consent_needed.map((c: any) => <li key={c.id}><Link to={`/people/${c.id}`}>{c.name}</Link>{c.title ? `, ${c.title}` : ""}</li>)}</ul>
+      </div>}
       {can && <button className="primary" disabled={!ready || sel.length === 0} onClick={request}>{tr("Ask for approval to add") + " "}{sel.length || ""}</button>}
       {msg && <div className="okmsg mt-2" role="status">{msg}</div>}<Err e={err} />
       {en.items.length > 0 && <div className="table-wrap mt-3" tabIndex={0} role="region" aria-label={tr("Contact, status and last activity")}><table><thead><tr><th>{tr("Contact")}</th><th>{tr("Status")}</th><th>{tr("Last activity")}</th></tr></thead><tbody>{en.items.map((x: any) => <tr key={x.id}><td>{x.full_name ?? tr("Contact")}</td><td><Badge kind={x.status === "interested" ? "ok" : x.status === "unsubscribed" || x.status === "bounced" ? "bad" : "info"}>{humanize(x.status)}</Badge></td><td>{x.last_event_at ? fmtDateTime(x.last_event_at) : tr("No reply yet")}</td></tr>)}</tbody></table></div>}

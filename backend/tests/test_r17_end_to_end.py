@@ -96,9 +96,18 @@ def test_one_account_end_to_end(conn, capsys):
                            (org, json.dumps(draft["steps"]))).fetchone()["id"])
     conn.commit()
 
-    # 5. enrolment: needs a second person; the requester cannot approve their own
+    # 5. enrolment: a German bank, so cold email needs the person's consent first (rules/email_rules.yaml); then a second person approves
     plan = enrol.plan_contacts(conn, org)
-    say(f"5. contacts: {len(plan['eligible'])} usable (verified email), {len(plan['needs_verification'])} need verification")
+    assert plan["eligible"] == [] and [c["id"] for c in plan["consent_needed"]] == [pid] and plan["email_rule"]["rule"] == "consent"
+    try:
+        enrol.request_enrolment(conn, did, [pid], by="seller@x", requester_crm_user=11)
+        raise AssertionError("a German contact without consent must be held back")
+    except appr.ApprovalError as exc:
+        say(f"5. held back by the email rules for Germany: {str(exc)[:60]}...")
+    conn.execute("update people set email_consent_at=now(), email_consent_by='seller@x', email_consent_note='Agreed at the bank''s supplier day' where id=%s", (pid,))
+    conn.commit()
+    plan = enrol.plan_contacts(conn, org)
+    say(f"   consent recorded; contacts: {len(plan['eligible'])} usable (verified email), {len(plan['needs_verification'])} need verification")
     r = enrol.request_enrolment(conn, did, [pid], by="seller@x", requester_crm_user=11)
     try:
         appr.decide(conn, r["approval_id"], approver="seller@x", approver_role="bdm", approve=True)

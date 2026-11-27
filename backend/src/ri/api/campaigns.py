@@ -139,9 +139,7 @@ def plan_audience(conn, p: Principal, rule_ids: list[str], *, days: int, region:
         plan = sc.plan_contacts(conn, org)
         people = sorted(plan["eligible"], key=lambda x: (sc._rank(x["title"], a["rule_id"]), not x.get("verified"), x["name"]))[:per_account] if not reason else []
         if not people and not reason:
-            bits = [f"{plan['manual_review']} need a manual check" if plan["manual_review"] else "",
-                    f"{plan['suppressed']} opted out" if plan["suppressed"] else "", f"{plan['already_enrolled']} already in a sequence" if plan["already_enrolled"] else ""]
-            reason = "No contact with an email address" + (f" ({', '.join(b for b in bits if b)})" if any(bits) else "") + ". Find decision makers on the account first."
+            reason = sc.no_people_reason(plan)
         items.append({"organization_id": org, "company": a["display_name"], "country": a["country_code"],
                       "signal": {"rule_id": a["rule_id"], "name": a["rule_name"], "date": a["date"].isoformat() if a["date"] else None,
                                  "summary": a["summary"], "source_url": a["source_url"]},

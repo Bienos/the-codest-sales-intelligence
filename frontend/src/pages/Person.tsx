@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, fmtDate, fmtDateTime, post } from "../api";
-import { number, tr } from "../locale";
+import { getLanguage, number, tr } from "../locale";
 import { Err, Skeleton, Strength, reloadPage, safeHref } from "../components/ui";
 import { SHORT } from "../components/Signals";
 import { Avatar, COMMITTEE, COMMITTEE_ICON, COMMITTEE_ORDER, Cite, DateTile, EmailMark, Ic, Monogram, ResearchPanel, ResearchState, Sec, fmtDay, host, initials, usePoll } from "./AccountDetail";
@@ -339,7 +339,41 @@ function ResearchInvite({ r, first, canRun, start, busy, err }: { r: any; first:
 }
 
 /** One person, everything we hold about them: a sales brief first, then the public profile, with their company and colleagues in the rail. */
-export default function Person() {
+/** May we cold email this person: the country rule for their company (rules/email_rules.yaml) and any consent a seller recorded. */
+const RULE_LABEL: Record<string, string> = {
+  allowed: "Cold email allowed, with an opt-out", consent: "Needs the person's prior consent",
+  consent_personal: "Consent needed for a personal address", not_checked: "Email rules not checked for this country",
+};
+function EmailRulePanel({ id, first, can }: { id: string; first: string; can: boolean }) {
+  const [v, setV] = useState<any>(null);
+  const [note, setNote] = useState("");
+  const [err, setErr] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setV(null); api(`/api/people/${id}/email-rule`).then(setV).catch(() => setV(null)); }, [id]);
+  if (!v) return null;
+  const pl = getLanguage() === "pl";
+  const rule = v.rule ?? {};
+  const act = async (fn: () => Promise<any>) => { setErr(null); setBusy(true); try { setV(await fn()); setNote(""); } catch (e) { setErr(e); } finally { setBusy(false); } };
+  return <section className="ac-panel" aria-labelledby="ps-email-rule"><h2 id="ps-email-rule">{tr("Email rules")}</h2>
+    <p className="ac-purpose">{tr("Whether {} may get a cold email, by the rules of the company's country.", first)}</p>
+    <p className="small mb-1"><b>{tr(RULE_LABEL[rule.rule] ?? rule.rule)}</b>{rule.name ? ` · ${pl ? rule.name_pl ?? rule.name : rule.name}` : ""}</p>
+    <p className="small muted mt-0">{pl ? rule.note_pl ?? rule.note : rule.note}</p>
+    {v.consent ? <>
+      <p className="small okmsg mb-1" role="status">{tr("Consent recorded {} by {}.", fmtDate(v.consent.at), v.consent.by)} {v.consent.note}</p>
+      {can && <button type="button" className="chip" disabled={busy} onClick={() => act(() => api(`/api/people/${id}/email-consent`, { method: "DELETE" }))}>{tr("Withdraw consent")}</button>}
+    </> : v.may_email ? (rule.rule === "consent_personal" && v.generic_address ? <p className="small m-0">{tr("This is a generic role address, so it may be emailed with an opt-out.")}</p> : null) : <>
+      <p className="small mt-0">{pl ? rule.instead_pl ?? rule.instead : rule.instead}</p>
+      {can && rule.rule !== "allowed" && <form className="ps-consent" onSubmit={(e) => { e.preventDefault(); if (note.trim().length >= 3) void act(() => post(`/api/people/${id}/email-consent`, { note: note.trim() })); }}>
+        <label className="small" htmlFor={`consent-${id}`}>{tr("Did {} agree to receive our emails? Say how and when.", first)}</label>
+        <textarea id={`consent-${id}`} rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr("For example: asked at the conference on 12 March, agreed by email the next day.")} />
+        <button type="submit" disabled={busy || note.trim().length < 3}>{tr("Record consent")}</button>
+      </form>}
+    </>}
+    <Err e={err} />
+  </section>;
+}
+
+export default function Person({ canConsent = false }: { canConsent?: boolean }) {
   const { id } = useParams();
   const [d, setD] = useState<any>(null);
   const [err, setErr] = useState<unknown>(null);
@@ -482,6 +516,7 @@ export default function Person() {
           {out.campaigns.length > 0 && <><h3 className="ps-links-h">{tr("Signal campaigns")}</h3>
             <ul className="tight small mb-0">{out.campaigns.map((m: any) => <li key={m.id}><Link to={`/campaigns/${m.id}`}>{m.name}</Link>{!m.included && m.exclusion ? `: ${tr("left out")}, ${m.exclusion}` : ""}</li>)}</ul></>}
         </section>
+        <EmailRulePanel id={p.id} first={first} can={canConsent} />
         <ResearchPanel r={r} canRun={false} start={start} busy={busy} err={rErr} />
         <p className="ac-note m-0">{tr("Added {}. Every look at this page is logged.", fmtDateTime(p.created_at))}</p>
       </aside>

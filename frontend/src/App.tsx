@@ -143,7 +143,7 @@ export default function App() {
           <Route path="/tenders" element={<div className="page"><Tenders canRefresh={can("admin.sources")} /></div>} />
           <Route path="/calendar" element={<div className="page"><Calendar /></div>} />
           <Route path="/people" element={<div className="page"><People /></div>} />
-          <Route path="/people/:id" element={<div className="page"><Person key={loc.pathname} /></div>} />
+          <Route path="/people/:id" element={<div className="page"><Person key={loc.pathname} canConsent={can("draft.create")} /></div>} />
           <Route path="/campaigns" element={<div className="page"><CampaignList /></div>} />
           <Route path="/campaigns/new" element={<div className="page"><NewCampaign /></div>} />
           <Route path="/campaigns/:id" element={<div className="page"><CampaignDetail key={loc.pathname} canDecide={can("approvals.decide")} /></div>} />

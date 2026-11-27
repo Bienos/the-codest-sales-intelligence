@@ -58,7 +58,8 @@ log = logging.getLogger(__name__)
 # Kinds of event that start a buying conversation even before outside demand is proven (on top of every D1/D2 or strength-3 rule).
 HIGH_INTENT_RULES = (
     "SRC-01", "SRC-02", "SRC-03", "SRC-04", "SRC-05", "SRC-06",       # a buying route is open: tender, panel, re-tender, integrator or vendor chosen, contractor call
-    "CAP-01", "CAP-02", "CAP-05", "CAP-07",                           # hiring beyond capacity, contract roles, production AI roles, a leader asking for a partner
+    "CAP-01", "CAP-02", "CAP-03", "CAP-04", "CAP-05", "CAP-07",       # hiring beyond capacity, contract roles, hard-to-fill roles, two roles in our stacks,
+                                                                      # production AI roles, a leader asking for a partner
     "PRG-01", "PRG-02", "PRG-03", "PRG-04", "PRG-05", "PRG-06", "PRG-07", "PRG-08",
     "PRG-09", "PRG-10", "PRG-11", "PRG-12", "PRG-13", "PRG-14", "PRG-15", "PRG-16",   # a funded programme is under way with named systems
     "MAN-01", "MAN-03", "MAN-04",                                     # a new technology leader in the first months, or naming a programme
@@ -83,7 +84,10 @@ RULE_WHY: dict[str, str] = {
     "SRC-06": "They asked for contract engineers, so they are short of people on a named system.",
     "CAP-01": "They are hiring several engineers for one platform. A team extension can start sooner than hiring.",
     "CAP-02": "Contract roles on a named system mean the work has a date and the team is short.",
+    "CAP-03": "They have not filled an engineering role for two months or more, so the work waits. An engineer from us can start while they keep looking.",
+    "CAP-04": "They are hiring in stacks where we have done the work before (Ruby on Rails, Python, Java, React, Vue, TypeScript, AWS).",
     "CAP-05": "They are taking AI from a pilot into production, which is work for our AI and data engineers.",
+    "CAP-06": "They are hiring for test automation or reliability, which a QA team from us can take on.",
     "PRG-01": "A core banking replacement needs extra engineers for integrations, data migration and testing.",
     "PRG-02": "A cloud or data platform move has workstreams that a delivery team can own.",
     "PRG-06": "A payments scheme change comes with fixed test dates, which suits a dedicated delivery team.",
@@ -193,7 +197,7 @@ def _signals(conn: Conn, p: Principal, *, days: int, q: str) -> list[dict[str, A
           AND (s.demand_tier IN ('D1','D2') OR s.strength >= 3 OR s.rule_id = ANY(%s))
           AND coalesce(e.event_at, e.pub_at, s.effective_from) > now() - make_interval(days => %s)
           AND coalesce(e.event_at, e.pub_at, s.effective_from) <= now()
-          AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened')
+          AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened','job_hard_to_fill')
                OR (coalesce(e.attrs->>'title','') !~* %s AND (NOT (e.attrs ? 'job_id') OR EXISTS (
                    SELECT 1 FROM job_postings j WHERE j.provider=e.attrs->>'provider' AND j.board=e.attrs->>'board'
                    AND j.job_id=e.attrs->>'job_id' AND j.open_status='open'))))

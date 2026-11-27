@@ -46,7 +46,8 @@ def S(**kw):
 
 
 def seed(conn, statuses=(("Verified", "ok@example.invalid"), ("Found — Unverified", "u@example.invalid"), ("Not Found", None))):
-    org = str(conn.execute("insert into organizations(display_name, canonical_domain) values ('Synthetic Outbound Bank AG','outbound.example.invalid') returning id").fetchone()["id"])
+    # a UK company: cold email to companies is allowed there with an opt-out (rules/email_rules.yaml); the country rule has its own tests (r61)
+    org = str(conn.execute("insert into organizations(display_name, canonical_domain, country_code) values ('Synthetic Outbound Bank Ltd','outbound.example.invalid','GB') returning id").fetchone()["id"])
     ids = []
     for i, (st, em) in enumerate(statuses):
         pid = str(conn.execute("insert into people(full_name, work_email, email_verification_status) values (%s,%s,%s) returning id", (f"Person {i} Name", em, st)).fetchone()["id"])

@@ -7,7 +7,8 @@ import { Err, Skeleton, Strength, groupName } from "./ui";
 /** Short, plain names for the signals that can fire. The full rule text stays one click away. */
 export const SHORT: Record<string, string> = {
   "SRC-01": "Open tender for software work", "SRC-02": "Supplier panel open", "SRC-04": "Integrator won a programme", "SRC-05": "Platform vendor signed a client",
-  "SRC-06": "Contract engineers requested", "CAP-01": "Hiring several engineers", "CAP-02": "Contract engineering roles", "CAP-05": "Hiring for AI in production",
+  "SRC-06": "Contract engineers requested", "CAP-01": "Hiring several engineers", "CAP-02": "Contract engineering roles", "CAP-03": "Role hard to fill", "CAP-04": "Hiring in our stacks",
+  "CAP-05": "Hiring for AI in production", "CAP-06": "Hiring for QA or reliability",
   "PRG-01": "Core banking replacement", "PRG-02": "Cloud or data migration", "PRG-06": "Payments scheme change", "MAN-01": "New technology leader",
   "REL-03": "Known contact in a new role", "COM-01": "Funding round", "COM-02": "Acquisition with integration work", "COM-03": "New market launch",
   "COM-04": "New licence for a launch", "COM-05": "Customer go-live", "COM-06": "New product line", "COM-07": "Partnership with integration work",

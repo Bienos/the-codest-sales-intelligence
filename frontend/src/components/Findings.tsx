@@ -65,7 +65,10 @@ const WHY_RULE: Record<string, string> = {
   "SRC-06": "They asked for contract engineers, so they are short of people on a named system.",
   "CAP-01": "They are hiring several engineers for one platform. A team extension can start sooner than hiring.",
   "CAP-02": "Contract roles on a named system mean the work has a date and the team is short.",
+  "CAP-03": "They have not filled an engineering role for two months or more, so the work waits. An engineer from us can start while they keep looking.",
+  "CAP-04": "They are hiring in stacks where we have done the work before (Ruby on Rails, Python, Java, React, Vue, TypeScript, AWS).",
   "CAP-05": "They are taking AI from a pilot into production, which is work for our AI and data engineers.",
+  "CAP-06": "They are hiring for test automation or reliability, which a QA team from us can take on.",
   "PRG-01": "A core banking replacement needs extra engineers for integrations, data migration and testing.",
   "PRG-02": "A cloud or data platform move has workstreams that a delivery team can own.",
   "PRG-06": "A payments scheme change comes with fixed test dates, which suits a dedicated delivery team.",
@@ -212,7 +215,7 @@ function reasonFor(item: Finding): { text: string; specific: boolean } {
   const rule = item.signals?.find(s => !s.rule_id.startsWith("NEG-"))?.rule_id;
   const line = rule ? WHY_RULE[rule] ?? WHY_FAMILY[rule.slice(0, 3)] : undefined;
   if (line) return { text: tr(line), specific: false };
-  if (item.type === "engineering_job_opened" || item.type === "contractor_job_opened")
+  if (item.type === "engineering_job_opened" || item.type === "contractor_job_opened" || item.type === "job_hard_to_fill")
     return { text: tr("Engineering hiring can indicate a need for skills or capacity. Check the team and whether it uses external partners."), specific: false };
   const play = item.fit.plays.find(p => WHY[p.play_id]);
   if (play) return { text: tr(WHY[play.play_id]), specific: false };

@@ -19,6 +19,7 @@ from ..access import Principal, org_scope_sql
 from ..audit import audit
 from ..config import Settings
 from ..db import Conn, jb, q1, qa
+from . import email_rules
 from .brand_check import PLACEHOLDERS, review_sequence
 from .enrol import USABLE_EMAIL_SQL, ownership_check, plan_contacts
 from .lemlist import LemlistClient, LemlistError
@@ -36,7 +37,10 @@ ANGLES: dict[str, str] = {
     "SRC-06": "When contract engineers are needed on a named system, delivery usually waits on finding them.",
     "CAP-01": "When several engineering roles are open for one platform, delivery often waits on hiring.",
     "CAP-02": "Contract roles on a named system usually mean the work has a date and the team is short.",
+    "CAP-03": "When an engineering role stays open for months, the work it was meant for usually waits too.",
+    "CAP-04": "When the roles are in a stack our engineers already work in, they can usually start before a hire would.",
     "CAP-05": "Moving AI work from a pilot into production usually needs engineers who have done it before.",
+    "CAP-06": "When test automation or reliability roles are open, release dates usually depend on them.",
     "PRG-01": "Core platform migrations usually need extra engineering for integrations, data migration and testing.",
     "PRG-02": "Cloud and data platform moves usually need extra engineering for the parts that do not move by themselves.",
     "PRG-06": "Payment rail and scheme changes come with certification and test dates that do not move.",
@@ -59,6 +63,8 @@ _TECH = [r"\bcto\b|chief technology", r"vp.{0,4}engineering|head of engineering|
 TITLE_PRIORITY: dict[str, list[str]] = {
     "PRG-06": [r"payments?", *_TECH], "COM-03": [r"payments?|product", *_TECH], "COM-06": [r"product|payments?", *_TECH],
     "CAP-05": [r"\bai\b|data|machine learning|chief data", *_TECH], "MAN-01": _TECH, "SRC-01": [r"procurement|purchasing", *_TECH],
+    "CAP-03": [r"engineering manager|head of engineering|head of development|team lead", *_TECH],
+    "CAP-06": [r"\bqa\b|quality|test|reliability|\bsre\b|head of platform|platform", *_TECH],
     "COM-01": [*_TECH, r"\bceo\b|founder|chief executive"],
 }
 
@@ -110,7 +116,7 @@ def signal_options(conn: Conn, p: Principal, days: int = 90, *, target: bool = F
         SELECT s.rule_id, count(DISTINCT s.organization_id) AS accounts, max(coalesce(e.event_at, e.pub_at, s.effective_from)) AS latest,
                count(DISTINCT s.organization_id) FILTER (WHERE EXISTS (
                    SELECT 1 FROM employment em JOIN people pe ON pe.id=em.person_id WHERE em.organization_id=s.organization_id
-                   AND {USABLE_EMAIL_SQL.format(p='pe')})) AS reachable
+                   AND {USABLE_EMAIL_SQL.format(p='pe')} AND {email_rules.consent_sql('pe', 'o')})) AS reachable
         FROM signals s JOIN events e ON e.id=s.event_id AND e.subject_org_id=s.organization_id JOIN organizations o ON o.id=s.organization_id
         WHERE s.status='active' AND s.verification_status='verified' AND (s.expires_at IS NULL OR s.expires_at>now())
           AND e.verification_status='verified' AND e.lifecycle_status='active' AND NOT e.is_historical_replay
@@ -153,6 +159,16 @@ def signal_accounts(conn: Conn, p: Principal, rule_ids: list[str], *, days: int,
     return [r for r in rows if not region or region_for(r["country_code"]) == region]
 
 
+def no_people_reason(plan: dict[str, Any]) -> str:
+    """Why nobody at an account can be added: the country's email rule first (it holds back people who do have an address), then the rest."""
+    held = plan.get("consent_needed") or []
+    if held:
+        return email_rules.blocked_reason(plan["email_rule"], len(held))
+    bits = [f"{plan['manual_review']} need a manual check" if plan["manual_review"] else "",
+            f"{plan['suppressed']} opted out" if plan["suppressed"] else "", f"{plan['already_enrolled']} already in a sequence" if plan["already_enrolled"] else ""]
+    return "No contact with an email address" + (f" ({', '.join(b for b in bits if b)})" if any(bits) else "") + ". Find decision makers on the account first."
+
+
 def _rank(title: str | None, rule_id: str) -> int:
     t = (title or "").lower()
     for i, pat in enumerate(TITLE_PRIORITY.get(rule_id, _TECH)):
@@ -186,9 +202,7 @@ def build_audience(conn: Conn, campaign_id: str, p: Principal) -> dict[str, int]
         people = sorted(plan["eligible"], key=lambda x: (_rank(x["title"], a["rule_id"]), not x.get("verified"), x["name"]))[:per_account] if not reason else []
         if not people:
             if not reason:
-                bits = [f"{plan['manual_review']} need a manual check" if plan["manual_review"] else "",
-                        f"{plan['suppressed']} opted out" if plan["suppressed"] else "", f"{plan['already_enrolled']} already in a sequence" if plan["already_enrolled"] else ""]
-                reason = "No contact with an email address" + (f" ({', '.join(b for b in bits if b)})" if any(bits) else "") + ". Find decision makers on the account first."
+                reason = no_people_reason(plan)
             conn.execute("INSERT INTO signal_campaign_members(campaign_id, organization_id, included, exclusion, signal) VALUES (%s,%s,false,%s,%s)",
                          (campaign_id, org, reason, jb(signal)))
             stats["excluded_accounts"] += 1

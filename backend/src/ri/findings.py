@@ -69,7 +69,7 @@ def findings(conn: Conn, p: Principal, *, scope: str, days: int, limit: int, pag
             AND (({target} AND e.event_type IN ('procurement_published','procurement_amended') AND ({_OPEN}))
                  OR (e.lane IS DISTINCT FROM 'public' AND e.event_type NOT LIKE 'procurement_%%'
                      AND e.event_type NOT IN ('crm_buyer_response','relationship_changed')
-                     AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened')
+                     AND (e.event_type NOT IN ('engineering_job_opened','contractor_job_opened','job_hard_to_fill')
                           OR (coalesce(e.attrs->>'title','') !~* %s AND
                               (NOT (e.attrs ? 'job_id') OR EXISTS (SELECT 1 FROM job_postings j
                                WHERE j.provider=e.attrs->>'provider' AND j.board=e.attrs->>'board'

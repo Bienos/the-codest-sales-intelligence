@@ -5,6 +5,7 @@ import { counted, getLanguage, number, tr } from "../locale";
 import { Empty, Err, Skeleton, safeHref } from "../components/ui";
 import { CompanyAvatar, ListRank, ago, useMedia } from "../components/Findings";
 import { FAMILIES, FAMILY, familyName, familyOf, signalName } from "../components/Signals";
+import { Feedback } from "../components/Feedback";
 import { REGIONS, countryName } from "./targetMarket";
 import "../styles/accounts.css";
 import "../styles/signals.css";
@@ -766,6 +767,7 @@ function SignalBlock({ s, org, kind, full }: { s: Signal; org: Org; kind?: Kind;
       {why && <p className="bs-sd-why"><b>{tr("Why it matters")}</b> {why}</p>}
     </>}
     <Source s={s} org={org} shown={[d.what, d.more, s.summary, s.tender?.title]} />
+    {full && <Feedback itemKey={`signal:${org.id}:${s.id}`} shownOn="signals" />}
   </li>;
 }
 

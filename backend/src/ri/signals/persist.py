@@ -45,13 +45,24 @@ def to_eval(conn: Conn, ev: dict[str, Any]) -> EvalEvent:
 
 
 def _cluster_count(conn: Conn, rule: dict[str, Any], ev: dict[str, Any], now: datetime) -> int:
+    """How many events of the rule's types the account has in the cluster window. `group_by` without `team` counts across teams;
+    `count_matching: true` counts only the events that pass the rule's own match and exclusions (CAP-04: ads in our stacks, not every ad)."""
     c = rule["cluster"]
-    return q1(conn,
-              "SELECT count(*) n FROM events e WHERE e.event_type = ANY(%s) AND e.verification_status='verified' AND e.subject_org_id IS NOT DISTINCT FROM %s "
-              "AND coalesce(e.attrs->>'team','') = coalesce(%s,'') AND coalesce(e.event_at, e.pub_at) >= %s - make_interval(days => %s) "
-              "AND coalesce(e.event_at, e.pub_at) <= coalesce(%s, now()) AND e.lifecycle_status='active'",
-              (rule["required_event_types"], ev["subject_org_id"], (ev["attrs"] or {}).get("team") or "", now, c["window_days"],
-               ev["event_at"] or ev["pub_at"]))["n"]  # type: ignore[index]
+    by_team = "team" in (c.get("group_by") or ["subject_org_id", "team"])
+    where = ("e.event_type = ANY(%s) AND e.verification_status='verified' AND e.subject_org_id IS NOT DISTINCT FROM %s "
+             + ("AND coalesce(e.attrs->>'team','') = coalesce(%s,'') " if by_team else "")
+             + "AND coalesce(e.event_at, e.pub_at) >= %s - make_interval(days => %s) AND coalesce(e.event_at, e.pub_at) <= coalesce(%s, now()) AND e.lifecycle_status='active'")
+    args = [rule["required_event_types"], ev["subject_org_id"], *([(ev["attrs"] or {}).get("team") or ""] if by_team else []), now, c["window_days"],
+            ev["event_at"] or ev["pub_at"]]
+    if not c.get("count_matching"):
+        return q1(conn, f"SELECT count(*) n FROM events e WHERE {where}", args)["n"]  # type: ignore[index]   # noqa: S608
+    from .engine import eval_node
+    n = 0
+    for r in qa(conn, f"SELECT e.event_type, e.attrs, e.summary FROM events e WHERE {where}", args):        # noqa: S608
+        cand = EvalEvent(event_type=r["event_type"], attrs=dict(r["attrs"] or {}), summary=r["summary"] or "")
+        if eval_node(cand, rule["match"], now) and not any(eval_node(cand, x, now) for x in rule.get("exclusions", [])):
+            n += 1
+    return n
 
 
 def evaluate_event(conn: Conn, event_id: str, now: datetime | None = None) -> dict[str, Any]:
@@ -117,7 +128,7 @@ def expire_on_job_closed(conn: Conn, job_event_id: str) -> int:
         return 0
     a = ev["attrs"]
     return conn.execute(
-        "UPDATE signals s SET status='expired' FROM events e WHERE e.id=s.event_id AND s.status='active' AND s.rule_id IN ('CAP-02','CAP-05') "
+        "UPDATE signals s SET status='expired' FROM events e WHERE e.id=s.event_id AND s.status='active' AND s.rule_id IN ('CAP-02','CAP-03','CAP-05','CAP-06') "
         "AND e.attrs->>'provider'=%s AND e.attrs->>'board'=%s AND e.attrs->>'job_id'=%s", (a.get("provider"), a.get("board"), a.get("job_id"))).rowcount
 
 

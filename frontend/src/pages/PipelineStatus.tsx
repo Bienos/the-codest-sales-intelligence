@@ -626,6 +626,9 @@ const laneResult = (key: string, r: Record<string, unknown>): string => {
   if (key === "deadlines_pinned" && typeof r?.accounts_pinned === "number") {      // the regulatory calendar: accounts and deadlines, not bare counters
     return tr("{} accounts pinned to {} deadlines", number(r.accounts_pinned), number(Number(r.deadlines_pinned ?? 0)));
   }
+  if (key === "hard_to_fill_roles" && typeof r?.hard_to_fill_events === "number") {   // hard-to-fill roles: ads found and the signals they made
+    return tr("{} hard-to-fill roles found, {} became buying signals", number(r.hard_to_fill_events), number(Number(r.hard_to_fill_signals ?? 0)));
+  }
   if (typeof r?.accounts_still_without_a_search === "number") {
     return [tr("{} accounts searched in the last day", number(Number(r.accounts_searched ?? 0))), tr("{} still waiting for their first search", number(r.accounts_still_without_a_search))].join(" · ");
   }

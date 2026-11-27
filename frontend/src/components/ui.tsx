@@ -41,7 +41,7 @@ export const LABELS = {
     delivery_feasibility_check: "Check we can staff it", disqualify_review: "Review whether to drop this", identify_delivery_owner: "Find who owns delivery",
     investigate_partner_route: "Check the partner route", investigate_vendor_route: "Check the vendor route", qualify_external_demand: "Ask if they will use outside help" },
   event: { acquisition_announced: "Acquisition", contractor_job_opened: "Contractor role opened", cost_programme: "Cost-cutting programme", crm_buyer_response: "Buyer replied", deadline_approaching: "Deadline coming up",
-    engineering_job_opened: "Engineering role opened", funding_announced: "Funding", implementation_launched: "Rollout started", integration_release: "Integration released", job_closed: "Role closed",
+    engineering_job_opened: "Engineering role opened", funding_announced: "Funding", implementation_launched: "Rollout started", integration_release: "Integration released", job_closed: "Role closed", job_hard_to_fill: "Role hard to fill",
     licence_granted: "Licence granted", market_launch: "Market launch", negative_cancellation: "Cancelled", procurement_amended: "Tender changed", procurement_awarded: "Tender awarded",
     procurement_published: "Tender published", product_launch: "Product launch", programme_announced: "Programme announced", programme_completed: "Programme completed", programme_delayed: "Programme delayed",
     regulatory_change: "Regulation change", relationship_changed: "Relationship change", supplier_exit: "Supplier leaving", supplier_panel_closed: "Supplier panel closed",

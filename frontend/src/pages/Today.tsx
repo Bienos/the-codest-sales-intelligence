@@ -4,6 +4,7 @@ import { api, post } from "../api";
 import { counted, getLanguage, number, tr, useLanguage } from "../locale";
 import { Err, Skeleton, safeHref, useLogo } from "../components/ui";
 import { ReplyCard, ReplyComposer, firstWords, useReplyConfig } from "../components/Replies";
+import { Feedback, canRate } from "../components/Feedback";
 import type { ReplyInfo } from "../components/Replies";
 import { countryName } from "./targetMarket";
 import "../styles/today.css";
@@ -501,6 +502,7 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
             {src && <a href={src} target="_blank" rel="noopener noreferrer" onClick={opened}>{a.source?.name || tr("Original page")} ↗</a>}
             {(a.more ?? 0) > 0 && org && <Link to={`/accounts/${org.id}`}>{a.regulation ? tr("{} more deadlines", a.more) : tr("{} more news items", a.more)}</Link>}
           </p>}
+          {!said && (a.kind === "signal" || a.kind === "tender") && canRate(a.key) && <Feedback itemKey={a.key} shownOn="today" />}
           {said && a.person && <div className="td-b-reply" id="td-reply">
             <ReplyCard reply={said} name={a.person.name} title={person?.title ?? a.person.title} company={org?.name} photo={person?.photo_url} />
             <div className="td-b-reply-foot">
