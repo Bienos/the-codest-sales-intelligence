@@ -19,6 +19,7 @@ export const IconUnknown = I(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5
 export const IconPeople = I(<><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" /><path d="M15.5 4.8a3.3 3.3 0 010 6.4M18 14.8c2 .7 3.2 2.4 3.5 5.2" /></>);
 export const IconCampaign = I(<><path d="M3 10v4h3l6 4V6L6 10z" /><path d="M16 9a4 4 0 010 6M18.5 6.5a7.5 7.5 0 010 11" /></>);
 export const IconTender = I(<><path d="M6 3h9l4 4v14H6z" /><path d="M14 3v5h5M9 12h7M9 16h5" /></>);
+export const IconCompetitors = I(<><path d="M3 20h18" /><path d="M5 20v-6h4v6M10 20V8h4v12M15 20v-9h4v9" /><path d="M12 3l1.2 2.4 2.6.4-1.9 1.8.5 2.6" /></>);
 export const IconFail = I(<><circle cx="12" cy="12" r="9" /><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" /></>);
 
 export const Badge = ({ kind = "", children }: { kind?: string; children: ReactNode }) => <span className={`badge ${kind}`}>{typeof children === "string" ? tr(children) : children}</span>;

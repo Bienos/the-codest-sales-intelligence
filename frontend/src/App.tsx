@@ -20,7 +20,8 @@ import Calendar, { IconCalendar } from "./pages/Calendar";
 import Connections from "./pages/Connections";
 import BuyingSignals, { IconSignals } from "./pages/BuyingSignals";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
-import { Err, Skeleton, lab, useScrollHints, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, Brand } from "./components/ui";
+import Competitors from "./pages/Competitors";
+import { Err, Skeleton, lab, useScrollHints, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, IconCompetitors, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
 
@@ -119,6 +120,7 @@ export default function App() {
           {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}
           {(can("today.read") || can("explorer.read")) && link("/tenders", tr("Open tenders"), IconTender)}
           {can("accounts.read") && link("/calendar", tr("Calendar"), IconCalendar)}
+          {can("competitors.read") && link("/competitors", tr("Competitors"), IconCompetitors)}
           <span className="nav-group">{tr("Look up")}</span>
           {link("/library", tr("Library"), IconLibrary)}
           {link("/knowledge", tr("Knowledge base"), IconKnowledge)}
@@ -142,6 +144,8 @@ export default function App() {
           <Route path="/signals" element={<BuyingSignals canCampaign={can("draft.create")} canPeople={can("contacts.read")} />} />
           <Route path="/tenders" element={<div className="page"><Tenders canRefresh={can("admin.sources")} /></div>} />
           <Route path="/calendar" element={<div className="page"><Calendar /></div>} />
+          <Route path="/competitors" element={<Navigate to="/competitors/briefing" replace />} />
+          <Route path="/competitors/:view/:key?" element={<div className="page"><Competitors /></div>} />
           <Route path="/people" element={<div className="page"><People /></div>} />
           <Route path="/people/:id" element={<div className="page"><Person key={loc.pathname} canConsent={can("draft.create")} /></div>} />
           <Route path="/campaigns" element={<div className="page"><CampaignList /></div>} />

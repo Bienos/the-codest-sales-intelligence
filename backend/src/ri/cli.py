@@ -10,6 +10,12 @@ from .config import Settings
 from .db import connect
 
 
+def _seed_competitors(conn) -> dict[str, int]:
+    """The competitor tracker's research seed (rules/competitors_seed.json); never overwrites a row a person edited."""
+    from .competitors import load_seed
+    return load_seed(conn)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ri")
     ap.add_argument("cmd", choices=["migrate", "seed", "import-sheets", "sync-crm", "schedule", "worker", "digest", "serve"])
@@ -46,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
             from .sources.registry import seed_registry
             for em in s.bootstrap_admin_emails:
                 conn.execute("INSERT INTO users(email, display_name, role, team) VALUES (%s,%s,'admin','default') ON CONFLICT (email) DO NOTHING", (em, em.split("@")[0]))
-            print({"bootstrap_admins": list(s.bootstrap_admin_emails), "legacy_signals_inserted": import_baseline(conn), "rules": sync_rule_versions(conn), "sources_seeded": seed_registry(conn)})
+            print({"bootstrap_admins": list(s.bootstrap_admin_emails), "legacy_signals_inserted": import_baseline(conn), "rules": sync_rule_versions(conn), "sources_seeded": seed_registry(conn), "competitors": _seed_competitors(conn)})
             conn.commit()
         elif a.cmd == "import-sheets":
             from .sheets.client import ConnectorBlocked, GoogleSheetsClient

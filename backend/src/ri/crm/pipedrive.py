@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hmac
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -165,6 +166,10 @@ def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = N
         "stage_id=EXCLUDED.stage_id, stage_name=EXCLUDED.stage_name, status=EXCLUDED.status, value=EXCLUDED.value, update_time=EXCLUDED.update_time, synced_at=now()",
         (d["id"], d.get("org_id"), d.get("title") or "", d.get("owner_id"), d.get("stage_id"), (stages or {}).get(d.get("stage_id")), d.get("pipeline_id"),
          d.get("status"), d.get("value"), d.get("currency"), d.get("update_time"), jb({"id": d["id"]})))
+    field = os.environ.get("RI_PIPEDRIVE_COMPETITOR_FIELD")         # the key of a text field where sellers name the competitors on the deal
+    if field and d.get(field):
+        from ..competitors import from_pipedrive_deal
+        from_pipedrive_deal(conn, d, field)
 
 
 def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, str] | None = None) -> dict[str, int]:

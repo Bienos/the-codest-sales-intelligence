@@ -10,13 +10,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 PERMS: dict[str, set[str]] = {
-    "bdm": {"accounts.read", "today.read", "hypothesis.review", "research.request", "draft.create", "crm.propose", "contacts.read", "explorer.read", "approvals.read_own", "approvals.decide"},
-    "sales_manager": {"accounts.read", "today.read", "hypothesis.review", "research.request", "draft.create", "crm.propose", "contacts.read", "explorer.read", "approvals.read_all",
+    "bdm": {"competitors.read", "competitors.record", "accounts.read", "today.read", "hypothesis.review", "research.request", "draft.create", "crm.propose", "contacts.read", "explorer.read", "approvals.read_own", "approvals.decide"},
+    "sales_manager": {"competitors.read", "competitors.record", "competitors.manage", "accounts.read", "today.read", "hypothesis.review", "research.request", "draft.create", "crm.propose", "contacts.read", "explorer.read", "approvals.read_all",
                       "approvals.decide", "team.read", "ownership.reprioritise", "approvals.spend"},
-    "research_analyst": {"accounts.read", "today.read", "hypothesis.review", "research.request", "explorer.read", "identity.manage", "claims.validate", "initiatives.review", "sources.read"},
-    "marketing": {"proof.manage"},
-    "delivery_expert": {"accounts.read", "hypothesis.read", "delivery.validate", "explorer.read"},
-    "admin": {"accounts.read", "today.read", "explorer.read", "research.request", "draft.create", "contacts.read", "admin.sources", "admin.jobs", "admin.rules", "admin.costs", "admin.users", "admin.identity", "audit.read", "sources.read", "identity.manage", "crm.propose", "approvals.read_all", "approvals.decide"},
+    "research_analyst": {"competitors.read", "competitors.manage", "accounts.read", "today.read", "hypothesis.review", "research.request", "explorer.read", "identity.manage", "claims.validate", "initiatives.review", "sources.read"},
+    "marketing": {"competitors.read", "competitors.manage", "proof.manage"},
+    "delivery_expert": {"competitors.read", "accounts.read", "hypothesis.read", "delivery.validate", "explorer.read"},
+    "admin": {"competitors.read", "competitors.record", "competitors.manage", "accounts.read", "today.read", "explorer.read", "research.request", "draft.create", "contacts.read", "admin.sources", "admin.jobs", "admin.rules", "admin.costs", "admin.users", "admin.identity", "audit.read", "sources.read", "identity.manage", "crm.propose", "approvals.read_all", "approvals.decide"},
     "compliance": {"audit.read", "privacy.manage", "admin.costs"},
 }
 
