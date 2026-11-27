@@ -364,3 +364,14 @@ def test_secrets_are_read_from_render_secret_files_and_trimmed(monkeypatch, tmp_
     assert config.read_secret("PIPEDRIVE_API_TOKEN") == "from-file"
     monkeypatch.setenv("PIPEDRIVE_API_TOKEN", "  from-env \n")
     assert config.read_secret("PIPEDRIVE_API_TOKEN") == "from-env"
+
+
+def test_forecast_reports_where_its_data_comes_from_and_can_recalculate_now(api, conn):
+    c, h = api
+    pd.upsert_deal(conn, deal(60, 10, add=NOW - timedelta(days=3)))
+    conn.execute("update crm_deals set history_backfilled_at=now() where crm_id=60")
+    conn.commit()
+    r = c.get("/api/forecast?fresh=true", headers=h("mgr")).json()
+    src = r["sources"]
+    assert src["history"] == {"deals": 1, "read": 1, "changes": 1} and src["pipedrive"]["last_sync"] and src["webhook"]["waiting"] == 0
+    assert r["can"] == {"manage": True, "sync": True}
