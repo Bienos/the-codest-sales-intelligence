@@ -257,6 +257,9 @@ def crm_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
     time until every deal is done. Runs outside the savepoint steps because the sync commits its own watermarks."""
     now = now or datetime.now(timezone.utc)
     if not (settings.pipedrive_api_token and settings.pipedrive_domain):
+        if now.minute < 5 or q1(conn, "SELECT 1 FROM crm_deals LIMIT 1") is None:      # say why, by name only (never a value)
+            missing = [n for n, v in (("PIPEDRIVE_API_TOKEN", settings.pipedrive_api_token), ("PIPEDRIVE_DOMAIN", settings.pipedrive_domain)) if not v]
+            return {"crm_sync_skipped": "not set: " + ", ".join(missing)}
         return {}
     first = not q1(conn, "SELECT 1 FROM sync_state WHERE system='pipedrive' LIMIT 1")
     hourly = now.minute < 5 or first

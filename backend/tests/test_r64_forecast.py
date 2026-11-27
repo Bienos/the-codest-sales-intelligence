@@ -352,3 +352,15 @@ def test_first_sync_runs_at_once_and_history_catches_up_every_tick(conn, monkeyp
     assert "crm_sync" not in out and out["deal_history_backfill"]["deals"] == 1 and synced == [1] and len(backfills) == 2
     conn.execute("update crm_deals set history_backfilled_at=now()")
     assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 18, 30, tzinfo=timezone.utc)) == {}    # nothing to catch up: waits for the hour
+
+
+def test_secrets_are_read_from_render_secret_files_and_trimmed(monkeypatch, tmp_path):
+    from ri import config
+    monkeypatch.setattr(config, "SECRET_FILES_DIR", str(tmp_path))
+    monkeypatch.delenv("PIPEDRIVE_API_TOKEN", raising=False)
+    monkeypatch.delenv("PIPEDRIVE_API_TOKEN_FILE", raising=False)
+    assert config.read_secret("PIPEDRIVE_API_TOKEN") is None
+    (tmp_path / "PIPEDRIVE_API_TOKEN").write_text("from-file\n")
+    assert config.read_secret("PIPEDRIVE_API_TOKEN") == "from-file"
+    monkeypatch.setenv("PIPEDRIVE_API_TOKEN", "  from-env \n")
+    assert config.read_secret("PIPEDRIVE_API_TOKEN") == "from-env"

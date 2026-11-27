@@ -236,7 +236,7 @@ def test_endpoints_status_webhook_and_deal_proposal(conn, db_url):
 def test_crm_sync_step_does_nothing_without_a_token_and_only_runs_at_the_top_of_the_hour(conn, monkeypatch):
     from datetime import datetime, timezone
     from ri import scheduler
-    assert scheduler.crm_sync_step(conn, S(), datetime(2026, 11, 21, 10, 1, tzinfo=timezone.utc)) == {}
+    assert scheduler.crm_sync_step(conn, S(), datetime(2026, 11, 21, 10, 1, tzinfo=timezone.utc)) == {"crm_sync_skipped": "not set: PIPEDRIVE_API_TOKEN, PIPEDRIVE_DOMAIN"}
     ran = []
     import ri.crm.pipedrive as pdm
     monkeypatch.setattr(pdm, "sync_incremental", lambda c, r: ran.append(1) or {"orgs": 0})

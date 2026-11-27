@@ -14,15 +14,18 @@ def _f(name: str, default: float) -> float:
     return float(os.environ.get(name, default))
 
 
+SECRET_FILES_DIR = "/etc/secrets"          # where Render mounts Secret Files
+
+
 def read_secret(name: str) -> str | None:
-    """`NAME` env var, or contents of the file named by `NAME_FILE` (Docker/K8s secrets)."""
-    v = os.environ.get(name)
+    """`NAME` env var, the file named by `NAME_FILE` (Docker/K8s secrets), or a Render Secret File named `NAME`."""
+    v = (os.environ.get(name) or "").strip()
     if v:
         return v
-    p = os.environ.get(f"{name}_FILE")
-    if p and os.path.exists(p):
-        with open(p, encoding="utf-8") as fh:
-            return fh.read().strip()
+    for p in (os.environ.get(f"{name}_FILE"), os.path.join(SECRET_FILES_DIR, name)):      # NAME_FILE, or a Render "Secret File" named NAME
+        if p and os.path.isfile(p):
+            with open(p, encoding="utf-8") as fh:
+                return fh.read().strip() or None
     return None
 
 
