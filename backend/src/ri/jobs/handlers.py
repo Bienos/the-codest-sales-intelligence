@@ -352,9 +352,21 @@ def _admin_ops_jobs() -> dict[str, Callable[[Conn, dict], dict]]:
         from ..sources.autovalidate import run_daily
         return run_daily(conn, by=job["payload"].get("by") or "system:daily-source-check")
 
+    def gmail_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..config import Settings as _S
+        from ..connections.gmail_sync import run
+        return run(conn, job, settings=_S.from_env(require_auth=False))
+
+    def lemlist_user_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..config import Settings as _S
+        from ..connections.lemlist_sync import run
+        return run(conn, job, settings=_S.from_env(require_auth=False))
+
+    gmail_sync.own_transactions = True  # type: ignore[attr-defined]
+    lemlist_user_sync.own_transactions = True  # type: ignore[attr-defined]
     identity_autoresolve.own_transactions = True  # type: ignore[attr-defined]
     sources_validate_daily.own_transactions = True  # type: ignore[attr-defined]
-    return {"identity_autoresolve": identity_autoresolve, "sources_validate_daily": sources_validate_daily}
+    return {"identity_autoresolve": identity_autoresolve, "sources_validate_daily": sources_validate_daily, "gmail_sync": gmail_sync, "lemlist_user_sync": lemlist_user_sync}
 
 
 __all__ = ["build_handlers", "ConnectorError"]

@@ -71,6 +71,8 @@ class Settings:
     slack_webhook_url: str | None = field(default=None, repr=False)
     approval_ttl_hours: int = 72
     google_client_id: str | None = None
+    google_client_secret: str | None = field(default=None, repr=False)   # Gmail authorisation (code flow); the sign-in itself needs only the client id
+    vault_key: str | None = field(default=None, repr=False)               # RI_VAULT_KEY: seals each person's own connection credentials
     anthropic_monthly_token_cap: float = 0.0     # tokens/month; 0 = model extraction cannot run
     exa_monthly_cap_usd: float = 0.0
     exa_est_cost_per_search: float | None = None  # reservation estimate only; real cost is taken from each Exa response. None => 0.01 default
@@ -126,6 +128,8 @@ class Settings:
             slack_webhook_url=read_secret("SLACK_WEBHOOK_URL"),
             approval_ttl_hours=int(os.environ.get("RI_APPROVAL_TTL_HOURS", "72")),
             google_client_id=os.environ.get("RI_GOOGLE_CLIENT_ID") or None,
+            google_client_secret=read_secret("RI_GOOGLE_CLIENT_SECRET"),
+            vault_key=read_secret("RI_VAULT_KEY"),
             anthropic_monthly_token_cap=_f("RI_ANTHROPIC_MONTHLY_TOKEN_CAP", 0.0),
             exa_monthly_cap_usd=_f("RI_EXA_MONTHLY_CAP_USD", 0.0),
             anthropic_price_in_per_mtok=float(os.environ.get("RI_ANTHROPIC_PRICE_IN_PER_MTOK") or LIST_PRICES.get(os.environ.get("RI_ANTHROPIC_MODEL") or "claude-haiku-5-5", (0.10, 0.50))[0]),

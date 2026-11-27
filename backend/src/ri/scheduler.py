@@ -38,6 +38,8 @@ LANES: tuple[Lane, ...] = (
     Lane("scan_rotation", "Rotating check of every target account's own pages",
          "Every hour, queues a read of the news, careers and supplier pages of a few target accounts, the longest-unchecked first (about 20 a day), so every target gets its turn. Runs in the background.",
          HOUR, can_pause=True, main=True, queues="account_scan_background"),
+    Lane("connection_sync", "Personal connections: sync", "Every hour, queues a sync of each person's own connected Gmail and Lemlist, so conversations with our contacts appear on the person and company pages. Runs in the background.",
+         HOUR, can_pause=True, main=True, queues="gmail_sync"),
     Lane("market_tagged", "Market and region tags", "Gives each new finding its market, region and public or private lane."),
     Lane("public_bodies_tagged", "Public bodies", "Marks public-sector buyers so they are not offered as sales accounts."),
     Lane("retriaged", "Re-check skipped articles", "Articles the cheap word check skipped are checked again when the word list changes.", HOUR, adjustable=True),
@@ -355,6 +357,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("watchlist_scans", lambda: schedule_watchlist(conn, now))
     from .sources.scan_rotation import schedule as schedule_scan_rotation
     step("scan_rotation", lambda: schedule_scan_rotation(conn, now))      # after the daily and weekly checks: whatever they queued today is not doubled
+    from .connections.store import purge_old, schedule_syncs
+    step("connection_sync", lambda: (purge_old(conn, now), schedule_syncs(conn, now))[1])      # old interactions (18 months) and webhook logs (30 days) go first
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     from .market import tag_public_bodies
     step("public_bodies_tagged", lambda: tag_public_bodies(conn, 500))
