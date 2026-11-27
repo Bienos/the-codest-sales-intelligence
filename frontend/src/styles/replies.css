@@ -1,85 +1,224 @@
-/* What someone wrote back to our campaign, and the reply box (Today and the person page). Square corners; pink only on the Send button. */
+/* The emails with one person, read like a mail client, and the composer that answers in the same Lemlist thread (person page, Today).
+   Square corners. Ours: white with a navy edge. Theirs: a light purple tint with a purple edge. Pink only on Send. */
 
-.rp-words, .rp-box, .rp-list, .rp-item { min-width: 0; max-width: 100%; }
+.rp-thread, .rp-compose, .rp-card, .rp-list, .rp-msg, .rp-words { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.ac-panel.rp-thread p { margin: 0; }                       /* spacing below comes from gaps and padding, not paragraph margins */
+.rp-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.rp-ico { width: 16px; height: 16px; flex: none; }
 
-/* the padding sits on the wrapper, so the four-line cut never lets a fifth line show through it */
-.rp-quote { padding: 12px 14px; background: var(--tint-2); border-left: 3px solid var(--purple); min-width: 0; }
-.rp-text { margin: 0; color: var(--navy);
-  font: 400 var(--fs-md)/1.55 var(--font-body); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--rp-lines, 4); line-clamp: var(--rp-lines, 4); overflow: hidden; }
+/* links inside: navy, a quiet underline that turns pink on hover (pink stays for actions) */
+.rp-thread a, .rp-compose a, .rp-card a, .td-b-reply a { color: var(--navy); text-decoration: underline; text-decoration-color: var(--line);
+  text-decoration-thickness: 1px; text-underline-offset: .22em; }
+.rp-thread a:hover, .rp-compose a:hover, .rp-card a:hover, .td-b-reply a:hover { text-decoration-color: var(--pink); color: var(--navy); }
+.rp-alt { display: inline-flex; align-items: center; gap: 5px; min-height: 40px; font: 600 var(--fs-sm)/1.2 var(--font-body); white-space: nowrap; }
+.rp-alt .rp-ico { width: 14px; height: 14px; }
+.rp-thread a:focus-visible, .rp-compose a:focus-visible, .rp-card a:focus-visible, .td-b-reply a:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- the words of one email */
+.rp-words { display: grid; justify-items: start; gap: 2px; }
+.rp-text { margin: 0; justify-self: stretch; color: var(--navy); font: 400 var(--fs-md)/1.6 var(--font-body); white-space: pre-wrap; overflow-wrap: anywhere;
+  word-break: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--rp-lines, 4); line-clamp: var(--rp-lines, 4); overflow: hidden; }
+.rp-text.is-cut { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 3.2em), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 3.2em), transparent); }
 .rp-text.open { display: block; -webkit-line-clamp: unset; line-clamp: none; overflow: visible; }
-.rp-more { margin-top: 6px; }
-.rp-none { margin: 6px 0 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
-.rp-none a, .rp-alt { color: var(--navy); text-decoration: underline; text-decoration-color: var(--pink); text-underline-offset: .2em; }
-.rp-none a:focus-visible, .rp-alt:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+button.rp-more { display: inline-flex; align-items: center; gap: 4px; min-height: 40px; margin: 0; padding: 0 2px; border: 0; background: none; color: var(--navy);
+  font: 600 var(--fs-sm)/1 var(--font-body); letter-spacing: normal; text-transform: none; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: .25em; }
+button.rp-more:hover { background: none; text-decoration-color: var(--pink); }
+button.rp-more .rp-ico { width: 14px; height: 14px; }
+.rp-more .is-up .rp-ico { transform: rotate(180deg); }
+.rp-none { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
 
-.rp-box { margin-top: 14px; display: grid; gap: 8px; }
-.rp-box label { font: 800 var(--fs-xs)/1.2 var(--font-head); letter-spacing: .07em; text-transform: uppercase; color: var(--navy); }
-.rp-box textarea { width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical; margin: 0; padding: 10px 12px; border: 2px solid var(--navy); border-radius: 0;
-  background: var(--white); color: var(--navy); font: 400 var(--fs-input)/1.5 var(--font-body); }
-.rp-box textarea:focus-visible { outline: 3px solid var(--purple); outline-offset: 1px; }
-.rp-hint { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
-.rp-box-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
-.rp-box-acts button.primary { margin: 0 var(--offset) var(--offset) 0; }
-.rp-alt { font-size: var(--fs-sm); }
-.rp-note { margin: 0; overflow-wrap: anywhere; }
+/* ---------------------------------------------------------------- avatars */
+.rp-face { display: grid; place-items: center; flex: none; width: 32px; height: 32px; overflow: hidden; background: #E9DDFB; color: var(--navy);
+  font: 800 12px/1 var(--font-head); letter-spacing: .04em; }
+.rp-face.is-ours { background: var(--navy); color: var(--white); }
+.rp-face.has-photo { background: var(--tint-2); }
+.rp-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rp-face-sm { width: 28px; height: 28px; font-size: 11px; }
 
-/* The thread (person page, and inside a Today reply): every email on its own card, oldest first, on a rail that reads top to bottom.
-   Ours have a navy edge, theirs a purple edge on a pale purple card; the newest reply has a full purple frame. Purple is line work only. */
-.rp-thread h2 { margin-top: 0; }
-.rp-sum { margin: 0 0 14px; padding: 10px 12px; background: var(--tint-1); border-left: 3px solid var(--navy); color: var(--navy);
-  font: 500 var(--fs-sm)/1.5 var(--font-body); overflow-wrap: anywhere; }
-.rp-earlier { display: inline-block; margin: 0 0 10px; }
-.rp-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; position: relative; }
-.rp-list::before { content: ""; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 2px; background: var(--line); }
-.rp-item { position: relative; margin-left: 22px; min-width: 0; }
-.rp-item::before { content: ""; position: absolute; left: -22px; top: 15px; width: 12px; height: 12px; box-sizing: border-box; background: var(--navy); }
-.rp-theirs::before { background: var(--purple); }
-.rp-slim::before { top: 7px; background: var(--white); border: 2px solid var(--navy); }
-.rp-app.is-off::before { background: var(--off); }
+/* ---------------------------------------------------------------- the thread */
+.rp-thread { container: rpt / inline-size; }
+.rp-thread-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 16px; }
+.ac-panel.rp-thread .rp-thread-h h2 { margin: 0; }
+.ac-panel.rp-thread > .ac-purpose { margin: 2px 0 12px; }
 
-.rp-card { padding: 10px 14px 12px; background: var(--white); border: 1px solid var(--line); border-left: 3px solid var(--navy); }
-.rp-theirs { background: var(--tint-2); border-left-color: var(--purple); }
-.rp-newest { border: 2px solid var(--purple); border-left-width: 4px; }
-.rp-app.is-off { border-left-color: var(--off); }
-.rp-card-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; color: var(--navy); }
-.rp-dir { font: 800 var(--fs-xs)/1.3 var(--font-head); letter-spacing: .06em; text-transform: uppercase; }
-.rp-tag { font: 700 var(--fs-label)/1.2 var(--font-head); letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; background: var(--navy); color: var(--white); }
-.rp-card-h time { margin-left: auto; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
-.rp-from { margin: 3px 0 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.4; overflow-wrap: anywhere; }
-.rp-subj { margin: 6px 0 0; color: var(--navy); font: 600 var(--fs-md)/1.4 var(--font-body); overflow-wrap: anywhere; }
-.rp-meta { margin: 2px 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; overflow-wrap: anywhere; }
-/* inside a card the words sit on the card itself: no second frame */
-.rp-card .rp-words { margin-top: 8px; }
-.rp-card .rp-quote { padding: 0; background: none; border-left: 0; }
-.rp-card .rp-text { font-size: var(--fs-md); }
+/* the summary: one compact strip of facts */
+.rp-strip { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; margin: 0 0 12px; padding: 8px 12px;
+  background: var(--tint-1); border-left: 3px solid var(--navy); }
+.rp-strip li { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; color: var(--navy); font-size: var(--fs-sm); line-height: 1.3; white-space: nowrap; }
+.rp-strip li b { font-weight: 600; }
+.rp-strip li small { margin-left: 6px; color: var(--muted); font-size: var(--fs-xs); }
+.rp-strip .rp-ico { width: 15px; height: 15px; color: var(--muted); }
+.rp-strip li.is-them .rp-ico { color: #6A3FC9; }
+.rp-strip li.is-warn .rp-ico { color: var(--orange); }
+.rp-quiet { color: var(--muted); }
 
-.rp-eng { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; padding: 0; }
-.rp-eng li { padding: 2px 8px; background: var(--tint-1); border: 1px solid var(--line); color: var(--navy); font-size: var(--fs-xs); line-height: 1.5; }
-.rp-eng li.is-warn { border-color: var(--orange); background: var(--tint-3); }
-.rp-eng-none { margin: 8px 0 0; color: var(--muted); font-size: var(--fs-xs); }
+.rp-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); background: var(--white); }
+.rp-msg { position: relative; border-top: 1px solid var(--line); background: var(--white); box-shadow: inset 3px 0 0 var(--navy); }
+.rp-msg:first-child { border-top: 0; }
+.rp-msg.is-theirs { background: var(--tint-2); box-shadow: inset 3px 0 0 var(--purple); }
+.rp-msg.is-off { box-shadow: inset 3px 0 0 var(--off); }
 
-.rp-slim { padding: 2px 0 4px; }
-.rp-slim-l { margin: 0; color: var(--navy); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
-.rp-slim-c { color: var(--muted); }
-.rp-slim .rp-eng { margin-top: 6px; }
-.rp-slim .rp-eng-none { margin-top: 2px; }
+/* one line per email; two lines on a narrow screen */
+button.rp-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "face who when" "face snip marks"; align-items: center;
+  column-gap: 10px; row-gap: 1px; width: 100%; min-height: 52px; box-sizing: border-box; margin: 0; padding: 9px 14px 9px 15px; border: 0; background: transparent;
+  color: var(--navy); text-align: left; font: 400 var(--fs-md)/1.4 var(--font-body); letter-spacing: normal; text-transform: none; cursor: pointer; }
+button.rp-row:hover { background: rgba(13, 18, 76, .035); }
+button.rp-row:focus-visible { outline: 3px solid var(--purple); outline-offset: -3px; }
+.rp-row > .rp-face { grid-area: face; align-self: start; margin-top: 1px; }
+.rp-row-who { grid-area: who; display: flex; align-items: baseline; gap: 6px 8px; min-width: 0; }
+.rp-row-who b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.rp-row-who .rp-addr { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--fs-sm); }
+.rp-row-snip { grid-area: snip; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--fs-sm); }
+.rp-row .rp-when { grid-area: when; justify-self: end; }
+.rp-row .rp-marks { grid-area: marks; justify-self: end; }
+.rp-msg.is-open .rp-row-snip { grid-column: 2 / -1; }
+.rp-when { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.rp-new { flex: none; padding: 2px 6px; background: var(--purple); color: var(--navy); font: 800 var(--fs-label)/1.2 var(--font-head); letter-spacing: .06em; text-transform: uppercase; }
+.rp-state { flex: none; padding: 1px 6px; border: 1px solid var(--line); background: var(--white); color: var(--muted); font-size: var(--fs-xs); }
+.rp-state.is-off { border-color: var(--orange); color: var(--navy); }
 
-/* inside a Today reply: the same cards, a little tighter */
-.rp-embedded { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
-.rp-conv-toggle { display: inline-block; margin-top: 10px; }
+.rp-marks { display: inline-flex; align-items: center; gap: 8px; }
+.rp-mark { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: var(--fs-xs); line-height: 1; white-space: nowrap; }
+.rp-mark .rp-ico { width: 14px; height: 14px; }
+.rp-mark.is-step { padding: 3px 6px; border: 1px solid var(--navy); background: var(--white); color: var(--navy); font: 800 var(--fs-label)/1 var(--font-head); letter-spacing: .05em; text-transform: uppercase; }
+.rp-mark.is-warn .rp-ico { color: var(--orange); }
+.rp-marks.is-words { flex-wrap: wrap; gap: 6px; }
+.rp-marks.is-words .rp-mark:not(.is-step) { padding: 4px 8px; border: 1px solid var(--line); background: var(--tint-1); color: var(--navy); }
+.rp-marks.is-words .rp-mark.is-warn { border-color: var(--orange); background: var(--tint-3); }
+.rp-marks.is-words .rp-mark.is-none { background: none; color: var(--muted); }
+.rp-marks.is-words .rp-mark.is-step { display: none; }       /* the step is in the line above */
 
-@media (max-width: 600px) {
-  .rp-box-acts button.primary { flex: 1 1 100%; }
-  .rp-quote { padding: 10px 12px; }
-  .rp-card { padding: 9px 11px 11px; }
-  .rp-card-h time { margin-left: 0; flex-basis: 100%; }
+/* an open email */
+.rp-body { display: grid; gap: 10px; padding: 2px 16px 16px 15px; }
+.rp-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; }
+.rp-meta .rp-subj { color: var(--navy); font: 600 var(--fs-sm)/1.4 var(--font-body); }
+.rp-sig-t { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rp-sig-t.is-sent { padding-top: 8px; border-top: 1px dashed var(--line); }
+
+.rp-fold { border-top: 1px solid var(--line); background: var(--tint-1); }
+.rp-fold button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; margin: 0; padding: 0 14px; border: 0; background: none; color: var(--navy);
+  font: 600 var(--fs-sm)/1 var(--font-body); letter-spacing: normal; text-transform: none; }
+.rp-fold button::before, .rp-fold button::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.rp-fold button span { padding: 4px 10px; border: 1px solid var(--line); background: var(--white); }
+.rp-fold button:hover span { border-color: var(--navy); }
+
+@container rpt (min-width: 620px) {
+  button.rp-row { grid-template-columns: 32px minmax(110px, 180px) minmax(0, 1fr) auto auto; grid-template-areas: "face who snip marks when"; column-gap: 12px; min-height: 48px; }
+  .rp-row > .rp-face { align-self: center; margin-top: 0; }
+  .rp-msg.is-open button.rp-row { grid-template-columns: 32px auto minmax(0, 1fr) auto; grid-template-areas: "face who snip when"; }
+  .rp-msg.is-open .rp-row-snip { grid-column: auto; }
+  .rp-body { padding: 0 20px 18px 59px; }
 }
 
-/* Today: their words under "What happened", and the second button next to "Reply" */
-.td-b-reply { margin-top: 14px; min-width: 0; }
-.td-b-reply-h { margin: 0 0 6px; font: 800 var(--fs-xs)/1.2 var(--font-head); letter-spacing: .07em; text-transform: uppercase; color: var(--navy); }
+/* ---------------------------------------------------------------- the composer */
+.rp-compose { margin-top: 14px; border: 1px solid var(--line); background: var(--white); }
+.rp-compose:not(.is-open):not(.is-blocked):hover { border-color: var(--navy); }
+.rp-compose.is-open { border: 2px solid var(--navy); }
+.rp-compose:focus-within { outline: 3px solid var(--purple); outline-offset: 1px; }
+.rp-field { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 10px; }
+.rp-compose.is-open .rp-field { padding: 6px 8px 2px 8px; }
+.rp-compose textarea { flex: 1; min-width: 0; width: 100%; min-height: 44px; box-sizing: border-box; margin: 0; padding: 10px 6px; border: 0; background: transparent; resize: none;
+  color: var(--navy); font: 400 var(--fs-input)/1.55 var(--font-body); outline: none; }
+.rp-compose:not(.is-open) textarea { height: 44px; overflow: hidden; white-space: nowrap; cursor: text; }
+.rp-compose.is-open textarea { min-height: 128px; }
+.rp-compose textarea::placeholder { color: var(--muted); opacity: 1; }
+.rp-compose textarea:focus, .rp-compose textarea:focus-visible { outline: none; }
+
+.rp-hdr { display: grid; gap: 3px; margin: 0; padding: 10px 14px 9px; background: var(--tint-1); border-bottom: 1px solid var(--line); }
+.rp-hdr > div { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.rp-hdr dt { color: var(--muted); font: 800 var(--fs-label)/1.6 var(--font-head); letter-spacing: .07em; text-transform: uppercase; }
+.rp-hdr dd { margin: 0; color: var(--navy); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
+.rp-hdr dd b { font-weight: 600; }
+.rp-addr { color: var(--muted); }
+.rp-subj-h { display: block; color: var(--muted); font-size: var(--fs-xs); }
+
+.rp-sig { margin: 0 14px; padding: 8px 0 12px; border-top: 1px dashed var(--line); }
+.rp-sig-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.rp-sig-h > span { color: var(--muted); font: 800 var(--fs-label)/1 var(--font-head); letter-spacing: .07em; text-transform: uppercase; }
+button.rp-sig-edit { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; margin: 0; padding: 0 4px; border: 0; background: none; color: var(--navy);
+  font: 600 var(--fs-sm)/1 var(--font-body); letter-spacing: normal; text-transform: none; }
+button.rp-sig-edit:hover { background: none; text-decoration: underline; text-decoration-color: var(--pink); text-underline-offset: .25em; }
+button.rp-sig-edit .rp-ico { width: 14px; height: 14px; }
+.rp-sig .rp-sig-t { margin-top: -4px; }
+.rp-sig-src { margin: 4px 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
+.rp-sig .sg-edit { padding-top: 8px; }
+
+.rp-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 12px 14px 14px; border-top: 1px solid var(--line); }
+.rp-acts button.primary.rp-send { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; margin: 0 var(--offset) var(--offset) 0; padding: 0 24px;
+  font-size: var(--fs-sm); }
+.rp-acts button.primary.rp-send:disabled { opacity: 1; cursor: progress; }
+.rp-acts button.primary.rp-send:disabled::after { opacity: 1; }
+.rp-send .rp-ico { width: 16px; height: 16px; }
+.rp-kbd { padding: 3px 6px; border: 1px solid var(--line); color: var(--muted); font: 700 var(--fs-label)/1 var(--font-head); letter-spacing: .04em; }
+button.rp-discard { margin: 0 0 0 auto; min-height: 40px; padding: 0 4px; border: 0; background: none; color: var(--muted); font: 400 var(--fs-sm)/1 var(--font-body);
+  letter-spacing: normal; text-transform: none; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: .25em; }
+button.rp-discard:hover { background: none; color: var(--navy); }
+.rp-saved-h { margin: 0; padding: 0 14px 12px; color: var(--muted); font-size: var(--fs-xs); }
+.rp-note { margin: 0; padding: 0 14px 12px; overflow-wrap: anywhere; }
+.rp-compose:not(.is-open) .rp-note { padding-top: 0; }
+
+.rp-sent { display: flex; align-items: center; gap: 10px; margin: 0; padding: 10px 14px; background: var(--ok-tint); border-bottom: 1px solid var(--line); color: var(--navy);
+  font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
+.rp-sent small { color: var(--muted); font-size: var(--fs-sm); }
+.rp-sent-i { display: grid; place-items: center; flex: none; width: 24px; height: 24px; background: var(--dot-ok); color: var(--white); }
+.rp-sent-i .rp-ico { width: 15px; height: 15px; }
+
+.rp-compose.is-blocked { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 14px; border: 1px dashed var(--off); background: var(--tint-1); }
+.rp-compose.is-blocked p { flex: 1 1 240px; margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
+.rp-blocked-i { display: grid; place-items: center; flex: none; width: 28px; height: 28px; background: var(--white); border: 1px solid var(--line); color: var(--muted); }
+.rp-blocked-i .rp-ico { width: 14px; height: 14px; }
+
+@media (hover: none) { .rp-kbd { display: none; } }
+@media (max-width: 600px) {
+  .rp-acts { gap: 8px 14px; }
+  .rp-acts button.primary.rp-send { flex: 1 1 auto; }
+  .rp-hdr > div { grid-template-columns: 54px minmax(0, 1fr); }
+  .rp-strip { gap: 4px 14px; }
+}
+
+/* ---------------------------------------------------------------- the signature editor (composer and My connections) */
+.sg-edit { display: grid; gap: 6px; min-width: 0; }
+.sg-edit label { color: var(--navy); font: 800 var(--fs-label)/1.2 var(--font-head); letter-spacing: .07em; text-transform: uppercase; }
+.sg-edit textarea { width: 100%; min-height: 110px; box-sizing: border-box; margin: 0; padding: 10px 12px; border: 1px solid var(--navy); background: var(--white); resize: vertical;
+  color: var(--navy); font: 400 var(--fs-input)/1.5 var(--font-body); }
+.sg-hint { display: flex; justify-content: space-between; gap: 12px; margin: 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
+.sg-count { flex: none; font-variant-numeric: tabular-nums; }
+.sg-count.is-near { color: var(--navy); font-weight: 600; }
+.sg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.sg-acts button.sg-save { min-height: 42px; }
+.sg-acts .linkish { min-height: 40px; }
+.sg-ok { color: var(--navy); font-size: var(--fs-sm); }
+.sg-err { margin: 0; }
+
+/* My connections: the signature card, the same shape as the provider cards */
+.sg-card { min-width: 0; margin-top: 16px; padding: 16px; background: var(--white); border: 1px solid var(--line); border-top: 3px solid var(--navy); overflow-wrap: anywhere; }
+.sg-card-h { display: flex; align-items: center; gap: 12px; }
+.sg-glyph { display: grid; place-items: center; flex: none; width: 40px; height: 40px; background: var(--navy); color: var(--purple); }
+.sg-glyph svg { width: 22px; height: 22px; }
+.sg-card-h h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-lg); letter-spacing: .04em; line-height: 1.2; }
+.sg-for { margin: 12px 0 12px; color: var(--navy); line-height: 1.5; max-width: 68ch; }
+.sg-src { margin: 0 0 10px; color: var(--muted); font-size: var(--fs-sm); }
+.sg-card .sg-edit { max-width: 560px; }
+
+/* ---------------------------------------------------------------- Today: their reply as a card, then the composer */
+.rp-card { display: grid; gap: 8px; padding: 12px 14px 10px 15px; background: var(--tint-2); box-shadow: inset 3px 0 0 var(--purple); }
+.rp-card-h { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.rp-card-who { min-width: 0; }
+.rp-card-who b { display: block; color: var(--navy); font: 600 var(--fs-md)/1.3 var(--font-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-card-who small { display: block; color: var(--muted); font-size: var(--fs-xs); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-card-subj { margin: 0; color: var(--navy); font: 600 var(--fs-sm)/1.4 var(--font-body); overflow-wrap: anywhere; }
+.rp-card-subj small { color: var(--muted); font-weight: 400; }
+.rp-card .rp-words { gap: 0; }
+
+.td-b-reply { display: grid; gap: 0; margin-top: 6px; min-width: 0; }
+.td-b-reply .rp-compose { margin-top: 10px; }
+.td-b-reply-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin-top: 4px; }
+.td-b-reply-foot .rp-none { margin: 0; }
+.td-b-reply-foot .rp-alt .rp-ico { width: 14px; height: 14px; }
 .td-b-acts a.btn.rp-open { min-height: 42px; box-sizing: border-box; padding: 11px 16px; }
 @media (max-width: 860px) {
   .td-b-acts a.btn.rp-open { flex: 0 0 auto; padding: 11px 12px; }
 }
+
+/* inside another panel: the same thread, a little tighter */
+.rp-embedded { margin-top: 12px; }

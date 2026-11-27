@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, post } from "../api";
 import { counted, getLanguage, number, tr, useLanguage } from "../locale";
 import { Err, Skeleton, safeHref, useLogo } from "../components/ui";
-import { EmailThread, ReplyBox, ReplyText, firstWords, useReplyConfig } from "../components/Replies";
+import { ReplyCard, ReplyComposer, firstWords, useReplyConfig } from "../components/Replies";
 import type { ReplyInfo } from "../components/Replies";
 import { countryName } from "./targetMarket";
 import "../styles/today.css";
@@ -445,16 +445,15 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
         counted(a.engagement?.opens ?? 0, ["time", "times"], ["raz", "razy", "razy"]), counted(a.engagement?.clicks ?? 0, ["time", "times"], ["raz", "razy", "razy"]))
       : a.text;
   const headline = a.title && a.kind !== "reply" && a.kind !== "follow_up" ? a.title.replace(/[.\s]+$/, "") : null;
-  // a reply we hold in Lemlist: answer it right here (the box opens under their words), or open the person's page for the whole thread
+  // a reply we hold in Lemlist: answer it right here (the composer sits under their words), or open the whole conversation on the person page
   const said = a.kind === "reply" && a.person ? a.reply ?? null : null;
-  const [replying, setReplying] = useState(false);
-  const [conversation, setConversation] = useState(false);     // the whole thread, each email on its own, opened under their words
+  const [compose, setCompose] = useState(0);                  // "Reply to Klaus" in the action bar opens the composer and puts the cursor in it
   const replyConfig = useReplyConfig(Boolean(said));
 
   const actionBar = <div className="td-b-acts">
     <span className="td-b-main">
       {said && a.person
-        ? <><button type="button" className="btn primary" aria-expanded={replying} aria-controls="td-reply" onClick={() => { setReplying(true); opened(); }}>{tr("Reply to this email")}</button>
+        ? <><button type="button" className="btn primary" aria-controls="td-reply" onClick={() => { setCompose((n) => n + 1); opened(); }}>{tr("Reply to {}", firstName(a.person.name))}</button>
           <Link className="btn rp-open" to={`/people/${a.person.id}`}>{tr("Open person")}</Link></>
         : go.href
         ? <a className="btn primary" href={go.href} target="_blank" rel="noopener noreferrer" onClick={opened}>{go.label} ↗</a>
@@ -495,21 +494,21 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
         </div>}
 
         <section className="td-b-sec">
-          <h3>{tr("What happened")}</h3>
-          {(headline || text) && <p className="td-b-text">{headline && <b>{headline}. </b>}{text}</p>}
-          {(a.happened || src) && <p className="td-b-src">
+          <h3>{said && a.person ? tr("What {} wrote", firstName(a.person.name)) : tr("What happened")}</h3>
+          {!said && (headline || text) && <p className="td-b-text">{headline && <b>{headline}. </b>}{text}</p>}
+          {!said && (a.happened || src) && <p className="td-b-src">
             {a.happened && <span>{day(a.happened, { weekday: "short", day: "numeric", month: "long" })}</span>}
             {src && <a href={src} target="_blank" rel="noopener noreferrer" onClick={opened}>{a.source?.name || tr("Original page")} ↗</a>}
             {(a.more ?? 0) > 0 && org && <Link to={`/accounts/${org.id}`}>{a.regulation ? tr("{} more deadlines", a.more) : tr("{} more news items", a.more)}</Link>}
           </p>}
           {said && a.person && <div className="td-b-reply" id="td-reply">
-            <h4 className="td-b-reply-h">{tr("What {} wrote", firstName(a.person.name))}</h4>
-            <ReplyText text={said.text} state={said.text_state} lemlistUrl={said.lemlist_url} lines={8} />
-            {said.answered && <p className="rp-none">{said.answered.status === "sent" ? tr("Answered from here {}.", ago(said.answered.at)) : tr("An answer from here was not confirmed. Check Lemlist.")}</p>}
-            <button type="button" className="linkish rp-conv-toggle" aria-expanded={conversation} aria-controls="td-conversation"
-              onClick={() => setConversation(!conversation)}>{conversation ? tr("Hide the conversation") : tr("Show the conversation")}</button>
-            {conversation && <div id="td-conversation"><EmailThread personId={a.person.id} name={a.person.name} embedded /></div>}
-            {replying && <ReplyBox personId={a.person.id} personName={a.person.name} reply={said} config={replyConfig} autoFocus />}
+            <ReplyCard reply={said} name={a.person.name} title={person?.title ?? a.person.title} company={org?.name} photo={person?.photo_url} />
+            <div className="td-b-reply-foot">
+              {said.answered ? <p className="rp-none">{said.answered.status === "sent" ? tr("Answered from here {}.", ago(said.answered.at)) : tr("An answer from here was not confirmed. Check Lemlist.")}</p>
+                : <span />}
+              <Link className="rp-alt" to={`/people/${a.person.id}#emails`}>{tr("Open conversation")} →</Link>
+            </div>
+            <ReplyComposer key={a.person.id} personId={a.person.id} personName={a.person.name} reply={said} config={replyConfig} openSignal={compose} />
           </div>}
         </section>
 

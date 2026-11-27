@@ -241,7 +241,7 @@ function ListView({ d, toggle }: { d: Cal; toggle: ReactNode }) {
     <p className="cm-sum">
       <Count n={ahead} words={[["deadline ahead", "deadlines ahead"], ["termin przed nami", "terminy przed nami", "terminów przed nami"]]} />
       <span className="cm-sep" aria-hidden="true" />
-      <span className="cal-n"><b>{number(d.counts.accounts)}</b> {tr("of our target accounts affected")}</span>
+      <span>{tr("Our accounts affected")}: <b>{number(d.counts.accounts)}</b></span>
       {next && <><span className="cm-sep" aria-hidden="true" /><span>{tr("Next fixed date")}: <b>{whenText(next)}</b> ({leftText(next).toLowerCase()})</span></>}
     </p>
     <div className="cl-filter">
@@ -541,14 +541,14 @@ function MonthView({ cal, toggle }: { cal: Cal; toggle: ReactNode }) {
       : err ? null
         : <>
           {LAYERS.some((l) => on(l) && (inMonth[l] ?? 0) > 0)
-            ? LAYERS.filter(on).map((l, i) => <span key={l} className="cm-sum-part">{i > 0 && <span className="cm-sep" aria-hidden="true" />}<Mark layer={l} /><Count n={inMonth[l] ?? 0} words={WORDS[l]} /></span>)
+            ? LAYERS.filter((l) => on(l) && (inMonth[l] ?? 0) > 0).map((l, i) => <span key={l} className="cm-sum-part">{i > 0 && <span className="cm-sep" aria-hidden="true" />}<Mark layer={l} /><Count n={inMonth[l] ?? 0} words={WORDS[l]} /></span>)
             : <span>{tr("Nothing due in {}.", monthTitle)}</span>}
-          {nextUp && nextItem && <span className="cm-sum-part">
+          {nextUp && nextItem && <span className="cm-sum-part is-next">
             <span className="cm-sep" aria-hidden="true" />
-            <span>{tr("Next")}:</span>
+            <span>{tr("Next up")}:</span>{" "}
             <button type="button" className="linkish cm-next" onClick={() => choose(nextUp)}>
-              {dayFmt(nextUp, { day: "numeric", month: "short" }).replace(/\.$/, "")}, {nextItem.layer === "tenders" ? nextItem.buyer : shortOf(nextItem)}</button>
-            {nextUp >= today && <span className="cm-in">({nextUp === today ? tr("today") : nextUp === addDays(today, 1) ? tr("tomorrow") : tr("in {} days", daysBetween(today, nextUp))})</span>}
+              {dayFmt(nextUp, { day: "numeric", month: "short" }).replace(/\.$/, "")}, {nextItem.layer === "tenders" ? nextItem.buyer : shortOf(nextItem)}</button>{" "}
+            {nextUp >= today && <span className="cm-in">({inText(daysBetween(today, nextUp))})</span>}
           </span>}
         </>;
 
@@ -710,6 +710,8 @@ function MonthView({ cal, toggle }: { cal: Cal; toggle: ReactNode }) {
   );
 }
 
+/** "in 3 days", "in 7 months": how far away a day is, as the cards say it. */
+const inText = (n: number) => (n <= 0 ? tr("today") : n === 1 ? tr("tomorrow") : n < 60 ? tr("in {} days", n) : tr("in {} months", Math.round(n / 30.4)));
 const accountsCount = (d: Deadline) => ((d.accounts?.count ?? 0) > 0 ? tr("{} of our accounts", number(d.accounts?.count ?? 0)) : tr("none of our accounts"));
 
 const MINI = 3;          // deadlines shown on the company page before "Show more"
