@@ -203,15 +203,21 @@ export function ReplyComposer({ personId, personName, reply, config, signature, 
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => { setDraft(readDraft(personId, reply.activity_id)); }, [personId, reply.activity_id]);
   useEffect(() => { writeDraft(personId, draft); }, [personId, draft]);
-  // "Reply" elsewhere on the page: open the box and put the cursor in it
+  // "Reply" elsewhere on the page: open the box, then (once it is open and full height) bring it into view and put the cursor in it
+  const pending = useRef(false);
   useEffect(() => {
     if (!openSignal) return;
+    pending.current = true;
     setOpen(true); setSent(null);
+  }, [openSignal]);
+  useEffect(() => {
+    if (!open || !pending.current) return;
+    pending.current = false;
     requestAnimationFrame(() => {
       box.current?.focus({ preventScroll: true });
-      root.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      root.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
     });
-  }, [openSignal]);
+  }, [open, openSignal]);
   useLayoutEffect(() => {                                            // the box grows with the words, up to about half the screen
     const el = box.current;
     if (!el) return;
@@ -307,9 +313,6 @@ export function ReplyComposer({ personId, personName, reply, config, signature, 
   </div>;
 }
 
-/** Earlier name of the composer, kept for any page still importing it. */
-export const ReplyBox = ReplyComposer;
-
 /** Today: their reply as a compact card: who, where they work, when, the subject and their words (six lines, a fade, "Read all"). */
 export function ReplyCard({ reply, name, title, company, photo }: { reply: ReplyInfo; name: string; title?: string | null; company?: string | null; photo?: string | null }) {
   const role = [title, company].filter(Boolean).join(" · ");
@@ -367,6 +370,8 @@ const isOurs = (i: ThreadItem) => i.kind !== "reply";
 function Marks({ i, words = false }: { i: ThreadItem; words?: boolean }) {
   const g = i.engagement;
   const marks: { k: string; icon?: ReactNode; text: string; tip: string; tone?: string }[] = [];
+  const st = status(i);
+  if (st && !words) marks.push(i.kind === "answer" && i.status !== "sent" ? { k: "v", icon: I.warn, text: st, tip: st, tone: "warn" } : { k: "v", icon: I.reply, text: "", tip: st });
   if (i.step) marks.push({ k: "s", text: i.steps && i.steps >= i.step ? tr("Step {} of {}", i.step, i.steps) : tr("Step {}", i.step),
     tip: i.campaign ? tr("Email {} of the sequence in the campaign “{}”", i.step, i.campaign) : tr("Email {} of the sequence", i.step), tone: "step" });
   if (g?.bounces) marks.push({ k: "b", icon: I.warn, text: words ? tr("Bounced") : "", tip: tr("Bounced on {}", day(g.last_bounce)), tone: "warn" });
@@ -407,16 +412,21 @@ function Message({ i, name, photo, toName, open, onToggle, lemlistUrl }: { i: Th
       <Face name={by} ours={ours} photo={ours ? null : photo} />
       <span className="rp-row-who">
         <b>{by}</b>
-        {open && addr && <span className="rp-addr">{addr}</span>}
-        {st && <span className={`rp-state${off ? " is-off" : ""}`}>{st}</span>}
-        {i.newest && <span className="rp-new">{tr("Newest reply")}</span>}
+        {open && addr && <span className="rp-addr rp-wide">{addr}</span>}
+        {i.newest && <span className="rp-new rp-wide">{tr("Newest reply")}</span>}
       </span>
-      <span className="rp-row-snip">{open ? (to ? tr("to {}", to) : "") : snip}</span>
+      <span className="rp-row-snip">{open ? <>
+        {i.newest && <span className="rp-new rp-narrow">{tr("Newest reply")}</span>}
+        {addr && <span className="rp-narrow">{addr} · </span>}{to ? tr("to {}", to) : ""}
+        {st && <span className={`rp-state${off ? " is-off" : ""}`}>{st}</span>}
+      </> : snip}</span>
       {!open && <Marks i={i} />}
       <When at={i.at} />
     </button>
     {open && <div className="rp-body" id={bid}>
       {(i.subject || i.campaign || i.step) && <p className="rp-meta">
+        {i.step && <span className="rp-mark is-step" title={i.campaign ? tr("Email {} of the sequence in the campaign “{}”", i.step, i.campaign) : undefined}>
+          {i.steps && i.steps >= i.step ? tr("Step {} of {}", i.step, i.steps) : tr("Step {}", i.step)}</span>}
         {i.subject && <b className="rp-subj">{i.subject}</b>}
         {i.campaign && <span>{tr("Campaign “{}”", i.campaign)}</span>}
       </p>}

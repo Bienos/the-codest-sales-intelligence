@@ -77,20 +77,20 @@ export function SignatureEditor({ value, onDone, onSaved }: { value: Signature; 
       setBusy(false);
     }
   };
-  return <div className="sg-edit">
+  return <div className="es-edit">
     <label htmlFor={id}>{tr("Your signature")}</label>
     <textarea id={id} value={text} rows={4} maxLength={max} spellCheck onChange={(e) => { setText(e.target.value); setOk(false); }}
       aria-describedby={`${id}-h`} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void save(); } }} />
-    <p className="sg-hint" id={`${id}-h`}>
+    <p className="es-hint" id={`${id}-h`}>
       <span>{tr("Plain text, line breaks kept, no pictures. Leave it empty to send replies without one.")}</span>
-      <span className={`sg-count${text.length > max - 40 ? " is-near" : ""}`}>{text.length}/{max}</span>
+      <span className={`es-count${text.length > max - 40 ? " is-near" : ""}`}>{text.length}/{max}</span>
     </p>
-    <div className="sg-acts">
-      <button type="button" className="sg-save" disabled={busy} onClick={() => void save()}>{busy ? tr("Saving…") : tr("Save signature")}</button>
+    <div className="es-acts">
+      <button type="button" className="es-save" disabled={busy} onClick={() => void save()}>{busy ? tr("Saving…") : tr("Save signature")}</button>
       {onDone && <button type="button" className="linkish" onClick={onDone}>{tr("Cancel")}</button>}
-      {ok && !onDone && <span className="sg-ok" role="status">{tr("Saved.")}</span>}
+      {ok && !onDone && <span className="es-ok" role="status">{tr("Saved.")}</span>}
     </div>
-    {err && <p className="err sg-err" role="alert">{err}</p>}
+    {err && <p className="err es-err" role="alert">{err}</p>}
   </div>;
 }
 
@@ -106,14 +106,14 @@ export function signatureSource(s: Signature): string {
 export function SignatureSection() {
   const [sig, setSaved] = useSignature(null);
   const hid = useId();
-  return <section className="sg-card" aria-labelledby={hid}>
-    <header className="sg-card-h">
-      <span className="sg-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="square"><path d="M3 17c3-1 4-9 7-9 2 0-1 9 2 9 2 0 2-3 4-3s1 3 5 3" /><path d="M3 21h18" /></svg></span>
+  return <section className="es-card" aria-labelledby={hid}>
+    <header className="es-card-h">
+      <span className="es-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="square"><path d="M3 17c3-1 4-9 7-9 2 0-1 9 2 9 2 0 2-3 4-3s1 3 5 3" /><path d="M3 21h18" /></svg></span>
       <h2 id={hid}>{tr("Email signature")}</h2>
     </header>
-    <p className="sg-for">{tr("The footer under every reply you send from this app. Lemlist does not add one to these replies, so it is kept here.")}</p>
-    {!sig ? <p className="sg-hint" role="status">{tr("Loading")}…</p> : <>
-      {!sig.saved && <p className="sg-src">{signatureSource(sig)}</p>}
+    <p className="es-for">{tr("The footer under every reply you send from this app. Lemlist does not add one to these replies, so it is kept here.")}</p>
+    {!sig ? <p className="es-hint" role="status">{tr("Loading")}…</p> : <>
+      {!sig.saved && <p className="es-src">{signatureSource(sig)}</p>}
       <SignatureEditor value={sig} onSaved={setSaved} />
     </>}
   </section>;

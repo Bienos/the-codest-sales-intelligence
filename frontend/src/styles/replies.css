@@ -74,7 +74,9 @@ button.rp-row:focus-visible { outline: 3px solid var(--purple); outline-offset: 
 .rp-msg.is-open .rp-row-snip { grid-column: 2 / -1; }
 .rp-when { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
 .rp-new { flex: none; padding: 2px 6px; background: var(--purple); color: var(--navy); font: 800 var(--fs-label)/1.2 var(--font-head); letter-spacing: .06em; text-transform: uppercase; }
-.rp-state { flex: none; padding: 1px 6px; border: 1px solid var(--line); background: var(--white); color: var(--muted); font-size: var(--fs-xs); }
+.rp-state { margin-left: 8px; padding: 1px 6px; border: 1px solid var(--line); background: var(--white); color: var(--muted); font-size: var(--fs-xs); }
+.rp-wide { display: none; }
+.rp-row-snip .rp-new.rp-narrow { margin-right: 8px; }
 .rp-state.is-off { border-color: var(--orange); color: var(--navy); }
 
 .rp-marks { display: inline-flex; align-items: center; gap: 8px; }
@@ -82,6 +84,7 @@ button.rp-row:focus-visible { outline: 3px solid var(--purple); outline-offset: 
 .rp-mark .rp-ico { width: 14px; height: 14px; }
 .rp-mark.is-step { padding: 3px 6px; border: 1px solid var(--navy); background: var(--white); color: var(--navy); font: 800 var(--fs-label)/1 var(--font-head); letter-spacing: .05em; text-transform: uppercase; }
 .rp-mark.is-warn .rp-ico { color: var(--orange); }
+.rp-mark.is-warn:not(:empty) { color: var(--navy); }
 .rp-marks.is-words { flex-wrap: wrap; gap: 6px; }
 .rp-marks.is-words .rp-mark:not(.is-step) { padding: 4px 8px; border: 1px solid var(--line); background: var(--tint-1); color: var(--navy); }
 .rp-marks.is-words .rp-mark.is-warn { border-color: var(--orange); background: var(--tint-3); }
@@ -90,7 +93,7 @@ button.rp-row:focus-visible { outline: 3px solid var(--purple); outline-offset: 
 
 /* an open email */
 .rp-body { display: grid; gap: 10px; padding: 2px 16px 16px 15px; }
-.rp-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; }
+.rp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; }
 .rp-meta .rp-subj { color: var(--navy); font: 600 var(--fs-sm)/1.4 var(--font-body); }
 .rp-sig-t { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .rp-sig-t.is-sent { padding-top: 8px; border-top: 1px dashed var(--line); }
@@ -107,14 +110,16 @@ button.rp-row:focus-visible { outline: 3px solid var(--purple); outline-offset: 
   .rp-row > .rp-face { align-self: center; margin-top: 0; }
   .rp-msg.is-open button.rp-row { grid-template-columns: 32px auto minmax(0, 1fr) auto; grid-template-areas: "face who snip when"; }
   .rp-msg.is-open .rp-row-snip { grid-column: auto; }
+  .rp-wide { display: inline; }
+  .rp-narrow { display: none; }
   .rp-body { padding: 0 20px 18px 59px; }
 }
 
 /* ---------------------------------------------------------------- the composer */
-.rp-compose { margin-top: 14px; border: 1px solid var(--line); background: var(--white); }
+.rp-compose { margin-top: 14px; border: 1px solid var(--line); background: var(--white); scroll-margin-top: 72px; }
 .rp-compose:not(.is-open):not(.is-blocked):hover { border-color: var(--navy); }
 .rp-compose.is-open { border: 2px solid var(--navy); }
-.rp-compose:focus-within { outline: 3px solid var(--purple); outline-offset: 1px; }
+.rp-compose:focus-within { outline: 2px solid var(--purple); outline-offset: 2px; }
 .rp-field { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 10px; }
 .rp-compose.is-open .rp-field { padding: 6px 8px 2px 8px; }
 .rp-compose textarea { flex: 1; min-width: 0; width: 100%; min-height: 44px; box-sizing: border-box; margin: 0; padding: 10px 6px; border: 0; background: transparent; resize: none;
@@ -141,7 +146,7 @@ button.rp-sig-edit:hover { background: none; text-decoration: underline; text-de
 button.rp-sig-edit .rp-ico { width: 14px; height: 14px; }
 .rp-sig .rp-sig-t { margin-top: -4px; }
 .rp-sig-src { margin: 4px 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
-.rp-sig .sg-edit { padding-top: 8px; }
+.rp-sig .es-edit { padding-top: 8px; }
 
 .rp-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 12px 14px 14px; border-top: 1px solid var(--line); }
 .rp-acts button.primary.rp-send { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; margin: 0 var(--offset) var(--offset) 0; padding: 0 24px;
@@ -173,32 +178,33 @@ button.rp-discard:hover { background: none; color: var(--navy); }
   .rp-acts { gap: 8px 14px; }
   .rp-acts button.primary.rp-send { flex: 1 1 auto; }
   .rp-hdr > div { grid-template-columns: 54px minmax(0, 1fr); }
+  .rp-hdr dd .rp-addr { display: block; }
   .rp-strip { gap: 4px 14px; }
 }
 
 /* ---------------------------------------------------------------- the signature editor (composer and My connections) */
-.sg-edit { display: grid; gap: 6px; min-width: 0; }
-.sg-edit label { color: var(--navy); font: 800 var(--fs-label)/1.2 var(--font-head); letter-spacing: .07em; text-transform: uppercase; }
-.sg-edit textarea { width: 100%; min-height: 110px; box-sizing: border-box; margin: 0; padding: 10px 12px; border: 1px solid var(--navy); background: var(--white); resize: vertical;
+.es-edit { display: grid; gap: 6px; min-width: 0; }
+.es-edit label { color: var(--navy); font: 800 var(--fs-label)/1.2 var(--font-head); letter-spacing: .07em; text-transform: uppercase; }
+.es-edit textarea { width: 100%; min-height: 110px; box-sizing: border-box; margin: 0; padding: 10px 12px; border: 1px solid var(--navy); background: var(--white); resize: vertical;
   color: var(--navy); font: 400 var(--fs-input)/1.5 var(--font-body); }
-.sg-hint { display: flex; justify-content: space-between; gap: 12px; margin: 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
-.sg-count { flex: none; font-variant-numeric: tabular-nums; }
-.sg-count.is-near { color: var(--navy); font-weight: 600; }
-.sg-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-.sg-acts button.sg-save { min-height: 42px; }
-.sg-acts .linkish { min-height: 40px; }
-.sg-ok { color: var(--navy); font-size: var(--fs-sm); }
-.sg-err { margin: 0; }
+.es-hint { display: flex; justify-content: space-between; gap: 12px; margin: 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.45; }
+.es-count { flex: none; font-variant-numeric: tabular-nums; }
+.es-count.is-near { color: var(--navy); font-weight: 600; }
+.es-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.es-acts button.es-save { min-height: 42px; }
+.es-acts .linkish { min-height: 40px; }
+.es-ok { color: var(--navy); font-size: var(--fs-sm); }
+.es-err { margin: 0; }
 
 /* My connections: the signature card, the same shape as the provider cards */
-.sg-card { min-width: 0; margin-top: 16px; padding: 16px; background: var(--white); border: 1px solid var(--line); border-top: 3px solid var(--navy); overflow-wrap: anywhere; }
-.sg-card-h { display: flex; align-items: center; gap: 12px; }
-.sg-glyph { display: grid; place-items: center; flex: none; width: 40px; height: 40px; background: var(--navy); color: var(--purple); }
-.sg-glyph svg { width: 22px; height: 22px; }
-.sg-card-h h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-lg); letter-spacing: .04em; line-height: 1.2; }
-.sg-for { margin: 12px 0 12px; color: var(--navy); line-height: 1.5; max-width: 68ch; }
-.sg-src { margin: 0 0 10px; color: var(--muted); font-size: var(--fs-sm); }
-.sg-card .sg-edit { max-width: 560px; }
+.es-card { min-width: 0; margin-top: 16px; padding: 16px; background: var(--white); border: 1px solid var(--line); border-top: 3px solid var(--navy); overflow-wrap: anywhere; }
+.es-card-h { display: flex; align-items: center; gap: 12px; }
+.es-glyph { display: grid; place-items: center; flex: none; width: 40px; height: 40px; background: var(--navy); color: var(--purple); }
+.es-glyph svg { width: 22px; height: 22px; }
+.es-card-h h2 { flex: 1; min-width: 0; margin: 0; font-size: var(--fs-lg); letter-spacing: .04em; line-height: 1.2; }
+.es-for { margin: 12px 0 12px; color: var(--navy); line-height: 1.5; max-width: 68ch; }
+.es-src { margin: 0 0 12px; color: var(--muted); font-size: var(--fs-sm); }
+.es-card .es-edit { max-width: 560px; }
 
 /* ---------------------------------------------------------------- Today: their reply as a card, then the composer */
 .rp-card { display: grid; gap: 8px; padding: 12px 14px 10px 15px; background: var(--tint-2); box-shadow: inset 3px 0 0 var(--purple); }
