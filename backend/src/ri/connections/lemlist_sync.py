@@ -91,6 +91,17 @@ def _people(conn: Conn, emails: list[str]) -> dict[str, dict[str, Any]]:
     return people
 
 
+def _shared(conn: Conn, people: list[str], times: list[datetime]) -> set[tuple[str, str, str, datetime]]:
+    """Emails the shared Lemlist sync has already put on these people's timelines (ri.outbound.email_timeline), as (person, event, campaign,
+    second): the same email is never added twice, whoever's key reads it."""
+    if not people or not times:
+        return set()
+    rows = qa(conn, "SELECT person_id, meta->>'type' AS kind, coalesce(meta->>'campaign_id', '') AS cid, date_trunc('second', occurred_at) AS at "
+                    "FROM contact_interactions WHERE channel='lemlist' AND meta ? 'activity_id' AND person_id = ANY(%s::uuid[]) "
+                    "AND occurred_at >= %s AND occurred_at < %s", (people, min(times) - timedelta(seconds=1), max(times) + timedelta(seconds=1)))
+    return {(str(r["person_id"]), r["kind"], r["cid"], r["at"]) for r in rows}
+
+
 def _campaign(conn: Conn, client: Any, user_id: str, camp: dict[str, Any], since: datetime | None, horizon: datetime, stats: dict[str, int]) -> datetime | None:
     """One campaign's activity, newest first. Returns the newest event time seen (the new cursor)."""
     cid = str(camp.get("_id") or camp.get("id") or "")
@@ -117,6 +128,7 @@ def _campaign(conn: Conn, client: Any, user_id: str, camp: dict[str, Any], since
             events.append((a, when, email))
         stats["events_seen"] += len(events)
         known = _people(conn, sorted({e for _, _, e in events})) if events else {}
+        shared = _shared(conn, [p["id"] for p in known.values()], [w for _, w, _ in events])
         for a, when, email in events:
             kind = str(a.get("type") or "")
             if kind not in EVENTS:
@@ -124,6 +136,9 @@ def _campaign(conn: Conn, client: Any, user_id: str, camp: dict[str, Any], since
             person = known.get(email)
             if not person:
                 stats["not_ours"] += 1
+                continue
+            if (person["id"], kind, cid, when.replace(microsecond=0)) in shared:
+                stats["known"] += 1                                # already on the timeline from the shared Lemlist sync, with its words
                 continue
             text, direction = EVENTS[kind]
             new = store.upsert_interaction(conn, user_id=user_id, channel="lemlist", external_id=event_key(cid, _lead_ref(a, email), kind, when), occurred_at=when,

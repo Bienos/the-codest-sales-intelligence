@@ -111,12 +111,13 @@ def email_visibility(settings: dict[str, Any] | None) -> str:
 def upsert_interaction(conn: Conn, *, user_id: str, channel: str, external_id: str, occurred_at: datetime, visibility: str, person_id: str | None = None,
                        organization_id: str | None = None, direction: str | None = None, title: str | None = None, gist: str | None = None,
                        meta: dict[str, Any] | None = None) -> bool:
-    """True when the row is new. Repeating a sync never duplicates; a later sync may refresh the text and the match."""
+    """True when the row is new. Repeating a sync never duplicates; a later sync may refresh the text and the match. A Lemlist row that the
+    shared Lemlist sync has completed with the email's words (its meta names the activity, see ri.outbound.email_timeline) is left as it is."""
     row = conn.execute(
         "INSERT INTO contact_interactions(user_id, channel, external_id, person_id, organization_id, direction, occurred_at, title, gist, visibility, meta) "
         "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (user_id, channel, external_id) DO UPDATE SET "
         "person_id=coalesce(EXCLUDED.person_id, contact_interactions.person_id), organization_id=coalesce(EXCLUDED.organization_id, contact_interactions.organization_id), "
-        "title=EXCLUDED.title, gist=EXCLUDED.gist, visibility=EXCLUDED.visibility RETURNING (xmax = 0) AS inserted",
+        "title=EXCLUDED.title, gist=EXCLUDED.gist, visibility=EXCLUDED.visibility WHERE NOT (contact_interactions.meta ? 'activity_id') RETURNING (xmax = 0) AS inserted",
         (user_id, channel, external_id, person_id, organization_id, direction, occurred_at, (title or "")[:300] or None, (gist or "")[:600] or None,
          visibility, jb(meta or {}))).fetchone()
     return bool(row and row["inserted"])

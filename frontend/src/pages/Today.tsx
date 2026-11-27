@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, post } from "../api";
 import { counted, getLanguage, number, tr, useLanguage } from "../locale";
 import { Err, Skeleton, safeHref, useLogo } from "../components/ui";
-import { ReplyBox, ReplyText, firstWords, useReplyConfig } from "../components/Replies";
+import { EmailThread, ReplyBox, ReplyText, firstWords, useReplyConfig } from "../components/Replies";
 import type { ReplyInfo } from "../components/Replies";
 import { countryName } from "./targetMarket";
 import "../styles/today.css";
@@ -448,6 +448,7 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
   // a reply we hold in Lemlist: answer it right here (the box opens under their words), or open the person's page for the whole thread
   const said = a.kind === "reply" && a.person ? a.reply ?? null : null;
   const [replying, setReplying] = useState(false);
+  const [conversation, setConversation] = useState(false);     // the whole thread, each email on its own, opened under their words
   const replyConfig = useReplyConfig(Boolean(said));
 
   const actionBar = <div className="td-b-acts">
@@ -503,8 +504,11 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
           </p>}
           {said && a.person && <div className="td-b-reply" id="td-reply">
             <h4 className="td-b-reply-h">{tr("What {} wrote", firstName(a.person.name))}</h4>
-            <ReplyText text={said.text} state={said.text_state} lemlistUrl={said.lemlist_url} />
+            <ReplyText text={said.text} state={said.text_state} lemlistUrl={said.lemlist_url} lines={8} />
             {said.answered && <p className="rp-none">{said.answered.status === "sent" ? tr("Answered from here {}.", ago(said.answered.at)) : tr("An answer from here was not confirmed. Check Lemlist.")}</p>}
+            <button type="button" className="linkish rp-conv-toggle" aria-expanded={conversation} aria-controls="td-conversation"
+              onClick={() => setConversation(!conversation)}>{conversation ? tr("Hide the conversation") : tr("Show the conversation")}</button>
+            {conversation && <div id="td-conversation"><EmailThread personId={a.person.id} name={a.person.name} embedded /></div>}
             {replying && <ReplyBox personId={a.person.id} personName={a.person.name} reply={said} config={replyConfig} autoFocus />}
           </div>}
         </section>

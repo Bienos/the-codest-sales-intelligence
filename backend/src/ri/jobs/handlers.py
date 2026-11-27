@@ -309,15 +309,19 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
 
     def lemlist_sync(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         """Lemlist activity (opens, replies, bounces, unsubscribes) back into the people database, then the words of replies that came
-        without them. Read-only towards Lemlist."""
+        without them, then the words cleaned by an older version cleaned again (each conversation read again once to get the email as
+        Lemlist gave it), then every email onto the person's Conversations timeline. Read-only towards Lemlist; each step is idempotent."""
         from ..config import Settings
+        from ..outbound.email_timeline import record_timeline
         from ..outbound.lemlist import LemlistClient
-        from ..outbound.replies import fill_reply_bodies
+        from ..outbound.replies import fill_reply_bodies, reclean
         from ..people import sync_lemlist
         s = Settings.from_env(require_auth=False)
         client = LemlistClient(s.lemlist_api_key)
         res: dict[str, Any] = dict(sync_lemlist(conn, client))
         res["reply_text"] = fill_reply_bodies(conn, client)
+        res["reclean"] = reclean(conn, client)
+        res["timeline"] = record_timeline(conn)
         return res
 
     crm_sync.own_transactions = True  # type: ignore[attr-defined]

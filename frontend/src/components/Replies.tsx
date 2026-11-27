@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ApiError, api, post } from "../api";
-import { getLanguage, tr } from "../locale";
+import { counted, getLanguage, tr } from "../locale";
 import "../styles/replies.css";
 
 /** What someone wrote back to our Lemlist campaign, and a box to answer in the same email thread.
@@ -14,11 +14,17 @@ export type ReplyInfo = {
   answered: { status: string; at: string; by: string } | null;
 };
 type Config = { sending_on: boolean; lemlist_connected: boolean; may_send: boolean };
+type Who = { name: string | null; email?: string | null } | null;
+type Engagement = { opens: number; last_open: string | null; clicks: number; last_click: string | null; bounces: number; last_bounce: string | null };
+/** One email of the thread. `via`: a campaign email, an answer sent in the Lemlist inbox, or an answer sent from this app. `step` counts from 1. */
 type ThreadItem = {
-  id: string; kind: "sent" | "reply" | "answer"; at: string | null; campaign?: string | null; subject?: string | null; text: string | null; text_state: TextState;
-  from?: { name: string | null; email: string | null } | null; status?: string; error?: string | null; by?: string;
+  id: string; kind: "sent" | "reply" | "answer"; via?: "campaign" | "lemlist" | "app"; at: string | null; campaign?: string | null; step?: number | null;
+  subject?: string | null; text: string | null; text_state: TextState; from?: Who; to?: Who; engagement?: Engagement; newest?: boolean;
+  status?: string; error?: string | null; by?: string; by_name?: string | null;
 };
-type Thread = Config & { person: { id: string; name: string; do_not_contact: boolean }; items: ThreadItem[]; reply: ReplyInfo | null;
+type Summary = { sent: number; first_sent: string | null; last_sent: string | null; opens: number; clicks: number; bounced: boolean;
+  replies: number; last_reply: string | null; answers: number; last_answer: string | null };
+type Thread = Config & { person: { id: string; name: string; do_not_contact: boolean }; items: ThreadItem[]; summary?: Summary; reply: ReplyInfo | null;
   refresh?: { refreshed: boolean; error?: string } };
 
 /** The server's reasons (ri.outbound.replies.BLOCKED), in the words shown here. */
@@ -35,6 +41,14 @@ function when(v?: string | null): string {
   const d = new Date(v);
   return isNaN(d.getTime()) ? "" : d.toLocaleString(loc(), { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
+/** "26 Nov" (with the year when it is not this year). */
+function day(v?: string | null): string {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(loc(), { day: "numeric", month: "short", ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
+}
+const sameDay = (a?: string | null, b?: string | null) => Boolean(a && b) && new Date(a!).toDateString() === new Date(b!).toDateString();
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 /** One line of an email for a list row: the first words, without line breaks. */
 export function firstWords(text: string, max = 90): string {
@@ -148,11 +162,82 @@ export function ReplyBox({ personId, personName, reply, config, onSent, autoFocu
   </div>;
 }
 
+const FEW = 8;         // a longer thread shows its latest SHOWN emails and a button for the earlier ones
 const SHOWN = 6;
+const times = (n: number) => (n === 1 ? tr("once") : counted(n, ["time", "times"], ["raz", "razy", "razy"]));
 
-/** The person page: the emails between this person and us in Lemlist campaigns, oldest first, and the reply box under their newest reply.
- *  Renders nothing when we hold no Lemlist email with them. Asks Lemlist again (read-only) when a reply's words are missing. */
-export function EmailThread({ personId, name }: { personId: string; name: string }) {
+/** "3 emails sent from 21 Nov to 26 Nov, opened 4 times, replied on 26 Nov." from the server's counts. */
+function summaryLine(s: Summary): string {
+  const parts: string[] = [];
+  if (s.sent > 0) {
+    const n = counted(s.sent, ["email", "emails"], ["e-mail", "e-maile", "e-maili"]);
+    parts.push(s.sent === 1 || sameDay(s.first_sent, s.last_sent) ? tr("{} sent on {}", n, day(s.last_sent)) : tr("{} sent from {} to {}", n, day(s.first_sent), day(s.last_sent)));
+  }
+  if (s.opens > 0) parts.push(tr("opened {}", times(s.opens)));
+  if (s.clicks > 0) parts.push(tr("clicked {}", times(s.clicks)));
+  if (s.bounced) parts.push(tr("bounced"));
+  if (s.replies > 0 && s.last_reply) parts.push(s.replies === 1 ? tr("replied on {}", day(s.last_reply)) : tr("replied {}, last on {}", times(s.replies), day(s.last_reply)));
+  else if (s.sent > 0) parts.push(tr("no reply yet"));
+  if (s.answers > 0 && s.last_answer) parts.push(tr("we answered on {}", day(s.last_answer)));
+  const line = parts.join(", ");
+  return line ? `${line.charAt(0).toUpperCase()}${line.slice(1)}.` : "";
+}
+
+const who = (w?: Who) => (w ? (w.name && w.email ? `${w.name} (${w.email})` : w.name || w.email || "") : "");
+
+/** Opens, clicks and a bounce under one of our campaign emails. */
+function EngagementLine({ g }: { g?: Engagement }) {
+  if (!g) return null;
+  const chips: { k: string; text: string; warn?: boolean }[] = [];
+  if (g.bounces > 0) chips.push({ k: "b", text: tr("Bounced on {}", day(g.last_bounce)), warn: true });
+  if (g.opens > 0) chips.push({ k: "o", text: g.opens === 1 ? tr("Opened on {}", day(g.last_open)) : tr("Opened {}, last on {}", times(g.opens), day(g.last_open)) });
+  if (g.clicks > 0) chips.push({ k: "c", text: g.clicks === 1 ? tr("Clicked a link on {}", day(g.last_click)) : tr("Clicked links {}, last on {}", times(g.clicks), day(g.last_click)) });
+  if (!chips.length) return <p className="rp-eng-none">{tr("No opens recorded")}</p>;
+  return <ul className="rp-eng" aria-label={tr("What happened to this email")}>{chips.map((c) => <li key={c.k} className={c.warn ? "is-warn" : undefined}>{c.text}</li>)}</ul>;
+}
+
+/** Who wrote it, in a few words: "We wrote", "Ola wrote", "We answered from here". */
+function direction(i: ThreadItem, first: string): string {
+  if (i.kind === "reply") return tr("{} wrote", first);
+  if (i.kind === "answer") return i.status === "sent" ? tr("We answered from here") : i.status === "failed" ? tr("Our answer, not sent") : tr("Our answer, not confirmed");
+  return i.via === "lemlist" ? tr("We answered in Lemlist") : tr("We wrote");
+}
+
+/** One email of the thread, on its own card. Our campaign emails without words are one slim line. */
+function EmailCard({ i, first, lemlistUrl }: { i: ThreadItem; first: string; lemlistUrl?: string | null }) {
+  const from = who(i.from);
+  const to = who(i.to);
+  if (i.kind === "sent" && !i.text) {
+    const d = when(i.at);
+    const line = i.step
+      ? (from ? tr("Email {} of the sequence sent on {} from {}", i.step, d, from) : tr("Email {} of the sequence sent on {}", i.step, d))
+      : (from ? tr("Campaign email sent on {} from {}", d, from) : tr("Campaign email sent on {}", d));
+    return <li className="rp-item rp-slim">
+      <p className="rp-slim-l">{line}{i.campaign && <span className="rp-slim-c"> · {tr("Campaign “{}”", i.campaign)}</span>}</p>
+      <EngagementLine g={i.engagement} />
+    </li>;
+  }
+  const meta = [i.campaign && tr("Campaign “{}”", i.campaign), i.step && tr("Email {} of the sequence", i.step)].filter(Boolean).join(" · ");
+  const cls = i.kind === "reply" ? "rp-theirs" : i.kind === "answer" ? `rp-ours rp-app${i.status !== "sent" ? " is-off" : ""}` : "rp-ours";
+  return <li className={`rp-item rp-card ${cls}${i.newest ? " rp-newest" : ""}`}>
+    <div className="rp-card-h">
+      <b className="rp-dir">{direction(i, first)}</b>
+      {i.newest && <span className="rp-tag">{tr("Newest reply")}</span>}
+      {i.at && <time dateTime={i.at}>{when(i.at)}</time>}
+    </div>
+    {(from || to) && <p className="rp-from">{from && to ? tr("From {} to {}", from, to) : from ? tr("From {}", from) : tr("To {}", to)}</p>}
+    {i.subject && <p className="rp-subj">{i.subject}</p>}
+    {meta && <p className="rp-meta">{meta}</p>}
+    <ReplyText text={i.text} state={i.text_state} lemlistUrl={i.kind === "reply" ? lemlistUrl : null} lines={i.kind === "sent" ? 4 : 12} />
+    {i.kind === "answer" && i.error && <p className="rp-none">{tr(i.error)}</p>}
+    {i.kind === "sent" && i.via === "campaign" && <EngagementLine g={i.engagement} />}
+  </li>;
+}
+
+/** The person page (and, `embedded`, the Today reply): every email between this person and us, each on its own card, oldest first, with a
+ *  one-line summary on top and the reply box at the bottom. Everything comes from our database; Lemlist is asked again (read-only) only when
+ *  some words are missing. Renders nothing when we hold no Lemlist email with them. */
+export function EmailThread({ personId, name, embedded = false }: { personId: string; name: string; embedded?: boolean }) {
   const [t, setT] = useState<Thread | null>(null);
   const [failed, setFailed] = useState(false);
   const [all, setAll] = useState(false);
@@ -168,30 +253,29 @@ export function EmailThread({ personId, name }: { personId: string; name: string
     }).catch((e) => { if (live) setFailed(e instanceof ApiError && e.status >= 500); });
     return () => { live = false; };
   }, [personId]);
-  if (failed) return <section className="ac-panel rp-thread" aria-labelledby={hid}><h2 id={hid}>{tr("Emails with {}", firstName(name))}</h2>
-    <p className="rp-none">{tr("The emails could not be loaded. Reload the page to try again.")}</p></section>;
-  if (!t || t.items.length === 0) return null;
   const first = firstName(name);
-  const items = all ? t.items : t.items.slice(-SHOWN);
-  const head = (i: ThreadItem) => i.kind === "reply" ? tr("{} wrote", first)
-    : i.kind === "answer" ? (i.status === "sent" ? tr("Our answer, sent from here") : i.status === "failed" ? tr("Our answer, not sent") : tr("Our answer, not confirmed"))
-      : tr("Our campaign email");
-  return <section className="ac-panel rp-thread" aria-labelledby={hid}>
-    <h2 id={hid}>{tr("Emails with {}", first)}</h2>
-    <p className="ac-purpose">{tr("Our campaign emails to {} and what they wrote back. Answer at the bottom: it goes out in the same email thread.", first)}</p>
-    {t.items.length > SHOWN && <button type="button" className="linkish rp-earlier" aria-expanded={all} onClick={() => setAll(!all)}>
+  if (failed) return embedded ? <p className="rp-none">{tr("The emails could not be loaded. Reload the page to try again.")}</p>
+    : <section className="ac-panel rp-thread" id="emails" aria-labelledby={hid}><h2 id={hid}>{tr("Emails with {}", first)}</h2>
+      <p className="rp-none">{tr("The emails could not be loaded. Reload the page to try again.")}</p></section>;
+  if (!t) return embedded ? <p className="rp-none" role="status">{tr("Loading the emails…")}</p> : null;
+  if (t.items.length === 0) return embedded ? <p className="rp-none">{tr("No emails with {} are stored yet.", first)}</p> : null;
+  const long = t.items.length > FEW;
+  const items = long && !all ? t.items.slice(-SHOWN) : t.items;
+  const sum = t.summary ? summaryLine(t.summary) : "";
+  const body = <>
+    {sum && <p className="rp-sum">{sum}</p>}
+    {long && <button type="button" className="linkish rp-earlier" aria-expanded={all} onClick={() => setAll(!all)}>
       {all ? tr("Show only the latest") : tr("Show {} earlier emails", t.items.length - SHOWN)}</button>}
-    <ol className="rp-list">{items.map((i) => <li key={i.id} className={`rp-msg rp-${i.kind}${i.kind === "answer" && i.status !== "sent" ? " is-off" : ""}`}>
-      <div className="rp-msg-h">
-        <b>{head(i)}</b>
-        {i.at && <time dateTime={i.at}>{when(i.at)}</time>}
-      </div>
-      {(i.subject || i.campaign) && <p className="rp-msg-s">{[i.subject, i.campaign && tr("Campaign: {}", i.campaign)].filter(Boolean).join(" · ")}</p>}
-      {i.kind === "sent" && !i.text ? <p className="rp-none">{tr("The words of this email are kept in Lemlist.")}</p>
-        : <ReplyText text={i.text} state={i.text_state} lemlistUrl={i.kind === "reply" ? t.reply?.lemlist_url : null} />}
-      {i.kind === "answer" && i.error && <p className="rp-none">{tr(i.error)}</p>}
-    </li>)}</ol>
+    <ol className="rp-list" aria-label={tr("Emails with {}, oldest first", first)}>
+      {items.map((i) => <EmailCard key={i.id} i={i} first={first} lemlistUrl={t.reply?.lemlist_url} />)}
+    </ol>
     {t.refresh?.error && <p className="rp-none">{tr(t.refresh.error)}</p>}
+  </>;
+  if (embedded) return <div className="rp-thread rp-embedded">{body}</div>;
+  return <section className="ac-panel rp-thread" id="emails" aria-labelledby={hid}>
+    <h2 id={hid}>{tr("Emails with {}", first)}</h2>
+    <p className="ac-purpose">{tr("Every email between {} and us, oldest first, each on its own. Answer at the bottom: it goes out in the same email thread.", first)}</p>
+    {body}
     {t.reply && <ReplyBox personId={personId} personName={name} reply={t.reply} config={t} onSent={setT} />}
   </section>;
 }

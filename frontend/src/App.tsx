@@ -118,7 +118,7 @@ export default function App() {
           {can("draft.create") && link("/campaigns", tr("Campaigns"), IconCampaign)}
           {can("explorer.read") && link("/feed", tr("All findings"), IconFeed)}
           {(can("today.read") || can("explorer.read")) && link("/tenders", tr("Open tenders"), IconTender)}
-          {can("accounts.read") && link("/calendar", tr("Regulatory deadlines"), IconCalendar)}
+          {can("accounts.read") && link("/calendar", tr("Calendar"), IconCalendar)}
           <span className="nav-group">{tr("Look up")}</span>
           {link("/library", tr("Library"), IconLibrary)}
           {link("/knowledge", tr("Knowledge base"), IconKnowledge)}

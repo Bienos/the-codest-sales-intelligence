@@ -1,7 +1,8 @@
 """What people wrote back to our Lemlist campaigns, and answering them in the same thread.
 
   GET  /api/replies/config                        may this person send, and is sending switched on (for the reply box)
-  GET  /api/people/{pid}/email-thread             our campaign emails, their replies and the replies sent from here, oldest first
+  GET  /api/people/{pid}/email-thread             every email on its own, oldest first (our campaign emails with step, sender and opens; their
+                                                  replies; answers sent from here) and a summary; also writes them to the person's timeline
   POST /api/people/{pid}/email-thread/refresh     read that person's Lemlist conversation again (rate-limited, read-only towards Lemlist)
   POST /api/people/{pid}/email-thread/reply       answer their newest reply in its Lemlist thread
 
@@ -61,6 +62,7 @@ def register_replies(app: FastAPI) -> None:
     def email_thread(pid: str, request: Request, p: Principal = Depends(require("contacts.read"))):
         with tx(request) as conn:
             person = _person(conn, p, pid)
+            rp.settle_person(conn, str(person["id"]))          # words cleaned by the latest version, every email on the timeline (local)
             out = _thread(conn, request, p, person)
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=str(person["id"]), detail={"view": "email_thread", "count": len(out["items"])})
             return out
@@ -72,6 +74,7 @@ def register_replies(app: FastAPI) -> None:
             person = _person(conn, p, pid)
             client = rp.make_client(request.app.state.settings)
             result = rp.refresh_person(conn, client, str(person["id"])) if client is not None else {"refreshed": False}
+            rp.settle_person(conn, str(person["id"]))
             out = _thread(conn, request, p, person)
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=str(person["id"]), detail={"view": "email_thread_refresh", "count": len(out["items"])})
             return {**out, "refresh": result}

@@ -136,8 +136,11 @@ def apply_lemlist_activity(conn: Conn, a: dict[str, Any]) -> dict[str, Any]:
                             system="lemlist", external_id=str(a.get("campaignId") or ""), detail={"campaign": a.get("campaignName")}) if org_id else None
     elif a.get("campaignId"):
         record_source(conn, pid, "lemlist", str(a.get("campaignId")), {"campaign": a.get("campaignName")})
-    row = conn.execute("INSERT INTO lemlist_activities(id, type, email, campaign_id, campaign_name, person_id, happened_at) VALUES (%s,%s,%s,%s,%s,%s,%s) "
-                       "ON CONFLICT (id) DO NOTHING RETURNING id", (aid, typ, email, a.get("campaignId"), a.get("campaignName"), pid, happened or datetime.now(timezone.utc))).fetchone()
+    from .outbound.replies import step_fields
+    step, step_id = step_fields(a)                   # which email of the sequence an open or click belongs to (Lemlist counts steps from 0)
+    row = conn.execute("INSERT INTO lemlist_activities(id, type, email, campaign_id, campaign_name, person_id, happened_at, sequence_step, step_id) "
+                       "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING RETURNING id",
+                       (aid, typ, email, a.get("campaignId"), a.get("campaignName"), pid, happened or datetime.now(timezone.utc), step, step_id)).fetchone()
     if typ in ("emailsSent", "emailsReplied"):
         from .outbound.replies import remember
         remember(conn, aid, a, "activity")           # the words (when Lemlist sends them) and the ids needed to answer in the same thread
