@@ -111,8 +111,12 @@ def person_profile(conn: Conn, job: dict[str, Any], **kw: Any) -> dict[str, Any]
                          schema=SCHEMA, **kw)
 
 
-def people_search(conn: Conn, job: dict[str, Any], *, post_factory=None) -> dict[str, Any]:
-    from ..enrichment.exa_people import find_people
+def people_search(conn: Conn, job: dict[str, Any], *, post_factory=None, call_factory=None) -> dict[str, Any]:
+    """LinkedIn through Exa first; when that gives fewer than three decision makers, the company's own pages and news are read too (one
+    model call names the people they mention, each checked against its page). Without an AI key the LinkedIn part still runs."""
+    from ..enrichment.exa_people import WEB_SCHEMA, find_people
+    from ..ingest.pipeline import _run
+    from ..jobs.modelcall import make_call
     from ..jobs.queue import JobError
     st = _settings()
     sid = job["payload"]["search_id"]
@@ -128,8 +132,14 @@ def people_search(conn: Conn, job: dict[str, Any], *, post_factory=None) -> dict
         _caps(conn, st)
     searcher = ExaSearcher(conn, post=(post_factory or (lambda: exa_post(st.exa_api_key)))(), operation="people_search", ref_type="people_search", ref_id=sid,
                            org_id=str(row["organization_id"]))
+    call = None
+    if call_factory is not None:
+        call = call_factory()
+    elif post_factory is None and st.anthropic_api_key:
+        call = make_call(conn, st, org_id=str(row["organization_id"]), operation="people_search", key_prefix=f"people_search:{sid}",
+                         models=[st.anthropic_model], max_tokens=2500, schema=WEB_SCHEMA)
     try:
-        r = find_people(conn, str(row["organization_id"]), sid, searcher=searcher, by=row["requested_by"])
+        r = find_people(conn, str(row["organization_id"]), sid, searcher=searcher, by=row["requested_by"], call=call, run=_run if call else None)
     except BudgetExceeded:
         conn.rollback()
         _fail(conn, "people_searches", sid, BUDGET_MSG["exa"])
@@ -145,7 +155,7 @@ def people_search(conn: Conn, job: dict[str, Any], *, post_factory=None) -> dict
     conn.execute("UPDATE people_searches SET status='done', searches=%s, exa_cost_usd=%s, found=%s, new_candidates=%s, already_known=%s, skipped=%s, error=%s, finished_at=now() WHERE id=%s",
                  (searcher.calls, round(searcher.cost, 4), r["found"], r["new"], r["already_known"], r["skipped"], r["stopped"], sid))
     conn.commit()
-    return {"status": "done", **{k: v for k, v in r.items() if k != "stopped"}, "searches": searcher.calls}
+    return {"status": "done", **{k: v for k, v in r.items() if k != "stopped"}, "searches": searcher.calls, "log": searcher.log}
 
 
 for _f in (account_profile, person_profile, people_search):

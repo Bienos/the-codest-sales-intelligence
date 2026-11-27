@@ -376,6 +376,8 @@ a.ac-cite:hover { border-color: var(--purple); color: var(--navy); background: v
 .fp-match { display: flex; align-items: flex-start; gap: 6px; margin: 0; font-size: var(--fs-xs); color: var(--navy); }
 .fp-match .ico { width: 16px; height: 16px; color: var(--dot-ok); }
 .fp-match.profile .ico { color: var(--orange); }
+.fp-match.web .ico { color: var(--orange); }
+.fp-src a { font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .fp-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .fp-acts button { padding: 9px 12px; }
 .fp-acts button.ghost { background: transparent; }

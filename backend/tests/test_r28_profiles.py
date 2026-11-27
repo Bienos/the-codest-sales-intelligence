@@ -152,6 +152,40 @@ def test_linkedin_results_are_parsed_and_checked_against_the_company():
     assert intern == {"skip": "not a decision role", "name": "Zoe Young"}
 
 
+def _profile(name, headline, experience, about=""):
+    """The text Exa returns for a LinkedIn profile: '# Name', the headline, location, then About and Experience parts."""
+    exp = "".join(f"### [{co}](https://www.linkedin.com/company/x)\n" + "".join(f"#### {r}\nJan 2021 - Present\n" for r in roles) for co, roles in experience)
+    return f"# {name}\n{headline}\nHamburg, Hamburg, Germany (DE)\n500 connections \u2022 900 followers\n" + (f"## About\n{about}\n" if about else "") + f"## Experience\n{exp}## Education\n### Uni\n"
+
+
+def test_exa_linkedin_profiles_are_read_from_the_experience_part_not_the_page_title():
+    keys = ["hamburger sparkasse", "haspa"]
+    # the page title names only the employer; the role is in the headline and in the Experience entry
+    jana = parse_result({"url": "https://de.linkedin.com/in/jana-beispiel", "title": "Jana Beispiel - Hamburger Sparkasse | LinkedIn",
+                         "text": _profile("Jana Beispiel", "Abteilungsleiterin IT-Architektur bei Hamburger Sparkasse",
+                                          [("Hamburger Sparkasse", ["Abteilungsleiterin IT-Architektur", "Senior Architect"]), ("Old Bank", ["Developer"])],
+                                          about="Leads the architecture of core banking and payments.")}, keys)
+    assert jana["name"] == "Jana Beispiel" and jana["title"] == "Abteilungsleiterin IT-Architektur" and jana["company_match"] == "headline"
+    assert jana["seniority"] == "Head / Director" and jana["snippet"].startswith("Abteilungsleiterin IT-Architektur bei Hamburger Sparkasse \u00b7 Leads the architecture")
+    # a generic headline: the role comes from the Experience entry at this company, which is also their current job
+    tom = parse_result({"url": "https://www.linkedin.com/in/tom-muster", "title": "Tom Muster - Haspa | LinkedIn",
+                        "text": _profile("Tom Muster", "Banking | Digital | Leadership", [("Haspa", ["Bereichsleiter Zahlungsverkehr"])])}, keys)
+    assert tom["title"] == "Bereichsleiter Zahlungsverkehr" and tom["company_match"] == "headline"
+    # left the company: their newest job is elsewhere, the old one is still in the profile
+    gone = parse_result({"url": "https://www.linkedin.com/in/ex-cio", "title": "Ex Person - Other Fintech | LinkedIn",
+                         "text": _profile("Ex Person", "CTO at Other Fintech", [("Other Fintech", ["CTO"]), ("Hamburger Sparkasse", ["Head of IT"])])}, keys)
+    assert gone == {"skip": "works elsewhere now", "name": "Ex Person"}
+    # works there, but not in a deciding role
+    clerk = parse_result({"url": "https://www.linkedin.com/in/clerk", "title": "Kim Clerk - Hamburger Sparkasse | LinkedIn",
+                          "text": _profile("Kim Clerk", "Werkstudentin bei Hamburger Sparkasse", [("Hamburger Sparkasse", ["Werkstudentin IT"])])}, keys)
+    assert clerk == {"skip": "not a decision role", "name": "Kim Clerk"}
+    # titles in the local language of our markets
+    from ri.enrichment.exa_people import seniority
+    assert seniority("Dyrektor Departamentu IT") == "Head / Director" and seniority("Członek Zarządu") == "C-level" and seniority("utvecklingschef") == "Head / Director"
+    assert seniority("IT-johtaja") == "Head / Director" and seniority("Vorstandsmitglied") == "C-level" and seniority("Abteilungsleiter") == "Head / Director"
+    assert seniority("Directeur des systèmes d'information") == "Head / Director" and seniority("Sachbearbeiter") is None
+
+
 # ------------------------------------------------------------------ company research job, cost and budget
 def _company_pages():
     return {"overview": [{"url": "https://kestrel.example/about", "title": "About Kestrel Pay", "text": SRC["W1"]["text"]}],
@@ -241,15 +275,16 @@ def test_find_people_dedupes_against_known_people_and_add_creates_an_exa_person(
     conn.commit()
     calls = []
 
-    def category_refused_once(body):
-        if body.get("category") == "linkedin profile" and not any(c.get("includeDomains") for c in calls[:-1]):
+    def old_category_refused(body):
+        if body.get("category") == "linkedin profile":
             raise SchemaDrift("unexpected status 400: invalid category", status=400)
-    out = profile_jobs.people_search(conn, {"payload": {"search_id": sid}}, post_factory=fake_post(_linkedin_pages(), calls, fail=category_refused_once))
+    out = profile_jobs.people_search(conn, {"payload": {"search_id": sid}}, post_factory=fake_post(_linkedin_pages(), calls, fail=old_category_refused))
     assert out["status"] == "done"
-    assert calls[0]["category"] == "linkedin profile" and calls[1]["includeDomains"] == ["linkedin.com"] and "category" not in calls[1]     # fell back once, then kept the fallback
+    assert calls[0]["category"] == "linkedin profile" and calls[1]["category"] == "people" and all(c["category"] == "people" for c in calls[2:])    # fell back once, then kept the fallback
+    assert calls[1]["contents"]["text"]["maxCharacters"] == 2000                 # enough of the profile to read the newest Experience entries
     row = q1(conn, "select * from people_searches where id=%s", (sid,))
     cands = {r["name"]: r for r in qa(conn, "select * from people_candidates where organization_id=%s", (oid,))}
-    assert set(cands) == {"Ada Clarke", "Ben Weber", "Dan Nowak"} and row["skipped"] == 1 and row["searches"] == 5
+    assert set(cands) == {"Ada Clarke", "Ben Weber", "Dan Nowak"} and row["skipped"] == 1 and row["searches"] == 5     # a GB account: no local-language search
     assert cands["Ada Clarke"]["status"] == "already_known" and cands["Dan Nowak"]["status"] == "already_known"      # by LinkedIn address, and by name
     assert cands["Ben Weber"]["status"] == "found" and cands["Ben Weber"]["persona"] == "Technology leadership" and row["new_candidates"] == 1
 
@@ -272,6 +307,64 @@ def test_find_people_dedupes_against_known_people_and_add_creates_an_exa_person(
     assert list(by)[0] == "Ada Clarke"                                           # lead-list priority first
     assert c.get("/api/people?source=exa", headers=h("bdm")).status_code == 200    # the global list knows the new source
     assert q1(conn, "select count(*) n from audit_events where operation='pii_read' and record_type='organization_people'")["n"] == 1
+
+
+def test_when_linkedin_finds_few_the_company_pages_and_news_name_more_people(conn, env):
+    caps(conn)
+    oid = str(conn.execute("insert into organizations(display_name, canonical_domain, country_code, segment, in_master_list) values "
+                           "('Elbe Sparkasse', 'elbe-sparkasse.example', 'DE', 'Banking', true) returning id").fetchone()["id"])
+    sid = str(conn.execute("insert into people_searches(organization_id, requested_by) values (%s,'bdm@x') returning id", (oid,)).fetchone()["id"])
+    conn.commit()
+    board = ("Der Vorstand der Elbe Sparkasse: Petra Muster, Vorstandsmitglied verantwortlich für IT und Organisation. "
+             "Max Beispiel leitet als Bereichsleiter IT-Betrieb die Informatik der Bank.")
+    pages = {"Leiter IT, Bereichsleiter IT": [],
+             "management board and leadership team": [{"url": "https://elbe-sparkasse.example/vorstand", "title": "Vorstand | Elbe Sparkasse", "text": board}],
+             "appoints a new CIO": [],
+             "Petra Muster Elbe Sparkasse": [{"url": "https://de.linkedin.com/in/petra-muster", "title": "Petra Muster - Elbe Sparkasse | LinkedIn",
+                                             "text": _profile("Petra Muster", "Vorstand bei Elbe Sparkasse", [("Elbe Sparkasse", ["Mitglied des Vorstands"])])}],
+             "Max Beispiel Elbe Sparkasse": []}
+    reply = {"people": [
+        {"name": "Petra Muster", "title": "Vorstandsmitglied (IT und Organisation)", "source": "W1", "quote": "Petra Muster, Vorstandsmitglied verantwortlich für IT"},
+        {"name": "Max Beispiel", "title": "Bereichsleiter IT-Betrieb", "source": "W1", "quote": "Max Beispiel leitet als Bereichsleiter IT-Betrieb"},
+        {"name": "Ina Erfunden", "title": "CIO", "source": "W1", "quote": "Ina Erfunden ist CIO der Elbe Sparkasse"},          # not on the page: dropped
+        {"name": "Ola Contact", "title": "Head of IT", "source": "W1", "quote": "ola@elbe-sparkasse.example Head of IT"}]}      # an email address: dropped
+    calls, prompts = [], []
+    out = profile_jobs.people_search(conn, {"payload": {"search_id": sid}}, post_factory=fake_post(pages, calls), call_factory=fake_model(reply, prompts))
+    assert out["status"] == "done" and out["web_named"] == 2 and out["web_only"] == 1
+    assert calls[1]["query"].startswith("Leiter IT, Bereichsleiter IT") and calls[6]["includeDomains"] == ["elbe-sparkasse.example"]   # German wording; the bank's own site
+    assert calls[7]["excludeDomains"] == ["linkedin.com"] and len(calls) == 10            # 6 LinkedIn + 2 web + 2 name lookups
+    assert "Der Vorstand der Elbe Sparkasse" in prompts[0]
+    cands = {r["name"]: r for r in qa(conn, "select * from people_candidates where organization_id=%s", (oid,))}
+    assert set(cands) == {"Petra Muster", "Max Beispiel"}
+    petra, max_ = cands["Petra Muster"], cands["Max Beispiel"]
+    assert petra["linkedin_url"] == "https://www.linkedin.com/in/petra-muster" and petra["company_match"] == "headline" and petra["persona"] == "Named on the web"
+    assert petra["evidence_url"] == "https://elbe-sparkasse.example/vorstand"
+    assert max_["linkedin_url"] is None and max_["company_match"] == "web" and max_["evidence_url"] == "https://elbe-sparkasse.example/vorstand"
+    assert "Bereichsleiter IT-Betrieb" in max_["snippet"] and max_["seniority"] == "Head / Director"
+    # the screen gets the page, and adding the person keeps that page as the evidence for the role (no LinkedIn address is invented)
+    c, h = env["c"], env["h"]
+    item = next(i for i in c.get(f"/api/accounts/{oid}/people-search", headers=h("bdm")).json()["items"] if i["name"] == "Max Beispiel")
+    assert item["evidence_url"] == "https://elbe-sparkasse.example/vorstand" and item["linkedin_url"] is None
+    r = c.post(f"/api/people-candidates/{max_['id']}/add", headers=h("bdm"))
+    assert r.status_code == 200 and r.json()["created"] is True
+    pid = r.json()["person_id"]
+    assert q1(conn, "select linkedin_url from people where id=%s", (pid,))["linkedin_url"] is None
+    assert q1(conn, "select evidence_url from employment where person_id=%s", (pid,))["evidence_url"] == "https://elbe-sparkasse.example/vorstand"
+    # searching again does not duplicate the web-only person
+    sid2 = str(conn.execute("insert into people_searches(organization_id, requested_by) values (%s,'bdm@x') returning id", (oid,)).fetchone()["id"])
+    conn.commit()
+    profile_jobs.people_search(conn, {"payload": {"search_id": sid2}}, post_factory=fake_post(pages, []), call_factory=fake_model(reply))
+    assert q1(conn, "select count(*) n from people_candidates where organization_id=%s and lower(name)='max beispiel'", (oid,))["n"] == 1
+
+
+def test_people_search_without_ai_still_searches_linkedin(conn, env):
+    caps(conn)
+    oid = env["o"]["open"]
+    sid = str(conn.execute("insert into people_searches(organization_id, requested_by) values (%s,'bdm@x') returning id", (oid,)).fetchone()["id"])
+    conn.commit()
+    calls = []
+    out = profile_jobs.people_search(conn, {"payload": {"search_id": sid}}, post_factory=fake_post({}, calls))
+    assert out["status"] == "done" and out["found"] == 0 and len(calls) == 5 and out["web_named"] == 0      # no model: no web pass, nothing invented
 
 
 # ------------------------------------------------------------------ person research and the person page

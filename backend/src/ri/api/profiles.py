@@ -280,7 +280,7 @@ def register_profiles(app: FastAPI) -> None:
             o = _visible_org(conn, p, oid)
             s = q1(conn, "SELECT id, status, searches, exa_cost_usd, found, new_candidates, already_known, skipped, error, requested_by, created_at, finished_at "
                          "FROM people_searches WHERE organization_id=%s ORDER BY created_at DESC LIMIT 1", (o["id"],))
-            items = qa(conn, "SELECT id, name, title, persona, seniority, linkedin_url, photo_url, snippet, company_match, status, person_id, created_at FROM people_candidates "
+            items = qa(conn, "SELECT id, name, title, persona, seniority, linkedin_url, photo_url, snippet, company_match, evidence_url, status, person_id, created_at FROM people_candidates "
                              "WHERE organization_id=%s AND status IN ('found','already_known','added') ORDER BY (status='found') DESC, company_match, created_at DESC LIMIT 60", (o["id"],))
             if items:
                 audit(conn, actor=p.email, operation="pii_read", record_type="people_candidates", record_id=str(o["id"]), detail={"count": len(items)})

@@ -840,15 +840,17 @@ function FindPeople({ orgId, company, onAdded }: { orgId: string; company: strin
       <span className="fp-ic" aria-hidden="true"><Ic.search /></span>
       <div className="fp-intro">
         <h2 id="find-h">{tr("Find decision makers with Exa")}</h2>
-        <p>{tr("Searches LinkedIn for technology, engineering, delivery, data, payments and procurement leaders at {}. You choose who to add.", company)}</p>
+        <p>{tr("Searches LinkedIn, then the company's own pages and news, for technology, engineering, delivery, data, payments and procurement leaders at {}. You choose who to add.", company)}</p>
       </div>
       {s.can_run && <button type="button" className={found.length ? "" : "primary"} disabled={Boolean(busy) || s.running || !s.setup.ready} onClick={run}>{last ? tr("Search again") : tr("Find decision makers")}</button>}
     </div>
     {!s.setup.ready && <p className="ac-setup mt-2 mb-0">{tr("Finding people with Exa is not switched on yet: an administrator can turn it on.")}</p>}
-    {s.running && <div className="fp-run" role="status"><span className="ac-pulse" />{tr("Searching five parts of the buying group. About half a minute.")}</div>}
+    {s.running && <div className="fp-run" role="status"><span className="ac-pulse" />{tr("Searching LinkedIn and the web for the buying group. Up to a minute.")}</div>}
     {last?.status === "failed" && !s.running && <div className="rs-fail-inline" role="alert"><Ic.alert /><div><b>{tr("The search did not finish.")}</b> {tr(failReason(last.error))}
       {last.error && <details className="rs-why"><summary>{tr("Error details for administrators")}</summary><code>{last.error}</code></details>}</div></div>}
-    {last?.status === "done" && <p className="fp-last">{tr("Last search {}: {} found, {} new, {} already in your people list.", fmtDateTime(last.finished_at), last.found, last.new_candidates, last.already_known)}</p>}
+    {last?.status === "done" && <p className="fp-last">{tr("Last search {}: {} found, {} new, {} already in your people list.", fmtDateTime(last.finished_at), last.found, last.new_candidates, last.already_known)}
+      {last.skipped > 0 && <> {tr("{} more profiles named {} but were set aside: not a deciding role, or they work elsewhere now.", last.skipped, company)}</>}
+      {last.error && <> {tr(last.error)}</>}</p>}
     <Err e={err} />
     {found.length > 0 && <ul className="fp-grid" aria-label={tr("People found")}>{found.map((c: any) => <li key={c.id} className="fp-card">
       <div className="pp-top">
@@ -862,8 +864,10 @@ function FindPeople({ orgId, company, onAdded }: { orgId: string; company: strin
         {c.persona && <span className="ac-tag">{tr(c.persona)}</span>}
       </div>
       {c.snippet && <p className="fp-snip">{c.snippet}</p>}
-      <p className={`fp-match ${c.company_match}`}>{c.company_match === "headline" ? <><Ic.check />{tr("Their LinkedIn headline names {}.", company)}</>
+      <p className={`fp-match ${c.company_match}`}>{c.company_match === "headline" ? <><Ic.check />{tr("LinkedIn shows {} as their employer now.", company)}</>
+        : c.company_match === "web" ? <><Ic.alert />{tr("Named on a public page as working at {}. No LinkedIn profile found: check the page.", company)}</>
         : <><Ic.alert />{tr("{} appears in the profile, not the headline: check they still work there.", company)}</>}</p>
+      {c.evidence_url && safeHref(c.evidence_url) && <p className="fp-src small m-0"><a href={safeHref(c.evidence_url)} target="_blank" rel="noreferrer noopener">{tr("Open the page that names them")}</a></p>}
       <div className="fp-acts">
         <button type="button" className="primary" disabled={Boolean(busy)} onClick={() => act(c.id, "add")}>{tr("Add to people")}</button>
         <button type="button" className="ghost" disabled={Boolean(busy)} onClick={() => act(c.id, "dismiss")}>{tr("Dismiss")}</button>
