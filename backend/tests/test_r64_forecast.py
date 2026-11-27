@@ -113,6 +113,23 @@ def test_backfill_reads_paged_flow_and_is_idempotent(conn):
     assert pd.backfill_deal_history(conn, reader) == {"deals": 0, "transitions": 0, "remaining": 0}
 
 
+def test_hourly_crm_step_backfills_history_and_survives_a_backfill_failure(conn, monkeypatch):
+    from ri import scheduler
+    monkeypatch.setattr(pd, "sync_incremental", lambda c, r: {"deals": 0})
+    monkeypatch.setattr(pd, "process_inbox", lambda c: {"processed": 0})
+    calls = []
+    monkeypatch.setattr(pd, "backfill_deal_history", lambda c, r, limit: calls.append(limit) or {"deals": 3, "transitions": 9, "remaining": 0})
+    st = Settings(pipedrive_api_token="t", pipedrive_domain="d")
+    out = scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 10, 1, tzinfo=timezone.utc))
+    assert out["deal_history_backfill"]["deals"] == 3 and calls == [100]
+
+    def boom(c, r, limit):
+        raise pd.CrmError("Pipedrive 500 after retries")
+    monkeypatch.setattr(pd, "backfill_deal_history", boom)
+    out = scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 11, 1, tzinfo=timezone.utc))
+    assert out["crm_sync"] == {"deals": 0} and "Pipedrive 500" in out["deal_history_backfill_error"]
+
+
 # ------------------------------------------------------------------ measurement
 def add_history(conn, deal_id, steps, status, value=100000, stage=None):
     """steps: [(stage_id, days_after_start)], then optional ('won'|'lost', day). Written as backfilled history."""

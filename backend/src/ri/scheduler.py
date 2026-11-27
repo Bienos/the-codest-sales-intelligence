@@ -256,13 +256,23 @@ def crm_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
     if not (settings.pipedrive_api_token and settings.pipedrive_domain) or now.minute >= 5:
         return {}
-    from .crm.pipedrive import PipedriveReader, process_inbox, sync_incremental
+    from .crm import pipedrive as pdm
     try:
-        res = sync_incremental(conn, PipedriveReader(settings.pipedrive_domain, settings.pipedrive_api_token))
-        return {"crm_sync": res, "crm_inbox": process_inbox(conn)}
+        reader = pdm.PipedriveReader(settings.pipedrive_domain, settings.pipedrive_api_token)
+        res = pdm.sync_incremental(conn, reader)
+        out: dict = {"crm_sync": res, "crm_inbox": pdm.process_inbox(conn)}
     except Exception as exc:  # noqa: BLE001
         conn.rollback()
         return {"crm_sync_error": f"{type(exc).__name__}: {exc}"[:200]}
+    try:      # each deal's past stage moves, read once from Pipedrive: up to 100 deals an hour until every deal is done
+        conn.commit()
+        bf = pdm.backfill_deal_history(conn, reader, limit=100)
+        if bf["deals"]:
+            out["deal_history_backfill"] = bf
+    except Exception as exc:  # noqa: BLE001  (the mirror above is already saved; the backfill resumes next hour)
+        conn.rollback()
+        out["deal_history_backfill_error"] = f"{type(exc).__name__}: {exc}"[:200]
+    return out
 
 
 
