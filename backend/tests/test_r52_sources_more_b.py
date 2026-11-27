@@ -26,11 +26,11 @@ FIX = Path(__file__).parent / "fixtures" / "sources_more_b"
 RULES = Path(__file__).resolve().parents[1] / "rules"
 
 WIRES = ["attention-presseportal-finanzen", "attention-finanznachrichten-adhoc", "attention-finanznachrichten-fs"]
-TRADE = ["attention-nordicfintech", "attention-finews", "attention-fintechbaltic", "attention-versicherungsbote"]
+TRADE = ["attention-nordicfintech", "attention-finews", "attention-fintechbaltic"]
 BLOGS = ["blog-wise-engineering", "blog-adyen-tech", "blog-qonto-engineering", "blog-allegro-tech"]
 # looked at on 27 Nov 2026 and NOT registered, each for a stated reason (see the final report): no feed, a robots.txt or terms bar, a bot check, or off topic
 REJECTED_HOSTS = ("eqs-news.com", "investegate.co.uk", "businesswire.com", "ots.at", "lse.co.uk", "londonstockexchange.com", "news.cision.com", "oslobors.no", "euronext.com",
-                  "cio.de", "computerwoche.de", "intellinews.com", "computersweden.se", "bankingtech.pl", "gpw.pl")
+                  "cio.de", "computerwoche.de", "intellinews.com", "computersweden.se", "bankingtech.pl", "gpw.pl", "versicherungsbote.de")
 BLOCKED_HOSTS = ("techuk.org", "uktech.news", "fintechfutures.com", "finextra.com", "bankier.pl", "paymentexpert.com", "finanz-szene.de", "computing.co.uk")
 
 
@@ -171,7 +171,7 @@ def test_the_feed_reader_still_obeys_robots_txt():
     ("https://bank.example/insights/feed", "press"),
     ("https://bank.example/pressemitteilungen/rss", "press"),
     ("https://bank.example/blog/feed", "blog"),
-    ("https://bank.example/feed", None),
+    ("https://bank.example/feed", None), ("https://bank.example/developers/feed", None),
     ("https://medium.com/feed/wise-engineering", "engineering"),
     ("https://medium.com/feed/ing-blog", "blog"),
 ])
@@ -188,6 +188,7 @@ def test_a_company_called_tech_something_is_not_an_engineering_blog_for_that_rea
 @pytest.mark.parametrize("url, expected", [
     ("https://bank.example/engineering", True), ("https://bank.example/en/engineering/", True), ("https://bank.example/tech", True),
     ("https://bank.example/engineering/blog", True), ("https://bank.example/blog/engineering", True), ("https://engineering.bank.example/", True),
+    ("https://bank.example/about/tech-blog", True), ("https://bank.example/developers", False), ("https://bank.example/engineering-careers", False),
     ("https://tech.bank.example", True), ("https://bank.example/engineering/2026/a-long-article-title", False),
     ("https://bank.example/technology-partners", False), ("https://tech.other.example/", False), ("https://other.example/engineering", False),
     ("https://bank.example/news", False), ("https://dev.bank.example/", False),
@@ -290,6 +291,13 @@ def test_discovery_does_not_read_an_engineering_page_that_robots_txt_closes():
     assert "/en/engineering" not in log
     assert "Engineering blog" not in _feeds(out).values()
     assert "/en/newsroom/" in log                    # the rest is read as before
+
+
+def test_a_site_wide_feed_listed_on_the_engineering_page_is_not_called_the_engineering_blog():
+    pages = _pages("home_with_engineering.html")
+    pages["/en/engineering"] = '<html><head><link rel="alternate" type="application/rss+xml" href="/content/rss/everything.xml"></head></html>'
+    out = asyncio.run(discover(_site(pages, []), "syntheticexample.example"))
+    assert "Engineering blog" not in _feeds(out).values() and "https://syntheticexample.example/content/rss/everything.xml" not in _feeds(out)
 
 
 def test_a_site_linking_an_engineering_subdomain_is_followed_to_its_feed():

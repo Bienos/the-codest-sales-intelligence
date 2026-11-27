@@ -24,8 +24,8 @@ from typing import Any, Iterator
 from ..db import Conn, jb, qa
 from . import store
 
-MAX_RAW_BYTES = 20 * 1024          # a raw delivery is kept up to this size; a larger one is reduced to a marker
-KEEP_EVENTS = 10                   # raw deliveries kept per person
+MAX_RAW_BYTES = 1024 * 1024        # a raw delivery (full transcript included) is kept whole up to 1 MB; only a larger one is reduced to a marker
+KEEP_EVENTS = 10                   # raw deliveries listed per person (all are kept)
 GIST_CHARS = 600
 MAX_DEPTH = 3                      # how far below the top of a delivery a field is looked for
 MAX_ATTENDEES = 100
@@ -81,14 +81,14 @@ def clean(obj: Any, depth: int = 0) -> Any:
 
 
 def keep_raw(payload: Any) -> Any:
-    """What is stored as the raw delivery: the delivery itself up to 20 KB, else a marker that says how big it was and which keys it had."""
+    """What is stored as the raw delivery: the delivery itself up to 1 MB, else a marker that says how big it was and which keys it had."""
     payload = clean(payload)
     size = len(json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8"))
     if size <= MAX_RAW_BYTES:
         return payload
     keys = list(payload.keys())[:40] if isinstance(payload, dict) else None
     return {"_trimmed": True, "original_bytes": size, "limit_bytes": MAX_RAW_BYTES, "top_level_keys": keys,
-            "note": "This delivery was larger than 20 KB, so only this marker was kept."}
+            "note": "This delivery was larger than 1 MB, so only this marker was kept."}
 
 
 # ------------------------------------------------------------------ reading a delivery
@@ -355,11 +355,9 @@ def handle_delivery(conn: Conn, user_id: str, payload: Any) -> dict[str, Any]:
 
 
 def store_raw(conn: Conn, user_id: str, payload: Any, *, handled: bool = False, note: str | None = None) -> None:
-    """Keep one raw delivery (trimmed to 20 KB) and only the last 10 per person."""
+    """Keep one raw delivery (a payload above 20 KB is stored as a short marker). Nothing is ever deleted; the page lists the newest 10."""
     conn.execute("INSERT INTO connection_events(user_id, provider, received_at, payload, handled, note) VALUES (%s,'bluedot',clock_timestamp(),%s,%s,%s)",
                  (user_id, jb(keep_raw(payload)), handled, (note or "")[:300] or None))
-    conn.execute("DELETE FROM connection_events WHERE user_id=%s AND provider='bluedot' AND id NOT IN "
-                 "(SELECT id FROM connection_events WHERE user_id=%s AND provider='bluedot' ORDER BY received_at DESC, id DESC LIMIT %s)", (user_id, user_id, KEEP_EVENTS))
 
 
 def recent_events(conn: Conn, user_id: str, limit: int = KEEP_EVENTS) -> list[dict[str, Any]]:

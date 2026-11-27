@@ -68,7 +68,7 @@ def test_an_email_stays_with_its_owner_unless_they_share_it(conn):
     assert store.email_visibility(store.get(conn, uid, "gmail")["settings"]) == "team"
 
 
-def test_interactions_are_repeatable_and_disconnecting_forgets_the_secret_and_can_delete_what_came(conn):
+def test_interactions_are_repeatable_and_disconnecting_forgets_the_secret_but_keeps_everything(conn):
     uid = _user(conn)
     store.connect(conn, KEY, uid, "gmail", secret="r")
     kw = dict(user_id=uid, channel="email", external_id="m1", occurred_at=NOW, visibility="owner", direction="out", title="Hello", gist="First line")
@@ -76,11 +76,9 @@ def test_interactions_are_repeatable_and_disconnecting_forgets_the_secret_and_ca
     assert store.upsert_interaction(conn, **{**kw, "title": "Hello again"}) is False                     # a repeat refreshes, never duplicates
     assert q1(conn, "SELECT title FROM contact_interactions WHERE external_id='m1'")["title"] == "Hello again"
     store.upsert_interaction(conn, user_id=uid, channel="meeting", external_id="b1", occurred_at=NOW, visibility="team")
-    assert store.disconnect(conn, uid, "gmail", delete_data=False) == 0
+    store.disconnect(conn, uid, "gmail")
     assert store.secret(conn, KEY, uid, "gmail") is None and store.get(conn, uid, "gmail")["status"] == "disconnected"
-    assert q1(conn, "SELECT count(*) AS n FROM contact_interactions")["n"] == 2
-    assert store.disconnect(conn, uid, "gmail", delete_data=True) == 1                                  # only that channel's rows go
-    assert [r["channel"] for r in qa(conn, "SELECT channel FROM contact_interactions")] == ["meeting"]
+    assert q1(conn, "SELECT count(*) AS n FROM contact_interactions")["n"] == 2                          # nothing is ever deleted
 
 
 def test_a_sync_error_marks_the_connection_and_a_good_run_clears_it(conn):
@@ -99,7 +97,7 @@ def test_syncs_are_queued_once_an_hour_for_connected_active_people_only(conn):
         store.connect(conn, KEY, u, "gmail", secret="r")
     store.connect(conn, KEY, ann, "lemlist", secret="k")
     store.connect(conn, KEY, di, "bluedot", webhook_token=store.new_webhook_token())                  # pushes by webhook: never polled
-    store.disconnect(conn, bob, "gmail", delete_data=False)
+    store.disconnect(conn, bob, "gmail")
     assert store.schedule_syncs(conn, NOW) == 2                                                          # ann: gmail + lemlist
     assert store.schedule_syncs(conn, NOW) == 0                                                          # same hour: nothing twice
     kinds = sorted(r["kind"] for r in qa(conn, "SELECT kind FROM jobs WHERE kind IN ('gmail_sync','lemlist_user_sync')"))
@@ -117,18 +115,17 @@ def test_a_webhook_token_finds_its_owner_and_is_stored_only_as_a_hash(conn):
     store.connect(conn, KEY, uid, "bluedot", webhook_token=token, label="Bluedot")
     assert str(store.by_webhook_token(conn, token)["user_id"]) == uid and store.by_webhook_token(conn, token + "x") is None
     assert token not in str(store.get(conn, uid, "bluedot"))
-    store.disconnect(conn, uid, "bluedot", delete_data=False)
+    store.disconnect(conn, uid, "bluedot")
     assert store.by_webhook_token(conn, token) is None                                                   # a disconnected token stops working
 
 
-def test_old_interactions_and_webhook_logs_are_trimmed(conn):
+def test_nothing_is_ever_deleted_by_age(conn):
     uid = _user(conn)
-    store.upsert_interaction(conn, user_id=uid, channel="email", external_id="old", occurred_at=NOW - timedelta(days=600), visibility="owner")
-    store.upsert_interaction(conn, user_id=uid, channel="email", external_id="new", occurred_at=NOW - timedelta(days=30), visibility="owner")
-    conn.execute("INSERT INTO connection_events(user_id, provider, received_at, payload) VALUES (%s,'bluedot',%s,'{}'::jsonb)", (uid, NOW - timedelta(days=40)))
-    assert store.purge_old(conn, NOW) == 1
-    assert [r["external_id"] for r in qa(conn, "SELECT external_id FROM contact_interactions")] == ["new"]
-    assert q1(conn, "SELECT count(*) AS n FROM connection_events")["n"] == 0
+    store.upsert_interaction(conn, user_id=uid, channel="email", external_id="old", occurred_at=NOW - timedelta(days=900), visibility="owner")
+    assert not hasattr(store, "purge_old")
+    from ri import scheduler
+    scheduler.run_maintenance(conn, NOW)
+    assert q1(conn, "SELECT count(*) AS n FROM contact_interactions")["n"] == 1
 
 
 def test_the_sync_lane_is_declared_and_runs_with_nothing_connected(conn):
@@ -137,12 +134,3 @@ def test_the_sync_lane_is_declared_and_runs_with_nothing_connected(conn):
     out = scheduler.run_maintenance(conn, NOW)
     assert out.get("connection_sync", 0) == 0
 
-
-def test_erasing_a_person_deletes_their_conversations_whatever_path_erased_them(conn):
-    uid = _user(conn)
-    pid = str(conn.execute("INSERT INTO people(full_name) VALUES ('Maja Example') RETURNING id").fetchone()["id"])
-    other = str(conn.execute("INSERT INTO people(full_name) VALUES ('Jon Example') RETURNING id").fetchone()["id"])
-    for i, p in enumerate((pid, pid, other)):
-        store.upsert_interaction(conn, user_id=uid, channel="email", external_id=f"m{i}", occurred_at=NOW, visibility="owner", person_id=p)
-    conn.execute("UPDATE people SET erased_at=now() WHERE id=%s", (pid,))
-    assert [str(r["person_id"]) for r in qa(conn, "SELECT person_id FROM contact_interactions")] == [other]

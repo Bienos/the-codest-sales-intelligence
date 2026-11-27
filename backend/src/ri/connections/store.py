@@ -19,7 +19,6 @@ PROVIDERS = ("gmail", "lemlist", "bluedot")
 CHANNEL = {"gmail": "email", "lemlist": "lemlist", "bluedot": "meeting"}
 SYNC_JOB = {"gmail": "gmail_sync", "lemlist": "lemlist_user_sync"}          # Bluedot pushes by webhook: nothing to poll
 SYNC_EVERY_S = {"gmail": 3600, "lemlist": 3600}
-RETENTION_MONTHS = 18
 DEFAULT_SETTINGS = {"share_email_gist": False}                             # an email's subject and snippet stay with their owner unless they share them
 SECRET_FIELDS = ("secret_enc", "webhook_token_hash")
 
@@ -98,13 +97,11 @@ def record_sync(conn: Conn, user_id: str, provider: str, now: datetime, *, curso
                  (now, jb(cursor) if cursor is not None else None, (error or "")[:300] or None, error, user_id, provider))
 
 
-def disconnect(conn: Conn, user_id: str, provider: str, *, delete_data: bool) -> int:
-    """Forget the credentials at once. With `delete_data` everything this connection brought is deleted too (returns how many rows)."""
+def disconnect(conn: Conn, user_id: str, provider: str) -> None:
+    """Forget the credentials at once, so nothing is read from this account any more. Everything the connection already brought STAYS in the
+    database (the user's rule: nothing is ever deleted)."""
     conn.execute("UPDATE user_connections SET status='disconnected', secret_enc=NULL, webhook_token_hash=NULL, disconnected_at=now(), last_error=NULL, cursor='{}'::jsonb "
                  "WHERE user_id=%s AND provider=%s", (user_id, provider))
-    if not delete_data:
-        return 0
-    return conn.execute("DELETE FROM contact_interactions WHERE user_id=%s AND channel=%s", (user_id, CHANNEL[provider])).rowcount
 
 
 def email_visibility(settings: dict[str, Any] | None) -> str:
@@ -141,11 +138,4 @@ def schedule_syncs(conn: Conn, now: datetime | None = None, limit: int = 40) -> 
             uid = str(r["user_id"])
             _, created = enqueue(conn, job_kind, {"user_id": uid}, idempotency_key=f"usersync:{provider}:{uid}:{now:%Y%m%d%H}", max_attempts=2, correlation_id="sched-connections")
             n += int(created)
-    return n
-
-
-def purge_old(conn: Conn, now: datetime | None = None, months: int = RETENTION_MONTHS) -> int:
-    now = now or datetime.now(timezone.utc)
-    n = conn.execute("DELETE FROM contact_interactions WHERE occurred_at < %s", (now - timedelta(days=30 * months),)).rowcount
-    conn.execute("DELETE FROM connection_events WHERE received_at < %s", (now - timedelta(days=30),))
     return n

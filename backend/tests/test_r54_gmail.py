@@ -414,7 +414,7 @@ def test_revoke_for_uses_the_stored_token_and_stops_once_disconnected(fake, conn
     connect(conn, uid)
     assert gmail_sync.revoke_for(conn, KEY, uid) is True and fake.revokes == [REFRESH]
     assert gmail_sync.revoke_for(conn, vault.new_key(), uid) is False               # a wrong key cannot open it: no crash
-    store.disconnect(conn, uid, "gmail", delete_data=False)
+    store.disconnect(conn, uid, "gmail")
     assert gmail_sync.revoke_for(conn, KEY, uid) is False
 
 
@@ -683,7 +683,7 @@ def test_a_connection_removed_during_a_run_stores_nothing_more(conn, fake, world
     uid = world["uid"]
     fake.mailbox = [msg("m1", "jane.doe@bank.example", OWN, "Hello", "x")]
     def other_session_disconnects(mid):
-        store.disconnect(conn, uid, "gmail", delete_data=True)
+        store.disconnect(conn, uid, "gmail")
         conn.commit()
     fake.on_get = other_session_disconnects
     out = sync(conn, uid)
@@ -692,7 +692,7 @@ def test_a_connection_removed_during_a_run_stores_nothing_more(conn, fake, world
 
 def test_nothing_to_do_without_a_live_connection(conn, fake, world):
     uid = world["uid"]
-    store.disconnect(conn, uid, "gmail", delete_data=False)
+    store.disconnect(conn, uid, "gmail")
     assert sync(conn, uid)["skipped"] == "not connected" and fake.lists == [] and fake.refreshes == 0
     assert gmail_sync.run(conn, {"payload": {}}, settings=settings())["skipped"]
     assert gmail_sync.run(conn, {"payload": {"user_id": "not-a-uuid"}}, settings=settings())["skipped"]

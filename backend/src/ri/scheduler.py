@@ -357,8 +357,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("watchlist_scans", lambda: schedule_watchlist(conn, now))
     from .sources.scan_rotation import schedule as schedule_scan_rotation
     step("scan_rotation", lambda: schedule_scan_rotation(conn, now))      # after the daily and weekly checks: whatever they queued today is not doubled
-    from .connections.store import purge_old, schedule_syncs
-    step("connection_sync", lambda: (purge_old(conn, now), schedule_syncs(conn, now))[1])      # old interactions (18 months) and webhook logs (30 days) go first
+    from .connections.store import schedule_syncs
+    step("connection_sync", lambda: schedule_syncs(conn, now))
     step("market_tagged", lambda: tag_untagged(conn, 1500))
     from .market import tag_public_bodies
     step("public_bodies_tagged", lambda: tag_public_bodies(conn, 500))

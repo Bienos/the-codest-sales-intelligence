@@ -89,7 +89,8 @@ MAX_BYTES = 2_000_000
 # With the (at most) two extra feeds the scan reads, a scan costs at most three requests more than before. Stored as `account_endpoints` of kind `feed`;
 # the class goes in `provider` (the account page shows "Feed (Engineering blog)").
 FEED_LABEL = {"engineering": "Engineering blog", "press": "Press and insights", "blog": "Blog"}
-ENG_WORDS = {"engineering", "engineers", "engineer", "tech", "techblog", "devblog", "developers", "developer"}
+ENG_WORDS = {"engineering", "engineers", "engineer", "tech", "techblog", "devblog"}      # not "developers": that is usually the API documentation, not a blog
+SECTION_EXTRA = {"blog", "blogs", "news", "articles", "posts", "hub", "team"}               # words that may sit next to an engineering word in a section name (tech-blog)
 PRESS_WORDS = {"press", "presse", "pressemitteilungen", "pressemeddelelser", "pressrum", "news", "newsroom", "media", "medien", "medienmitteilungen", "insights",
                "insight", "stories", "releases", "aktualnosci", "nyheter", "uutiset"}
 BLOG_WORDS = {"blog", "blogs"}
@@ -134,12 +135,12 @@ def is_tech_section(url: str, domain: str) -> bool:
     sub = _own_host_part(u.netloc, domain)
     if not segs:
         return bool(sub) and sub.split(".")[0].lower() in ENG_HOST
-    last = segs[-1].removesuffix(".html").lower()
+    last = _words(segs[-1].removesuffix(".html"))
     if len(segs) > 3:
         return False
-    if last in ENG_WORDS:
+    if last & ENG_WORDS and not (last - ENG_WORDS - SECTION_EXTRA):          # /engineering, /tech-blog, /engineering-news
         return True
-    return last in (BLOG_WORDS | {"news", "articles", "posts"}) and len(segs) >= 2 and segs[-2].lower() in ENG_WORDS
+    return bool(last) and not (last - SECTION_EXTRA) and len(segs) >= 2 and bool(_words(segs[-2]) & ENG_WORDS)      # /engineering/blog
 
 
 def medium_feed(url: str, domain: str) -> str | None:
@@ -282,7 +283,8 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
     found = parse_page(html, home_url, domain)
     feeds, news, careers, ats, unread = list(found["feeds"]), list(found["news"]), list(found["careers"]), list(found["ats"]), list(found["unread"])
     medium = [f for f in found["medium"] if f not in feeds]          # the account's own Medium publication, if its site links to one (kept apart: it must not stop the plain feed guesses)
-    feed_class: dict[str, str | None] = {f: classify_feed(f, domain) for f in [*feeds, *medium]}
+    feed_class: dict[str, str | None] = {f: classify_feed(f, domain) for f in feeds}
+    feed_class.update({f: classify_feed(f, domain) or "blog" for f in medium})        # a publication the account links to is its own blog
     to_read, read_pages = list(careers[:2]), set[str]()      # job-board links usually sit on the careers page (a company often has a second, local one)
     while to_read and len(read_pages) < MAX_CAREERS_PAGES:
         careers_url = to_read.pop(0)
@@ -319,11 +321,13 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
     if tech_url and "engineering" not in {feed_class.get(f) for f in [*feeds, *medium]}:      # THE one extra page read: the engineering blog's own page, to see which feed it offers
         page = await _get(client, robots, tech_url)
         if page:
-            own = [f for f in parse_page(page, tech_url, domain)["feeds"] if f not in feed_class]
+            under = urlparse(tech_url).path.rstrip("/") + "/"
+            # a feed counts as the blog's own when its address says engineering, or it sits under the blog's own path (a site-wide feed listed on the page does not)
+            own = [f for f in parse_page(page, tech_url, domain)["feeds"] if f not in feed_class
+                   and (classify_feed(f, domain) == "engineering" or (under != "/" and urlparse(f).path.startswith(under)))]
             if own:
-                pick = next((f for f in own if classify_feed(f, domain) == "engineering"), own[0])
-                feed_class[pick] = "engineering"
-                feeds.append(pick)
+                feed_class[own[0]] = "engineering"
+                feeds.append(own[0])
     if not feeds:
         for g in FEED_GUESSES[:3]:
             body = await _get(client, robots, urljoin(home_url, g))

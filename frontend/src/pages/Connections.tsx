@@ -46,7 +46,6 @@ function useAct() {
 }
 const Msg = ({ n }: { n: Note }) => n ? (n.kind === "ok" ? <p className="okmsg m-0" role="status">{n.text}</p> : <p className="err m-0" role="alert">{n.text}</p>) : null;
 
-const items = (n: number) => counted(n, ["item", "items"], ["element", "elementy", "elementów"]);
 const UNITS: Record<Provider, (n: number) => string> = {
   gmail: (n) => counted(n, ["email", "emails"], ["e-mail", "e-maile", "e-maili"]),
   lemlist: (n) => counted(n, ["campaign event", "campaign events"], ["zdarzenie kampanii", "zdarzenia kampanii", "zdarzeń kampanii"]),
@@ -187,19 +186,14 @@ function Status({ c, who }: { c: Conn; who: string }) {
   </div>;
 }
 
-/** Disconnecting asks first, and says what happens to what the connection already brought. */
-function Disconnect({ name, c, busy, onConfirm }: { name: string; c: Conn; busy: boolean; onConfirm: (wipe: boolean) => void }) {
+/** Disconnecting asks first. It only forgets the access: everything the connection already brought stays in the database. */
+function Disconnect({ name, busy, onConfirm }: { name: string; c: Conn; busy: boolean; onConfirm: () => void }) {
   const [asking, setAsking] = useState(false);
-  const [wipe, setWipe] = useState(true);
-  const stored = c.stored ?? 0;
   if (!asking) return <button type="button" className="cn-quiet" onClick={() => setAsking(true)}>{tr("Disconnect")}</button>;
   return <div className="cn-confirm" role="group" aria-label={tr("Disconnect {}", name)}>
-    <p className="m-0"><b>{tr("Disconnect {}?", name)}</b> {tr("We forget your access straight away.")}</p>
-    <label className="cn-check"><input type="checkbox" className="tick44" checked={wipe} onChange={(e) => setWipe(e.target.checked)} />
-      <span>{tr("Also delete what it brought")}{stored > 0 ? ` (${UNITS[c.provider](stored)})` : ""}</span></label>
-    <p className="cn-hint m-0">{wipe ? tr("These will disappear from people's pages.") : tr("They stay on people's pages.")}</p>
+    <p className="m-0"><b>{tr("Disconnect {}?", name)}</b> {tr("We forget your access straight away. Everything it already brought stays.")}</p>
     <div className="cn-actions">
-      <button type="button" className="primary" disabled={busy} onClick={() => onConfirm(wipe)}>{tr("Disconnect {}", name)}</button>
+      <button type="button" className="primary" disabled={busy} onClick={onConfirm}>{tr("Disconnect {}", name)}</button>
       <button type="button" disabled={busy} onClick={() => setAsking(false)} autoFocus>{tr("Keep it connected")}</button>
     </div>
   </div>;
@@ -228,10 +222,10 @@ function GmailCard({ c, vault, ready, reload, watch }: CardProps & { ready: bool
     try { await patch("/api/me/connections/gmail/settings", { share_email_gist: next }); await reload(); } finally { setPending(null); }
     return next ? tr("The team now sees the subject and first line of your emails.") : tr("Only you see the subject and first line of your emails again.");
   }); };
-  const disconnect = (wipe: boolean) => run("disconnect", async () => {
-    const r = await post<{ deleted?: number }>("/api/me/connections/gmail/disconnect", { delete_data: wipe });
+  const disconnect = () => run("disconnect", async () => {
+    await post("/api/me/connections/gmail/disconnect", {});
     await reload();
-    return wipe ? tr("Gmail is disconnected. We forgot your access and deleted {}.", items(r?.deleted ?? 0)) : tr("Gmail is disconnected. We forgot your access. What it brought is kept.");
+    return tr("Gmail is disconnected. We forgot your access. What it brought is kept.");
   });
   return <Card id="gmail" name="Gmail" Icon={Ico.mail} c={c} purpose={tr("Shows your emails with people in our database on their pages.")}
     keep={<Keep keeps={[tr("The subject and Gmail's own short snippet of each email."), tr("Whether it was sent or received, and the date."), tr("Only for people who are already in our database.")]}
@@ -268,10 +262,10 @@ function LemlistCard({ c, vault, reload, watch }: CardProps & { watch: (p: Provi
     watch("lemlist", c.last_sync_at);
     return r?.queued ? tr("Sync started. New campaign activity appears within a few minutes.") : tr("A sync is already waiting. Nothing more to do.");
   });
-  const disconnect = (wipe: boolean) => run("disconnect", async () => {
-    const r = await post<{ deleted?: number }>("/api/me/connections/lemlist/disconnect", { delete_data: wipe });
+  const disconnect = () => run("disconnect", async () => {
+    await post("/api/me/connections/lemlist/disconnect", {});
     await reload();
-    return wipe ? tr("Lemlist is disconnected. We forgot your key and deleted {}.", items(r?.deleted ?? 0)) : tr("Lemlist is disconnected. We forgot your key. What it brought is kept.");
+    return tr("Lemlist is disconnected. We forgot your key. What it brought is kept.");
   });
   return <Card id="lemlist" name="Lemlist" Icon={Ico.campaign} c={c} purpose={tr("Records the campaign activity of your own Lemlist account for people in our database.")}
     keep={<Keep keeps={[tr("Campaign events for people we already hold: sent, opened, clicked, replied or bounced."), tr("The campaign name and the date."), tr("Visible to the whole team.")]}
@@ -329,11 +323,11 @@ function BluedotCard({ c, vault, reload }: CardProps) {
     setUrl(r.webhook_url); setReplace(false);
     await reload();
   });
-  const disconnect = (wipe: boolean) => run("disconnect", async () => {
-    const r = await post<{ deleted?: number }>("/api/me/connections/bluedot/disconnect", { delete_data: wipe });
+  const disconnect = () => run("disconnect", async () => {
+    await post("/api/me/connections/bluedot/disconnect", {});
     setUrl(null);
     await reload();
-    return wipe ? tr("Bluedot is disconnected. The old address stopped working and we deleted {}.", items(r?.deleted ?? 0)) : tr("Bluedot is disconnected. The old address stopped working. What it brought is kept.");
+    return tr("Bluedot is disconnected. The old address stopped working. What it brought is kept.");
   });
   const status: Conn = live ? c : { ...c, status: "disconnected" };
   return <Card id="bluedot" name="Bluedot" Icon={Ico.meeting} c={status} purpose={tr("Puts the summaries of your recorded meetings on the pages of the people you met, for the whole team.")}

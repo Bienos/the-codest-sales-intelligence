@@ -142,7 +142,7 @@ def test_a_person_never_reaches_somebody_elses_connection(env, conn):
     mine = _items(env["c"].get("/api/me/connections", headers=env["h"]("bob")))
     assert all(i["status"] == "disconnected" and i["stored"] == 0 and i["account_label"] is None for i in mine.values())
     # Bob "disconnecting Lemlist" touches Bob's row only; Ann's stays connected with her data
-    assert env["c"].post("/api/me/connections/lemlist/disconnect", json={"delete_data": True}, headers=env["h"]("bob")).json() == {"ok": True, "deleted": 0}
+    assert env["c"].post("/api/me/connections/lemlist/disconnect", json={}, headers=env["h"]("bob")).json() == {"ok": True}
     assert store.get(conn, ann, "lemlist")["status"] == "connected" and q1(conn, "SELECT count(*) AS n FROM contact_interactions")["n"] == 1
     assert store.secret(conn, KEY, ann, "lemlist") == LEMLIST_KEY
     # Bob's events list never shows Ann's deliveries; his sync cannot start Ann's
@@ -151,7 +151,7 @@ def test_a_person_never_reaches_somebody_elses_connection(env, conn):
     assert env["c"].get("/api/me/connections/bluedot/events", headers=env["h"]("bob")).json() == {"items": []}
     assert env["c"].post("/api/me/connections/lemlist/sync", headers=env["h"]("bob")).status_code == 409
     # the user id cannot be smuggled in through the body either
-    env["c"].post("/api/me/connections/lemlist/disconnect", json={"delete_data": True, "user_id": ann}, headers=env["h"]("bob"))
+    env["c"].post("/api/me/connections/lemlist/disconnect", json={"user_id": ann}, headers=env["h"]("bob"))
     assert store.get(conn, ann, "lemlist")["status"] == "connected"
     # an administrator has no way to read or change another person's connection through these routes
     assert all(i["status"] == "disconnected" for i in _items(env["c"].get("/api/me/connections", headers=env["h"]("admin"))).values())
@@ -227,18 +227,17 @@ def test_the_webhook_keeps_every_delivery_raw_and_never_fails_on_an_odd_one(env,
     assert events[-1]["payload"]["title"] == "Call" and events[0]["payload"]["b"] is None                      # newest first; NaN became null
 
 
-def test_only_the_last_ten_deliveries_and_at_most_20_kb_each_are_kept(env, conn):
+def test_every_delivery_is_kept_whole_and_the_list_shows_the_newest_ten(env, conn):
     h = env["h"]("ann")
     token = env["c"].post("/api/me/connections/bluedot/token", headers=h).json()["webhook_url"].rsplit("/", 1)[1]
     for i in range(14):
         env["c"].post(f"/webhooks/bluedot/{token}", json={"title": f"Call {i}"})
-    big = env["c"].post(f"/webhooks/bluedot/{token}", json={"title": "Huge", "transcript": "word " * 8000})
+    big = env["c"].post(f"/webhooks/bluedot/{token}", json={"title": "Long call", "transcript": "word " * 8000})
     assert big.json() == {"ok": True}
     events = env["c"].get("/api/me/connections/bluedot/events", headers=h).json()["items"]
-    assert len(events) == 10
-    assert events[0]["payload"]["_trimmed"] is True and events[0]["payload"]["original_bytes"] > 20 * 1024 and "title" in events[0]["payload"]["top_level_keys"]
-    assert [e["payload"]["title"] for e in events[1:]] == [f"Call {i}" for i in range(13, 4, -1)]
-    assert q1(conn, "SELECT count(*) AS n FROM connection_events")["n"] == 10
+    assert len(events) == 10                                                                       # the page lists the newest ten
+    assert events[0]["payload"]["title"] == "Long call" and len(events[0]["payload"]["transcript"]) == 40000      # a full transcript stays whole
+    assert q1(conn, "SELECT count(*) AS n FROM connection_events")["n"] == 15                     # nothing is deleted
 
 
 def test_a_body_sent_in_chunks_past_the_size_limit_is_kept_only_as_its_size(env, conn):
@@ -276,26 +275,25 @@ def test_disconnecting_forgets_the_secret_and_keeps_the_data_unless_asked(env, c
     env["c"].post("/api/me/connections/lemlist", json={"api_key": LEMLIST_KEY}, headers=env["h"]("ann"))
     _seed_rows(conn, ann)
     r = env["c"].post("/api/me/connections/lemlist/disconnect", json={}, headers=env["h"]("ann"))
-    assert r.json() == {"ok": True, "deleted": 0}
+    assert r.json() == {"ok": True}
     row = store.get(conn, ann, "lemlist")
     assert row["status"] == "disconnected" and row["secret_enc"] is None and store.secret(conn, KEY, ann, "lemlist") is None
     assert q1(conn, "SELECT count(*) AS n FROM contact_interactions")["n"] == 4
-    r = env["c"].post("/api/me/connections/lemlist/disconnect", json={"delete_data": True}, headers=env["h"]("ann"))
-    assert r.json() == {"ok": True, "deleted": 1}                                   # only the Lemlist rows go
-    assert sorted(x["channel"] for x in qa(conn, "SELECT channel FROM contact_interactions")) == ["email", "email", "meeting"]
+    r = env["c"].post("/api/me/connections/lemlist/disconnect", json={"delete_data": True}, headers=env["h"]("ann"))     # an old client asking to delete: ignored
+    assert r.json() == {"ok": True}
+    assert q1(conn, "SELECT count(*) AS n FROM contact_interactions")["n"] == 4                          # nothing is ever deleted
     ops = qa(conn, "SELECT operation, detail FROM audit_events WHERE operation='connection_disconnected' ORDER BY id")
-    assert [o["detail"]["delete_data"] for o in ops] == [False, True] and LEMLIST_KEY not in str(ops)
+    assert len(ops) == 2 and LEMLIST_KEY not in str(ops)
     assert env["c"].post("/api/me/connections/lemlist/disconnect", headers=env["h"]("ann")).json()["ok"] is True      # no body at all is fine, and repeating is harmless
 
 
-def test_disconnecting_bluedot_with_its_data_also_drops_the_raw_deliveries(env, conn):
+def test_disconnecting_bluedot_keeps_the_raw_deliveries(env, conn):
     h = env["h"]("ann")
     token = env["c"].post("/api/me/connections/bluedot/token", headers=h).json()["webhook_url"].rsplit("/", 1)[1]
     env["c"].post(f"/webhooks/bluedot/{token}", json={"title": "x"})
-    env["c"].post("/api/me/connections/bluedot/disconnect", json={"delete_data": False}, headers=h)
-    assert len(env["c"].get("/api/me/connections/bluedot/events", headers=h).json()["items"]) == 1
     env["c"].post("/api/me/connections/bluedot/disconnect", json={"delete_data": True}, headers=h)
-    assert env["c"].get("/api/me/connections/bluedot/events", headers=h).json()["items"] == []
+    assert len(env["c"].get("/api/me/connections/bluedot/events", headers=h).json()["items"]) == 1
+    assert env["c"].post(f"/webhooks/bluedot/{token}", json={"title": "y"}).status_code == 404          # the old address stops working
 
 
 def test_disconnecting_gmail_asks_google_to_revoke_first_and_still_works_when_it_cannot(env, conn, monkeypatch):

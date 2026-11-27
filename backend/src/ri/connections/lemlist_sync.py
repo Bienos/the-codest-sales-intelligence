@@ -22,6 +22,8 @@ from ..jobs.queue import JobError
 from ..outbound.lemlist import LemlistClient, LemlistError
 from . import store
 
+HORIZON_DAYS = 540          # how far back a first read goes (about 18 months); older events are simply not fetched. Nothing stored is ever deleted.
+
 PAGE = 100
 MAX_PAGES = 20                  # per campaign and run (2,000 newest events)
 MAX_CAMPAIGNS = 200
@@ -155,7 +157,7 @@ def run(conn: Conn, job: dict[str, Any], *, settings) -> dict[str, Any]:
         return {"skipped": "no key"}
 
     now = datetime.now(timezone.utc)
-    horizon = now - timedelta(days=30 * store.RETENTION_MONTHS)
+    horizon = now - timedelta(days=HORIZON_DAYS)
     cursors: dict[str, str] = dict((row.get("cursor") or {}).get("campaigns") or {})
     stats = {"campaigns": 0, "events_seen": 0, "new": 0, "known": 0, "not_ours": 0}
     deadline = time.monotonic() + TIME_BUDGET_S

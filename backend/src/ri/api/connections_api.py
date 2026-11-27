@@ -33,7 +33,7 @@ NO_VAULT = "Personal connections are not switched on yet: the server has no key 
 
 
 class DisconnectIn(BaseModel):
-    delete_data: bool = False
+    pass
 
 
 class SettingsIn(BaseModel):
@@ -183,12 +183,10 @@ def register_connections(app: FastAPI, settings: Settings) -> None:
             _revoke_gmail(settings, token)
             token = None
         with tx(request) as conn:
-            deleted = store.disconnect(conn, p.user_id, provider, delete_data=body.delete_data)
-            if provider == "bluedot" and body.delete_data:
-                conn.execute("DELETE FROM connection_events WHERE user_id=%s AND provider='bluedot'", (p.user_id,))
+            store.disconnect(conn, p.user_id, provider)                  # forgets access only: what it brought stays in the database
             audit(conn, actor=p.email, operation="connection_disconnected", record_type="user_connection", record_id=f"{p.user_id}:{provider}",
-                  detail={"provider": provider, "delete_data": body.delete_data, "deleted": deleted})
-        return {"ok": True, "deleted": deleted}
+                  detail={"provider": provider})
+        return {"ok": True}
 
     @app.patch("/api/me/connections/{provider}/settings")
     def change_settings(provider: str, body: SettingsIn, request: Request, p: Principal = Depends(principal_dep)):

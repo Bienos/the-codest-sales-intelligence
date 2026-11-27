@@ -220,7 +220,7 @@ def test_a_disconnected_or_missing_connection_is_skipped_and_nothing_is_called(c
     fake = use(monkeypatch, FakeLemlist([{"_id": "cam_1", "name": "C"}], {"cam_1": [ev("emailsSent", "dan@kestrel.example", NOW)]}))
     assert lemlist_sync.run(conn, job(world["ann"]), settings=S) == {"skipped": "not connected"}
     connect_lemlist(conn, world["ann"])
-    store.disconnect(conn, world["ann"], "lemlist", delete_data=False)
+    store.disconnect(conn, world["ann"], "lemlist")
     conn.commit()
     assert lemlist_sync.run(conn, job(world["ann"]), settings=S) == {"skipped": "not connected"}
     assert lemlist_sync.run(conn, {"payload": {}}, settings=S) == {"skipped": "not connected"} and fake.calls == [] and rows(conn) == []
@@ -361,9 +361,11 @@ def test_clean_and_trim_make_any_json_storable():
     json.dumps(bluedot.clean(deep))
     small = {"title": "x"}
     assert bluedot.keep_raw(small) == small
-    big = bluedot.keep_raw({"title": "x", "transcript": "y" * (21 * 1024)})
-    assert big["_trimmed"] is True and big["top_level_keys"] == ["title", "transcript"] and big["original_bytes"] > 20 * 1024 and "yyy" not in json.dumps(big)
-    assert bluedot.keep_raw(["a"] * 30000)["_trimmed"] is True
+    whole = {"title": "x", "transcript": "y" * (300 * 1024)}                       # a long meeting transcript is kept whole
+    assert bluedot.keep_raw(whole) == whole
+    big = bluedot.keep_raw({"title": "x", "transcript": "y" * (1100 * 1024)})
+    assert big["_trimmed"] is True and big["top_level_keys"] == ["title", "transcript"] and big["original_bytes"] > 1024 * 1024 and "yyy" not in json.dumps(big)
+    assert bluedot.keep_raw(["a"] * 300000)["_trimmed"] is True
 
 
 # ================================================================== Bluedot: storing a delivery
@@ -466,22 +468,22 @@ def test_a_failure_while_reading_is_kept_raw_and_never_breaks_the_rest_of_the_tr
     assert q1(conn, "SELECT count(*) AS n FROM connection_events")["n"] == 2
 
 
-def test_only_the_last_ten_raw_deliveries_per_person_are_kept(conn, world):
+def test_every_raw_delivery_is_kept_and_the_newest_ten_are_listed(conn, world):
     for i in range(14):
         deliver(conn, world["ann"], {"id": f"k{i}", "title": f"Call {i}"})
     deliver(conn, world["bob"], {"id": "bob-1"})
     got = bluedot.recent_events(conn, world["ann"])
     assert [e["payload"]["id"] for e in got] == [f"k{i}" for i in range(13, 3, -1)]
     assert len(bluedot.recent_events(conn, world["bob"])) == 1
-    assert q1(conn, "SELECT count(*) AS n FROM connection_events WHERE user_id=%s", (world["ann"],))["n"] == 10
+    assert q1(conn, "SELECT count(*) AS n FROM connection_events WHERE user_id=%s", (world["ann"],))["n"] == 14      # nothing is deleted
     assert all(set(e) == {"received_at", "handled", "note", "payload"} for e in got)
 
 
 def test_a_huge_delivery_is_reduced_to_a_marker_but_still_read(conn, world):
-    out = deliver(conn, world["ann"], {"id": "big", "title": "Huge", "attendees": [ADA], "transcript": "word " * 9000})
+    out = deliver(conn, world["ann"], {"id": "big", "title": "Huge", "attendees": [ADA], "transcript": "word " * 260000})
     assert out["handled"] is True and len(rows(conn)) == 1                                                            # the 20 KB limit is only for what we keep raw
     raw = q1(conn, "SELECT payload FROM connection_events")["payload"]
-    assert raw["_trimmed"] is True and raw["original_bytes"] > 20 * 1024 and "transcript" in raw["top_level_keys"]
+    assert raw["_trimmed"] is True and raw["original_bytes"] > 1024 * 1024 and "transcript" in raw["top_level_keys"]
 
 
 def test_a_nul_character_cannot_break_storing(conn, world):
