@@ -9,6 +9,7 @@ import { Conversations } from "./Connections";
 import { AccountDeadlines } from "./Calendar";
 import { Badge, Err, humanize, Skeleton, reloadPage, safeHref, Tabs, TIER, useLogo } from "../components/ui";
 import "../styles/account.css";
+import "../styles/suppliers.css";
 
 /* ------------------------------------------------------------------ shared helpers (also used by the person page) */
 export const host = (u?: string | null) => { try { return new URL(String(u)).hostname.replace(/^www\./, ""); } catch { return ""; } };
@@ -705,17 +706,96 @@ function NowSection({ c, above }: { c: any; above: Set<string> }) {
   </Part>;
 }
 
-function VendorSection({ c, d }: { c: any; d: any }) {
-  const vendors = [...(c?.vendors ?? []).map((v: any) => ({ name: v.name, role: v.role, cite: <Cite c={v} /> })),
-    ...(d.suppliers ?? []).map((x: any) => ({ name: x.supplier_name, role: [humanize(x.supplier_role), x.scope_text].filter(Boolean).join(": "), cite: <span className="ac-cite rec">{tr("Our records")}</span> }))];
-  const [shown, more] = useFew<any>(vendors, 4);
-  if (!vendors.length && !c) return null;
-  return <Part title="Vendors & partners" purpose="Who already supplies their technology. Ask what these partners do not cover." id="sec-vendors">
-    {vendors.length ? <>
-      <ul className="vchips">{shown.map((v: any, i: number) => <li key={i} className="vchip"><Monogram name={v.name} size="sm" logo={v.logo_url} /><div><b>{v.name}</b>{v.role && <span>{v.role}</span>}{v.cite}</div></li>)}</ul>
-      {more}
-      <p className="ac-note mt-2 mb-0">{tr("A named vendor does not mean an exclusive contract or that they cover everything.")}</p></>
-      : <p className="small m-0">{tr("No vendors or integrators are named in the pages Exa found. Ask about current suppliers in the first call.")}</p>}
+/* ------------------------------------------------------------------ suppliers: who they buy from and what is changing */
+const SUP_REL: Record<string, [string, string]> = { current: ["Current supplier", "ok"], recent_selection: ["Chosen in the last 12 months", "new"], ending: ["Ending or being replaced", "warn"],
+  past: ["Past supplier", "past"], unclear: ["Status unclear", "unk"] };
+const SUP_STRENGTH: Record<string, string> = { official: "Their own site or an official record", reported: "Press or our verified findings", vendor_claim: "The supplier's own claim" };
+const SUP_BY: Record<string, string> = { vendor: "the supplier", integrator: "an integrator or engineering firm", company: "the company itself", press: "independent press", registry: "an official record",
+  record: "our verified findings", other: "another site" };
+const SUP_EVENT: Record<string, string> = { selected: "Supplier chosen", go_live: "Went live", expanded: "Relationship expanded", retender: "Contract renewal or re-tender", replaced: "Supplier replaced or contract ended",
+  delay: "Delay or overrun", dispute: "Dispute or legal problem", outage: "Outage or incident", cancelled: "Programme cancelled or paused", panel_closed: "Supplier list reduced", vendor_acquired: "Supplier acquired or merged",
+  vendor_sunset: "Supplier product retired", vendor_cuts: "Supplier cuts or restructuring", other: "Other" };
+const SUP_LEVEL: Record<string, string> = { strong: "Strong", possible: "Possible", caution: "Be careful" };
+/** Angles come from code, not the model: the text is advice for a seller. The title and text are written in English in the API; the level and the rule are labelled here. */
+function SupplierAngles({ angles }: { angles: any[] }) {
+  if (!angles?.length) return null;
+  return <div className="sup-angles">
+    <h3>{tr("Why this could matter to us")}</h3>
+    <ul>{angles.map((a, i) => <li key={i} className={`sup-angle ${a.level}`}>
+      <span className="sup-lv">{tr(SUP_LEVEL[a.level] ?? a.level)}</span>
+      <div><b>{a.title}</b><p>{a.text}</p>
+        {(a.vendors?.length > 0 || a.maps_to) && <small>{[a.vendors?.length ? a.vendors.join(", ") : null, a.maps_to ? tr("Signal rule {}", a.maps_to) : null].filter(Boolean).join(" · ")}</small>}</div>
+    </li>)}</ul>
+    <p className="ac-note mt-1 mb-0">{tr("These are suggestions for a seller, worked out from the items below. They are not findings and nothing is sent anywhere because of them.")}</p>
+  </div>;
+}
+function SupplierCard({ v, logo }: { v: any; logo?: string | null }) {
+  const [open, setOpen] = useState(false);
+  const rel = SUP_REL[v.relationship] ?? SUP_REL.unclear;
+  const more = (v.evidence ?? []).length > 1;
+  const shown = open ? v.evidence : (v.evidence ?? []).slice(0, 1);
+  return <li className="sup">
+    <Monogram name={v.name} size="sm" logo={logo} />
+    <div className="sup-main">
+      <div className="sup-head"><b>{v.name}</b>
+        <span className={`sup-chip rel-${rel[1]}`}>{tr(rel[0])}</span>
+        <span className={`sup-chip cat${v.category === "engineering_partner" ? " rival" : ""}`}>{v.category_label}</span></div>
+      {v.role && <p className="sup-role">{v.role}</p>}
+      {v.term && <p className="sup-term"><Ic.cycle />{v.term}</p>}
+      {v.relationship_note && <p className="sup-note">{v.relationship_note}</p>}
+      <ul className="sup-ev">{shown.map((e: any, i: number) => <li key={i}>
+        <Cite c={e} /><span className="sup-by">{tr("Source: {}", tr(SUP_BY[e.by] ?? SUP_BY.other))}{e.date ? ` · ${fmtDay(e.date)}` : ""}</span>
+        {e.quote && <q>{e.quote}</q>}</li>)}</ul>
+      <div className="sup-foot"><span className={`sup-str ${v.strength}`} title={tr("How far the evidence can be trusted, by who wrote it")}>{tr(SUP_STRENGTH[v.strength] ?? v.strength)}</span>
+        {more && <button type="button" className="linkish" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? tr("Show less") : tr("{} sources", v.evidence.length)}</button>}</div>
+    </div>
+  </li>;
+}
+function SupplierState({ s, canRun, start, busy, err }: { s: any; canRun: boolean; start: () => void; busy: boolean; err: unknown }) {
+  const p = s.profile, last = s.latest, ready = Boolean(s.setup?.ready);
+  if (s.running) return <p className="sup-run" aria-live="polite"><span className="ac-pulse" />{tr("Searching the web for their suppliers. It takes about a minute; this page fills in by itself.")}</p>;
+  return <div className="sup-bar">
+    {last?.status === "failed" && <p className="sup-fail" role="alert"><Ic.alert />{tr(failReason(last.error))}</p>}
+    {p ? <p className="small m-0">{tr("Last searched {}. {} searches, {} pages read.", fmtDateTime(p.finished_at), p.searches, (p.sources ?? []).length)}
+        {p.pages_queued > 0 ? " " + (p.pages_queued === 1 ? tr("One page was sent for a full check; if it holds a quoted fact it will appear under Findings.") : tr("{} pages were sent for a full check; if they hold a quoted fact they will appear under Findings.", p.pages_queued)) : ""}</p>
+      : <p className="small m-0">{tr("This is what our own records hold. Search the web to add customer stories, supplier announcements and news about changes.")}</p>}
+    {canRun && <div className="sup-act"><button type="button" className={p ? "" : "primary"} disabled={busy || !ready} onClick={start}>{p ? tr("Search again") : tr("Find suppliers with Exa")}</button>
+      {!p && <span className="rs-cost">{tr("About ten searches, around 15 US cents from the monthly Exa budget.")}</span>}</div>}
+    {canRun && <ResearchSetup setup={s.setup} />}<Err e={err} />
+  </div>;
+}
+function SuppliersSection({ c, d, s, canRun, start, busy, err }: { c: any; d: any; s: any; canRun: boolean; start: () => void; busy: boolean; err: unknown }) {
+  const x = s?.profile?.content ?? s?.records;
+  const listed = new Set<string>((x?.vendors ?? []).map((v: any) => String(v.name).toLowerCase()));
+  // what the company profile or our supplier records name that the supplier search did not: still shown, as before
+  const extra = [...(c?.vendors ?? []).map((v: any) => ({ name: v.name, role: v.role, cite: <Cite c={v} /> })),
+    ...(d.suppliers ?? []).map((v: any) => ({ name: v.supplier_name, role: [humanize(v.supplier_role), v.scope_text].filter(Boolean).join(": "), cite: <span className="ac-cite rec">{tr("Our records")}</span> }))]
+    .filter((v) => v.name && !listed.has(String(v.name).toLowerCase()));
+  const [shownExtra, moreExtra] = useFew<any>(extra, 4);
+  const [all, setAll] = useState(false);
+  const vendors: any[] = x?.vendors ?? [];
+  const shown = all ? vendors : vendors.slice(0, 5);
+  if (!s && !c) return null;
+  return <Part title="Suppliers and what is changing" purpose="Who they buy technology and engineering from, and what is happening with it. Every line from the web links to the page it came from." id="sec-vendors">
+    {!s ? <Skeleton rows={2} /> : <>
+      <SupplierState s={s} canRun={canRun} start={start} busy={busy} err={err} />
+      {(x?.notes ?? []).map((n: string, i: number) => <p key={i} className="ac-note mt-1 mb-0">{n}</p>)}
+      <SupplierAngles angles={x?.angles ?? []} />
+      {vendors.length > 0 ? <>
+        <h3 className="sup-h">{tr("Suppliers")}</h3>
+        <ul className="sup-list">{shown.map((v: any) => <SupplierCard key={v.name} v={v} />)}</ul>
+        {vendors.length > 5 && <button type="button" className="linkish ac-more" aria-expanded={all} onClick={() => setAll(!all)}>{all ? tr("Show fewer suppliers") : tr("All {} suppliers", vendors.length)}</button>}</>
+        : <p className="small m-0 mt-2">{x?.empty ? tr(x.empty) : s.profile ? tr("No supplier is tied to this company in the pages we read.") : tr("We hold no supplier records for this company yet.")}</p>}
+      {(x?.happenings ?? []).length > 0 && <><h3 className="sup-h">{tr("What is happening")}</h3>
+        <Timeline items={x.happenings.map((h: any) => ({ date: h.date, title: h.headline, detail: h.detail, tag: <span className={`sup-chip ev-${h.kind}`}>{tr(SUP_EVENT[h.kind] ?? SUP_EVENT.other)}{h.vendor ? ` · ${h.vendor}` : ""}</span>,
+          extra: <Cite c={h} /> }))} /></>}
+      {(x?.stack ?? []).length > 0 && <><h3 className="sup-h">{tr("Technology named in their open job ads")}</h3>
+        <ul className="ac-tags">{x.stack.map((t: any) => <li key={t.keyword} className="ac-tag" title={t.vendor ? t.vendor : undefined}>{t.keyword}<span className="mono mono-sm">{t.ads}</span></li>)}</ul></>}
+      {(x?.open_questions ?? []).length > 0 && <><h3 className="sup-h">{tr("To ask them")}</h3><ul className="tight m-0">{x.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></>}
+      {shownExtra.length > 0 && <><h3 className="sup-h">{tr("Also named elsewhere on this page")}</h3>
+        <ul className="vchips">{shownExtra.map((v: any, i: number) => <li key={i} className="vchip"><Monogram name={v.name} size="sm" /><div><b>{v.name}</b>{v.role && <span>{v.role}</span>}{v.cite}</div></li>)}</ul>{moreExtra}</>}
+      <p className="ac-note mt-2 mb-0">{tr("A named supplier does not mean an exclusive contract or that they cover everything. A supplier is never called current on evidence older than two years.")}</p>
+    </>}
   </Part>;
 }
 
@@ -772,7 +852,7 @@ function fitPoints(a: any, lp: Record<string, string>, c: any): { points: any[];
   return c?.icp_points?.length ? { points: c.icp_points, fromRecords: false } : { points: recordFit(a, lp), fromRecords: true };
 }
 
-function Overview({ d, research, rel, orgId, me, canRun, startResearch, researchBusy, researchErr, reloadRel, onOwner, goto, people, fit, scanBusy, runScan, solutions, solutionsErr }: any) {
+function Overview({ d, research, rel, orgId, me, canRun, startResearch, researchBusy, researchErr, reloadRel, onOwner, goto, people, fit, scanBusy, runScan, solutions, solutionsErr, vendors, startVendors, vendorsBusy, vendorsErr }: any) {
   const lp: Record<string, string> = d.list_profile ?? {};
   const c = research?.profile?.content;
   const why = d.why_now ?? {};
@@ -797,7 +877,7 @@ function Overview({ d, research, rel, orgId, me, canRun, startResearch, research
           {fit.points.length ? <FitList points={fit.points} fromRecords={fit.fromRecords} /> : <p className="small m-0">{tr("We hold too little about this company to judge its fit. Edit the company details or research it with Exa.")}</p>}
         </Part>
         {c && <NowSection c={c} above={new Set((why.reasons ?? []).map((r: any) => urlKey(r.url)).filter(Boolean))} />}
-        <VendorSection c={c} d={d} />
+        <SuppliersSection c={c} d={d} s={vendors} canRun={canRun} start={startVendors} busy={vendorsBusy} err={vendorsErr} />
         <ListSection lp={lp} skip={skip} />
         {c?.open_questions?.length > 0 && <Part title="Still to find out" purpose="Questions to answer in the first call." id="sec-q"><ul className="tight m-0">{c.open_questions.map((q: string, i: number) => <li key={i}>{q}</li>)}</ul></Part>}
       </div>
@@ -1369,6 +1449,12 @@ export function Account({ me }: { me: { permissions: string[] } }) {
     api(`/api/accounts/${id}/solutions`, { signal: request.signal }).then((r) => { if (!request.signal.aborted) setSolutions(r); }).catch((e) => { if (!request.signal.aborted) setSolutionsErr(e); });
     return () => request.abort();
   }, [id]);
+  const [vendors, setVendors] = useState<any>(null);
+  const [vendorsBusy, setVendorsBusy] = useState(false);
+  const [vendorsErr, setVendorsErr] = useState<unknown>(null);
+  const loadVendors = () => api(`/api/accounts/${id}/vendors`).then(setVendors).catch(() => undefined);
+  useEffect(() => { setVendors(null); setVendorsErr(null); loadVendors(); }, [id]);
+  usePoll(Boolean(vendors?.running), loadVendors, 5000);
   const [rel, setRel] = useState<any>(null);
   const loadRel = () => api(`/api/accounts/${id}/relationship`).then(setRel).catch(() => undefined);
   useEffect(() => { loadRel(); }, [id]);
@@ -1397,6 +1483,10 @@ export function Account({ me }: { me: { permissions: string[] } }) {
   const startResearch = async () => {
     setResearchErr(null); setResearchBusy(true);
     try { await post(`/api/accounts/${id}/research`); await loadResearch(); } catch (e) { setResearchErr(e); } finally { setResearchBusy(false); }
+  };
+  const startVendors = async () => {
+    setVendorsErr(null); setVendorsBusy(true);
+    try { await post(`/api/accounts/${id}/vendors`); await loadVendors(); } catch (e) { setVendorsErr(e); } finally { setVendorsBusy(false); }
   };
   const makeCampaign = async (role: string) => { try { await post(`/api/accounts/${id}/campaign`, { role: role || null }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
   const decideCampaign = async (did: string, decision: string) => { try { await post(`/api/campaigns/${did}/decision`, { decision }); await loadCamps(); } catch (e) { setScan({ busy: false, msg: "", err: e }); } };
@@ -1475,7 +1565,8 @@ export function Account({ me }: { me: { permissions: string[] } }) {
         { key: "activity", label: <><span className="t-long">{tr("Findings & tenders")}</span><span className="t-short">{tr("Findings")}</span></> }, { key: "outreach", label: tr("Outreach") }]} value={tab} onChange={(k) => goto(k as Tab)} label={tr("Company sections")}>
         {tab === "overview" && <Overview d={d} research={research} rel={rel} orgId={a.id} me={me} canRun={canScan} startResearch={startResearch} researchBusy={researchBusy}
           researchErr={researchErr} reloadRel={loadRel} onOwner={(owner: any) => setRel({ ...rel, owner })} goto={goto} people={canPeople ? people : null} fit={fit}
-          scanBusy={scan.busy} runScan={runScan} solutions={solutions} solutionsErr={solutionsErr} />}
+          scanBusy={scan.busy} runScan={runScan} solutions={solutions} solutionsErr={solutionsErr}
+          vendors={vendors} startVendors={startVendors} vendorsBusy={vendorsBusy} vendorsErr={vendorsErr} />}
         {tab === "people" && <PeopleTab orgId={a.id} company={a.display_name} me={me} people={people} err={peopleErr} reload={() => { loadPeople(); loadRel(); }} />}
         {tab === "activity" && <Activity d={d} eps={eps} sub={sub} setSub={setSub} params={params} sigNames={sigNames} canScan={canScan} scanBusy={scan.busy} runScan={runScan} />}
         {tab === "outreach" && <CampaignTab camps={camps} canDraft={me.permissions.includes("draft.create")} orgId={a.id} make={makeCampaign} decide={decideCampaign} />}

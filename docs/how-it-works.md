@@ -43,6 +43,18 @@ Rules for every page: robots.txt and AI content signals are obeyed, no login is 
 | Add someone to a Lemlist campaign | A seller, then a second person approves. The country email rules are checked when it is requested and again just before the push | Never by itself |
 | Approve a draft | A second person | Always a person |
 
+## Suppliers and what is changing
+On a company page, **Suppliers and what is changing** shows who the company already buys technology and engineering from, and what is happening to those relationships. It works in layers, strongest first:
+1. **Our own records, free and immediate:** suppliers named in verified findings, public IT contract awards where the company is the buyer (with the contract end date, labelled *stated* or *assumed 36 months*), supply events (a vendor chosen, a go-live, a supplier exit, a delay) and the technology named in their open job ads.
+2. **"Find suppliers with Exa"** (about ten searches, around 15 US cents, from the interactive part of the Exa budget). Five searches look by who is writing: the supplier's customer stories and press releases, an integrator's or engineering firm's client stories, the company's own partner pages, independent news, and news of a change or problem. A second round then looks at the top three suppliers (an engineering partner first, then an integrator, then a platform): news about the supplier and the company together, and news about the supplier itself (acquired, product retired, cuts, outage).
+3. **One AI reading** (a second one after the second round). Every supplier and every happening must quote a page that was really returned, that names the supplier and is about this company. Anything else is dropped and counted.
+
+Each supplier shows how far its evidence can be trusted, by who wrote it: *their own site or an official record*, *press or our verified findings*, or *the supplier's own claim*. A supplier is never called current on evidence older than two years, or on undated evidence that is not official.
+
+**Why this could matter to us** lists plain suggestions worked out by code (not the AI) from the verified items, each naming the tracker rule it relates to (for example a platform implementation under way relates to SRC-05, a contract nearing its end to SRC-03). They are suggestions for a seller, not findings.
+
+The pages behind a supplier or a happening are also queued as ordinary page checks, so the normal pipeline can turn them into findings and signals. The supplier names and categories come from `backend/rules/vendor_lexicon.yaml`, which sales leadership can extend; a name that is not listed is still found and shown as "Other supplier". See `docs/buying-signals-expansion.md` for the thinking behind the signals and what to build next.
+
 ## Email rules by country
 Before anyone is added to a Lemlist campaign, the company's country is checked against `backend/rules/email_rules.yaml`. Cold email is allowed with an opt-out in the UK and Sweden. Germany, Austria, Switzerland, Denmark, the Netherlands and Poland need the person's prior consent, and Finland and Norway need it for a personal address. A seller records consent on the person's page, with how and when it was given. A country the file does not list, or a company with no country, is held back until it is added. The file is a summary of public guidance, not legal advice: sales leadership changes it after counsel confirms. Replies to someone who wrote to us are not checked.
 
@@ -50,7 +62,7 @@ Before anyone is added to a Lemlist campaign, the company's country is checked a
 Every buying signal and tender on Today and Buying signals has "Was this useful?" under its evidence. "No" asks why (wrong company, out of date, not our kind of work, job ad not real, already talking to them, no real need). The answer never hides the item. Library, Signals shows per rule how often sellers found it useful and the reasons against it, for tuning the rules. Replies and meetings count for more than these answers.
 
 ## Limits on the parts that cost money
-- **Exa: $20 a month.** Automatic searches stop at 60% of it ($12). The rest is kept for sellers pressing "Research with Exa", so those buttons always work.
+- **Exa: $20 a month.** Automatic searches stop at 60% of it ($12). The rest is kept for sellers pressing "Research with Exa" or "Find suppliers with Exa", so those buttons always work.
 - **AI: 30 million tokens a month.** Background reading stops at 70%. Sellers' own checks keep the last 30%.
 - **Apollo:** subscription credits only. The platform never buys more.
 - Every paid call is recorded with what it was for (Administration, Usage). Feeds, tender APIs, company pages and job APIs cost nothing to read.

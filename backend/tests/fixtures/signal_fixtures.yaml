@@ -346,3 +346,101 @@
     - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
     - {kind: ambiguous, name: tech_scope_stated_missing, drop: [tech_scope_stated], expect: none}
     - {kind: expiry, name: older_than_180_days, top: {days_ago: 205}, expect: none, trace: expired}
+
+# ---- added 27 Nov 2026 (synthetic, same conventions as above)
+- rule: SRC-03
+  base: {event_type: supplier_exit, source_tier: S3, days_ago: 20, attrs: {it_services_scope: true}}
+  cases:
+    - {kind: positive, name: incumbent_it_supplier_leaves, expect: match, tier: D2}
+    - {kind: positive, name: official_notice_of_supplier_change, top: {source_tier: S1}, expect: match}
+    - {kind: positive, name: trade_press_report, top: {source_tier: S4}, expect: match}
+    - {kind: negative, name: not_an_it_scope, set: {it_services_scope: false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: scope_not_stated, drop: [it_services_scope], expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: a_new_supplier_is_not_an_exit, top: {event_type: vendor_selected}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 130}, expect: none, trace: expired}
+- rule: PRG-03
+  base: {event_type: programme_announced, source_tier: S2, days_ago: 20, attrs: {programme_domain: digital_channels, named_systems: [Backbase], has_dated_milestones: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: mobile_banking_rebuild, expect: match, tier: D3}
+    - {kind: positive, name: implementation_launched, top: {event_type: implementation_launched}, expect: match}
+    - {kind: positive, name: vendor_selected_for_onboarding, top: {event_type: vendor_selected}, set: {named_systems: [Onfido, Backbase]}, expect: match}
+    - {kind: negative, name: lending_not_channels, set: {programme_domain: lending}, expect: none}
+    - {kind: negative, name: no_named_systems, set: {named_systems: []}, expect: none}
+    - {kind: negative, name: no_dated_milestones, set: {has_dated_milestones: false}, expect: none}
+    - {kind: ambiguous, name: paused, set: {programme_status: paused}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 130}, expect: none, trace: expired}
+- rule: PRG-04
+  base: {event_type: programme_announced, source_tier: S2, days_ago: 20, attrs: {programme_domain: lending, named_systems: [nCino], has_dated_milestones: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: origination_platform_programme, expect: match, tier: D3}
+    - {kind: positive, name: implementation_launched, top: {event_type: implementation_launched}, expect: match}
+    - {kind: positive, name: vendor_selected_servicing, top: {event_type: vendor_selected}, set: {named_systems: [Mambu]}, expect: match}
+    - {kind: negative, name: wrong_domain, set: {programme_domain: digital_channels}, expect: none}
+    - {kind: negative, name: no_named_systems, set: {named_systems: []}, expect: none}
+    - {kind: negative, name: no_dated_milestones, set: {has_dated_milestones: false}, expect: none}
+    - {kind: ambiguous, name: cancelled, set: {programme_status: cancelled}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 125}, expect: none, trace: expired}
+- rule: PRG-08
+  base: {event_type: programme_announced, source_tier: S2, days_ago: 20, attrs: {programme_domain: fraud_aml, named_systems: [Feedzai], has_dated_milestones: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: fraud_platform_replacement, expect: match, tier: D3}
+    - {kind: positive, name: implementation_launched, top: {event_type: implementation_launched}, expect: match}
+    - {kind: positive, name: vendor_selected_aml, top: {event_type: vendor_selected}, set: {named_systems: [Quantexa]}, expect: match}
+    - {kind: negative, name: wrong_domain, set: {programme_domain: payments_rail}, expect: none}
+    - {kind: negative, name: no_named_systems, set: {named_systems: []}, expect: none}
+    - {kind: negative, name: no_dated_milestones, set: {has_dated_milestones: false}, expect: none}
+    - {kind: ambiguous, name: completed, set: {programme_status: completed}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: expiry, name: older_than_150_days, top: {days_ago: 160}, expect: none, trace: expired}
+- rule: PRG-10
+  base: {event_type: programme_announced, source_tier: S2, days_ago: 20, attrs: {programme_domain: ai_use_case, named_systems: [document intelligence], programme_status: implementation}}
+  cases:
+    - {kind: positive, name: ai_use_case_in_production, expect: match, tier: D3}
+    - {kind: positive, name: implementation_launched, top: {event_type: implementation_launched}, expect: match}
+    - {kind: positive, name: vendor_selected_assistant, top: {event_type: vendor_selected}, set: {named_systems: [support assistant]}, expect: match}
+    - {kind: negative, name: still_a_pilot, set: {programme_status: planning}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: wrong_domain, set: {programme_domain: cloud_data}, expect: none}
+    - {kind: negative, name: no_named_use_case, set: {named_systems: []}, expect: none}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 130}, expect: none, trace: expired}
+- rule: PRG-11
+  base: {event_type: programme_announced, source_tier: S2, days_ago: 20, attrs: {programme_domain: api_platform, has_dated_milestones: true, programme_status: implementation}}
+  cases:
+    - {kind: positive, name: open_banking_api_rebuild, expect: match, tier: D3}
+    - {kind: positive, name: breaking_api_release_with_migration_date, top: {event_type: integration_release}, expect: match}
+    - {kind: positive, name: implementation_launched, top: {event_type: implementation_launched}, expect: match}
+    - {kind: negative, name: wrong_domain, set: {programme_domain: core_banking}, expect: none}
+    - {kind: negative, name: no_migration_date, set: {has_dated_milestones: false}, expect: none}
+    - {kind: negative, name: wrong_event_type, top: {event_type: product_launch}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: paused, set: {programme_status: paused}, expect: none, trace: excluded}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: expiry, name: older_than_120_days, top: {days_ago: 125}, expect: none, trace: expired}
+- rule: PRG-16
+  base: {event_type: programme_delayed, source_tier: S3, days_ago: 10, attrs: {programme_status: delayed, has_dated_milestones: true, programme_domain: core_banking}}
+  cases:
+    - {kind: positive, name: delay_with_dated_recovery_plan, expect: match, tier: D3}
+    - {kind: positive, name: official_statement, top: {source_tier: S1}, expect: match}
+    - {kind: positive, name: payments_programme_delayed, set: {programme_domain: payments_rail}, expect: match}
+    - {kind: negative, name: no_recovery_dates, set: {has_dated_milestones: false}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: cancelled_not_delayed, set: {programme_status: cancelled}, expect: none, trace: positive_pattern_not_matched}
+    - {kind: negative, name: wrong_event_type, top: {event_type: programme_announced}, expect: none, trace: event_type_not_applicable}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_60_days, top: {days_ago: 70}, expect: none, trace: expired}
+- rule: NEG-07
+  base: {event_type: acquisition_announced, source_tier: S3, days_ago: 30, attrs: {deal_status: pending_approval, integration_or_tsa_stated: true}}
+  cases:
+    - {kind: positive, name: deal_awaiting_approval, expect: match}
+    - {kind: positive, name: official_s1_announcement, top: {source_tier: S1}, expect: match}
+    - {kind: positive, name: trade_press_report, top: {source_tier: S4}, expect: match}
+    - {kind: negative, name: deal_completed, set: {deal_status: completed}, expect: none}
+    - {kind: negative, name: deal_terminated, set: {deal_status: terminated}, expect: none}
+    - {kind: negative, name: status_not_stated, drop: [deal_status], expect: none}
+    - {kind: ambiguous, name: unverified, top: {verified: false}, expect: none}
+    - {kind: ambiguous, name: social_only, top: {source_tier: S5}, expect: none, trace: source_tier_not_allowed}
+    - {kind: expiry, name: older_than_6_months, top: {days_ago: 200}, expect: none, trace: expired}

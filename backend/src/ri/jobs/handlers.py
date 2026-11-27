@@ -345,9 +345,9 @@ def _match_after_import(conn: Conn, run_id: str | None) -> None:
 
 
 def _exa_research_jobs() -> dict[str, Callable[[Conn, dict], dict]]:
-    """Exa research (company profile, person profile, find decision makers): interactive lane, budget-gated, outcome stored on its own row."""
+    """Exa research (company profile, vendor intelligence, person profile, find decision makers): interactive lane, budget-gated, outcome stored on its own row."""
     from ..research import profile_jobs
-    return {"account_profile": profile_jobs.account_profile, "person_profile": profile_jobs.person_profile, "people_search": profile_jobs.people_search}
+    return {"account_profile": profile_jobs.account_profile, "vendor_intel": profile_jobs.vendor_intel, "person_profile": profile_jobs.person_profile, "people_search": profile_jobs.people_search}
 
 
 def _admin_ops_jobs() -> dict[str, Callable[[Conn, dict], dict]]:
