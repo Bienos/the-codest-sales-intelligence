@@ -168,6 +168,7 @@
 .cm-num { display: inline-grid; place-items: center; align-self: flex-start; min-width: 26px; height: 26px; padding: 0 3px; border: 2px solid transparent;
   font: 800 var(--fs-md)/1 var(--font-head); color: var(--navy); }
 .cm-day.is-weekend .cm-num, .cm-day.is-other .cm-num, .cm-day.is-past .cm-num { color: var(--muted); }
+.cm-day.is-other .cm-num { opacity: .5; }                                        /* days of the previous and next month read as such */
 .cm-day.is-today .cm-num { border-color: var(--navy); color: var(--navy); }
 .cm-day.is-selected button { background: var(--tint-2); box-shadow: inset 0 0 0 3px var(--purple); }
 .cm-day.is-selected .cm-num { background: var(--navy); border-color: var(--navy); color: var(--white); }
