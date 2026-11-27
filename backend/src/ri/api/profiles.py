@@ -25,7 +25,7 @@ from .auth import require
 
 DAILY_RESEARCH_LIMIT = 40          # research runs (company, person, people search) one person may start per 24 hours
 COOLDOWN_MINUTES = 60              # a finished profile is not redone within this window (it would cost money for the same answer)
-RESEARCH_OPS = ("exa_company_research", "exa_person_research", "exa_people_search")
+RESEARCH_OPS = ("exa_company_research", "exa_vendor_research", "exa_person_research", "exa_people_search")
 RELATIONSHIP = ("none", "prospect", "in_talks", "past_client", "client")
 ASSIGNABLE_ROLES = ("bdm", "sales_manager", "admin")
 SENIORITY_ORDER = {"Executive": 0, "C-level": 0, "VP": 1, "Director / Head": 2, "Head / Director": 2, "Manager": 3, "Manager / Lead": 3, "Specialist / Lead": 4}
@@ -138,6 +138,8 @@ def _start_research(conn, p: Principal, *, table: str, col: str, rid: str, org_i
     _quota(conn, p)
     if table == "person_profiles":
         row = conn.execute("INSERT INTO person_profiles(person_id, organization_id, requested_by) VALUES (%s,%s,%s) RETURNING id", (rid, org_id, p.email)).fetchone()
+    elif table == "account_vendor_intel":
+        row = conn.execute("INSERT INTO account_vendor_intel(organization_id, requested_by) VALUES (%s,%s) RETURNING id", (rid, p.email)).fetchone()
     else:
         row = conn.execute("INSERT INTO account_profiles(organization_id, requested_by) VALUES (%s,%s) RETURNING id", (rid, p.email)).fetchone()
     new_id = str(row["id"])      # type: ignore[index]
@@ -264,6 +266,26 @@ def register_profiles(app: FastAPI) -> None:
             o = _visible_org(conn, p, oid)
             return _start_research(conn, p, table="account_profiles", col="organization_id", rid=str(o["id"]), org_id=str(o["id"]), kind="account_profile",
                                    op="exa_company_research", record_type="organization", setup=_setup(request, conn))
+
+    # ------------------------------------------------------------------ suppliers: who they buy from, and what is happening with it
+    @app.get("/api/accounts/{oid}/vendors")
+    def account_vendors(oid: str, request: Request, p: Principal = Depends(require("accounts.read"))):
+        """The latest finished supplier research, and, always, the picture from our own records (free), so the page is useful before anyone runs the search."""
+        from ..research.vendor_intel import from_records
+        with tx(request) as conn:
+            o = _visible_org(conn, p, oid)
+            state = _research_state(conn, "account_vendor_intel", "organization_id", str(o["id"]), _setup(request, conn))
+            if state["profile"]:
+                pages = q1(conn, "SELECT pages_queued FROM account_vendor_intel WHERE id=%s", (state["profile"]["id"],))
+                state["profile"]["pages_queued"] = int(pages["pages_queued"]) if pages else 0
+            return {**state, "records": from_records(conn, str(o["id"])), "can_run": p.can("research.request")}
+
+    @app.post("/api/accounts/{oid}/vendors")
+    def start_vendor_research(oid: str, request: Request, p: Principal = Depends(require("research.request"))):
+        with tx(request) as conn:
+            o = _visible_org(conn, p, oid)
+            return _start_research(conn, p, table="account_vendor_intel", col="organization_id", rid=str(o["id"]), org_id=str(o["id"]), kind="vendor_intel",
+                                   op="exa_vendor_research", record_type="organization", setup=_setup(request, conn))
 
     # ------------------------------------------------------------------ people at the account
     @app.get("/api/accounts/{oid}/people")

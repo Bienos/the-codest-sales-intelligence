@@ -87,6 +87,10 @@ def _run_research(conn: Conn, job: dict[str, Any], *, table: str, kind: str, res
         from ..enrichment.exa_people import set_photo
         person = q1(conn, "SELECT linkedin_url FROM people WHERE id=%s", (row["person_id"],))
         set_photo(conn, str(row["person_id"]), person["linkedin_url"] if person else None, r["photo_url"])
+    if table == "account_vendor_intel" and org_id:
+        from .vendor_intel import queue_page_checks      # the pages behind a supplier or a happening go on to the normal page check: only that can make a finding
+        queued = queue_page_checks(conn, org_id, r["content"], row["requested_by"])
+        conn.execute("UPDATE account_vendor_intel SET pages_queued=%s WHERE id=%s", (queued, rid))
     if table == "account_profiles" and org_id and r.get("logo_checked"):
         from ..enrichment.exa_logos import set_logo      # the logo search ran: keep the logo it found, and note the check so it is not repeated for 60 days
         set_logo(conn, org_id, r.get("logo_url"))
@@ -103,6 +107,11 @@ def account_profile(conn: Conn, job: dict[str, Any], **kw: Any) -> dict[str, Any
     from .company_profile import SCHEMA, research_company
     return _run_research(conn, job, table="account_profiles", kind="account_profile", research=research_company, subject_col="organization_id",
                          schema=SCHEMA, **kw)
+
+
+def vendor_intel(conn: Conn, job: dict[str, Any], **kw: Any) -> dict[str, Any]:
+    from .vendor_intel import SCHEMA, research_vendors
+    return _run_research(conn, job, table="account_vendor_intel", kind="vendor_intel", research=research_vendors, subject_col="organization_id", schema=SCHEMA, **kw)
 
 
 def person_profile(conn: Conn, job: dict[str, Any], **kw: Any) -> dict[str, Any]:
@@ -158,5 +167,5 @@ def people_search(conn: Conn, job: dict[str, Any], *, post_factory=None, call_fa
     return {"status": "done", **{k: v for k, v in r.items() if k != "stopped"}, "searches": searcher.calls, "log": searcher.log}
 
 
-for _f in (account_profile, person_profile, people_search):
+for _f in (account_profile, vendor_intel, person_profile, people_search):
     _f.own_transactions = True  # type: ignore[attr-defined]       # budget reservations commit before each paid call: no wrapping transaction

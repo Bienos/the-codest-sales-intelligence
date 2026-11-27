@@ -5,7 +5,7 @@ Status, 2026-11-27: steps 2 to 5 of the build order (section 11) are **built and
 ## Switching it on
 
 What exists in the code:
-- **Migration `0064_deal_history_forecast`** (additive): deal dates on `crm_deals`, `crm_stages`, the append-only `deal_stage_transitions`, `deal_snapshots_daily`, `forecast_settings`, `forecast_log`.
+- **Migration `0065_deal_history_forecast`** (additive): deal dates on `crm_deals`, `crm_stages`, the append-only `deal_stage_transitions`, `deal_snapshots_daily`, `forecast_settings`, `forecast_log`.
 - **Capture** (`backend/src/ri/crm/pipedrive.py`): the hourly sync and the `deal` webhook log every stage and status change. The sync also reads the stage list, so stages have names and an order.
 - **Backfill**: `python -m ri.cli backfill-deal-history [N]` reads Pipedrive's per-deal history (`/v1/deals/{id}/flow`), N deals per run (default 500). Re-run until `remaining` is 0. The flow parser is written to the shape described in Pipedrive's developer forum and tested on fixtures, **not against your live account yet**.
 - **Daily step** (in `ri.cli schedule`): once a day it copies the open pipeline and logs the day's forecast, so forecasts can be scored later.

@@ -71,7 +71,7 @@ def test_activation_requires_complete_certification(conn, env):
 def test_rule_catalogue_sync_all_64_with_17_active(conn, env):
     r = conn.execute("select status, count(*) c from signal_rule_versions group by status").fetchall()
     d = {x["status"]: x["c"] for x in r}
-    assert d == {"active": 28, "defined_not_activated": 36}        # CAP-03, CAP-04 and CAP-06 switched on in round 13
+    assert d == {"active": 36, "defined_not_activated": 28}        # SRC-03, PRG-03, PRG-04, PRG-08, PRG-10, PRG-11, PRG-16 and NEG-07 switched on in round 14
 
 
 # ------------------------------------------------------------------- TED lifecycle

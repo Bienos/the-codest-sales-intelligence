@@ -264,7 +264,7 @@ def test_admin_source_grid_costs_rules_quality_and_identity_resolution(world):
     assert any(s["source_id"] == "procurement-ted" and s["status"] == "pending_connector_validation" and not s["certified"] for s in src)
     assert c.get("/api/admin/costs", headers=h("admin")).json()["paid_enrichment_enabled"] is False
     rules = c.get("/api/admin/rules", headers=h("admin")).json()
-    assert len(rules["items"]) == 64 and {r["status"]: r["n"] for r in rules["summary"]} == {"active": 28, "defined_not_activated": 36}
+    assert len(rules["items"]) == 64 and {r["status"]: r["n"] for r in rules["summary"]} == {"active": 36, "defined_not_activated": 28}
     with world["app"].state.db.tx() as conn:
         conn.execute("insert into identity_reviews(raw_company_name, candidate_org_ids, reason) values ('Examp Bank', %s, 'fuzzy_or_domain_candidate')", ([world["env"]["bank"]],))
     rv = c.get("/api/admin/identity-reviews", headers=h("analyst")).json()["items"]
