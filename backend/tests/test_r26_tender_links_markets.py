@@ -104,7 +104,7 @@ def test_last_updated_and_check_now_for_administrators(world):
     assert c.post("/api/tenders/refresh", headers=h("bdm")).status_code == 403                  # sellers read the list; only administrators run sources
     first = c.post("/api/tenders/refresh", headers=h("admin")).json()
     assert first["queued"] == ["procurement-ted", "procurement-uk-fts"] and first["already_waiting"] == []
-    assert sorted(first["not_switched_on"]) == ["procurement-ezamowienia", "procurement-uk-contracts-finder"]
+    assert sorted(first["not_switched_on"]) == ["procurement-de-bekanntmachung", "procurement-ezamowienia", "procurement-uk-contracts-finder"]
     again = c.post("/api/tenders/refresh", headers=h("admin")).json()                         # clicking twice queues nothing new
     assert again["queued"] == [] and again["already_waiting"] == ["procurement-ted", "procurement-uk-fts"]
     with world["app"].state.db.tx() as conn:

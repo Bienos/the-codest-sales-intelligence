@@ -152,6 +152,11 @@ class Settings:
             s = dataclasses.replace(s, oidc_audience=s.oidc_audience or s.google_client_id,
                                     oidc_issuer=s.oidc_issuer or "https://accounts.google.com,accounts.google.com",
                                     oidc_jwks_url=s.oidc_jwks_url or "https://www.googleapis.com/oauth2/v3/certs")
+        if not s.vault_key and s.session_secret:
+            # No separate vault key set: derive one from the session secret the platform already generated, so no key ever has to be typed or shown.
+            # (Rotating the session secret then means people reconnect their accounts; nothing stored in the database is lost.)
+            import base64 as _b64, hashlib as _hl, hmac as _hm
+            s = dataclasses.replace(s, vault_key=_b64.urlsafe_b64encode(_hm.new(s.session_secret.encode(), b"ri-vault-v1", _hl.sha256).digest()).decode("ascii"))
         s.validate(require_auth=require_auth)
         return s
 

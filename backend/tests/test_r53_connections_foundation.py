@@ -134,3 +134,17 @@ def test_the_sync_lane_is_declared_and_runs_with_nothing_connected(conn):
     out = scheduler.run_maintenance(conn, NOW)
     assert out.get("connection_sync", 0) == 0
 
+
+
+def test_without_a_separate_vault_key_one_is_derived_from_the_session_secret(monkeypatch):
+    from ri.config import Settings
+    monkeypatch.delenv("RI_VAULT_KEY", raising=False)
+    monkeypatch.setenv("RI_SESSION_SECRET", "s" * 40)
+    monkeypatch.setenv("RI_ENV", "development")
+    monkeypatch.setenv("RI_AUTH_MODE", "dev")
+    monkeypatch.setenv("RI_DEV_AUTH_SECRET", "d" * 32)
+    a = Settings.from_env(require_auth=False)
+    assert vault.available(a.vault_key) and a.vault_key != "s" * 40
+    assert Settings.from_env(require_auth=False).vault_key == a.vault_key                 # stable across restarts
+    monkeypatch.setenv("RI_VAULT_KEY", KEY)
+    assert Settings.from_env(require_auth=False).vault_key == KEY                          # an explicit key wins
