@@ -335,3 +335,20 @@ def test_hourly_step_registers_the_webhook_when_the_app_knows_its_address(conn, 
     assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 10, 1, tzinfo=timezone.utc))["pipedrive_webhook"]["id"] == 5
     assert seen == [("https://ri.example", "pw")]
     assert "pipedrive_webhook" not in scheduler.crm_sync_step(conn, Settings(pipedrive_api_token="t", pipedrive_domain="d"), datetime(2026, 11, 27, 11, 1, tzinfo=timezone.utc))
+
+
+def test_first_sync_runs_at_once_and_history_catches_up_every_tick(conn, monkeypatch):
+    from ri import scheduler
+    synced, backfills = [], []
+    monkeypatch.setattr(pd, "sync_incremental", lambda c, r: synced.append(1) or c.execute(
+        "insert into sync_state(system, entity, watermark) values ('pipedrive','deals','x') on conflict do nothing") and {"deals": 1})
+    monkeypatch.setattr(pd, "process_inbox", lambda c: {"processed": 0})
+    monkeypatch.setattr(pd, "backfill_deal_history", lambda c, r, limit: backfills.append(1) or {"deals": 1, "transitions": 2, "remaining": 1})
+    st = Settings(pipedrive_api_token="t", pipedrive_domain="d")
+    out = scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 18, 20, tzinfo=timezone.utc))    # never synced: runs now, not at 19:00
+    assert "crm_sync" in out and synced == [1]
+    conn.execute("insert into crm_deals(crm_id, title, status) values (500, 'Waiting for history', 'open')")
+    out = scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 18, 25, tzinfo=timezone.utc))    # mid-hour: history only
+    assert "crm_sync" not in out and out["deal_history_backfill"]["deals"] == 1 and synced == [1] and len(backfills) == 2
+    conn.execute("update crm_deals set history_backfilled_at=now()")
+    assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 18, 30, tzinfo=timezone.utc)) == {}    # nothing to catch up: waits for the hour

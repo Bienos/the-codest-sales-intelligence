@@ -252,27 +252,38 @@ def requeue_stuck_verifications(conn: Conn, now: datetime | None = None, minutes
 
 
 def crm_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
-    """Hourly Pipedrive mirror refresh, only when a token is set. Runs outside the savepoint steps because the sync commits its own watermarks."""
+    """Pipedrive mirror, only when a token is set. The full sync and the webhook check run hourly (minutes 0-4), and at once on the very
+    first run. Catching up runs on every tick (5 minutes): webhook events waiting in the inbox, and past stage history for 100 deals at a
+    time until every deal is done. Runs outside the savepoint steps because the sync commits its own watermarks."""
     now = now or datetime.now(timezone.utc)
-    if not (settings.pipedrive_api_token and settings.pipedrive_domain) or now.minute >= 5:
+    if not (settings.pipedrive_api_token and settings.pipedrive_domain):
+        return {}
+    first = not q1(conn, "SELECT 1 FROM sync_state WHERE system='pipedrive' LIMIT 1")
+    hourly = now.minute < 5 or first
+    inbox = q1(conn, "SELECT 1 FROM crm_webhook_inbox WHERE status='received' LIMIT 1")
+    backlog = q1(conn, "SELECT 1 FROM crm_deals WHERE history_backfilled_at IS NULL LIMIT 1")
+    if not (hourly or inbox or backlog):
         return {}
     from .crm import pipedrive as pdm
+    out: dict = {}
     try:
         reader = pdm.PipedriveReader(settings.pipedrive_domain, settings.pipedrive_api_token)
-        res = pdm.sync_incremental(conn, reader)
-        out: dict = {"crm_sync": res, "crm_inbox": pdm.process_inbox(conn)}
+        if hourly:
+            out["crm_sync"] = pdm.sync_incremental(conn, reader)
+        if hourly or inbox:
+            out["crm_inbox"] = pdm.process_inbox(conn)
     except Exception as exc:  # noqa: BLE001
         conn.rollback()
         return {"crm_sync_error": f"{type(exc).__name__}: {exc}"[:200]}
-    try:      # each deal's past stage moves, read once from Pipedrive: up to 100 deals an hour until every deal is done
+    try:      # each deal's past stage moves, read once from Pipedrive, 100 deals per run until every deal is done
         conn.commit()
         bf = pdm.backfill_deal_history(conn, reader, limit=100)
         if bf["deals"]:
             out["deal_history_backfill"] = bf
-    except Exception as exc:  # noqa: BLE001  (the mirror above is already saved; the backfill resumes next hour)
+    except Exception as exc:  # noqa: BLE001  (the mirror above is already saved; the backfill resumes next run)
         conn.rollback()
         out["deal_history_backfill_error"] = f"{type(exc).__name__}: {exc}"[:200]
-    if getattr(settings, "public_url", None) and settings.pipedrive_webhook_secret:
+    if hourly and getattr(settings, "public_url", None) and settings.pipedrive_webhook_secret:
         try:      # Pipedrive sends each deal change as it happens; the hourly sync above is the safety net
             hook = pdm.ensure_deal_webhook(reader, settings.public_url, settings.pipedrive_webhook_secret)
             if hook["webhook"] == "created":

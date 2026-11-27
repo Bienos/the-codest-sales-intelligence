@@ -242,6 +242,7 @@ def test_crm_sync_step_does_nothing_without_a_token_and_only_runs_at_the_top_of_
     monkeypatch.setattr(pdm, "sync_incremental", lambda c, r: ran.append(1) or {"orgs": 0})
     monkeypatch.setattr(pdm, "process_inbox", lambda c: {"processed": 0})
     st = S(pipedrive_api_token="t", pipedrive_domain="d")
+    conn.execute("insert into sync_state(system, entity, watermark) values ('pipedrive','deals','2026-11-21T09:00:00Z')")      # synced before: hourly from now on
     assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 21, 10, 30, tzinfo=timezone.utc)) == {} and not ran
     assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 21, 10, 2, tzinfo=timezone.utc))["crm_sync"] == {"orgs": 0} and ran
 
