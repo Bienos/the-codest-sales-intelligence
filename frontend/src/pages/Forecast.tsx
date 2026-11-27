@@ -77,7 +77,7 @@ function Tiles({ d }: { d: any }) {
   const p = d.pipeline;
   const tiles: [string, string, string][] = [
     [tr("Expected deals won"), d.result.wins.toFixed(1), tr("Average of the simulated years")],
-    [tr("Open pipeline"), `${money(p.open_value)} ${d.currency}`, `${p.deals} ${tr("open deals")}${p.coverage != null ? ` · ${p.coverage.toFixed(1)}× ${tr("target")}` : ""}`],
+    [tr("Open pipeline"), `${money(p.open_value)} ${d.currency}`, `${p.deals} ${tr("open deals")}${p.without_value ? ` · ${tr("{} valued at the average", p.without_value)}` : ""}${p.coverage != null ? ` · ${p.coverage.toFixed(1)}× ${tr("target")}` : ""}`],
     [tr("Weighted open pipeline"), `${money(p.weighted)} ${d.currency}`, p.weighted_share_of_target != null ? tr("{} of target; the rest must come from new deals", pct(p.weighted_share_of_target * 100)) : tr("Each deal times its chance of winning")],
     [tr("Sales cycle"), `${Math.round(d.flow.cycle_days)} ${tr("days")}`, tr("Sum of stage medians, first stage to won")],
     [tr("New deals per month"), (d.flow.outbound_deals_per_month + d.flow.inbound_deals_per_month).toFixed(1), tr("{} from outbound, {} inbound", d.flow.outbound_deals_per_month.toFixed(1), d.flow.inbound_deals_per_month.toFixed(1))],
@@ -164,6 +164,7 @@ function draftFrom(d: any): Draft {
     reply_rate: s.reply_rate, positive_share: s.positive_share, deal_from_positive: s.deal_from_positive, prior_strength: s.prior_strength,
     outbound_entry_stage_id: String(d.inputs.outbound_entry.stage_id), inbound_entry_stage_id: String(d.inputs.inbound_entry.stage_id),
     parking: (s.parking_stage_names || []).join(", "), won: (s.won_stage_names || []).join(", "),
+    fx: Object.entries(d.inputs.fx_to_eur || {}).filter(([k]) => k !== "EUR").map(([k, v]) => `${k}=${v}`).join(", "),
     conv: Object.fromEntries(st.map((x) => [String(x.id), x.prior.conv])), days: Object.fromEntries(st.map((x) => [String(x.id), x.prior.days])),
   };
 }
@@ -183,6 +184,7 @@ function Assumptions({ d, onSaved }: { d: any; onSaved: (x: any) => void }) {
       prior_strength: num(f.prior_strength), prior_conv: Object.fromEntries(Object.entries(f.conv).map(([k, v]) => [k, Number(v)])),
       prior_days: Object.fromEntries(Object.entries(f.days).map(([k, v]) => [k, Number(v)])),
       parking_stage_names: String(f.parking).split(",").map((x) => x.trim()).filter(Boolean), won_stage_names: String(f.won).split(",").map((x) => x.trim()).filter(Boolean),
+      fx_to_eur: { EUR: 1, ...Object.fromEntries(String(f.fx).split(",").map((x) => x.split("=").map((y) => y.trim())).filter(([k, v]) => /^[A-Za-z]{3}$/.test(k ?? "") && Number(v) > 0).map(([k, v]) => [k.toUpperCase(), Number(v)])) },
     };
     for (const k of ["leads_per_month", "inbound_per_month", "year"]) { const v = num(f[k]); if (v == null) clear.push(k); else body[k] = v; }
     if (String(f.currency).trim()) body.currency = String(f.currency).trim().toUpperCase(); else clear.push("currency");
@@ -210,6 +212,7 @@ function Assumptions({ d, onSaved }: { d: any; onSaved: (x: any) => void }) {
         </>}
         <label className="fc-field"><span>{tr("Parking stages (not part of the funnel)")}</span><input id="fc-parking" type="text" value={f.parking} onChange={(e) => set("parking", e.target.value)} /></label>
         <label className="fc-field"><span>{tr("Stages that mean won")}</span><input id="fc-won" type="text" value={f.won} onChange={(e) => set("won", e.target.value)} /></label>
+        <label className="fc-field"><span>{tr("Exchange rates: 1 unit in EUR")}</span><input id="fc-fx" type="text" placeholder="PLN=0.235, GBP=1.17" value={f.fx} onChange={(e) => set("fx", e.target.value)} /><small className="muted">{tr("Deal values in other currencies are converted with these rates")}</small></label>
       </div>
       <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Stage assumptions")}>
         <table className="fc-table fc-stages"><thead><tr><th>{tr("Stage")}</th><th>{tr("Prior: move on, %")}</th><th>{tr("Prior: median days")}</th><th>{tr("Measured")}</th><th>{tr("Used")}</th><th>{tr("Open now")}</th><th>{tr("Win chance from here")}</th></tr></thead>

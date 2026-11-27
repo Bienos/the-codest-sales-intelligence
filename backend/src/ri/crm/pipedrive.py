@@ -325,6 +325,27 @@ def backfill_deal_history(conn: Conn, reader: PipedriveReader, *, limit: int = 2
     return {"deals": done, "transitions": added, "remaining": int(left["n"]) if left else 0}
 
 
+WEBHOOK_PATH = "/webhooks/pipedrive"
+
+
+def ensure_deal_webhook(reader: PipedriveReader, public_url: str, password: str) -> dict[str, Any]:
+    """Make sure Pipedrive sends every deal change to this app. The only write the read side makes: it registers where Pipedrive
+    delivers events and never touches a CRM record. Idempotent: an existing webhook for the same address is kept as it is."""
+    url = public_url.rstrip("/") + WEBHOOK_PATH
+    v1 = reader.base.replace("/api/v2", "/api/v1")
+    hooks = reader._get_url(f"{v1}/webhooks", {}).get("data") or []
+    for h in hooks:
+        if h.get("subscription_url") == url and h.get("event_object") in ("deal", "*") and h.get("is_active") not in (False, 0):
+            return {"webhook": "present", "id": h.get("id")}
+    r = reader.http.post(f"{v1}/webhooks", headers={"x-api-token": reader.token},
+                         json={"subscription_url": url, "event_action": "*", "event_object": "deal", "version": "2.0",
+                               "http_auth_user": "pipedrive", "http_auth_password": password})
+    if r.status_code in (401, 403):
+        raise ConnectorBlocked(f"Pipedrive refused to create the webhook ({r.status_code}): the token's user may not manage webhooks")
+    r.raise_for_status()
+    return {"webhook": "created", "id": (r.json().get("data") or {}).get("id")}
+
+
 def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, str] | None = None) -> dict[str, Any]:
     """Watermark-based; the watermark advances only after a durable commit. Periodic full reconcile repairs missed webhooks."""
     out: dict[str, Any] = {"organizations": 0, "persons": 0, "deals": 0}
@@ -367,7 +388,10 @@ def verify_basic_auth(header: str | None, expected_user: str, expected_secret: s
 def receive_webhook(conn: Conn, body: dict[str, Any]) -> tuple[str, bool]:
     """Acknowledge fast: persist to the inbox keyed by a stable id; duplicates are no-ops. Processing is separate."""
     meta = body.get("meta") or {}
-    key = str(meta.get("webhook_id") or meta.get("id") or f"{meta.get('entity')}:{meta.get('entity_id')}:{meta.get('action')}:{meta.get('timestamp')}")
+    # One key per EVENT, the same for Pipedrive's retries of it. (webhook_id names the webhook itself: every event shares it.)
+    ent, eid = meta.get("entity") or meta.get("object"), meta.get("entity_id") or meta.get("id")
+    parts = (meta.get("webhook_id") or "", ent, eid, meta.get("action"), meta.get("timestamp_micro") or meta.get("timestamp"), meta.get("correlation_id") or "")
+    key = ":".join(str(x) for x in parts)[:300]
     row = conn.execute("INSERT INTO crm_webhook_inbox(dedup_key, event, payload) VALUES (%s,%s,%s) ON CONFLICT (dedup_key) DO NOTHING RETURNING id",
                        (key, f"{meta.get('entity', '?')}.{meta.get('action', '?')}", jb(body))).fetchone()
     return key, bool(row)
@@ -377,9 +401,13 @@ def process_inbox(conn: Conn, limit: int = 100) -> dict[str, int]:
     done = bad = 0
     for ev in qa(conn, "SELECT * FROM crm_webhook_inbox WHERE status='received' ORDER BY received_at LIMIT %s", (limit,)):
         meta, data = (ev["payload"].get("meta") or {}), ev["payload"].get("data") or ev["payload"].get("current")
+        ent = meta.get("entity") or meta.get("object")
+        if ent == "deal" and meta.get("action") in ("delete", "deleted") and not isinstance(data, dict):
+            prev = ev["payload"].get("previous")              # a deleted deal arrives without data: what it was is in `previous`
+            eid = _int(meta.get("entity_id") or meta.get("id")) or (_int(prev.get("id")) if isinstance(prev, dict) else None)
+            data = {**(prev if isinstance(prev, dict) else {}), "id": eid, "is_deleted": True} if eid else None
         try:
             with conn.transaction():
-                ent = meta.get("entity")
                 if not isinstance(data, dict) or "id" not in data:
                     raise CrmError("webhook payload missing data.id (schema drift)")
                 if ent == "organization":

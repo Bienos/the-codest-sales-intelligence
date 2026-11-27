@@ -272,6 +272,13 @@ def crm_sync_step(conn: Conn, settings, now: datetime | None = None) -> dict:
     except Exception as exc:  # noqa: BLE001  (the mirror above is already saved; the backfill resumes next hour)
         conn.rollback()
         out["deal_history_backfill_error"] = f"{type(exc).__name__}: {exc}"[:200]
+    if getattr(settings, "public_url", None) and settings.pipedrive_webhook_secret:
+        try:      # Pipedrive sends each deal change as it happens; the hourly sync above is the safety net
+            hook = pdm.ensure_deal_webhook(reader, settings.public_url, settings.pipedrive_webhook_secret)
+            if hook["webhook"] == "created":
+                out["pipedrive_webhook"] = hook
+        except Exception as exc:  # noqa: BLE001
+            out["pipedrive_webhook_error"] = f"{type(exc).__name__}: {exc}"[:200]
     return out
 
 

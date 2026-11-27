@@ -21,10 +21,11 @@ DEFAULT_CONV = [55, 55, 50, 55, 65]
 DEFAULT_DAYS = [10, 18, 25, 30, 21]
 DEFAULTS: dict[str, Any] = {
     "year": None,                      # None: next year from October on, else this year
-    "currency": None,                  # None: the open pipeline's currency, else EUR
+    "currency": None,                  # None: EUR
+    "fx_to_eur": {"EUR": 1.0, "PLN": 0.235, "GBP": 1.17, "USD": 0.92},       # rough rates, edited on the page: 1 unit of the currency in EUR
     "target": 0,
     "pipeline_id": None,               # None: RI_PIPEDRIVE_PIPELINE_ID
-    "parking_stage_names": ["Marketing Nurturing"],
+    "parking_stage_names": ["Marketing Nurturing", "On-Hold", "Passive"],      # deals here are not moving through the funnel
     "won_stage_names": ["Active Delivery"],
     "outbound_entry_stage_id": None,   # None: RI_PIPEDRIVE_STAGE_ID (where a positive reply starts a deal), else the first stage
     "inbound_entry_stage_id": None,    # None: the first stage
@@ -97,9 +98,25 @@ def _resolve(conn: Conn, s: dict[str, Any], app_settings: Any, now: datetime) ->
     year = int(s["year"] or (now.year + 1 if now.month >= 10 else now.year))
     pipeline_id = s["pipeline_id"] if s["pipeline_id"] is not None else getattr(app_settings, "pipedrive_pipeline_id", None)
     funnel = load_funnel(conn, pipeline_id, s["parking_stage_names"] or [], s["won_stage_names"] or [])
-    h = measure(conn, funnel, now=now, year=year)
+    currency = (s["currency"] or "EUR").upper()
+    fx = {k.upper(): float(v) for k, v in (s["fx_to_eur"] or {}).items() if v}
+
+    def convert(value: Any, cur: Any) -> float | None:
+        c = str(cur or currency).upper()
+        if c == currency:
+            return float(value)
+        if c not in fx or currency not in fx:
+            return None
+        return float(value) * fx[c] / fx[currency]
+    h = measure(conn, funnel, now=now, year=year, convert=convert)
     out = outbound_actuals(conn)
     k = float(s["prior_strength"] or 0)
+    win_n = len(h.won_values)
+    deal_value = {"prior": float(s["deal_value"]), "measured": (sum(h.won_values) / win_n) if win_n else None, "n": win_n,
+                  "used": _blend(float(s["deal_value"]), (sum(h.won_values) / win_n) if win_n else None, win_n, k)}
+    for o in h.open_deals:                    # a deal without a value in Pipedrive is worth the average deal
+        o["estimated"] = not o["value"]
+        o["value"] = o["value"] or deal_value["used"]
     stages = []
     for i, st in enumerate(funnel.stages):
         pc = float(s["prior_conv"].get(str(st.id), DEFAULT_CONV[i] if i < len(DEFAULT_CONV) else 55))
@@ -124,9 +141,8 @@ def _resolve(conn: Conn, s: dict[str, Any], app_settings: Any, now: datetime) ->
     def rate(prior_pct: float, num: int, den: int) -> dict[str, Any]:
         meas = (num / den) if den else None
         return {"prior": prior_pct, "measured": None if meas is None else meas * 100, "n": den, "used": _blend(prior_pct / 100, meas, den, k) * 100}
-    win_n = len(h.won_values)
     inputs = {
-        "year": year, "pipeline_id": pipeline_id, "currency": s["currency"] or (h.health["open_currencies"][0] if len(h.health["open_currencies"]) == 1 else "EUR"),
+        "year": year, "pipeline_id": pipeline_id, "currency": currency, "fx_to_eur": fx,
         "target": float(s["target"] or 0),
         "leads_per_month": {"setting": s["leads_per_month"], "measured": out["contacted_per_month"],
                             "used": float(s["leads_per_month"] if s["leads_per_month"] is not None else out["contacted_per_month"] or 800)},
@@ -135,8 +151,7 @@ def _resolve(conn: Conn, s: dict[str, Any], app_settings: Any, now: datetime) ->
         "deal_from_positive": rate(float(s["deal_from_positive"]), min(outbound_deals, out["interested"]), out["interested"]),
         "inbound_per_month": {"setting": s["inbound_per_month"], "measured": inbound_measured,
                               "used": float(s["inbound_per_month"] if s["inbound_per_month"] is not None else inbound_measured if inbound_measured is not None else 4)},
-        "deal_value": {"prior": float(s["deal_value"]), "measured": (sum(h.won_values) / win_n) if win_n else None, "n": win_n,
-                       "used": _blend(float(s["deal_value"]), (sum(h.won_values) / win_n) if win_n else None, win_n, k)},
+        "deal_value": deal_value,
         "outbound_entry": {"stage_id": ids[out_idx], "index": out_idx}, "inbound_entry": {"stage_id": ids[in_idx], "index": in_idx},
         "prior_strength": k, "stages": stages,
     }
@@ -234,6 +249,7 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
         "buckets": [{"label": f"Before {inp['year']}"}] + [{"label": f"Q{q} {inp['year']}"} for q in range(1, 5)],
         "sensitivity": sens, "sensitivity_step": SENS_STEP,
         "pipeline": {"open_value": open_value, "weighted": weighted, "deals": len(h.open_deals), "parked": h.parked,
+                     "without_value": sum(1 for o in h.open_deals if o.get("estimated")),
                      "coverage": (open_value / inp["target"]) if inp["target"] else None, "weighted_share_of_target": (weighted / inp["target"]) if inp["target"] else None,
                      "aging": [{"crm_id": o["crm_id"], "title": o["title"], "stage": inp["stages"][o["stage_index"]]["name"], "days": round(o["days_in_stage"]),
                                 "value": o["value"]} for o in sorted(h.open_deals, key=lambda o: -o["days_in_stage"] / max(1.0, inp["stages"][o["stage_index"]]["used"]["days"]))

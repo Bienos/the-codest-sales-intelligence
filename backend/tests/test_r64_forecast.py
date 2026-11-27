@@ -261,3 +261,77 @@ def test_forecast_api_is_for_managers_and_changes_are_validated_and_audited(api,
     assert r.json()["inputs"]["leads_per_month"]["setting"] is None
     assert conn.execute("select count(*) n from audit_events where operation='forecast_settings_changed'").fetchone()["n"] == 2
     assert conn.execute("select count(*) n from forecast_log where trigger='settings_saved'").fetchone()["n"] == 2
+
+
+# ------------------------------------------------------------------ webhooks, real-pipeline details
+def test_each_webhook_event_is_kept_and_deleted_deals_leave_the_mirror(conn):
+    def ev(action, eid, ts, data):
+        return {"meta": {"entity": "deal", "action": action, "entity_id": str(eid), "webhook_id": "hook-1", "timestamp": ts}, "data": data}
+    pd.upsert_deal(conn, deal(30, 10, add=NOW - timedelta(days=5)))
+    a = pd.receive_webhook(conn, ev("change", 30, "2026-11-27T10:00:00Z", deal(30, 7, add=NOW - timedelta(days=5), moved=NOW)))
+    b = pd.receive_webhook(conn, ev("change", 30, "2026-11-27T11:00:00Z", deal(30, 12, add=NOW - timedelta(days=5), moved=NOW + timedelta(hours=1))))
+    assert a[1] and b[1] and a[0] != b[0]                               # same webhook, two events: both kept (webhook_id is not an event id)
+    assert pd.receive_webhook(conn, ev("change", 30, "2026-11-27T11:00:00Z", {}))[1] is False      # Pipedrive's retry of the same event
+    gone = {"meta": {"entity": "deal", "action": "delete", "entity_id": "30", "webhook_id": "hook-1", "timestamp": "2026-11-27T12:00:00Z"},
+            "data": None, "previous": {"id": 30, "title": "Deal 30"}}
+    pd.receive_webhook(conn, gone)
+    assert pd.process_inbox(conn) == {"processed": 3, "quarantined": 0}
+    assert conn.execute("select count(*) n from crm_deals where crm_id=30").fetchone()["n"] == 0
+    assert [r[1] for r in rows(conn, 30)] == [10, 7, 12]                  # history stays: it is append-only
+
+
+def test_app_registers_its_deal_webhook_once(conn):
+    hooks, posted = [], []
+
+    def handler(req):
+        if req.method == "GET":
+            return httpx.Response(200, json={"success": True, "data": hooks})
+        body = __import__("json").loads(req.content)
+        posted.append(body)
+        hooks.append({**body, "id": 77, "is_active": True})
+        return httpx.Response(201, json={"success": True, "data": {"id": 77}})
+    reader = pd.PipedriveReader("thecodestltd", "tok", http=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert pd.ensure_deal_webhook(reader, "https://ri.example/", "pw") == {"webhook": "created", "id": 77}
+    assert pd.ensure_deal_webhook(reader, "https://ri.example", "pw") == {"webhook": "present", "id": 77}
+    assert posted == [{"subscription_url": "https://ri.example/webhooks/pipedrive", "event_action": "*", "event_object": "deal", "version": "2.0",
+                       "http_auth_user": "pipedrive", "http_auth_password": "pw"}]
+
+
+def test_webhook_password_and_public_url_come_from_existing_settings(monkeypatch):
+    for k in ("PIPEDRIVE_WEBHOOK_SECRET", "RI_PUBLIC_URL", "RI_BASE_URL"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("RI_SESSION_SECRET", "s" * 40)
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://ri-api.example/")
+    a, b = Settings.from_env(require_auth=False), Settings.from_env(require_auth=False)
+    assert a.pipedrive_webhook_secret and a.pipedrive_webhook_secret == b.pipedrive_webhook_secret and a.public_url == "https://ri-api.example"
+    monkeypatch.setenv("PIPEDRIVE_WEBHOOK_SECRET", "explicit")
+    assert Settings.from_env(require_auth=False).pipedrive_webhook_secret == "explicit"
+
+
+def test_real_pipeline_parks_passive_converts_currencies_and_values_empty_deals(conn):
+    for sid, name, order in [(59, "Marketing Nurturing ", 1), (58, "Webform MQL", 2), (7, "DISCOVERY", 3), (8, "SQL", 4), (9, "Proposal/Shortlist", 5),
+                             (23, "Commercials/NDA", 6), (42, "Active Delivery", 7), (27, "On-Hold", 8), (11, "Passive", 9)]:
+        conn.execute("insert into crm_stages(crm_id, pipeline_id, name, order_nr) values (%s,2,%s,%s)", (sid, name, order))
+    pd.upsert_deal(conn, {**deal(40, 8, add=NOW - timedelta(days=20)), "value": 100000, "currency": "PLN"})
+    pd.upsert_deal(conn, {**deal(41, 7, add=NOW - timedelta(days=10)), "value": 0})
+    pd.upsert_deal(conn, deal(42, 11, add=NOW - timedelta(days=300)))
+    p = service.build(conn, Settings(pipedrive_pipeline_id=2, pipedrive_stage_id=7), now=NOW, use_cache=False)
+    assert [st["name"] for st in p["inputs"]["stages"]] == ["Webform MQL", "DISCOVERY", "SQL", "Proposal/Shortlist", "Commercials/NDA"]
+    st = {s_["name"]: s_ for s_ in p["inputs"]["stages"]}
+    assert st["SQL"]["open"]["value"] == pytest.approx(23500)                 # 100k PLN at 0.235
+    assert st["DISCOVERY"]["open"]["value"] == pytest.approx(120000)          # no value in Pipedrive: the average deal
+    assert p["pipeline"]["without_value"] == 1 and p["pipeline"]["parked"]["n"] == 1 and p["currency"] == "EUR"
+    assert any("no value in Pipedrive" in w for w in p["health"]["warnings"])
+
+
+def test_hourly_step_registers_the_webhook_when_the_app_knows_its_address(conn, monkeypatch):
+    from ri import scheduler
+    monkeypatch.setattr(pd, "sync_incremental", lambda c, r: {"deals": 0})
+    monkeypatch.setattr(pd, "process_inbox", lambda c: {"processed": 0})
+    monkeypatch.setattr(pd, "backfill_deal_history", lambda c, r, limit: {"deals": 0, "transitions": 0, "remaining": 0})
+    seen = []
+    monkeypatch.setattr(pd, "ensure_deal_webhook", lambda r, url, pw: seen.append((url, pw)) or {"webhook": "created", "id": 5})
+    st = Settings(pipedrive_api_token="t", pipedrive_domain="d", pipedrive_webhook_secret="pw", public_url="https://ri.example")
+    assert scheduler.crm_sync_step(conn, st, datetime(2026, 11, 27, 10, 1, tzinfo=timezone.utc))["pipedrive_webhook"]["id"] == 5
+    assert seen == [("https://ri.example", "pw")]
+    assert "pipedrive_webhook" not in scheduler.crm_sync_step(conn, Settings(pipedrive_api_token="t", pipedrive_domain="d"), datetime(2026, 11, 27, 11, 1, tzinfo=timezone.utc))

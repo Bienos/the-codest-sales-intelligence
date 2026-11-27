@@ -5489,5 +5489,8 @@
   "Positive share of replies": "Udział pozytywnych odpowiedzi",
   "Positive reply becomes a deal": "Pozytywna odpowiedź staje się dealem",
   "Average deal value": "Średnia wartość deala",
-  "Time spent in each stage": "Czas na każdym etapie"
+  "Time spent in each stage": "Czas na każdym etapie",
+  "{} valued at the average": "{} wycenionych średnią",
+  "Exchange rates: 1 unit in EUR": "Kursy walut: 1 jednostka w EUR",
+  "Deal values in other currencies are converted with these rates": "Wartości dealów w innych walutach są przeliczane po tych kursach"
 }

@@ -61,6 +61,7 @@ class Settings:
     pipedrive_webhook_secret: str | None = field(default=None, repr=False)
     pipedrive_write_token: str | None = field(default=None, repr=False)     # falls back to the API token: one key is enough to start
     pipedrive_domain: str | None = None                      # the part before .pipedrive.com (yours is shown in Pipedrive's address bar)
+    public_url: str | None = None                            # where the app is reached from outside (Pipedrive sends its webhook here)
     pipedrive_pipeline_id: int = 2                            # Business Pipeline
     pipedrive_stage_id: int = 7                               # Discovery: where a deal starts when a prospect replies positively
     lemlist_api_key: str | None = field(default=None, repr=False)
@@ -112,6 +113,7 @@ class Settings:
             google_credentials_file=os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
             google_service_account_json=read_secret("GOOGLE_SERVICE_ACCOUNT_JSON"),
             pipedrive_domain=os.environ.get("PIPEDRIVE_DOMAIN") or None,
+            public_url=(os.environ.get("RI_PUBLIC_URL") or os.environ.get("RI_BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/") or None,
             pipedrive_pipeline_id=int(os.environ.get("RI_PIPEDRIVE_PIPELINE_ID") or 2),
             pipedrive_stage_id=int(os.environ.get("RI_PIPEDRIVE_STAGE_ID") or 7),
             lemlist_api_key=read_secret("LEMLIST_API_KEY"),
@@ -157,6 +159,11 @@ class Settings:
             # (Rotating the session secret then means people reconnect their accounts; nothing stored in the database is lost.)
             import base64 as _b64, hashlib as _hl, hmac as _hm
             s = dataclasses.replace(s, vault_key=_b64.urlsafe_b64encode(_hm.new(s.session_secret.encode(), b"ri-vault-v1", _hl.sha256).digest()).decode("ascii"))
+        if not s.pipedrive_webhook_secret and s.session_secret:
+            # The Pipedrive webhook password, derived the same way, so the web app (which checks it) and the scheduler (which registers the
+            # webhook with Pipedrive) agree on it without anyone creating, typing or showing a secret.
+            import hashlib as _hl2, hmac as _hm2
+            s = dataclasses.replace(s, pipedrive_webhook_secret=_hm2.new(s.session_secret.encode(), b"ri-pipedrive-webhook-v1", _hl2.sha256).hexdigest())
         s.validate(require_auth=require_auth)
         return s
 

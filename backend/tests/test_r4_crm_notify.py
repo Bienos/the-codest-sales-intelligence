@@ -95,14 +95,14 @@ def test_webhook_auth_dedup_and_quarantine(conn, env):
     good = "Basic " + base64.b64encode(b"pipedrive:s3cret").decode()
     assert pd.verify_basic_auth(good, "pipedrive", "s3cret") and not pd.verify_basic_auth(good, "pipedrive", "other") and not pd.verify_basic_auth(None, "a", "b")
     body = {"meta": {"entity": "organization", "action": "change", "webhook_id": "w1", "entity_id": 1}, "data": org_payload(1, "Example Bank", owner=999)}
-    assert pd.receive_webhook(conn, body) == ("w1", True)
-    assert pd.receive_webhook(conn, body) == ("w1", False)                        # duplicate delivery is a no-op
+    key, created = pd.receive_webhook(conn, body)
+    assert created and pd.receive_webhook(conn, body) == (key, False)            # duplicate delivery is a no-op
     bad = {"meta": {"entity": "organization", "action": "change", "webhook_id": "w2"}, "data": {"no_id": True}}
     pd.receive_webhook(conn, bad)
     out = pd.process_inbox(conn)
     assert out == {"processed": 1, "quarantined": 1}
     assert conn.execute("select owner_id from crm_organizations where crm_id=1").fetchone()["owner_id"] == 999
-    assert conn.execute("select status from crm_webhook_inbox where dedup_key='w2'").fetchone()["status"] == "quarantined"
+    assert conn.execute("select status from crm_webhook_inbox where dedup_key like 'w2:%'").fetchone()["status"] == "quarantined"
 
 
 # ------------------------------------------------------------------ approved writes

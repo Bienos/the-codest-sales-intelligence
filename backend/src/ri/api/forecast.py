@@ -30,6 +30,14 @@ class ForecastSettingsIn(BaseModel):
     positive_share: float | None = Field(None, ge=0, le=100)
     deal_from_positive: float | None = Field(None, ge=0, le=100)
     inbound_per_month: float | None = Field(None, ge=0, le=1e5)
+    fx_to_eur: dict[str, float] | None = None                          # 1 unit of each currency in EUR
+
+    @field_validator("fx_to_eur")
+    @classmethod
+    def _fx(cls, v: dict[str, float] | None) -> dict[str, float] | None:
+        if v is not None and (len(v) > 30 or any(not (k.isalpha() and len(k) == 3) for k in v) or any(not (0 < x < 1e6) for x in v.values())):
+            raise ValueError("exchange rates are positive numbers keyed by three-letter currency codes")
+        return {k.upper(): x for k, x in v.items()} if v is not None else v
     clear: list[str] = Field(default_factory=list, max_length=20)     # fields to put back to "measured / default" (None)
 
     @field_validator("prior_conv")

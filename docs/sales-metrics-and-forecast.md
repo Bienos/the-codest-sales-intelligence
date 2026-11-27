@@ -14,11 +14,17 @@ What exists in the code:
 - **Page**: Forecast in the Work menu (`frontend/src/pages/Forecast.tsx`), with Polish strings.
 
 To turn it on in an environment:
-1. Deploy, then run the migration. It runs as part of the normal `migrate`.
-2. Make sure `PIPEDRIVE_DOMAIN` and `PIPEDRIVE_API_TOKEN` are set; `RI_PIPEDRIVE_PIPELINE_ID` (default 2) picks the pipeline.
-3. Register the Pipedrive `deal` webhook to `/webhooks/pipedrive` if it is not already, so every move is seen, not only the hourly snapshot.
-4. Run `sync-crm` once, then `backfill-deal-history` until nothing remains.
-5. Open Forecast, set the target, check the stage order, and check which stages are "parking" and "won". The defaults are Marketing Nurturing and Active Delivery.
+1. Deploy. The migration runs on startup.
+2. Set `PIPEDRIVE_API_TOKEN` (Render: env group `ri-secrets`). `PIPEDRIVE_DOMAIN` is `thecodestltd`; `RI_PIPEDRIVE_PIPELINE_ID` (default 2, Business Pipeline) picks the pipeline.
+3. Nothing else is manual. Each hour (minutes 0 to 4) the scheduler syncs stages and deals, reads past history for up to 100 deals, and registers the Pipedrive deal webhook if it is missing. For the webhook it needs `RI_PUBLIC_URL` (the scheduler has no address of its own; the web app uses `RENDER_EXTERNAL_URL`). Its password is `PIPEDRIVE_WEBHOOK_SECRET`, or, when that is unset, one derived from `RI_SESSION_SECRET`, so no secret has to be created or typed.
+4. Open Forecast, set the target, and check the exchange rates (rough defaults: PLN 0.235, GBP 1.17, USD 0.92 EUR).
+
+What the live Pipedrive account looked like on 27 Nov 2026 (read through the Pipedrive connector):
+- Business Pipeline stage order: Marketing Nurturing, Webform MQL, DISCOVERY, SQL, Proposal/Shortlist, Commercials/NDA, Active Delivery, On-Hold, Passive. Discovery comes before SQL.
+- 461 open deals: 407 in Passive, 17 On-Hold, 37 in active stages. Only 1 of the active EUR deals had a value, so open deals without a value are given the average deal value, and the page says how many.
+- Deal values are in PLN (about 44% of open deals) and EUR, so values are converted with the rates above.
+- 9 deals ever marked won, 370 lost (336 of them from Passive, mostly without a lost reason). With so few wins the priors dominate for now.
+- The defaults follow this: Marketing Nurturing, On-Hold and Passive are parking stages; Active Delivery counts as won.
 
 ## 1. Summary
 
