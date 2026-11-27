@@ -295,6 +295,18 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
         return run_window(conn, job["payload"]["start"], job["payload"]["end"])      # official award notices only; commits per page
 
     ted_awards_window.own_transactions = True  # type: ignore[attr-defined]
+    def competitor_watch(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
+        from ..competitor_watch import http_fetch, run
+        from ..config import Settings
+        st = Settings.from_env(require_auth=False)
+        search = None
+        if st.exa_api_key and float(st.exa_monthly_cap_usd or 0) > 0:
+            from ..research.exa_search import ExaSearcher, exa_post
+            searcher = ExaSearcher(conn, post=exa_post(st.exa_api_key), operation="competitor_news", ref_type="competitor_watch", ref_id=job["payload"].get("day", "run"))
+            search = lambda purpose, body: searcher.search(purpose, body, text_cap=1500)      # noqa: E731
+        return run(conn, fetch=http_fetch, search=search)
+
+    competitor_watch.own_transactions = True  # type: ignore[attr-defined]
     def ted_probe(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
         from ..sources.ted_probe import run_probe
         return run_probe()          # read-only; the answer is stored on the job
@@ -330,7 +342,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
     discovery_run.own_transactions = True  # type: ignore[attr-defined]
     sheet_sync.own_transactions = True  # type: ignore[attr-defined]
     sheet_import_xlsx.own_transactions = True  # type: ignore[attr-defined]
-    return {"ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "account_scan_background": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit,
+    return {"competitor_watch": competitor_watch, "ted_probe": ted_probe, "ted_awards_window": ted_awards_window, "source_run": source_run, "evaluate_event": evaluate, "approval_gate": approval_gate, "sheet_import_xlsx": sheet_import_xlsx, "verify_url": verify_url, "discovery_run": discovery_run, "sources_validate_all": sources_validate_all, "account_scan": account_scan, "account_scan_background": account_scan, "sheet_sync": sheet_sync, "account_brief": account_brief, "campaign_draft": campaign_draft, "assess_fit": assess_fit,
             "crm_sync": crm_sync, "lemlist_sync": lemlist_sync, "tender_summaries": tender_summaries, **_exa_research_jobs(), **_admin_ops_jobs()}
 
 

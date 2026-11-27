@@ -25,6 +25,11 @@ from typing import Any
 from .db import Conn, jb, qa
 from .research.vendor_intel import canon, name_key
 
+
+def watch_status(conn: Conn) -> dict[str, Any]:
+    from .competitor_watch import watch_status as ws
+    return ws(conn)
+
 SEED_PATH = Path(__file__).resolve().parents[2] / "rules" / "competitors_seed.json"
 MOVE_TYPES = ("positioning", "offer", "pricing", "vertical", "market", "ma_buy", "ma_sold", "capital", "leadership", "hiring", "partner", "client", "content",
               "results", "award")
@@ -37,7 +42,8 @@ ROLES = ("incumbent", "shortlisted", "won_against", "lost_to", "unknown")
 EDITABLE = {"name", "url", "hq", "founded", "archetype", "ownership", "headcount", "revenue", "hero", "oneLiner", "relevance", "fitNote", "services", "models",
             "entryOffer", "offers", "ai", "fs", "markets", "offices", "clutch", "clients", "certs", "pos", "strengths", "weaknesses", "howWeWin", "questions",
             "quickDismiss", "jobs", "aliases", "plDelivery"}
-FACT_FIELDS = {"ownership", "headcount", "revenue", "hero", "jobs"}       # each is {value, source, asOf, grade}
+FACT_FIELDS = {"ownership", "headcount", "revenue", "hero", "jobs"}
+COLLECTED = ("jobs", "hero")            # facts the weekly collection keeps current (ri/competitor_watch.py)       # each is {value, source, asOf, grade}
 
 
 # ------------------------------------------------------------------ loading the seed
@@ -53,6 +59,11 @@ def load_seed(conn: Conn, path: Path = SEED_PATH) -> dict[str, int]:
     for c in [seed["us"], *seed["competitors"]]:
         is_us = c is seed["us"]
         profile = {k: v for k, v in c.items() if k != "moves"}
+        had = conn.execute("SELECT profile FROM competitors WHERE key=%s", (c["key"],)).fetchone()
+        for f in COLLECTED:              # what the weekly collection measured since the seed was written stays
+            mine = ((had or {}).get("profile") or {}).get(f) or {}
+            if str(mine.get("asOf") or "") > str((profile.get(f) or {}).get("asOf") or ""):
+                profile[f] = mine
         r = conn.execute(
             "INSERT INTO competitors(key, name, is_us, reference, origin, profile, updated_by) VALUES (%s,%s,%s,%s,%s,%s,'seed') "
             "ON CONFLICT (key) DO UPDATE SET name=EXCLUDED.name, reference=EXCLUDED.reference, origin=EXCLUDED.origin, profile=EXCLUDED.profile, updated_at=now() "
@@ -331,7 +342,8 @@ def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = 
             "lede": fill(copy.get("lede") or "", subs), "briefing": [{k: fill(v, subs) for k, v in b.items()} for b in copy.get("briefing") or []],
             "landscapeNotes": copy.get("landscapeNotes") or [], "patterns": patterns, "indicators": ind, "standing": standing(us, t1),
             "bellwethers": market.get("bellwethers") or [], "alternatives": market.get("alternatives") or [], "buyers": market.get("buyers") or [],
-            "deals": market.get("deals") or [], "rates": market.get("rates") or [], "method": docs.get("method") or {}, "headToHead": h2h}
+            "deals": market.get("deals") or [], "rates": market.get("rates") or [], "method": docs.get("method") or {}, "headToHead": h2h,
+            "watch": watch_status(conn)}
 
 
 # ------------------------------------------------------------------ changes people make
@@ -401,6 +413,10 @@ def review_move(conn: Conn, move_id: str, *, status: str, actor: str, impact: in
     if status == "confirmed" and imp >= 2 and not (sw or "").strip():
         raise InvalidChange("a medium or high impact move needs a 'So what' before it is confirmed")
     conn.execute("UPDATE competitor_moves SET status=%s, impact=%s, so_what=%s, reviewed_by=%s, reviewed_at=now() WHERE id=%s", (status, imp, sw, actor, move_id))
+    hero = (m.get("payload") or {}).get("hero")
+    if status == "confirmed" and hero:          # a confirmed new homepage headline becomes the headline on record
+        fact = {"value": hero, "source": (m["payload"].get("url") or m["source_url"]), "asOf": m["happened_on"], "grade": "official"}
+        conn.execute("UPDATE competitors SET profile = jsonb_set(profile, '{hero}', %s) WHERE key=%s", (jb(fact), m["competitor_key"]))
     return {"before": {"status": m["status"], "impact": m["impact"]}, "after": {"status": status, "impact": imp}}
 
 
@@ -420,6 +436,10 @@ def from_pipedrive_deal(conn: Conn, deal: dict[str, Any], field_key: str) -> int
     """Reads the competitor names a seller typed into a Pipedrive deal field (comma or semicolon separated) and records them against the deal.
     A lost deal with one named competitor is recorded as lost to it, with Pipedrive's lost reason. Names that match no tracked firm are ignored."""
     raw = deal.get(field_key)
+    if raw is None and isinstance(deal.get("custom_fields"), dict):       # Pipedrive API v2 nests custom fields
+        raw = deal["custom_fields"].get(field_key)
+    if isinstance(raw, dict):
+        raw = raw.get("value")
     if not raw or not isinstance(raw, str):
         return 0
     comps = [{"key": r["key"], "name": r["name"], **r["profile"]} for r in qa(conn, "SELECT key, name, profile FROM competitors WHERE NOT is_us AND retired_at IS NULL")]

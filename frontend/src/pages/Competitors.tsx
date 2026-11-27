@@ -542,6 +542,8 @@ function Review({ d, reload }: Ctx) {
   return (
     <section className="ct-view">
       <p className="sub">{tr("Moves suggested by sellers or found by collection wait here. Confirm what is true and matters, with a “So what” for medium and high impact; dismiss the rest.")}</p>
+      <p className="small muted">{tr("Automatic checks, last run:")} {[["awards", "public awards"], ["jobs", "open roles"], ["homepage", "homepage headlines"], ["news", "news"]].map(([k, l]) => {
+        const w = d.watch?.[k]; return <span key={k} className="ct-chip dim">{tr(l)}: {w?.last_run ? fmtD(w.last_run.slice(0, 10)) : tr("not yet")}{w?.errors ? ` · ${tr("{} failed", w.errors)}` : ""}</span>; })}</p>
       {err ? <Err e={err} /> : !items ? <Skeleton /> : items.length === 0 ? <div className="empty"><b>{tr("Nothing waiting")}</b>{tr("New suggestions appear here.")}</div> :
         <div className="card">{items.map((m) => <div key={m.id} className="ct-mv"><span className="when">{fmtD(m.date)}</span><div>
           <div className="ct-row"><b>{m.name}</b><Imp n={m.impact} /><span className="ct-chip">{tr(d.moveTypes[m.type]?.label || m.type)}</span><span className="xs muted">{tr("from {}", m.added_by)}</span></div>

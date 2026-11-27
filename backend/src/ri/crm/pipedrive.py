@@ -167,7 +167,7 @@ def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = N
         (d["id"], d.get("org_id"), d.get("title") or "", d.get("owner_id"), d.get("stage_id"), (stages or {}).get(d.get("stage_id")), d.get("pipeline_id"),
          d.get("status"), d.get("value"), d.get("currency"), d.get("update_time"), jb({"id": d["id"]})))
     field = os.environ.get("RI_PIPEDRIVE_COMPETITOR_FIELD")         # the key of a text field where sellers name the competitors on the deal
-    if field and d.get(field):
+    if field and (d.get(field) or (d.get("custom_fields") or {}).get(field)):
         from ..competitors import from_pipedrive_deal
         from_pipedrive_deal(conn, d, field)
 
