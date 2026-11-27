@@ -211,3 +211,19 @@ def test_prospects_carry_market_and_vendor_flags(api, conn):
     conn.commit()
     it = c.get("/api/prospects", headers=h("admin")).json()["items"][0]
     assert it["market"]["fit"] == "backup" and it["vendor_flag"] is True
+
+
+def test_link_preview_image_is_absolute_when_the_public_url_is_known(tmp_path):
+    from types import SimpleNamespace
+    from fastapi import FastAPI
+    from ri.api.static import mount_frontend
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text('<meta property="og:image" content="/og-image.png" />')
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(google_client_id=None, public_url="https://ri.example.com")
+    mount_frontend(app, dist)
+    body = TestClient(app).get("/today").text
+    assert 'content="https://ri.example.com/og-image.png"' in body
+    app.state.settings.public_url = None
+    assert 'content="/og-image.png"' in TestClient(app).get("/").text
