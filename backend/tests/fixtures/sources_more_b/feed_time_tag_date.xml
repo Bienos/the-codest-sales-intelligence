@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>Articles feed</title><description>Articles feed</description><link>https://bank.example</link><item><title>Synthetic Example Bank AG names a new chief technology officer</title><link>https://bank.example/en/news/new-cto</link><description><![CDATA[<p>The board has appointed a chief technology officer.</p>
+]]></description><pubDate><![CDATA[<time datetime="2026-11-24T09:26:43+01:00" class="datetime">Tue, 24 Nov 2026 09:26:43 +0100</time>
+]]></pubDate><guid>https://bank.example/node/94646</guid></item></channel></rss>

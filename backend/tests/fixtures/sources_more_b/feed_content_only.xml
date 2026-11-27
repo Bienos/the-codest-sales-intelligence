@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+<channel><title>Synthetic Example Engineering - Medium</title><link>https://medium.com/synthetic-example-engineering</link><description>Engineering at Synthetic Example</description>
+<item><title>Moving our ledger to an event-driven platform</title><link>https://medium.com/synthetic-example-engineering/moving-our-ledger-1</link><guid isPermaLink="false">https://medium.com/p/aaa111</guid><dc:creator><![CDATA[A. Engineer]]></dc:creator><pubDate>Wed, 18 Nov 2026 09:30:00 GMT</pubDate>
+<content:encoded><![CDATA[<figure><img src="https://cdn.example/x.png" /></figure><h3>Why we moved</h3><p>When we started the migration, our ledger ran on a single relational database &amp; a batch job. Over the next two quarters the platform team plans to move payments to Kafka.</p><p>Second paragraph about the rollout &mdash; dated milestones follow.</p>]]></content:encoded></item>
+<item><title>Observability notes</title><link>https://medium.com/synthetic-example-engineering/observability-2</link><guid isPermaLink="false">https://medium.com/p/bbb222</guid><pubDate>Mon, 02 Nov 2026 10:00:00 GMT</pubDate><description>A short description that wins over the body.</description>
+<content:encoded><![CDATA[<p>This long body must be ignored because the feed gave a description.</p>]]></content:encoded></item>
+</channel></rss>

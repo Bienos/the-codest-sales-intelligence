@@ -136,3 +136,13 @@ def test_the_sync_lane_is_declared_and_runs_with_nothing_connected(conn):
     assert "connection_sync" in scheduler.LANE and scheduler.LANE["connection_sync"].can_pause
     out = scheduler.run_maintenance(conn, NOW)
     assert out.get("connection_sync", 0) == 0
+
+
+def test_erasing_a_person_deletes_their_conversations_whatever_path_erased_them(conn):
+    uid = _user(conn)
+    pid = str(conn.execute("INSERT INTO people(full_name) VALUES ('Maja Example') RETURNING id").fetchone()["id"])
+    other = str(conn.execute("INSERT INTO people(full_name) VALUES ('Jon Example') RETURNING id").fetchone()["id"])
+    for i, p in enumerate((pid, pid, other)):
+        store.upsert_interaction(conn, user_id=uid, channel="email", external_id=f"m{i}", occurred_at=NOW, visibility="owner", person_id=p)
+    conn.execute("UPDATE people SET erased_at=now() WHERE id=%s", (pid,))
+    assert [str(r["person_id"]) for r in qa(conn, "SELECT person_id FROM contact_interactions")] == [other]

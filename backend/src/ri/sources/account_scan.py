@@ -84,6 +84,95 @@ EMPTY_LISTING = "Listing was empty"      # marker kept in `account_endpoints.las
 FEED_GUESSES = ("/feed", "/rss.xml", "/news/feed", "/blog/feed")
 MAX_BYTES = 2_000_000
 
+# --- the account's engineering/tech blog and its press/insights feed -----------------------------------------------------------------------------------
+# Found from what the home page already shows (links and <link rel=alternate>), so the only extra page read is ONE: the engineering page, to see its own feed.
+# With the (at most) two extra feeds the scan reads, a scan costs at most three requests more than before. Stored as `account_endpoints` of kind `feed`;
+# the class goes in `provider` (the account page shows "Feed (Engineering blog)").
+FEED_LABEL = {"engineering": "Engineering blog", "press": "Press and insights", "blog": "Blog"}
+ENG_WORDS = {"engineering", "engineers", "engineer", "tech", "techblog", "devblog", "developers", "developer"}
+PRESS_WORDS = {"press", "presse", "pressemitteilungen", "pressemeddelelser", "pressrum", "news", "newsroom", "media", "medien", "medienmitteilungen", "insights",
+               "insight", "stories", "releases", "aktualnosci", "nyheter", "uutiset"}
+BLOG_WORDS = {"blog", "blogs"}
+ENG_HOST = {"engineering", "tech", "techblog", "devblog", "eng"}          # engineering.bank.example, tech.bank.example
+MAX_EXTRA_FEEDS = 2                                                       # an engineering feed and a press/insights feed, on top of the first three feeds
+MEDIUM_PUBLICATION = re.compile(r"^https?://(?:(?P<sub>[a-z0-9][a-z0-9-]*)\.medium\.com|(?:www\.)?medium\.com/(?P<path>[a-z0-9][a-z0-9._-]*))/?$", re.I)
+NOT_PUBLICATION = {"www", "feed", "m", "me", "tag", "topics", "jobs", "plans", "about", "policy", "creators", "business", "membership", "search"}
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.split(r"[^a-z0-9]+", text.lower()) if w}
+
+
+def _own_host_part(host: str, domain: str) -> str:
+    """The part of `host` in front of the account's own domain: "engineering" for engineering.bank.example, "" for bank.example or www.bank.example,
+    and the whole host for another site (medium.com)."""
+    h, b = host.lower().removeprefix("www."), domain.lower().removeprefix("www.")
+    return h.removesuffix(b).strip(".") if (h == b or h.endswith("." + b)) else h
+
+
+def classify_feed(url: str, domain: str, page_hint: str | None = None) -> str | None:
+    """Plain class of a feed or page address: "engineering", "press", "blog" or None. Decided by the address only (host part in front of the account's domain, and path),
+    because feed titles carry the company's name ("Tech Bank » Feed") and say nothing about the section. `page_hint` is the class of the page the feed was found on."""
+    u = urlparse(url)
+    words = _words(f"{_own_host_part(u.netloc, domain)} {u.path}")
+    if words & ENG_WORDS:
+        return "engineering"
+    if words & PRESS_WORDS:
+        return "press"
+    if words & BLOG_WORDS:
+        return "blog"
+    return page_hint
+
+
+def is_tech_section(url: str, domain: str) -> bool:
+    """A link to the account's engineering or tech blog index: engineering.bank.example, /engineering, /tech, /engineering/blog, /blog/engineering.
+    Index pages only (an article under it is not the section), and only on the account's own site."""
+    u = urlparse(url)
+    if not _same_site(u.netloc, domain):
+        return False
+    segs = [x for x in u.path.split("/") if x and not re.fullmatch(r"[a-z]{2}(-[a-z]{2})?", x, re.I)]
+    sub = _own_host_part(u.netloc, domain)
+    if not segs:
+        return bool(sub) and sub.split(".")[0].lower() in ENG_HOST
+    last = segs[-1].removesuffix(".html").lower()
+    if len(segs) > 3:
+        return False
+    if last in ENG_WORDS:
+        return True
+    return last in (BLOG_WORDS | {"news", "articles", "posts"}) and len(segs) >= 2 and segs[-2].lower() in ENG_WORDS
+
+
+def medium_feed(url: str, domain: str) -> str | None:
+    """Many fintechs publish their engineering blog as a Medium publication. A link to one is taken as the account's own only when the publication's name
+    contains the account's own name as a whole word (wise-engineering for wise.com, qonto-way for qonto.com); the feed is Medium's public publication feed."""
+    m = MEDIUM_PUBLICATION.match(url.split("#")[0].split("?")[0])
+    if not m:
+        return None
+    slug = (m.group("sub") or m.group("path") or "").lower()
+    label = domain.lower().removeprefix("www.").split(".")[0]
+    if not slug or slug in NOT_PUBLICATION or slug.startswith("@") or len(label) < 3:
+        return None
+    label_words, slug_words = {w for w in re.split(r"[-_.]", label) if w}, {w for w in re.split(r"[-_.]", slug) if w}
+    return f"https://medium.com/feed/{slug}" if label_words <= slug_words else None
+
+
+# Names that do not tell two companies apart when an account's OWN page names itself ("Nordea" on the site of Nordea Bank Abp).
+_CORE_DROP = {"bank", "abp", "publ", "company", "co"}
+
+
+def same_company(account_name: str, subject: str | None) -> bool:
+    """True when `subject` is the account itself, written the short way: the same words once legal endings and "bank" are left out. A parent, a subsidiary or a
+    sister company never matches ("Santander" is not "Santander Consumer Bank Polska"): those still go through the normal identity check."""
+    a, b = _name_tokens(account_name) - _CORE_DROP, _name_tokens(subject or "") - _CORE_DROP
+    return bool(a) and a == b
+
+
+def first_party_resolver(org_id: str, account_name: str, base):
+    """An event found on an account's own pages that names the account itself is about that account; every other name goes the normal way."""
+    def resolve(name: str) -> str | None:
+        return org_id if name and same_company(account_name, name) else base(name)
+    return resolve
+
 
 class _Links(HTMLParser):
     def __init__(self):
@@ -135,8 +224,19 @@ def parse_page(html: str, page_url: str, domain: str) -> dict[str, list]:
                 careers.append(u.split("#")[0])
             if PROCUREMENT_PATH.search(last):
                 procurement.append(u.split("#")[0])
+    tech, medium = [], []
+    for raw in p.links:
+        u = urljoin(page_url, raw.strip())
+        if not u.startswith("http"):
+            continue
+        if is_tech_section(u, domain):
+            tech.append(u.split("#")[0])
+        feed = medium_feed(u, domain)
+        if feed:
+            medium.append(feed)
     dedupe = lambda xs: list(dict.fromkeys(xs))   # noqa: E731
-    return {"feeds": dedupe(feeds), "news": dedupe(news), "careers": dedupe(careers), "procurement": dedupe(procurement), "ats": dedupe(ats), "unread": dedupe(unread)}
+    return {"feeds": dedupe(feeds), "news": dedupe(news), "careers": dedupe(careers), "procurement": dedupe(procurement), "ats": dedupe(ats), "unread": dedupe(unread),
+            "tech": dedupe(tech), "medium": dedupe(medium)}
 
 
 def boards_in_links(links: list[str], base_url: str, readable: set[str]) -> list[tuple[str, str]]:
@@ -181,6 +281,8 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
         return {"endpoints": [], "notes": [f"{domain}: home page could not be read (blocked by robots.txt, an error, or no response)"]}
     found = parse_page(html, home_url, domain)
     feeds, news, careers, ats, unread = list(found["feeds"]), list(found["news"]), list(found["careers"]), list(found["ats"]), list(found["unread"])
+    medium = [f for f in found["medium"] if f not in feeds]          # the account's own Medium publication, if its site links to one (kept apart: it must not stop the plain feed guesses)
+    feed_class: dict[str, str | None] = {f: classify_feed(f, domain) for f in [*feeds, *medium]}
     to_read, read_pages = list(careers[:2]), set[str]()      # job-board links usually sit on the careers page (a company often has a second, local one)
     while to_read and len(read_pages) < MAX_CAREERS_PAGES:
         careers_url = to_read.pop(0)
@@ -208,16 +310,36 @@ async def discover(client: httpx.AsyncClient, domain: str, robots: RobotsCache |
     if news:                                     # a newsroom often advertises its own feed
         page = await _get(client, robots, news[0])
         if page:
-            feeds += parse_page(page, news[0], domain)["feeds"]
+            hint = "engineering" if news[0] in found["tech"] else classify_feed(news[0], domain)
+            for f in parse_page(page, news[0], domain)["feeds"]:
+                if f not in feed_class:                # a feed new to us on a press page is that section's own; one already known keeps its class
+                    feed_class[f] = classify_feed(f, domain, hint)
+                feeds.append(f)
+    tech_url = next((u for u in found["tech"] if not news or u != news[0]), None)       # (the newsroom page is read already)
+    if tech_url and "engineering" not in {feed_class.get(f) for f in [*feeds, *medium]}:      # THE one extra page read: the engineering blog's own page, to see which feed it offers
+        page = await _get(client, robots, tech_url)
+        if page:
+            own = [f for f in parse_page(page, tech_url, domain)["feeds"] if f not in feed_class]
+            if own:
+                pick = next((f for f in own if classify_feed(f, domain) == "engineering"), own[0])
+                feed_class[pick] = "engineering"
+                feeds.append(pick)
     if not feeds:
         for g in FEED_GUESSES[:3]:
             body = await _get(client, robots, urljoin(home_url, g))
             if body and re.match(r"\s*(<\?xml|<rss|<feed)", body):
                 feeds.append(urljoin(home_url, g))
+                feed_class[feeds[-1]] = classify_feed(feeds[-1], domain)
                 break
     eps: list[dict[str, Any]] = []
-    for u in list(dict.fromkeys(feeds))[:3]:
-        eps.append({"kind": "feed", "url": u, "provider": None, "board": None})
+    feeds = list(dict.fromkeys([*feeds, *medium]))
+    chosen = feeds[:3]
+    for kind in ("engineering", "press"):        # an engineering and a press/insights feed are kept even when the site lists more than three feeds
+        extra = next((f for f in feeds if feed_class.get(f) == kind), None)
+        if extra and extra not in chosen and len(chosen) < 3 + MAX_EXTRA_FEEDS:
+            chosen.append(extra)
+    for u in chosen:
+        eps.append({"kind": "feed", "url": u, "provider": FEED_LABEL.get(feed_class.get(u) or ""), "board": None})
     for u in news[:2]:
         eps.append({"kind": "newsroom", "url": u, "provider": None, "board": None})
     for u in found["procurement"][:2]:
@@ -253,7 +375,8 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
         d = _run(discover(client, org["canonical_domain"], org_name=org["display_name"]))
         notes += d["notes"]
         for e in d["endpoints"]:
-            conn.execute("INSERT INTO account_endpoints(organization_id, kind, url, provider, board) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (organization_id, url) DO NOTHING",
+            conn.execute("INSERT INTO account_endpoints(organization_id, kind, url, provider, board) VALUES (%s,%s,%s,%s,%s) "
+                         "ON CONFLICT (organization_id, url) DO UPDATE SET provider = EXCLUDED.provider WHERE account_endpoints.kind = 'feed' AND account_endpoints.provider IS NULL AND EXCLUDED.provider IS NOT NULL",
                          (org_id, e["kind"], e["url"], e["provider"], e["board"]))
         conn.commit()
         existing = qa(conn, "SELECT * FROM account_endpoints WHERE organization_id=%s", (org_id,))
@@ -270,7 +393,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
             with conn.transaction():
                 if ep["kind"] in ("feed", "newsroom", "careers", "procurement"):
                     sid = "corporate-ir-newsrooms"
-                    con = FeedConnector(client, ep["url"], source_id=sid, robots=robots) if ep["kind"] == "feed" else PageWatchConnector(client, ep["url"], source_id=sid, robots=robots)
+                    con = FeedConnector(client, ep["url"], source_id=sid, robots=robots, publisher=org["display_name"]) if ep["kind"] == "feed" else PageWatchConnector(client, ep["url"], source_id=sid, robots=robots)
                     batch = _run(con.fetch(None, 30))
                     for item in batch.items:
                         d = con.canonicalize(item)
@@ -367,7 +490,7 @@ def run_scan(conn, org_id: str, *, client: httpx.AsyncClient, extractor=None, re
     out: dict[str, Any] = {"status": outcome, "endpoints": len(existing), "scanned": scanned, "documents": len(res.new_doc_ids) + len(res.changed_doc_ids), "job_changes": len(res.structured_changes), "notes": notes}
     if res.new_doc_ids or res.changed_doc_ids or res.structured_changes:
         from ..verify.run import org_aware_resolver
-        res_resolver = org_aware_resolver(conn, resolver, org_id)
+        res_resolver = first_party_resolver(str(org_id), org["display_name"], org_aware_resolver(conn, resolver, org_id))
         out["processed"] = process_run(conn, res, extractor=extractor, resolve_org=res_resolver)
     conn.commit()
     return out

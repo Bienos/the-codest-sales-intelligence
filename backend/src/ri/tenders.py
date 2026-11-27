@@ -23,9 +23,9 @@ RELEVANT_CPV = r"^72(0|2)"
 SOFTWARE_ONLY_SOURCES = ("procurement-uk-fts", "procurement-uk-contracts-finder")
 # "Our markets": where The Codest sells. The tender list starts here; every other region stays one click away.
 CORE_REGIONS = ("uk", "dach", "nordics", "poland")
-TENDER_SOURCES = ("procurement-ted", "procurement-uk-fts", "procurement-uk-contracts-finder", "procurement-ezamowienia")
+TENDER_SOURCES = ("procurement-ted", "procurement-uk-fts", "procurement-uk-contracts-finder", "procurement-ezamowienia", "procurement-de-bekanntmachung")
 SOURCE_LABEL = {"procurement-ted": "EU tenders (TED)", "procurement-uk-fts": "UK Find a Tender", "procurement-uk-contracts-finder": "UK Contracts Finder",
-                "procurement-ezamowienia": "Poland e-Zamówienia"}
+                "procurement-ezamowienia": "Poland e-Zamówienia", "procurement-de-bekanntmachung": "Germany national tenders"}
 FIT_RANK = {"strong": 0, "possible": 1, "weak": 2, "none": 3}
 SORTS = ("deadline", "fit", "value", "newest")
 # Which sectors each `sector` choice shows. "" is every sector (ICP first), as the list did before sectors existed.

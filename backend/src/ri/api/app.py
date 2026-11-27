@@ -38,7 +38,7 @@ class RedactSecretsInAccessLog:
     """logging.Filter: hides secrets that some providers can only send in the URL path (Lemlist webhooks), and signed link tokens."""
 
     import re as _re
-    _PAT = _re.compile(r"(/webhooks/lemlist/)[^\s/?\"]+|([?&]t=)[^\s&\"]+")
+    _PAT = _re.compile(r"(/webhooks/(?:lemlist|bluedot)/)[^\s/?\"]+|([?&]t=)[^\s&\"]+")      # Bluedot: each person's webhook token
 
     def filter(self, record) -> bool:
         if isinstance(record.args, tuple):

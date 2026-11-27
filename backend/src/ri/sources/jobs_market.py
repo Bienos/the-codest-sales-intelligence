@@ -365,10 +365,10 @@ class JobicyConnector:
     def describe(self) -> SourceDescriptor:
         return SourceDescriptor(self.source_id, "Jobicy", "official_api", "S2", "v1")
 
-    async def _page(self, token: str | None) -> dict[str, Any]:
+    async def _page(self, token: str | None, count: int = JOBICY_PAGE) -> dict[str, Any]:
         if not await self.robots.allowed(self.client, JOBICY_URL):
             raise PolicyBlocked(self.robots.refusal(JOBICY_URL))
-        params: dict[str, Any] = {"count": JOBICY_PAGE, "geo": JOBICY_GEO, "industry": "engineering"}
+        params: dict[str, Any] = {"count": count, "geo": JOBICY_GEO, "industry": "engineering"}
         if token:
             params["cursor"] = token
         d = await request_json_patient(self.client, "GET", JOBICY_URL, sleep=self.sleep, params=params)
@@ -380,7 +380,7 @@ class JobicyConnector:
 
     async def health_check(self) -> HealthCheck:
         try:
-            await self._page(None)
+            await self._page(None, count=1)          # one job is enough to see that the service answers and the shape is right
             return HealthCheck(True)
         except Exception as exc:  # noqa: BLE001
             return HealthCheck(False, str(exc), getattr(exc, "error_class", "transient_network"))

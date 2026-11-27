@@ -283,7 +283,7 @@ NOT_JUDGED_METHODS = ("internal", "search")
 JOB_EVENT_TYPES = ("engineering_job_opened", "contractor_job_opened", "job_closed")
 # A job finding names the board it came from (attrs.provider), not a stored page. Same mapping as Administration, Data health; any other
 # career system "x" counts for the source "ats-x" when the registry has one.
-JOB_PROVIDER_SOURCE = {"arbeitnow": "jobs-arbeitnow-de", "jobtech": "jobs-jobtech-se"}
+JOB_PROVIDER_SOURCE = {"arbeitnow": "jobs-arbeitnow-de", "jobtech": "jobs-jobtech-se", "jobicy": "jobs-jobicy-remote", "remoteok": "jobs-remoteok"}
 
 
 def yield_note(src: dict[str, Any]) -> str | None:

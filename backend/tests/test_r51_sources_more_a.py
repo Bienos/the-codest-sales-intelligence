@@ -134,6 +134,13 @@ def test_jobicy_stops_when_robots_txt_refuses_and_the_test_fails_cleanly():
         run(ai_no.fetch(None, 100))
 
 
+def test_jobicy_health_check_asks_for_one_job_only():
+    seen = []
+    c = JobicyConnector(jobicy_client(seen), now_fn=lambda: NOW)
+    assert run(c.health_check()).ok is True
+    assert [r.url.params["count"] for r in seen if r.url.path == "/api/jobs"] == ["1"]
+
+
 def test_jobicy_failures_are_classified_for_the_job_layer():
     def limited(req):
         return httpx.Response(200, text=ROBOTS_OK) if req.url.path == "/robots.txt" else httpx.Response(429, headers={"Retry-After": "600"})
