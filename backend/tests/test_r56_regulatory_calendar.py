@@ -140,6 +140,8 @@ def test_the_lane_pins_upcoming_adopted_deadlines_to_target_accounts_and_is_idem
     claim = conn.execute("select c.* from claims c join event_claims ec on ec.claim_id=c.id where ec.event_id=%s", (ev["id"],)).fetchone()
     assert claim["claim_kind"] == "structured" and claim["object_json"]["url"] == a["source_url"]
     assert conn.execute("select count(*) n from signals").fetchone()["n"] == 0     # a deadline alone is context, not a buying signal (REG-01)
+    from ri.events.fit import pending
+    assert pending(conn, 100) == []                      # its own fit reason and Polish summary: the AI fit job never spends on it
 
     again = rc.pin(conn, NOW + timedelta(days=1))
     conn.commit()
