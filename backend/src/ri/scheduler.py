@@ -64,6 +64,8 @@ LANES: tuple[Lane, ...] = (
     Lane("hard_to_fill_roles", "Hard-to-fill roles",
          "Once a day, finds engineering ads at our accounts still open after 60 days, or posted again after an earlier ad for the same role closed, and turns each into a hiring signal.",
          86400, can_pause=True, main=True),
+    Lane("competitor_watch", "Competitor checks",
+         "Once a day, queues the competitor check: new public awards won by tracked firms, open roles on justjoin.it, homepage headlines (weekly per firm) and news through Exa (within the Exa budget). Findings wait in Competitors, Review.", HOUR, can_pause=True, main=True, queues="competitor_watch"),
     Lane("degraded_sources", "Late sources", "Marks a source that missed its scheduled reads as late."),
     Lane("expiry", "Signal expiry", "Ends buying signals whose time window has passed."),
     Lane("initiatives", "Programme deadlines", "Moves programmes on when their next milestone date has passed."),
@@ -425,6 +427,8 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("deadlines_pinned", lambda: pin_deadlines(conn, now), more=lambda r: bool((r or {}).get("more_to_pin")))      # after the target checks above
     from .signals.hiring import emit_hard_to_fill
     step("hard_to_fill_roles", lambda: emit_hard_to_fill(conn, now), more=lambda r: bool((r or {}).get("hard_to_fill_more")))
+    from .competitor_watch import schedule as schedule_competitor_watch
+    step("competitor_watch", lambda: schedule_competitor_watch(conn, now))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))
     step("expiry", lambda: sweep_expiry(conn, now))
     step("initiatives", lambda: refresh(conn, now))

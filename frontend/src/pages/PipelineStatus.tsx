@@ -195,7 +195,7 @@ export const JOB_KIND: Record<string, string> = {
   source_run: "Reading a source", verify_url: "Checking a page", extract_document: "Reading a page with AI", assess_fit: "Writing fit reasons", tender_summaries: "Tender summaries",
   account_scan: "Scanning a company", account_scan_background: "Scanning a company", discovery_run: "Web search run", sheet_import_xlsx: "Workbook upload", sheet_sync: "Workbook sync", account_brief: "Company brief",
   campaign_draft: "Email draft", account_profile: "Company research", vendor_intel: "Supplier research", person_profile: "Person research", people_search: "Finding people", identity_autoresolve: "Company matching",
-  sources_validate_all: "Testing sources", sources_validate_daily: "Daily source test", crm_sync: "CRM sync", lemlist_sync: "Lemlist sync", ted_awards_window: "TED award notices",
+  sources_validate_all: "Testing sources", sources_validate_daily: "Daily source test", crm_sync: "CRM sync", lemlist_sync: "Lemlist sync", ted_awards_window: "TED award notices", competitor_watch: "Competitor checks",
   evaluate_event: "Scoring a finding", ted_probe: "TED check", company_facts: "Company facts",
 };
 export const kindName = (k: string) => tr(JOB_KIND[k] ?? humanize(k));

@@ -188,6 +188,7 @@ vendors:
   - {name: Avanade, category: system_integrator}
   - {name: Bouvet, category: system_integrator}
   - {name: Knowit, category: system_integrator}
+  - {name: Sollers Consulting, category: system_integrator, aliases: [Sollers]}
   - {name: Genpact, category: system_integrator}
   # ---- software engineering partners (direct competitors for team extension and delivery teams)
   - {name: EPAM, category: engineering_partner, aliases: [EPAM Systems]}
@@ -227,6 +228,19 @@ vendors:
   - {name: Brainhub, category: engineering_partner}
   - {name: Altkom Software, category: engineering_partner}
   - {name: Sparkbit, category: engineering_partner}
+  - {name: Software Mind, category: engineering_partner}
+  - {name: Neontri, category: engineering_partner}
+  - {name: Pragmatic Coders, category: engineering_partner}
+  - {name: Code & Pepper, category: engineering_partner, aliases: [Code and Pepper]}
+  - {name: Britenet, category: engineering_partner}
+  - {name: Billennium, category: engineering_partner}
+  - {name: Monterail, category: engineering_partner}
+  - {name: Polcode, category: engineering_partner}
+  - {name: Ailleron, category: engineering_partner}
+  - {name: Scalefocus, category: engineering_partner}
+  - {name: Infinum, category: engineering_partner}
+  - {name: Mindera, category: engineering_partner}
+  - {name: HTEC, category: engineering_partner, aliases: [HTEC Group]}
   # ---- staffing and contingent labour
   - {name: Hays, category: staffing_msp}
   - {name: Randstad, category: staffing_msp, aliases: [Randstad Sourceright]}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hmac
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -266,6 +267,10 @@ def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = N
          _ts(d.get("add_time")), _ts(d.get("stage_change_time")), _ts(d.get("won_time")), _ts(d.get("lost_time")), (d.get("lost_reason") or None),
          _day(d.get("expected_close_date")), str(origin)[:80] if origin not in (None, "") else None, str(channel)[:80] if channel not in (None, "") else None))
     record_deal_change(conn, d, prev, source)
+    field = os.environ.get("RI_PIPEDRIVE_COMPETITOR_FIELD")         # the key of a text field where sellers name the competitors on the deal
+    if field and (d.get(field) or (d.get("custom_fields") or {}).get(field)):
+        from ..competitors import from_pipedrive_deal
+        from_pipedrive_deal(conn, d, field)
 
 
 def sync_stages(conn: Conn, reader: PipedriveReader) -> int:
