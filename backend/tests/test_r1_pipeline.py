@@ -71,7 +71,7 @@ def test_activation_requires_complete_certification(conn, env):
 def test_rule_catalogue_sync_all_64_with_17_active(conn, env):
     r = conn.execute("select status, count(*) c from signal_rule_versions group by status").fetchall()
     d = {x["status"]: x["c"] for x in r}
-    assert d == {"active": 25, "defined_not_activated": 39}
+    assert d == {"active": 28, "defined_not_activated": 36}        # CAP-03, CAP-04 and CAP-06 switched on in round 13
 
 
 # ------------------------------------------------------------------- TED lifecycle
@@ -243,7 +243,8 @@ def test_lever_cluster_signal_contractor_signal_and_closure(conn, env):
     res = run_source(conn, c)
     out = process_run(conn, res, now=NOW)
     rules = sorted(r["rule_id"] for r in conn.execute("select rule_id from signals"))
-    assert rules == ["CAP-01", "CAP-02"]                  # 3 payments roles => cluster; contract role on kafka => CAP-02
+    # 3 payments roles => cluster; contract role on kafka => CAP-02; the ads name Java, so the second one also completes CAP-04 (two roles in our stacks)
+    assert rules == ["CAP-01", "CAP-02", "CAP-04"]
     cap02 = conn.execute("select e.attrs->>'employment_type' t from signals s join events e on e.id=s.event_id where s.rule_id='CAP-02'").fetchone()
     assert cap02["t"] == "contract"
     # permanent role did NOT become a contractor signal, and agency eligibility stays unknown (role != supplier route)
