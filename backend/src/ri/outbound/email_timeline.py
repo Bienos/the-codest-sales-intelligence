@@ -100,9 +100,10 @@ _ELIGIBLE = """pe.erased_at IS NULL AND NOT pe.suppressed AND NOT EXISTS (
                  SELECT 1 FROM outbound_enrolments en WHERE lower(trim(en.email)) = lower(pe.work_email) AND en.status IN ('unsubscribed','bounced'))"""
 
 
-def record_timeline(conn: Conn, *, person_id: str | None = None, limit: int = BATCH) -> dict[str, int]:
-    """Write the emails not yet on the timeline (or whose words changed). Commits once at the end; safe to repeat."""
-    scope, params = ("AND la.person_id = %s", [person_id]) if person_id else ("", [])
+def record_timeline(conn: Conn, *, person_ids: list[str] | None = None, limit: int = BATCH) -> dict[str, int]:
+    """Write the emails not yet on the timeline (or whose words changed), of everyone or of these people. Commits once at the end; safe to
+    repeat, also by two requests at once (the same owner and key: the unique key keeps one row)."""
+    scope, params = ("AND la.person_id = ANY(%s::uuid[])", [person_ids]) if person_ids is not None else ("", [])
     acts = qa(conn, f"""SELECT la.id, la.type, la.person_id, la.campaign_id, la.campaign_name, la.happened_at, la.subject, la.body_text, la.body_source,
                                la.send_user_email, la.send_user_name, la.sequence_step
                         FROM lemlist_activities la JOIN people pe ON pe.id = la.person_id

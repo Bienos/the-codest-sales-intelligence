@@ -133,7 +133,7 @@ def remember(conn: Conn, activity_id: str, a: dict[str, Any], source: str) -> bo
     return True
 
 
-def reclean(conn: Conn, client: Any = None, *, person_id: str | None = None, limit: int = RECLEAN_BATCH) -> dict[str, Any]:
+def reclean(conn: Conn, client: Any = None, *, person_ids: list[str] | None = None, limit: int = RECLEAN_BATCH) -> dict[str, Any]:
     """Clean again the words of emails stored by an older cleaning (the replies of round 9 still carried our own campaign email under an
     Outlook header). Idempotent and never deletes:
       1. local, no Lemlist call: the words are derived again from the email as Lemlist gave it, or, for emails stored before it was kept,
@@ -141,7 +141,7 @@ def reclean(conn: Conn, client: Any = None, *, person_id: str | None = None, lim
       2. with a client: the inbox thread of each conversation whose reply has no original kept is read again once (read-only), which keeps
          the original and its words (store_thread). Marked per email with raw_refetched_at, so it happens once.
     A Lemlist problem stops step 2 and is reported; the next run carries on."""
-    scope, params = ("AND person_id = %s", [person_id]) if person_id else ("", [])
+    scope, params = ("AND person_id = ANY(%s::uuid[])", [person_ids]) if person_ids is not None else ("", [])
     rows = qa(conn, f"""SELECT id, body_text, body_raw, body_raw_format, body_text_original FROM lemlist_activities
                         WHERE type IN ('emailsSent','emailsReplied') AND body_text IS NOT NULL AND body_source IS DISTINCT FROM 'preview'
                           AND (body_clean_version IS NULL OR body_clean_version < %s) {scope}
@@ -356,7 +356,8 @@ def blocked_code(conn: Conn, r: dict[str, Any], person: dict[str, Any]) -> str |
 
 _ACT_COLS = ("la.id, la.type, la.person_id, la.campaign_id, la.campaign_name, la.happened_at, la.subject, la.body_text, la.body_source, la.body_attempts, "
              "la.lemlist_team_id, la.lemlist_contact_id, la.lemlist_lead_id, la.send_user_id, la.send_user_email, la.send_user_mailbox_id, la.send_user_name, "
-             "la.sequence_step, la.step_id, la.body_clean_version, la.body_text_original, la.body_raw, la.body_raw_format")
+             "la.sequence_step, la.step_id, la.body_clean_version, la.body_text_original, la.body_raw_format, "
+             f"CASE WHEN coalesce(la.body_clean_version, 0) < {CLEAN_VERSION} THEN la.body_raw END AS body_raw")   # the original only when it is needed
 
 
 def words(r: dict[str, Any]) -> str | None:
@@ -439,16 +440,22 @@ def _engagement(sent: list[dict[str, Any]], events: list[dict[str, Any]]) -> Non
             g[last] = e["happened_at"]
 
 
-def settle_person(conn: Conn, person_id: str) -> None:
-    """When a person's emails are opened: their words cleaned by the latest version and every email on their Conversations timeline.
-    Local and idempotent (no Lemlist call); a problem here never stops the page from showing what is stored."""
+def settle_people(conn: Conn, person_ids: list[str], *, limit: int = THREAD_LIMIT) -> None:
+    """When a person's emails or a Conversations timeline are opened: the words cleaned by the latest version and every email on the
+    timeline. Local and idempotent (no Lemlist call); a problem here never stops the page from showing what is stored."""
+    if not person_ids:
+        return
     try:
         from .email_timeline import record_timeline
-        reclean(conn, None, person_id=person_id, limit=THREAD_LIMIT)
-        record_timeline(conn, person_id=person_id, limit=THREAD_LIMIT)
+        reclean(conn, None, person_ids=person_ids, limit=limit)
+        record_timeline(conn, person_ids=person_ids, limit=limit)
     except Exception:                                              # noqa: BLE001
         conn.rollback()
-        log.exception("lemlist settle person")
+        log.exception("lemlist settle people")
+
+
+def settle_person(conn: Conn, person_id: str) -> None:
+    settle_people(conn, [person_id])
 
 
 def thread(conn: Conn, person: dict[str, Any]) -> dict[str, Any]:
@@ -633,7 +640,7 @@ def send_reply(conn: Conn, *, actor: str, user_id: str, person: dict[str, Any], 
         raise ReplyError(502 if status == "unknown" else 409, error or UNKNOWN)
     try:
         from .email_timeline import record_timeline
-        record_timeline(conn, person_id=pid)                       # the answer onto the person's Conversations timeline at once
+        record_timeline(conn, person_ids=[pid])                    # the answer onto the person's Conversations timeline at once
     except Exception:                                              # noqa: BLE001 - the email went out; the hourly sync writes the row
         conn.rollback()
         log.exception("lemlist answer timeline")

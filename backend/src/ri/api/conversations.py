@@ -3,7 +3,8 @@
 Everybody who may see the person or the company sees THAT a contact happened: who from our side, which day, which direction. What was said
 (an email's subject and snippet) is shown only when the row is shared with the team ('team'); an owner-only row ('owner') shows its title and gist to
 its owner and to nobody else, administrators included: the text is withheld in the SQL itself, so it never reaches the API process for anyone else.
-Row scope and permissions are those of the person and company pages. Erased and suppressed people return nothing."""
+Row scope and permissions are those of the person and company pages. Erased and suppressed people return nothing.
+Opening a timeline first puts the shared Lemlist emails of the people in it on it (ri.outbound.email_timeline; local and idempotent)."""
 from __future__ import annotations
 
 from typing import Any
@@ -13,6 +14,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from ..access import Principal
 from ..audit import audit
 from ..db import q1, qa
+from ..outbound.replies import settle_people
 from .auth import require
 from .profiles import _visible_org, _visible_person
 
@@ -71,6 +73,7 @@ def register_conversations(app: FastAPI) -> None:
         with tx(request) as conn:
             v = _visible_person(conn, p, pid)                 # same row scope as the person page; an erased person is "not found"
             pid = str(v["id"])
+            settle_people(conn, [pid])                        # their Lemlist emails onto the timeline first (local, idempotent)
             out = _timeline(conn, p, "ci.person_id = %s", [pid], collapse_meetings=False)
             audit(conn, actor=p.email, operation="pii_read", record_type="person", record_id=pid, detail={"view": "conversations", "count": len(out["items"])})
             return out
@@ -85,6 +88,7 @@ def register_conversations(app: FastAPI) -> None:
             # Rows matched to the company itself, and rows of people who work there and have not been matched to another company.
             staff = [str(r["person_id"]) for r in qa(conn, "SELECT DISTINCT e.person_id FROM employment e JOIN people pe ON pe.id=e.person_id "
                                                            "WHERE e.organization_id=%s AND pe.erased_at IS NULL AND NOT pe.suppressed", (oid,))]
+            settle_people(conn, staff, limit=200)             # their Lemlist emails onto the timeline first (local, idempotent)
             # Written as two indexed lookups (company, people) plus a filter, so Postgres combines the two indexes instead of scanning every unmatched row.
             out = _timeline(conn, p, "(ci.organization_id = %s OR ci.person_id = ANY(%s::uuid[])) AND (ci.organization_id IS NULL OR ci.organization_id = %s)", [oid, staff, oid],
                             collapse_meetings=True)
