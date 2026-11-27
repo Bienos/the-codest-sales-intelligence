@@ -271,11 +271,11 @@ def dismiss_group(conn: Conn, key: str, actor: str, note: str | None) -> dict[st
 
 PURPOSES: dict[str, tuple[str, str]] = {
     "extract": ("reading", "Reading pages"), "search": ("web_search", "Web search"), "tender_summary": ("tenders", "Tender summaries"),
-    "account_profile": ("company", "Company research"), "account_brief": ("company", "Company research"), "person_profile": ("person", "Person research"),
+    "account_profile": ("company", "Company research"), "vendor_intel": ("vendors", "Supplier research"), "account_brief": ("company", "Company research"), "person_profile": ("person", "Person research"),
     "people_search": ("find_people", "Finding people"), "assess_fit": ("fit", "Fit reasons"), "campaign_draft": ("emails", "Email drafts"),
     "identity_match": ("matching", "Company matching"),
 }
-USEFUL_LABEL = {"reading": "findings", "web_search": "pages found", "tenders": "summaries", "company": "profiles", "person": "profiles", "find_people": "people found",
+USEFUL_LABEL = {"reading": "findings", "web_search": "pages found", "tenders": "summaries", "company": "profiles", "vendors": "supplier pictures", "person": "profiles", "find_people": "people found",
                 "fit": "findings explained", "emails": "drafts", "matching": "companies matched"}
 
 

@@ -487,3 +487,143 @@ rules:
     negative: {kind: ownership_gate, effect: stop, scope_type: account, window_months: null}
     min_verification: verified
     reason_code: account_ownership_conflict
+
+  # ---- added 27 Nov 2026: programme domains the extractor already labels, a delayed programme, a supplier exit, and a pending deal
+  - id: SRC-03
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [supplier_exit]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: it_services_scope, is_true: true}]}
+    exclusions: []
+    demand_tier: D2
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: incumbent_supplier_exit
+    commercial_questions: ["Is the exiting supplier's scope being re-tendered, taken in-house or moved to another supplier?", "Who runs the supplier selection and when?"]
+    related_play: SP-09
+    buyer_roles: [sourcing_lead, technical_sponsor]
+    negative_rules: [NEG-05, NEG-03]
+  - id: PRG-03
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, vendor_selected, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: digital_channels}, {attr: named_systems, exists: true}, {attr: has_dated_milestones, is_true: true}]}
+    exclusions: [{attr: programme_status, in: [cancelled, paused, completed]}]
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: digital_channel_rebuild
+    commercial_questions: ["Which channels, journeys or releases are in scope and on what dates?", "Which parts are separable from the platform vendor's own services?"]
+    related_play: SP-03
+    buyer_roles: [digital_director, product_owner]
+    negative_rules: [NEG-03, NEG-06]
+  - id: PRG-04
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, vendor_selected, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: lending}, {attr: named_systems, exists: true}, {attr: has_dated_milestones, is_true: true}]}
+    exclusions: [{attr: programme_status, in: [cancelled, paused, completed]}]
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: lending_platform_build
+    commercial_questions: ["Which stages (origination, decisioning, servicing, collections) are in scope?", "Who builds the integrations to the bank's other systems?"]
+    related_play: SP-03
+    buyer_roles: [lending_director, programme_owner]
+    negative_rules: [NEG-03, NEG-06]
+  - id: PRG-08
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, vendor_selected, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: fraud_aml}, {attr: named_systems, exists: true}, {attr: has_dated_milestones, is_true: true}]}
+    exclusions: [{attr: programme_status, in: [cancelled, paused, completed]}]
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 150}
+    reason_code: fraud_aml_platform_change
+    commercial_questions: ["Is the replacement vendor-led, and who integrates it with payments and onboarding?", "What is the cut-over date and what depends on it?"]
+    related_play: SP-03
+    buyer_roles: [risk_technology_lead, programme_owner]
+    negative_rules: [NEG-03, NEG-06]
+  - id: PRG-10
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, vendor_selected, implementation_launched]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: ai_use_case}, {attr: programme_status, eq: implementation}, {attr: named_systems, exists: true}]}
+    exclusions: []
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: ai_use_case_in_production
+    commercial_questions: ["Which business process is the AI use case moving into, and who owns the outcome?", "Who builds the data, evaluation and integration work around the model?"]
+    related_play: SP-07
+    buyer_roles: [business_owner, ai_lead]
+    negative_rules: [NEG-06]
+  - id: PRG-11
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_announced, implementation_launched, integration_release]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_domain, eq: api_platform}, {attr: has_dated_milestones, is_true: true}]}
+    exclusions: [{attr: programme_status, in: [cancelled, paused, completed]}]
+    demand_tier: D3
+    strength: 1
+    min_verification: verified
+    expiry: {mode: days, days: 120}
+    reason_code: api_platform_rebuild_with_dates
+    commercial_questions: ["Is there a dated migration for partners or customers, and who builds it?", "Is the work a defined workstream we could own?"]
+    related_play: SP-03
+    buyer_roles: [platform_director, product_owner]
+    negative_rules: [NEG-06]
+  - id: PRG-16
+    version: 1.0.0
+    status: active
+    kind: signal
+    required_event_types: [programme_delayed]
+    source_tiers: [S1, S2, S3]
+    required_fields: []
+    match: {all: [{attr: programme_status, eq: delayed}, {attr: has_dated_milestones, is_true: true}]}
+    exclusions: []
+    demand_tier: D3
+    strength: 2
+    min_verification: verified
+    expiry: {mode: days, days: 60}
+    reason_code: delayed_programme_with_recovery_plan
+    commercial_questions: ["What caused the delay and which workstreams are behind?", "Is the recovery plan adding capacity, and from whom?"]
+    related_play: SP-02
+    buyer_roles: [programme_owner, delivery_director]
+    negative_rules: [NEG-06]
+  - id: NEG-07
+    version: 1.0.0
+    status: active
+    kind: negative
+    required_event_types: [acquisition_announced]
+    source_tiers: [S1, S2, S3, S4]
+    required_fields: []
+    match: {all: [{attr: deal_status, eq: pending_approval}]}
+    exclusions: []
+    negative: {kind: soft_risk, effect: downgrade, scope_type: account, window_months: 6}
+    min_verification: verified
+    reason_code: pending_acquisition_before_close

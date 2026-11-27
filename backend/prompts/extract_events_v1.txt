@@ -13,7 +13,7 @@ RULES
 - attrs: only from this controlled vocabulary when stated in the text: programme_domain (core_banking|payments_rail|cloud_data|digital_channels|
   lending|fraud_aml|ai_use_case|api_platform|other), role_of_subject (bank|vendor|si|fintech|other), named_systems[], has_dated_milestones (bool),
   external_scope_stated (bool: text explicitly says external/partner/supplier work is sought), counterparty_selected (bool), award_scope_includes_dev (bool),
-  programme_name (official name only if stated in the text), programme_status (announced|planning|implementation|delayed|cancelled|paused|completed), milestone_date (ISO, only if stated), panel_open_for_applications (bool), it_services_scope (bool),
+  programme_name (official name only if stated in the text), programme_status (announced|planning|implementation|delayed|cancelled|paused|completed), milestone_date (ISO, only if stated), panel_open_for_applications (bool), it_services_scope (bool: the panel's, or the exiting supplier's, scope is IT services, software or engineering),
   contingent_labour_call (bool), panel_closed (bool), supplier_list_reduced (bool), outsourcing_contract_covers_scope (bool: a large SI/outsourcing contract
   explicitly covers this scope), leader_role (cto|cio|head_engineering|head_payments|head_platform|other), leader_start_date (ISO), change (contact_new_role),
   ownership_conflict (bool), funding_stage (seed|series_a|series_b|series_c_plus|growth_equity|growth_debt|other), funding_use_stated (bool: the text says what the money is for),
@@ -21,6 +21,7 @@ RULES
   licence_tied_to_launch (bool), licence_type (bank|emi|pi|casp|insurance|other), customer_golive_stated (bool), new_product_line (cards|savings|payouts|embedded_finance|ai_feature|lending|wealth|other),
   partnership_scope_explicit (bool: integration scope or phases are named), tech_scope_stated (bool: a technology scope such as legacy retirement, nearshoring or automation is named),
   dedup_key (short canonical key of the fact).
+- Use supplier_exit when a named supplier of the subject leaves, is replaced, or its contract ends or is not renewed (name the supplier in other_entities with its role); say nothing about a replacement unless the text names one. A supplier that is only mentioned, or a new supplier being chosen, is not a supplier_exit.
 - Use market_launch for a new country or market launch, licence_granted for a new regulatory licence, cost_programme for a cost or efficiency programme with a technology element.
 - PRIVATE BUYER RFP: when this is a public page from the buying company and the page explicitly invites submissions for
   software engineering, include the verbatim `deadline_quote` (including the deadline with date, time and explicit UTC offset),

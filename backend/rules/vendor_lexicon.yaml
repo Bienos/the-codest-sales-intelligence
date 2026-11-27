@@ -1,0 +1,244 @@
+# Who counts as which kind of supplier. Used by vendor intelligence (src/ri/research/vendor_intel.py) to give a supplier name one spelling and one
+# category, whatever the page or the model called it, and to tell The Codest's direct competitors from platform vendors and integrators.
+#
+# ADVISORY, NEVER EVIDENCE. A name in this file proves nothing about any account: a vendor is only ever shown for an account when a page, an award
+# notice or one of our own verified findings ties the two together. The file is matched by exact name or alias (never by part of a word), so a short
+# alias such as "FIS" cannot match inside another word. Sales leadership can add names; a name not listed here is still found and shown, as "Other".
+#
+# categories:
+#   core_platform       banking / insurance / wealth core systems and industry platforms
+#   payments_platform   payments, cards, acquiring, payment infrastructure
+#   digital_channels    mobile and web banking, onboarding journeys, customer experience
+#   risk_compliance     fraud, AML, KYC, identity, credit data
+#   data_ai             data platforms and AI model providers
+#   cloud               cloud, infrastructure, observability
+#   enterprise_apps     CRM, ERP, workflow, process automation
+#   system_integrator   large integrators and consultancies (the route in via the prime, rules SRC-04 / NEG-03)
+#   engineering_partner software engineering firms: The Codest's direct competitors for team extension and delivery teams
+#   staffing_msp        staffing agencies and managed-service / vendor-management programmes (rule SRC-06)
+categories:
+  core_platform: "Core and industry platform"
+  payments_platform: "Payments and cards"
+  digital_channels: "Digital channels"
+  risk_compliance: "Risk, fraud, identity and compliance"
+  data_ai: "Data and AI platform"
+  cloud: "Cloud and infrastructure"
+  enterprise_apps: "CRM, ERP and workflow"
+  system_integrator: "Systems integrator or consultancy"
+  engineering_partner: "Software engineering partner"
+  staffing_msp: "Staffing or contingent labour"
+  other: "Other supplier"
+
+vendors:
+  # ---- core and industry platforms
+  - {name: Temenos, category: core_platform, aliases: [Temenos Infinity, Temenos Transact, T24]}
+  - {name: Mambu, category: core_platform}
+  - {name: Thought Machine, category: core_platform, aliases: [Vault Core]}
+  - {name: Finastra, category: core_platform, aliases: [Misys, Fusion Essence, Fusion Phoenix]}
+  - {name: FIS, category: core_platform, aliases: [Fidelity National Information Services, FIS Global]}
+  - {name: Fiserv, category: core_platform}
+  - {name: Jack Henry, category: core_platform}
+  - {name: Oracle Financial Services, category: core_platform, aliases: [Oracle FLEXCUBE, FLEXCUBE]}
+  - {name: Infosys Finacle, category: core_platform, aliases: [Finacle]}
+  - {name: 10x Banking, category: core_platform, aliases: [10x]}
+  - {name: Avaloq, category: core_platform}
+  - {name: Sopra Banking Software, category: core_platform}
+  - {name: Intellect Design Arena, category: core_platform, aliases: [Intellect Design]}
+  - {name: nCino, category: core_platform}
+  - {name: Pismo, category: core_platform}
+  - {name: Zafin, category: core_platform}
+  - {name: Murex, category: core_platform}
+  - {name: Adenza, category: core_platform, aliases: [Calypso]}
+  - {name: Broadridge, category: core_platform}
+  - {name: SS&C, category: core_platform, aliases: [SS&C Technologies, SSC Technologies]}
+  - {name: Guidewire, category: core_platform}
+  - {name: Duck Creek, category: core_platform, aliases: [Duck Creek Technologies]}
+  - {name: Sapiens, category: core_platform}
+  - {name: Majesco, category: core_platform}
+  - {name: Insurity, category: core_platform}
+  - {name: Asseco, category: core_platform, aliases: [Asseco Poland, Asseco BS, Asseco Group]}
+  # ---- payments and cards
+  - {name: ACI Worldwide, category: payments_platform, aliases: [ACI]}
+  - {name: Worldline, category: payments_platform}
+  - {name: Nexi, category: payments_platform, aliases: [Nets]}
+  - {name: Adyen, category: payments_platform}
+  - {name: Stripe, category: payments_platform}
+  - {name: Checkout.com, category: payments_platform}
+  - {name: Marqeta, category: payments_platform}
+  - {name: Form3, category: payments_platform}
+  - {name: Volante Technologies, category: payments_platform, aliases: [Volante]}
+  - {name: Bottomline, category: payments_platform, aliases: [Bottomline Technologies]}
+  - {name: Mastercard, category: payments_platform}
+  - {name: Visa, category: payments_platform}
+  - {name: Paysafe, category: payments_platform}
+  - {name: Global Payments, category: payments_platform, aliases: [TSYS]}
+  - {name: Euronet, category: payments_platform}
+  - {name: PPRO, category: payments_platform}
+  - {name: Modulr, category: payments_platform}
+  - {name: ClearBank, category: payments_platform}
+  - {name: Railsr, category: payments_platform, aliases: [Railsbank]}
+  - {name: TrueLayer, category: payments_platform}
+  - {name: Plaid, category: payments_platform}
+  - {name: Tink, category: payments_platform}
+  # ---- digital channels
+  - {name: Backbase, category: digital_channels}
+  - {name: Q2, category: digital_channels, aliases: [Q2 Software]}
+  - {name: Alkami, category: digital_channels}
+  - {name: Appway, category: digital_channels}
+  - {name: Netcetera, category: digital_channels}
+  - {name: Crealogix, category: digital_channels}
+  - {name: Adobe, category: digital_channels, aliases: [Adobe Experience Manager]}
+  - {name: Sitecore, category: digital_channels}
+  # ---- risk, fraud, identity, compliance
+  - {name: Feedzai, category: risk_compliance}
+  - {name: Featurespace, category: risk_compliance}
+  - {name: NICE Actimize, category: risk_compliance, aliases: [Actimize]}
+  - {name: SAS, category: risk_compliance, aliases: [SAS Institute]}
+  - {name: Quantexa, category: risk_compliance}
+  - {name: Fenergo, category: risk_compliance}
+  - {name: ComplyAdvantage, category: risk_compliance}
+  - {name: LexisNexis Risk Solutions, category: risk_compliance, aliases: [LexisNexis]}
+  - {name: LSEG, category: risk_compliance, aliases: [Refinitiv, World-Check, London Stock Exchange Group]}
+  - {name: Onfido, category: risk_compliance}
+  - {name: Jumio, category: risk_compliance}
+  - {name: Sumsub, category: risk_compliance}
+  - {name: IDnow, category: risk_compliance}
+  - {name: Signicat, category: risk_compliance}
+  - {name: Okta, category: risk_compliance, aliases: [Auth0]}
+  - {name: Ping Identity, category: risk_compliance}
+  - {name: Experian, category: risk_compliance}
+  - {name: Equifax, category: risk_compliance}
+  - {name: TransUnion, category: risk_compliance}
+  # ---- data and AI
+  - {name: Databricks, category: data_ai}
+  - {name: Snowflake, category: data_ai}
+  - {name: Palantir, category: data_ai}
+  - {name: Confluent, category: data_ai}
+  - {name: Cloudera, category: data_ai}
+  - {name: Informatica, category: data_ai}
+  - {name: Collibra, category: data_ai}
+  - {name: Dataiku, category: data_ai}
+  - {name: DataRobot, category: data_ai}
+  - {name: C3 AI, category: data_ai, aliases: [C3.ai]}
+  - {name: OpenAI, category: data_ai}
+  - {name: Anthropic, category: data_ai}
+  - {name: Mistral AI, category: data_ai}
+  - {name: Cohere, category: data_ai}
+  # ---- cloud and infrastructure
+  - {name: Amazon Web Services, category: cloud, aliases: [AWS]}
+  - {name: Microsoft Azure, category: cloud, aliases: [Azure]}
+  - {name: Google Cloud, category: cloud, aliases: [GCP, Google Cloud Platform]}
+  - {name: Oracle Cloud, category: cloud, aliases: [OCI, Oracle Cloud Infrastructure]}
+  - {name: IBM Cloud, category: cloud}
+  - {name: Red Hat, category: cloud, aliases: [OpenShift]}
+  - {name: VMware, category: cloud}
+  - {name: HashiCorp, category: cloud}
+  - {name: Datadog, category: cloud}
+  - {name: Dynatrace, category: cloud}
+  - {name: Splunk, category: cloud}
+  - {name: Cloudflare, category: cloud}
+  - {name: Akamai, category: cloud}
+  # ---- CRM, ERP, workflow
+  - {name: Salesforce, category: enterprise_apps, aliases: [Salesforce Financial Services Cloud]}
+  - {name: SAP, category: enterprise_apps, aliases: [SAP SE]}
+  - {name: Workday, category: enterprise_apps}
+  - {name: ServiceNow, category: enterprise_apps}
+  - {name: Microsoft Dynamics, category: enterprise_apps, aliases: [Dynamics 365]}
+  - {name: Pega, category: enterprise_apps, aliases: [Pegasystems]}
+  - {name: Appian, category: enterprise_apps}
+  - {name: UiPath, category: enterprise_apps}
+  - {name: Atlassian, category: enterprise_apps}
+  - {name: Zendesk, category: enterprise_apps}
+  - {name: Genesys, category: enterprise_apps}
+  # ---- systems integrators and consultancies
+  - {name: Accenture, category: system_integrator}
+  - {name: Capgemini, category: system_integrator, aliases: [Cap Gemini, Sogeti]}
+  - {name: Deloitte, category: system_integrator}
+  - {name: PwC, category: system_integrator, aliases: [PricewaterhouseCoopers]}
+  - {name: KPMG, category: system_integrator}
+  - {name: EY, category: system_integrator, aliases: [Ernst & Young]}
+  - {name: IBM Consulting, category: system_integrator, aliases: [IBM]}
+  - {name: Infosys, category: system_integrator}
+  - {name: Tata Consultancy Services, category: system_integrator, aliases: [TCS]}
+  - {name: Wipro, category: system_integrator}
+  - {name: Cognizant, category: system_integrator}
+  - {name: HCLTech, category: system_integrator, aliases: [HCL, HCL Technologies]}
+  - {name: Tech Mahindra, category: system_integrator}
+  - {name: LTIMindtree, category: system_integrator, aliases: [Mindtree]}
+  - {name: Mphasis, category: system_integrator}
+  - {name: Hexaware, category: system_integrator}
+  - {name: Tietoevry, category: system_integrator, aliases: [Tieto, EVRY]}
+  - {name: Sopra Steria, category: system_integrator}
+  - {name: CGI, category: system_integrator}
+  - {name: Atos, category: system_integrator, aliases: [Eviden]}
+  - {name: DXC Technology, category: system_integrator, aliases: [DXC]}
+  - {name: NTT DATA, category: system_integrator}
+  - {name: Adesso, category: system_integrator}
+  - {name: msg, category: system_integrator, aliases: [msg systems]}
+  - {name: Zühlke, category: system_integrator, aliases: [Zuhlke]}
+  - {name: Netcompany, category: system_integrator}
+  - {name: Kyndryl, category: system_integrator}
+  - {name: Fujitsu, category: system_integrator}
+  - {name: T-Systems, category: system_integrator}
+  - {name: Bechtle, category: system_integrator}
+  - {name: Computacenter, category: system_integrator}
+  - {name: Inetum, category: system_integrator, aliases: [Gfi]}
+  - {name: Comarch, category: system_integrator}
+  - {name: Cegeka, category: system_integrator}
+  - {name: Avanade, category: system_integrator}
+  - {name: Bouvet, category: system_integrator}
+  - {name: Knowit, category: system_integrator}
+  - {name: Genpact, category: system_integrator}
+  # ---- software engineering partners (direct competitors for team extension and delivery teams)
+  - {name: EPAM, category: engineering_partner, aliases: [EPAM Systems]}
+  - {name: Endava, category: engineering_partner}
+  - {name: Luxoft, category: engineering_partner}
+  - {name: Nagarro, category: engineering_partner}
+  - {name: Globant, category: engineering_partner}
+  - {name: Grid Dynamics, category: engineering_partner}
+  - {name: SoftServe, category: engineering_partner}
+  - {name: Intellias, category: engineering_partner}
+  - {name: N-iX, category: engineering_partner, aliases: [NIX Solutions]}
+  - {name: Ciklum, category: engineering_partner}
+  - {name: Avenga, category: engineering_partner}
+  - {name: Eleks, category: engineering_partner}
+  - {name: Lohika, category: engineering_partner}
+  - {name: Thoughtworks, category: engineering_partner}
+  - {name: Pentalog, category: engineering_partner}
+  - {name: Valtech, category: engineering_partner}
+  - {name: Xebia, category: engineering_partner}
+  - {name: Kainos, category: engineering_partner}
+  - {name: Scott Logic, category: engineering_partner}
+  - {name: Equal Experts, category: engineering_partner}
+  - {name: Codurance, category: engineering_partner}
+  - {name: Mobica, category: engineering_partner}
+  - {name: Itera, category: engineering_partner}
+  - {name: Sii, category: engineering_partner, aliases: [Sii Poland]}
+  - {name: Future Processing, category: engineering_partner}
+  - {name: STX Next, category: engineering_partner}
+  - {name: Netguru, category: engineering_partner}
+  - {name: 10Clouds, category: engineering_partner}
+  - {name: Software Mansion, category: engineering_partner}
+  - {name: Boldare, category: engineering_partner}
+  - {name: Spyrosoft, category: engineering_partner}
+  - {name: Tooploox, category: engineering_partner}
+  - {name: The Software House, category: engineering_partner}
+  - {name: Miquido, category: engineering_partner}
+  - {name: Brainhub, category: engineering_partner}
+  - {name: Altkom Software, category: engineering_partner}
+  - {name: Sparkbit, category: engineering_partner}
+  # ---- staffing and contingent labour
+  - {name: Hays, category: staffing_msp}
+  - {name: Randstad, category: staffing_msp, aliases: [Randstad Sourceright]}
+  - {name: Adecco, category: staffing_msp, aliases: [Pontoon]}
+  - {name: Experis, category: staffing_msp, aliases: [ManpowerGroup]}
+  - {name: Harvey Nash, category: staffing_msp}
+  - {name: PageGroup, category: staffing_msp, aliases: [Michael Page]}
+  - {name: Robert Walters, category: staffing_msp}
+  - {name: SThree, category: staffing_msp, aliases: [Computer Futures]}
+  - {name: Gi Group, category: staffing_msp}
+  - {name: Akkodis, category: staffing_msp, aliases: [Modis]}
+  - {name: Brunel, category: staffing_msp}
+  - {name: SAP Fieldglass, category: staffing_msp, aliases: [Fieldglass]}
+  - {name: Beeline, category: staffing_msp}
+  - {name: Magnit, category: staffing_msp}
