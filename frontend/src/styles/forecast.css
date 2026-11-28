@@ -214,3 +214,4 @@
 .rv-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; } .rv-chips .badge { white-space: nowrap; }
 .rv-setup { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
 @media (max-width: 520px) { .rv-check { grid-template-columns: minmax(0, 1fr) 44px 48px; } .rv-check .fc-src-bar { grid-column: 1 / -1; grid-row: 2; } }
+.rv-table td:not(:first-child) { white-space: nowrap; }

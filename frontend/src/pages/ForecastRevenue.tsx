@@ -121,7 +121,7 @@ export function Revenue({ d, onEdit }: { d: any; onEdit?: () => void }) {
 
       <h3 className="fc-h3">{tr("What is invoiced now")}</h3>
       <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Running contracts")}>
-        <table className="fc-table"><thead><tr><th>{tr("Contract")}</th><th>{tr("Per month")}</th><th>{tr("From")}</th><th>{tr("Until")}</th><th>{tr("People")}</th><th>{tr("Based on")}</th></tr></thead>
+        <table className="fc-table rv-table"><thead><tr><th>{tr("Contract")}</th><th>{tr("Per month")}</th><th>{tr("From")}</th><th>{tr("Until")}</th><th>{tr("People")}</th><th>{tr("Based on")}</th></tr></thead>
           <tbody>{r.engagements.slice(0, 25).map((e: any) => <tr key={e.crm_id}><td>{e.org || e.title}{e.org && <span className="small muted fc-fname"><span className="small">{e.title}</span></span>}</td><td>{money(e.monthly)}</td><td>{fmtDate(e.start)}</td>
             <td>{fmtDate(e.end)}{e.end_source === "assumed" && <span className="small muted"> · {tr("assumed")}</span>}</td><td>{e.fte ?? "–"}</td><td className="small">{tr(e.how)}</td></tr>)}</tbody></table>
       </div>
