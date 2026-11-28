@@ -201,3 +201,15 @@ def test_api_profile_edits_and_new_firms_are_audited(api, conn):
     assert "new-rival-labs" in {x["key"] for x in c.get("/api/competitors", headers=h("bdm")).json()["competitors"]}
     ops = {r["operation"] for r in conn.execute("select operation from audit_events")}
     assert {"competitor_updated", "competitor_added"} <= ops
+
+
+def test_scorecard_gives_every_comparison_the_same_numbers(conn):
+    ct.load_seed(conn)
+    d = ct.tracker(conn)
+    us, t1 = d["us"]["score"], [c for c in d["competitors"] if c["tier"] == 1]
+    assert us["markets"] == 4 and us["moves"] is None and set(us["flags"]) == {"security", "entry", "beyond_hours", "ai_badge"}
+    assert all(0 <= c["score"]["proof"] <= 4 and c["score"]["proof"] == sum(c["score"]["flags"].values()) for c in d["competitors"])
+    m = {x["key"]: x for x in d["measures"]}
+    assert set(m) == {k for k, _, _ in ct.MEASURES} and m["fs"]["max"] == 3
+    reviews = sorted(c["score"]["reviews"] for c in t1 if c["score"]["reviews"] is not None)
+    assert m["reviews"]["t1"]["min"] == reviews[0] and m["reviews"]["t1"]["max"] == reviews[-1] and m["reviews"]["t1"]["n"] == len(reviews)

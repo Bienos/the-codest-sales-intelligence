@@ -4,6 +4,7 @@ import { api, patch, post, put } from "../api";
 import { tr, useLanguage } from "../locale";
 import { Err, Skeleton } from "../components/ui";
 import "../styles/competitors.css";
+import { Duel, Momentum, ScoreGrid, StandRanges, standTally } from "./CompetitorVisuals";
 
 /* Competitor tracker (docs/competitor-tracker.md). Everything here is read from /api/competitors: tiers, overlap scores and pattern counts are
    worked out by the server from the rows, so the page never shows a number the data does not support. Every value shows its source, its date
@@ -120,30 +121,21 @@ function Briefing({ d, asOf }: Ctx) {
   const moves12 = d.competitors.flatMap((c: Comp) => c.moves.map((m: Move) => ({ ...m, c }))).filter((m: any) => (monthsOld(m.date, asOf) ?? 99) <= 12);
   const recent = moves12.slice().sort((a: any, b: any) => b.impact - a.impact || String(b.date).localeCompare(String(a.date))).slice(0, 6);
   const t1 = d.competitors.filter((c: Comp) => c.tier === 1).sort((a: Comp, b: Comp) => b.overlap.total - a.overlap.total);
-  const col = (v: string) => (v === "behind" ? "behind" : v === "ahead" ? "ahead" : "level");
-  const stand: Record<string, any[]> = { behind: [], level: [], ahead: [] };
-  d.standing.forEach((x: any) => stand[col(x.verdict)].push(x));
-  const COLS: [string, string, string][] = [["behind", "Behind them", "Fix first"], ["level", "Level", "No edge either way"], ["ahead", "Ahead of them", "Say it out loud"]];
+  const stand = standTally(d);
   return (
     <section className="ct-view">
       <div className="ct-kpis">
         <div className="ct-kpi"><span className="ct-label">{tr("Firms tracked")}</span><b>{d.competitors.length}</b><span className="xs muted">{tr("{} in tier 1", t1.length)}</span></div>
         <div className="ct-kpi"><span className="ct-label">{tr("High-impact moves")}</span><b>{moves12.filter((m: any) => m.impact === 3).length}</b><span className="xs muted">{tr("in the last 12 months")}</span></div>
         <div className="ct-kpi"><span className="ct-label">{tr("Where we stand")}</span>
-          <span className="ct-tally"><span className="behind">{stand.behind.length}</span><span className="level">{stand.level.length}</span><span className="ahead">{stand.ahead.length}</span></span>
-          <span className="xs muted">{tr("behind · level · ahead, on {} measures", d.standing.length)}</span></div>
+          <span className="ct-tally"><span className="behind">{stand.behind}</span><span className="level">{stand.level}</span><span className="ahead">{stand.ahead}</span></span>
+          <span className="xs muted">{tr("behind · level · ahead, on {} measures", stand.of)}</span></div>
         <div className="ct-kpi"><span className="ct-label">{tr("Closest rival")}</span><b className="nm">{t1[0] ? <ProfileLink c={t1[0]} /> : "–"}</b><span className="xs muted">{t1[0] ? tr("overlap {} of 100", t1[0].overlap.total) : ""}</span></div>
       </div>
 
-      <div className="card"><h3 className="ct-h">{tr("Where we stand")}</h3>
-        <p className="xs muted">{tr("The Codest against the median of the {} direct competitors (tier 1). Only things we can measure from public data.", t1.length)}</p>
-        <div className="ct-board">{COLS.map(([k, title, hint]) => <div key={k} className={`ct-col ${k}`}>
-          <div className="ct-colh"><b>{tr(title)}</b><span>{stand[k].length}</span></div><p className="xs muted ct-hint">{tr(hint)}</p>
-          {stand[k].length === 0 && <p className="xs muted">{tr("Nothing here")}</p>}
-          {stand[k].map((x: any) => <div key={x.what} className="ct-meas"><div className="t">{x.what}</div>
-            <div className="vs"><span><small>{tr("Us")}</small><b>{x.us}</b></span><span className="sep">vs</span><span><small>{tr("Tier 1")}</small><b>{x.them}</b></span></div>
-            <div className="xs muted">{x.basis}</div></div>)}
-        </div>)}</div>
+      <div className="card"><div className="ct-row spread"><h3 className="ct-h">{tr("Where we stand")}</h3><Link className="small" to="/competitors/compare">{tr("Go head to head")}</Link></div>
+        <p className="xs muted">{tr("Each line is one thing public data can measure. The shaded band is where the {} direct competitors (tier 1) sit; the pink mark is us.", t1.length)}</p>
+        <StandRanges d={d} />
       </div>
 
       <div className="card"><h3 className="ct-h">{tr("What the evidence says")}</h3>
@@ -164,6 +156,11 @@ function Briefing({ d, asOf }: Ctx) {
           <div className="ct-row"><Trend t={c.revenue?.trend} /></div>
           <div className="ct-last">{last ? <><span className="ct-age">{fmtD(last.date)}</span><span className="h">{last.headline}</span></> : <span className="xs muted">{tr("No dated move")}</span>}</div>
         </Link>; })}</div>
+      </div>
+
+      <div className="card"><div className="ct-row spread"><h3 className="ct-h">{tr("Who is moving")}</h3><Link className="small" to="/competitors/moves">{tr("All moves")}</Link></div>
+        <p className="xs muted">{tr("Every confirmed move in the last 12 months, by month. The firms at the top changed the most.")}</p>
+        <Momentum d={d} limit={8} />
       </div>
 
       <div className="card"><div className="ct-row spread"><h3 className="ct-h">{tr("Biggest moves in the last 12 months")}</h3><Link className="small" to="/competitors/moves">{tr("All moves")}</Link></div>
@@ -272,6 +269,8 @@ function Landscape({ d, all, asOf }: Ctx) {
 /* ------------------------------------------------------------------ Compare */
 function Compare({ d, byKey, asOf }: Ctx) {
   const [pick, setPick] = useState<string[]>(d.defaultCompare || []);
+  const closest = d.competitors.slice().sort((a: Comp, b: Comp) => b.overlap.total - a.overlap.total)[0];
+  const [rival, setRival] = useState<string>(closest?.key || "");
   const [same, setSame] = useState(false); const [full, setFull] = useState(false);
   const cols: Comp[] = [d.us, ...pick.map((k) => byKey[k]).filter(Boolean)];
   const cell = (f: Fact) => <div className="ct-cell"><span className="v"><Val f={f} /></span><Src f={f} asOf={asOf} /></div>;
@@ -310,7 +309,11 @@ function Compare({ d, byKey, asOf }: Ctx) {
   ];
   return (
     <section className="ct-view">
-      <p className="sub">{tr("The Codest against up to four competitors, field by field. Each value shows where it came from and how old it is. Pick the firms you meet in a deal.")}</p>
+      <p className="sub">{tr("Three ways to compare: one rival head to head, every direct competitor on one grid, and the full evidence field by field with its sources.")}</p>
+      <div className="card"><h3 className="ct-h">{tr("Head to head")}</h3><Duel d={d} rivalKey={rival} setRival={setRival} /></div>
+      <div className="card"><h3 className="ct-h">{tr("Scorecard: us and tier 1")}</h3><ScoreGrid d={d} extra={pick} /></div>
+      <h3 className="ct-h">{tr("Field by field, with sources")}</h3>
+      <p className="small muted m-0">{tr("Pick up to four firms you meet in a deal. Each value shows where it came from and how old it is.")}</p>
       <div className="card"><div className="ct-label">{tr("Compare with ({} of 4)", pick.length)}</div><div className="ct-picker">
         {d.competitors.slice().sort((a: Comp, b: Comp) => a.tier - b.tier || a.name.localeCompare(b.name)).map((c: Comp) => { const on = pick.includes(c.key);
           return <button key={c.key} type="button" aria-pressed={on} disabled={!on && pick.length >= 4} onClick={() => setPick(on ? pick.filter((k) => k !== c.key) : [...pick, c.key])}><Dot c={c} />{c.name}</button>; })}
@@ -509,6 +512,7 @@ function Moves({ d, asOf }: Ctx) {
   return (
     <section className="ct-view">
       <p className="sub">{tr("Dated things competitors did, each with its source. Impact is about The Codest: high means it changes how we compete for banks, insurers and fintechs in our four markets. Anyone can suggest a move from a profile; a reviewer confirms it.")}</p>
+      <div className="card"><h3 className="ct-h">{tr("Who is moving")}</h3><Momentum d={d} limit={20} /></div>
       <div className="ct-filters">
         <span className="ct-label">{tr("Impact")}</span><span className="ct-seg">{[[0, "Any"], [2, "Medium and high"], [3, "High only"]].map(([v, l]) => <button key={v} type="button" aria-pressed={imp === v} onClick={() => setImp(v as number)}>{tr(l as string)}</button>)}</span>
         <span className="ct-label">{tr("Tier")}</span><span className="ct-seg">{["all", "1", "2", "3"].map((t) => <button key={t} type="button" aria-pressed={tier === t} onClick={() => setTier(t)}>{t === "all" ? tr("All") : t}</button>)}</span>

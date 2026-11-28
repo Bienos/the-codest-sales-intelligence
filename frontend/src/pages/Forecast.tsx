@@ -3,6 +3,7 @@ import { api, fmtDate, post, put } from "../api";
 import { tr } from "../locale";
 import { Badge, Err, PageHeader, Skeleton, Tabs } from "../components/ui";
 import "../styles/forecast.css";
+import { ArrivalsChart, FlowStrip, Predictor } from "./ForecastFlow";
 
 // Revenue forecast (backend: ri/forecast). Every number on the page comes from GET /api/forecast; managers change the assumptions here.
 
@@ -253,6 +254,22 @@ function Sources({ d }: { d: any }) {
   );
 }
 
+function PipelineFlow({ o }: { o: any }) {
+  const [pair, setPair] = useState<[number, number]>([o.pair.from, o.pair.to]);
+  const [stage, setStage] = useState<number>(o.pair.to);
+  const pick = (p: [number, number]) => { setPair(p); setStage(p[1]); };
+  return (
+    <section className="card ff-card" aria-labelledby="ff-h">
+      <div className="ff-head"><div><div className="eyebrow">{tr("Pipeline")}</div><h2 id="ff-h">{tr("What is coming through the funnel")}</h2>
+        <p className="small muted m-0">{tr("Each stage: deals open there now and how many should arrive in the next 90 days. Between stages: the share that moves on. Click two stages to predict between them.")}</p></div></div>
+      <FlowStrip o={o} pair={pair} setPair={pick} />
+      <div className="ff-two">
+        <div className="ff-panel"><h3 className="fc-h3 mt-0">{tr("Predict between two stages")}</h3><Predictor o={o} pair={pair} setPair={pick} /></div>
+        <div className="ff-panel"><h3 className="fc-h3 mt-0">{tr("Month by month: actual and expected")}</h3><ArrivalsChart o={o} stage={stage} setStage={setStage} /></div>
+      </div>
+    </section>
+  );
+}
 
 /** Where this year's revenue should come from: each source's open deals, plus the new deals outbound and inbound should create. */
 function BySource({ d }: { d: any }) {
@@ -332,6 +349,8 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
           <div className="fc-tile"><div className="fc-label">{tr("Open pipeline, weighted")}</div><div className="fc-val">{money(d.pipeline.weighted)}</div><div className="fc-note">{tr("{} open deals worth {} in total", d.pipeline.deals, money(d.pipeline.open_value))}</div></div>
         </div>
       </section>
+
+      {d.outlook && !d.outlook.error && <PipelineFlow o={d.outlook} />}
 
       <div className="card fc-tabs">
         <Tabs label="Forecast details" items={tabs} value={tab} onChange={setTab}>

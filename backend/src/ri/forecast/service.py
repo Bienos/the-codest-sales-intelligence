@@ -14,7 +14,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from ..db import Conn, jb, q1, qa
-from . import engine
+from . import engine, outlook
 from .history import History, load_funnel, measure
 
 DEFAULT_CONV = [55, 55, 50, 55, 65]
@@ -262,6 +262,11 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
         "sources": data_sources(conn, app_settings),
         "settings": {k: v for k, v in s.items()}, "log": forecast_log(conn, inp["year"]),
     }
+    try:      # the funnel outlook never takes the revenue forecast down with it
+        recent = measure(conn, h.funnel, now=now, lookback_days=365, year=inp["year"])
+        payload["outlook"] = outlook.build(conn, inp, h.open_deals, base.streams, sorted(h.funnel.won_ids), recent, now)
+    except Exception as exc:  # noqa: BLE001
+        payload["outlook"] = {"error": f"{type(exc).__name__}: {exc}"[:200]}
     with _LOCK:
         _CACHE.clear()
         _CACHE[key] = (time.time(), payload)
