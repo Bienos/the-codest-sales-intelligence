@@ -296,7 +296,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
 
     ted_awards_window.own_transactions = True  # type: ignore[attr-defined]
     def competitor_watch(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:
-        from ..competitor_watch import http_fetch, run
+        from ..competitor_watch import http_fetch, http_post, run
         from ..config import Settings
         st = Settings.from_env(require_auth=False)
         search = None
@@ -304,7 +304,7 @@ def build_handlers(*, connector_factory: Callable[[str], Any], extractor_factory
             from ..research.exa_search import ExaSearcher, exa_post
             searcher = ExaSearcher(conn, post=exa_post(st.exa_api_key), operation="competitor_news", ref_type="competitor_watch", ref_id=job["payload"].get("day", "run"))
             search = lambda purpose, body: searcher.search(purpose, body, text_cap=1500)      # noqa: E731
-        return run(conn, fetch=http_fetch, search=search)
+        return run(conn, fetch=http_fetch, search=search, post=http_post)
 
     competitor_watch.own_transactions = True  # type: ignore[attr-defined]
     def ted_probe(conn: Conn, job: dict[str, Any]) -> dict[str, Any]:

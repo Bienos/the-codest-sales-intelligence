@@ -341,6 +341,24 @@ function Compare({ d, byKey, asOf }: Ctx) {
 const FragmentCells = ({ children }: { children: ReactNode }) => <>{children}</>;
 const FragmentRows = ({ group, n, children }: { group?: string; n: number; children: ReactNode }) => <>{group && <tr className="grp"><th colSpan={n}>{tr(group)}</th></tr>}{children}</>;
 
+/* ------------------------------------------------------------------ how one firm is tracked */
+const CHECKS: [string, string, (c: Comp) => boolean][] = [
+  ["homepage", "Homepage headline", (c) => !!c.url], ["sitemap", "New pages on their site", (c) => !!c.url], ["feed", "Their blog and news feed", (c) => !!c.url],
+  ["gdelt", "News coverage (GDELT)", (c) => c.tier !== 3], ["news", "News search (Exa)", (c) => c.tier !== 3], ["clutch", "Clutch rating and reviews", (c) => !!c.track?.clutchUid],
+  ["careers", "Their job system and NoFluffJobs", (c) => !!(c.track?.ats?.slug || c.track?.nfj)], ["krs", "Polish register (KRS)", (c) => !!c.track?.krs?.length],
+  ["ch", "UK Companies House", (c) => !!c.track?.ukCompany], ["aws", "AWS partner finder", (c) => !!c.track?.aws],
+];
+function Tracking({ c }: { c: Comp }) {
+  return <details className="card ct-track"><summary><h3 className="ct-h">{tr("How we track this firm")}</h3></summary>
+    <p className="xs muted">{tr("Checks run on their own schedule (weekly or monthly). Anything they find waits on the Review tab until someone confirms it.")}</p>
+    <ul className="ct-checks">{CHECKS.map(([k, label, set]) => { const w = c.watch?.[k]; const on = set(c);
+      const state = !on ? "off" : !w?.at ? "wait" : w.error ? "err" : "ok";
+      return <li key={k} className={state}><i /><b>{tr(label)}</b><span className="xs muted">{state === "off" ? tr("Not set up for this firm") : state === "wait" ? tr("Not run yet")
+        : state === "err" ? tr("Last try {} failed: {}", fmtD(w.at.slice(0, 10)), w.error) : tr("Last checked {}", fmtD(w.at.slice(0, 10)))}</span></li>; })}</ul>
+    <p className="xs muted">{tr("Also checked for every firm at once: public tenders they win in the EU, Poland and the UK; vendor partner pages; open roles on justjoin.it.")}</p>
+  </details>;
+}
+
 /* ------------------------------------------------------------------ Profiles */
 function Profiles({ d, byKey, reload, asOf, selected }: Ctx & { selected?: string }) {
   const nav = useNavigate();
@@ -388,7 +406,9 @@ function Profile({ c, d, asOf, reload }: { c: Comp; d: any; asOf: string; reload
       </div>
       <div className="ct-facts">{fact("Ownership", c.ownership)}{fact("Headcount", c.headcount)}{fact("Revenue", c.revenue)}
         {fact("Clutch", c.clutch ? { value: `${c.clutch.rating ?? "–"} · ${tr("{} reviews", c.clutch.reviews ?? "–")} · ${c.clutch.rate || ""}`, source: c.clutch.source, asOf: c.clutch.asOf, grade: c.clutch.grade } : null)}
-        {fact("Open roles on justjoin.it", c.jobs || { value: tr("Not counted") })}</div>
+        {fact("Open roles on justjoin.it", c.jobs || { value: tr("Not counted") })}
+        {c.roleMix && fact("Roles on their own job system", c.roleMix)}{c.aws && fact("AWS partner", c.aws)}</div>
+      {c.tier !== 0 && <Tracking c={c} />}
       {d.can?.manage && c.tier !== 0 && <EditFacts c={c} reload={reload} />}
       {c.tier !== 0 && hasCard && <div className="card"><h3 className="ct-h">{tr("Battlecard")}</h3>
         {c.quickDismiss && <div className="ct-kill"><div className="ct-label">{tr("If the buyer mentions them, say")}</div><p>{c.quickDismiss}</p></div>}
@@ -652,7 +672,9 @@ function Review({ d, reload }: Ctx) {
   return (
     <section className="ct-view">
       <p className="sub">{tr("Moves suggested by sellers or found by collection wait here. Confirm what is true and matters, with a “So what” for medium and high impact; dismiss the rest.")}</p>
-      <p className="small muted">{tr("Automatic checks, last run:")} {[["awards", "public awards"], ["jobs", "open roles"], ["homepage", "homepage headlines"], ["news", "news"]].map(([k, l]) => {
+      <p className="small muted">{tr("Automatic checks, last run:")} {[["tenders", "Polish and UK tenders"], ["awards", "public awards"], ["jobs", "justjoin.it roles"], ["careers", "job systems"], ["homepage", "homepage headlines"],
+        ["sitemap", "new site pages"], ["feed", "own blogs"], ["gdelt", "GDELT news"], ["news", "Exa news"], ["clutch", "Clutch"], ["krs", "Polish register"], ["ch", "Companies House"],
+        ["aws", "AWS partner finder"], ["partners", "vendor partner pages"]].map(([k, l]) => {
         const w = d.watch?.[k]; return <span key={k} className="ct-chip dim">{tr(l)}: {w?.last_run ? fmtD(w.last_run.slice(0, 10)) : tr("not yet")}{w?.errors ? ` · ${tr("{} failed", w.errors)}` : ""}</span>; })}</p>
       {err ? <Err e={err} /> : !items ? <Skeleton /> : items.length === 0 ? <div className="empty"><b>{tr("Nothing waiting")}</b>{tr("New suggestions appear here.")}</div> :
         <div className="card">{items.map((m) => <div key={m.id} className="ct-mv"><span className="when">{fmtD(m.date)}</span><div>

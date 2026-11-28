@@ -454,3 +454,14 @@
 .ct-sig > summary, .ct-acc summary { font: 400 var(--fs-sm)/1.4 var(--font-body); text-transform: none; letter-spacing: 0; color: var(--body); }
 .ct-sig .act b { font-weight: 700; }
 .ct-cmp th.rowh { overflow-wrap: anywhere; }
+
+/* how one firm is tracked */
+.ct-track summary { list-style: none; cursor: pointer; } .ct-track summary::-webkit-details-marker { display: none; }
+.ct-track summary .ct-h { margin: 0; } .ct-track[open] summary .ct-h { margin-bottom: 8px; }
+.ct-track summary .ct-h::after { content: "+"; margin-left: auto; color: var(--muted); } .ct-track[open] summary .ct-h::after { content: "–"; }
+.ct-checks { list-style: none; margin: 8px 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 6px 14px; }
+.ct-checks li { display: grid; grid-template-columns: 12px 1fr; gap: 2px 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.ct-checks li i { width: 10px; height: 10px; background: var(--off); grid-row: span 2; }
+.ct-checks li.ok i { background: var(--dot-ok); } .ct-checks li.err i { background: var(--pink); } .ct-checks li.wait i { background: var(--purple); }
+.ct-checks li b { font-size: var(--fs-sm); color: var(--navy); } .ct-checks li .xs { grid-column: 2; }
+.ct-checks li.off b { color: var(--muted); font-weight: 600; }
