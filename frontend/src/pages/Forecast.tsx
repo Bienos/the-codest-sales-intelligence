@@ -5,6 +5,7 @@ import { Badge, Err, PageHeader, Skeleton, Tabs } from "../components/ui";
 import "../styles/forecast.css";
 import { ArrivalsChart, FlowStrip, Predictor } from "./ForecastFlow";
 import { Categories, Quality, Revenue } from "./ForecastRevenue";
+import { Indicators, Movement } from "./ForecastWeekly";
 
 // Revenue forecast (backend: ri/forecast). Every number on the page comes from GET /api/forecast; managers change the assumptions here.
 
@@ -336,6 +337,7 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
   const b = d.result.buckets.slice(1) as any[];
   const openShare = y.mean > 0 ? b.reduce((a: number, q: any) => a + q.open, 0) / y.mean : 0;
   const tabs = [{ key: "revenue", label: tr("Revenue by month") }, { key: "quarters", label: tr("Deals won by quarter") },
+    { key: "indicators", label: tr("Leading indicators") }, { key: "movement", label: tr("Pipeline movement") },
     { key: "categories", label: tr("Forecast categories") }, { key: "quality", label: tr("Data quality") }, { key: "funnel", label: tr("Funnel") }, { key: "drivers", label: tr("What moves it") },
     { key: "sources", label: tr("Sources") }, { key: "outbound", label: tr("Outbound") }, { key: "deals", label: tr("Deals and history") }, { key: "assumptions", label: tr("Assumptions") }];
   return (
@@ -374,6 +376,8 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
           {tab === "revenue" && <Revenue d={d} onEdit={canManage ? () => setTab("assumptions") : undefined} />}
           {tab === "categories" && <Categories d={d} canManage={canManage} reload={() => void load(true)} />}
           {tab === "quality" && <Quality d={d} canManage={canManage} reload={() => void load(true)} />}
+          {tab === "indicators" && <Indicators canManage={canManage} />}
+          {tab === "movement" && <Movement pipedriveUrl={d.quality?.pipedrive_url} />}
           {tab === "quarters" && <>
             <div className="fc-legend">
               <span><i className="fc-sw fc-open-sw" />{tr("Open pipeline today")}</span><span><i className="fc-sw fc-new-sw" />{tr("Deals not yet created")}</span>

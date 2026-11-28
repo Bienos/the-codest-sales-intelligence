@@ -215,3 +215,22 @@
 .rv-setup { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
 @media (max-width: 520px) { .rv-check { grid-template-columns: minmax(0, 1fr) 44px 48px; } .rv-check .fc-src-bar { grid-column: 1 / -1; grid-row: 2; } }
 .rv-table td:not(:first-child) { white-space: nowrap; }
+
+/* Leading indicators and pipeline movement (pages/ForecastWeekly.tsx). Square marks per the design system; totals navy, in purple, out orange. */
+.fw-table td { vertical-align: middle; }
+.fw-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.fw-spark { display: block; }
+.fw-spark .fw-bar { fill: var(--off); } .fw-spark .fw-now { fill: var(--navy); } .fw-spark .fw-axis { stroke: var(--line); }
+.fw-goal { width: 5.5em; }
+.fw-head { gap: 12px; flex-wrap: wrap; margin: 0 0 12px; } .fw-head > p { max-width: 70ch; }
+.fw-controls { gap: 12px; align-items: center; flex-wrap: wrap; } .fw-by { margin: 0; }
+.fw-water-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--white); padding: 8px 4px; }
+.fw-water { display: block; width: 100%; max-width: 760px; min-width: 520px; height: auto; }
+.fw-water .fw-total { fill: var(--navy); } .fw-water .fw-up { fill: var(--purple); } .fw-water .fw-down { fill: var(--orange); }
+.fw-water .fw-link { stroke: var(--muted); stroke-dasharray: 2 2; }
+.fw-water .fw-lbl { font: 500 12px var(--font-body); fill: var(--body); } .fw-water .fw-val { font: 700 12px var(--font-body); fill: var(--navy); } .fw-water .fw-zero { font-weight: 400; fill: var(--muted); }
+.fw-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.fw-key { display: inline-block; width: 12px; height: 12px; } .fw-key.fw-total { background: var(--navy); } .fw-key.fw-up { background: var(--purple); } .fw-key.fw-down { background: var(--orange); }
+.fw-deals { margin: 4px 0; } .fw-deals ul { margin: 4px 0 8px; padding-left: 18px; }
+.fw-water-table { display: none; } .fw-water-table td.num { text-align: right; font-variant-numeric: tabular-nums; } .fw-row-total td { font-weight: 700; }
+@media (max-width: 600px) { .fw-water-wrap, .fw-legend { display: none; } .fw-water-table { display: table; width: 100%; } }

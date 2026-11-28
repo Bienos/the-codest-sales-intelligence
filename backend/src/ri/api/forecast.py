@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Query, Request
 from pydantic import BaseModel, Field, field_validator
 
 from ..access import Principal
@@ -39,6 +39,7 @@ class ForecastSettingsIn(BaseModel):
     delivery_open_stage_names: list[str] | None = Field(None, max_length=20)
     delivery_hold_stage_names: list[str] | None = Field(None, max_length=20)
     delivery_value_means: Literal["total", "monthly"] | None = None
+    weekly_goals: dict[str, float] | None = None                       # leading indicators: {key: goal per week}; 0 or missing = no goal
 
     @field_validator("fx_to_eur")
     @classmethod
@@ -47,6 +48,15 @@ class ForecastSettingsIn(BaseModel):
             raise ValueError("exchange rates are positive numbers keyed by three-letter currency codes")
         return {k.upper(): x for k, x in v.items()} if v is not None else v
     clear: list[str] = Field(default_factory=list, max_length=20)     # fields to put back to "measured / default" (None)
+
+    @field_validator("weekly_goals")
+    @classmethod
+    def _goals(cls, v: dict[str, float] | None) -> dict[str, float] | None:
+        from ..forecast.movement import INDICATORS
+        keys = {k for k, _ in INDICATORS}
+        if v is not None and (any(k not in keys for k in v) or any(not (0 <= x <= 100000) for x in v.values())):
+            raise ValueError("weekly goals are numbers from 0 to 100000 for the listed indicators")
+        return {k: x for k, x in v.items() if x > 0} if v is not None else v
 
     @field_validator("prior_conv")
     @classmethod
@@ -80,6 +90,36 @@ def register(app: FastAPI) -> None:
         with request.app.state.db.tx() as conn:          # fresh: recalculate now instead of using the last 10 minutes' result
             out = build(conn, request.app.state.settings, use_cache=not fresh)
             return {**out, "can": {"manage": p.can("forecast.manage"), "sync": p.can("admin.jobs") or p.role == "sales_manager"}}
+
+    def _funnel(conn: Any, request: Request) -> tuple[Any, dict[str, Any]]:
+        from ..forecast.history import load_funnel
+        from ..forecast.service import load_settings
+        st = load_settings(conn)
+        pid = st["pipeline_id"] if st["pipeline_id"] is not None else getattr(request.app.state.settings, "pipedrive_pipeline_id", None)
+        return load_funnel(conn, pid, st["parking_stage_names"] or [], st["won_stage_names"] or []), st
+
+    @app.get("/api/forecast/indicators")
+    def get_indicators(request: Request, p: Principal = Depends(require("forecast.read"))):
+        """Leading indicators by week (forecast/movement.py), with the weekly goals managers set."""
+        from ..forecast.movement import indicators
+        with request.app.state.db.tx() as conn:
+            f, st = _funnel(conn, request)
+            return {**indicators(conn, f, st.get("weekly_goals") or {}), "can": {"manage": p.can("forecast.manage")}}
+
+    @app.get("/api/forecast/movement")
+    def get_movement(request: Request, days: int = Query(7, ge=1, le=730), p: Principal = Depends(require("forecast.read"))):
+        """How the open funnel changed over the last `days` days: added, revived, won, lost, parked, value up or down, stage moves."""
+        from datetime import datetime, timedelta, timezone
+
+        from ..forecast.movement import movement
+        from ..forecast.service import make_convert
+        with request.app.state.db.tx() as conn:
+            f, st = _funnel(conn, request)
+            cur = (st["currency"] or "EUR").upper()
+            fx = {k.upper(): float(v) for k, v in (st["fx_to_eur"] or {}).items() if v}
+            now = datetime.now(timezone.utc)
+            return {**movement(conn, f, make_convert(cur, fx), now - timedelta(days=days), now=now), "days": days, "currency": cur,
+                    "stages": [x.name for x in f.stages]}
 
     @app.post("/api/forecast/pipedrive-fields")
     def setup_fields(request: Request, p: Principal = Depends(require("forecast.manage"))):

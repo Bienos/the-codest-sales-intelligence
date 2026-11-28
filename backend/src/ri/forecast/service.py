@@ -47,6 +47,7 @@ DEFAULTS: dict[str, Any] = {
     "delivery_open_stage_names": ["OPEN ROLES"],
     "delivery_hold_stage_names": ["On hold"],
     "delivery_value_means": "total",   # Delivery Clients deal value: 'total' (spread over the contract) or 'monthly'
+    "weekly_goals": {},                # leading indicators (forecast/movement.py): {indicator key: goal per week}
 }
 RUNS = 1000
 SENS_STEP = 0.2
