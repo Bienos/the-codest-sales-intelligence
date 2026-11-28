@@ -10,7 +10,7 @@ from ri.config import Settings
 from ri.crm import fields as pdf
 from ri.crm import pipedrive as pd
 from ri.forecast import engine, service
-from test_r64_forecast import NOW, deal, seed_stages
+from test_r64_forecast import NOW, api, deal, seed_stages  # noqa: F401  (api is a fixture)
 
 
 class FakeReader:
@@ -160,22 +160,10 @@ def test_categories_and_data_quality(conn):
     assert "close_date" in miss[1] and "start" in miss[1]
 
 
-def test_fields_endpoint_needs_manage_and_a_token(conn):
-    from fastapi.testclient import TestClient
-
-    from ri.api.app import create_app
-    from ri.api.auth import make_dev_token
-    from ri.db import Database
-    from test_r4_crm_notify import mk_user
-    secret = "s" * 32
-    mk_user(conn, "boss@x", "sales_manager")
-    mk_user(conn, "rep@x", "bdm")
-    conn.commit()
-    db = Database(conn.info.dsn)
-    c = TestClient(create_app(Settings(env="development", auth_mode="dev", dev_auth_secret=secret), db=db))
-    h = (lambda who: {"Authorization": f"Bearer {make_dev_token(secret, who)}"})
-    assert c.post("/api/forecast/pipedrive-fields", headers=h("rep@x")).status_code == 403
-    assert c.post("/api/forecast/pipedrive-fields", headers=h("boss@x")).status_code == 409        # no Pipedrive token in this app
+def test_fields_endpoint_needs_manage_and_a_token(api):
+    c, h = api
+    assert c.post("/api/forecast/pipedrive-fields", headers=h("bdm")).status_code == 403
+    assert c.post("/api/forecast/pipedrive-fields", headers=h("mgr")).status_code == 409        # no Pipedrive token in this app
 
 
 def test_np_add_at_is_used_correctly():
