@@ -59,3 +59,63 @@ def test_a_failing_activities_read_never_stops_the_deal_mirror(conn):
     assert out["deals"] == 1 and "boom" in out["activities_error"]
     assert conn.execute("select count(*) n from crm_deals where crm_id=9").fetchone()["n"] == 1
     assert conn.execute("select count(*) n from sync_state where entity='activities'").fetchone()["n"] == 0   # read again next hour
+
+
+# ------------------------------------------------------------------ hygiene board (Forecast, Data quality)
+from ri.forecast import quality as fq   # noqa: E402
+
+NAMES = ["Webform MQL", "DISCOVERY", "SQL", "Proposal/Shortlist", "Commercials/NDA"]
+
+
+def open_deal(conn, i, *, owner=555, close=None, stage_index=2):
+    conn.execute("insert into crm_deals(crm_id, title, stage_id, status, pipeline_id, value, currency, owner_id, expected_close_date) "
+                 "values (%s,%s,12,'open',2,50000,'EUR',%s,%s)", (i, f"Deal {i}", owner, close))
+    return {"crm_id": i, "title": f"Deal {i}", "stage_index": stage_index, "days_in_stage": 5.0, "value": 50000}
+
+
+def activity(conn, i, deal, *, done, due=None, done_at=None):
+    conn.execute("insert into crm_activities(crm_id, crm_deal_id, type, subject, done, due_at, done_at, owner_id) values (%s,%s,'call','x',%s,%s,%s,555)",
+                 (i, deal, done, due, done_at))
+
+
+def run_quality(conn, deals):
+    return fq.quality(conn, deals, NAMES, [10, 20, 20, 30, 30], 2, NOW)
+
+
+def test_hygiene_flags_past_close_dates_missing_steps_and_silence(conn):
+    conn.execute("insert into crm_users(crm_id, name) values (555,'Ola'), (556,'Jan')")
+    d = [open_deal(conn, 1, close=NOW.date() - timedelta(days=3)),       # close date passed
+         open_deal(conn, 2, close=NOW.date() + timedelta(days=30)),      # next step booked, contact last week: clean
+         open_deal(conn, 3, owner=556),                                    # only an overdue step, no contact for a month
+         open_deal(conn, 4, owner=556)]                                    # nothing at all
+    activity(conn, 10, 2, done=False, due=NOW + timedelta(days=2))
+    activity(conn, 11, 2, done=True, done_at=NOW - timedelta(days=6))
+    activity(conn, 12, 3, done=False, due=NOW - timedelta(days=9))
+    activity(conn, 13, 3, done=True, done_at=NOW - timedelta(days=30))
+    activity(conn, 14, 1, done=True, done_at=NOW - timedelta(days=2))
+    activity(conn, 15, 1, done=False, due=NOW + timedelta(days=1))
+
+    before = run_quality(conn, d)                                            # activities not read yet: only the close date is judged
+    assert before["hygiene"]["activities_synced"] is False
+    assert [c["key"] for c in before["hygiene"]["counts"]] == ["close_past"]
+    assert {x["crm_id"]: x["hygiene"] for x in before["deals"]}.get(4, []) == []
+
+    conn.execute("insert into sync_state(system, entity, watermark) values ('pipedrive','activities','2026-11-28T11:00:00Z')")
+    q = run_quality(conn, d)
+    flags = {x["crm_id"]: x["hygiene"] for x in q["deals"]}
+    assert flags[1] == ["close_past"]
+    assert 2 not in flags or flags[2] == []
+    assert flags[3] == ["step_overdue", "no_contact"] and flags[4] == ["no_next_step", "no_contact"]
+    by = {o["name"]: o for o in q["owners"]}
+    assert (by["Ola"]["close_past"], by["Ola"]["no_next_step"], by["Ola"]["no_contact"]) == (1, 0, 0)
+    assert (by["Jan"]["no_next_step"], by["Jan"]["step_overdue"], by["Jan"]["no_contact"]) == (1, 1, 2)
+    assert {c["key"]: c["n"] for c in q["hygiene"]["counts"]} == {"close_past": 1, "no_next_step": 1, "step_overdue": 1, "no_contact": 2}
+    one = next(x for x in q["deals"] if x["crm_id"] == 3)
+    assert one["days_since_contact"] == 30 and one["owner_id"] == 556
+
+
+def test_hygiene_links_to_pipedrive_when_the_domain_is_known(conn, monkeypatch):
+    monkeypatch.setenv("PIPEDRIVE_DOMAIN", "example")
+    assert run_quality(conn, [open_deal(conn, 1)])["pipedrive_url"] == "https://example.pipedrive.com"
+    monkeypatch.delenv("PIPEDRIVE_DOMAIN")
+    assert run_quality(conn, [])["pipedrive_url"] is None

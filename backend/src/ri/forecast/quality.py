@@ -1,5 +1,6 @@
 """Two views over the open funnel deals: the sellers' forecast category next to the model's win chance (where they disagree is what the
-weekly forecast call is for), and data quality per owner (which fields each deal still needs for the forecast to be trusted)."""
+weekly forecast call is for), and data quality per owner (which fields each deal still needs for the forecast to be trusted, plus pipeline
+hygiene: a close date already passed, no next step in Pipedrive, no contact logged for NO_CONTACT_DAYS)."""
 from __future__ import annotations
 
 import os
@@ -9,6 +10,8 @@ from typing import Any
 from ..db import Conn, qa
 
 CATEGORY_ORDER = ["Commit", "Best case", "Pipeline"]
+NO_CONTACT_DAYS = 20
+HYGIENE = [("close_past", "Close date passed"), ("no_next_step", "No next step"), ("step_overdue", "Next step overdue"), ("no_contact", "No contact logged")]
 
 
 def _stage_at(names: list[str], needle: str, default: int) -> int:
@@ -66,11 +69,43 @@ CHECKS = [("value", "Value"), ("lead_source", "Lead source"), ("deal_type", "Dea
           ("category", "Forecast category"), ("start", "Planned start"), ("qual_early", "Pain and champion"), ("qual_late", "Decision maker and process")]
 
 
+def _activity(conn: Conn, ids: list[int]) -> tuple[bool, dict[int, dict[str, Any]]]:
+    """Whether Pipedrive activities have been read at least once, and per deal: the next open activity and the last one done."""
+    if not qa(conn, "SELECT 1 FROM sync_state WHERE system='pipedrive' AND entity='activities' AND watermark IS NOT NULL"):
+        return False, {}
+    return True, {r["crm_deal_id"]: r for r in qa(conn, """
+        SELECT crm_deal_id, min(due_at) FILTER (WHERE NOT done) AS next_due, count(*) FILTER (WHERE NOT done) AS open_n,
+               max(done_at) FILTER (WHERE done) AS last_done
+        FROM crm_activities WHERE crm_deal_id = ANY(%s) GROUP BY 1""", (ids,))}
+
+
+def _hygiene(d: dict[str, Any], a: dict[str, Any] | None, acts_on: bool, now: datetime) -> tuple[list[str], int | None]:
+    """Flags for one open deal, and days since the last contact logged in Pipedrive (None when activities are not read yet)."""
+    flags = []
+    close = d.get("expected_close_date")
+    if close and close < now.date():
+        flags.append("close_past")
+    if not acts_on:
+        return flags, None
+    a = a or {}
+    if not a.get("open_n"):
+        flags.append("no_next_step")
+    elif a.get("next_due") and a["next_due"] < now - timedelta(days=1):
+        flags.append("step_overdue")                 # every open step is already past due
+    last = a.get("last_done")
+    since = (now - last).days if last else None
+    if since is None or since >= NO_CONTACT_DAYS:
+        flags.append("no_contact")
+    return flags, since
+
+
 def quality(conn: Conn, open_deals: list[dict[str, Any]], stage_names: list[str], stage_days: list[float], pipeline_id: int | None,
             now: datetime) -> dict[str, Any]:
     roles = {r["role"] for r in qa(conn, "SELECT role FROM crm_field_map")}
     users = {r["crm_id"]: r["name"] for r in qa(conn, "SELECT crm_id, name FROM crm_users")}
     info = _deals(conn, [o["crm_id"] for o in open_deals])
+    acts_on, acts = _activity(conn, [o["crm_id"] for o in open_deals])
+    hyg_totals = {k: 0 for k, _ in HYGIENE}
     sql = _stage_at(stage_names, "sql", 2)
     proposal = _stage_at(stage_names, "proposal", sql + 1)
     commercials = _stage_at(stage_names, "commercial", proposal + 1)
@@ -105,19 +140,24 @@ def quality(conn: Conn, open_deals: list[dict[str, Any]], stage_names: list[str]
             totals[k][0] += int(ok)
             totals[k][1] += 1
         owner = d.get("owner_id")
+        flags, since = _hygiene(d, acts.get(o["crm_id"]), acts_on, now)
         r = by_owner.setdefault(owner, {"owner_id": owner, "name": users.get(owner) or (f"User {owner}" if owner else "No owner"),
-                                        "deals": 0, "filled": 0, "checks": 0, "stale": 0, "lost_no_reason": 0})
+                                        "deals": 0, "filled": 0, "checks": 0, "stale": 0, "lost_no_reason": 0, **{k: 0 for k, _ in HYGIENE}})
         r["deals"] += 1
+        for f in flags:
+            r[f] += 1
+            hyg_totals[f] += 1
         r["filled"] += sum(need.values())
         r["checks"] += len(need)
         r["stale"] += int(stale)
-        if missing or stale:
-            deals.append({"crm_id": o["crm_id"], "title": o["title"], "org": d.get("org_name"), "owner": r["name"], "stage": stage_names[i],
-                          "value": d.get("value"), "missing": missing, "stale_days": round(o["days_in_stage"]) if stale else None})
+        if missing or stale or flags:
+            deals.append({"crm_id": o["crm_id"], "title": o["title"], "org": d.get("org_name"), "owner": r["name"], "owner_id": owner, "stage": stage_names[i],
+                          "value": d.get("value"), "missing": missing, "stale_days": round(o["days_in_stage"]) if stale else None, "hygiene": flags,
+                          "close_date": d["expected_close_date"].isoformat() if d.get("expected_close_date") else None, "days_since_contact": since})
     for r in qa(conn, "SELECT owner_id, count(*) n FROM crm_deals WHERE status='lost' AND lost_time >= %s AND coalesce(lost_reason,'')='' "
                       "AND (%s::bigint IS NULL OR pipeline_id=%s) GROUP BY 1", (now - timedelta(days=90), pipeline_id, pipeline_id)):
         o = by_owner.setdefault(r["owner_id"], {"owner_id": r["owner_id"], "name": users.get(r["owner_id"]) or f"User {r['owner_id']}", "deals": 0, "filled": 0,
-                                                "checks": 0, "stale": 0, "lost_no_reason": 0})
+                                                "checks": 0, "stale": 0, "lost_no_reason": 0, **{k: 0 for k, _ in HYGIENE}})
         o["lost_no_reason"] = int(r["n"])
     lost = qa(conn, "SELECT count(*) n, count(*) FILTER (WHERE coalesce(lost_reason,'')='') blank FROM crm_deals WHERE status='lost' AND lost_time >= %s "
                     "AND (%s::bigint IS NULL OR pipeline_id=%s)", (now - timedelta(days=90), pipeline_id, pipeline_id))[0]
@@ -127,7 +167,10 @@ def quality(conn: Conn, open_deals: list[dict[str, Any]], stage_names: list[str]
     labels = dict(CHECKS)
     return {"owners": owners, "checks": [{"key": k, "label": labels[k], "filled": v[0], "of": v[1], "share": (v[0] / v[1]) if v[1] else None}
                                          for k, v in totals.items() if v[1]],
-            "deals": sorted(deals, key=lambda x: (-len(x["missing"]), -(x["value"] or 0)))[:60],
+            "deals": sorted(deals, key=lambda x: (-(len(x["missing"]) + len(x["hygiene"])), -(x["value"] or 0)))[:200],
+            "hygiene": {"activities_synced": acts_on, "no_contact_days": NO_CONTACT_DAYS, "open_deals": len(open_deals),
+                        "counts": [{"key": k, "label": lbl, "n": hyg_totals[k]} for k, lbl in HYGIENE if acts_on or k == "close_past"]},
+            "pipedrive_url": f"https://{os.environ['PIPEDRIVE_DOMAIN']}.pipedrive.com" if os.environ.get("PIPEDRIVE_DOMAIN") else None,
             "lost_90d": {"n": int(lost["n"] or 0), "no_reason": int(lost["blank"] or 0)},
             "fields_set_up": sorted(roles), "stage_rules": {"sql": stage_names[sql] if stage_names else None, "proposal": stage_names[proposal] if stage_names else None,
                                                             "commercials": stage_names[commercials] if stage_names else None}}

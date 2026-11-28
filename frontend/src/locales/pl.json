@@ -6162,5 +6162,15 @@
   "Save key": "Zapisz klucz",
   "Create one at console.anthropic.com > API keys. It is stored encrypted, only for you, and never shown again.": "Utwórz go w console.anthropic.com > API keys. Jest przechowywany w postaci zaszyfrowanej, tylko dla Ciebie, i nigdy więcej nie jest wyświetlany.",
   "Your key is removed.": "Klucz usunięty.",
-  "Remove my key": "Usuń mój klucz"
+  "Remove my key": "Usuń mój klucz",
+  "Close date passed": "Data zamknięcia minęła",
+  "No next step": "Brak następnego kroku",
+  "Next step overdue": "Następny krok po terminie",
+  "No contact logged": "Brak zapisanego kontaktu",
+  "Pipeline hygiene": "Porządek w lejku",
+  "Next step: an open activity on the deal in Pipedrive. No contact: nothing marked done on the deal for {} days.": "Następny krok: otwarta aktywność przy dealu w Pipedrive. Brak kontaktu: nic nie oznaczono jako zrobione przy dealu od {} dni.",
+  "Next steps and last contact appear after the first hourly read of Pipedrive activities.": "Następne kroki i ostatni kontakt pojawią się po pierwszym cogodzinnym odczycie aktywności z Pipedrive.",
+  "Deals to fix": "Deale do poprawienia",
+  "last contact {} days ago": "ostatni kontakt {} dni temu",
+  "Close date {} passed": "Data zamknięcia {} minęła"
 }

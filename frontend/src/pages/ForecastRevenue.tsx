@@ -164,9 +164,11 @@ export function Categories({ d, canManage, reload }: { d: any; canManage: boolea
 
 const CHECK: Record<string, string> = { value: "Value", lead_source: "Lead source", deal_type: "Deal type", close_date: "Expected close date", category: "Forecast category",
   start: "Planned start", qual_early: "Pain and champion", qual_late: "Decision maker and process" };
+const HYG: Record<string, string> = { close_past: "Close date passed", no_next_step: "No next step", step_overdue: "Next step overdue", no_contact: "No contact logged" };
 
 export function Quality({ d, canManage, reload }: { d: any; canManage: boolean; reload: () => void }) {
   const q = d.quality;
+  const [owner, setOwner] = useState("");
   if (!q) return null;
   if (q.error) return <p className="small muted">{q.error}</p>;
   const sr = q.stage_rules;
@@ -176,17 +178,35 @@ export function Quality({ d, canManage, reload }: { d: any; canManage: boolean; 
       {q.fields_set_up.length === 0 && <div className="callout fc-warn"><p className="m-0">{tr("The forecast's fields are not in Pipedrive yet. They are created with the next hourly sync, or now:")}</p><SetupFields canManage={canManage} onDone={reload} /></div>}
       <div className="rv-checks">{q.checks.map((c: any) => <div key={c.key} className="rv-check"><span>{tr(CHECK[c.key] || c.label)}</span>
         <span className="fc-src-bar" aria-hidden="true"><i style={{ width: `${(c.share || 0) * 100}%` }} /></span><b>{pct(c.share)}</b><small className="muted">{c.filled}/{c.of}</small></div>)}</div>
+      {q.hygiene && <>
+        <h3 className="fc-h3">{tr("Pipeline hygiene")}</h3>
+        <div className="rv-checks">{q.hygiene.counts.map((c: any) => <div key={c.key} className="rv-check"><span>{tr(HYG[c.key] || c.label)}</span>
+          <span className="fc-src-bar" aria-hidden="true"><i style={{ width: `${q.hygiene.open_deals ? (c.n / q.hygiene.open_deals) * 100 : 0}%` }} /></span><b>{c.n}</b><small className="muted">{tr("of {}", q.hygiene.open_deals)}</small></div>)}</div>
+        <p className="small muted">{q.hygiene.activities_synced
+          ? tr("Next step: an open activity on the deal in Pipedrive. No contact: nothing marked done on the deal for {} days.", q.hygiene.no_contact_days)
+          : tr("Next steps and last contact appear after the first hourly read of Pipedrive activities.")}</p>
+      </>}
       {q.lost_90d.n > 0 && <p className="small">{tr("Lost in the last 90 days: {}, of them {} without a reason.", q.lost_90d.n, q.lost_90d.no_reason)}</p>}
       <h3 className="fc-h3">{tr("By owner")}</h3>
       <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Data quality by owner")}>
-        <table className="fc-table"><thead><tr><th>{tr("Owner")}</th><th>{tr("Filled in")}</th><th>{tr("Open deals")}</th><th>{tr("Stuck")}</th><th>{tr("Lost without reason (90 days)")}</th></tr></thead>
-          <tbody>{q.owners.map((o: any) => <tr key={String(o.owner_id)}><td>{o.name}</td><td>{pct(o.score)}</td><td>{o.deals}</td><td>{o.stale}</td><td>{o.lost_no_reason}</td></tr>)}</tbody></table>
+        <table className="fc-table"><thead><tr><th>{tr("Owner")}</th><th>{tr("Filled in")}</th><th>{tr("Open deals")}</th><th>{tr("Stuck")}</th><th>{tr("Close date passed")}</th>
+          {q.hygiene?.activities_synced && <><th>{tr("No next step")}</th><th>{tr("No contact logged")}</th></>}<th>{tr("Lost without reason (90 days)")}</th></tr></thead>
+          <tbody>{q.owners.map((o: any) => <tr key={String(o.owner_id)}><td>{o.name}</td><td>{pct(o.score)}</td><td>{o.deals}</td><td>{o.stale}</td><td>{o.close_past ?? 0}</td>
+            {q.hygiene?.activities_synced && <><td>{o.no_next_step ?? 0}</td><td>{o.no_contact ?? 0}</td></>}<td>{o.lost_no_reason}</td></tr>)}</tbody></table>
       </div>
-      <h3 className="fc-h3">{tr("Deals to complete")}</h3>
-      {q.deals.length === 0 ? <p className="small muted">{tr("Every open deal has what it needs.")}</p> :
-        <ul className="fc-aging">{q.deals.slice(0, 30).map((x: any) => <li key={x.crm_id}><b>{x.title}{x.org ? ` · ${x.org}` : ""}</b>
-          <span className="small muted">{x.owner} · {x.stage}{x.stale_days ? ` · ${tr("{} days in stage", x.stale_days)}` : ""}</span>
-          <span className="rv-chips">{x.missing.map((m: string) => <span key={m} className="badge">{tr(CHECK[m] || m)}</span>)}</span></li>)}</ul>}
+      <h3 className="fc-h3">{tr("Deals to fix")}</h3>
+      {q.owners.length > 1 && <p className="small"><label htmlFor="fc-hyg-owner">{tr("Owner")} </label>
+        <select id="fc-hyg-owner" value={owner} onChange={(e) => setOwner(e.target.value)}><option value="">{tr("Everyone")}</option>
+          {q.owners.map((o: any) => <option key={String(o.owner_id)} value={String(o.owner_id)}>{o.name}</option>)}</select></p>}
+      {(() => {
+        const list = q.deals.filter((x: any) => !owner || String(x.owner_id) === owner);
+        if (list.length === 0) return <p className="small muted">{tr("Every open deal has what it needs.")}</p>;
+        return <ul className="fc-aging">{list.slice(0, 40).map((x: any) => <li key={x.crm_id}>
+          <b>{q.pipedrive_url ? <a href={`${q.pipedrive_url}/deal/${x.crm_id}`} target="_blank" rel="noreferrer">{x.title}</a> : x.title}{x.org ? ` · ${x.org}` : ""}</b>
+          <span className="small muted">{x.owner} · {x.stage}{x.stale_days ? ` · ${tr("{} days in stage", x.stale_days)}` : ""}{x.days_since_contact != null ? ` · ${tr("last contact {} days ago", x.days_since_contact)}` : ""}</span>
+          <span className="rv-chips">{(x.hygiene || []).map((m: string) => <span key={m} className="badge warn">{m === "close_past" && x.close_date ? tr("Close date {} passed", x.close_date) : tr(HYG[m] || m)}</span>)}
+            {x.missing.map((m: string) => <span key={m} className="badge">{tr(CHECK[m] || m)}</span>)}</span></li>)}</ul>;
+      })()}
       <details className="mt-2"><summary>{tr("How to make Pipedrive ask for these")}</summary>
         <ol className="small">
           <li>{tr("Settings, Data fields, Deals: open each field and mark it required from the stage named above (Professional plan and up).")}</li>
