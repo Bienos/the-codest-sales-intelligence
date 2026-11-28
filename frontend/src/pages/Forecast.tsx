@@ -271,6 +271,39 @@ function PipelineFlow({ o }: { o: any }) {
   );
 }
 
+/** Where this year's revenue should come from: each source's open deals, plus the new deals outbound and inbound should create. */
+function BySource({ d }: { d: any }) {
+  const bs = d.by_source; if (!bs) return null;
+  const NAME: Record<string, string> = { "Not set": tr("Source not set") };
+  const bars = [
+    ...bs.rows.filter((r: any) => r.open > 0).map((r: any) => ({ k: r.source, label: NAME[r.source] || tr(r.source), v: r.expected, sub: tr("{} open deals", r.open), kind: "open" })),
+    { k: "new-out", label: tr("New deals from outbound"), v: bs.new_deals[0]?.expected || 0, sub: tr("lemlist volume × reply and conversion rates"), kind: "new" },
+    { k: "new-in", label: tr("New inbound deals"), v: bs.new_deals[1]?.expected || 0, sub: tr("measured from Pipedrive"), kind: "new" },
+  ].sort((a, b) => b.v - a.v);
+  const max = Math.max(1, ...bars.map((b) => b.v)); const total = bars.reduce((a, b) => a + b.v, 0);
+  return (
+    <>
+      {!bs.field_configured ? <div className="callout">{tr("The Lead source field is not connected yet. Set RI_PIPEDRIVE_SOURCE_FIELD to its key.")}</div> :
+        <p className="small muted mt-0">{bs.tagged_share == null ? "" : tr("Lead source is filled in on {} of deals from the last two years ({} of {}). Where it is empty, Pipedrive's Source origin is used when it clearly says web form, chat or prospecting; the rest show as not set.", pct(bs.tagged_share * 100), bs.tagged, bs.deals_in_window)}</p>}
+      <h3 className="fc-h3 mt-0">{tr("Where {} revenue should come from", d.year)}</h3>
+      <div className="fc-src-bars">{bars.map((b) => <div key={b.k} className="fc-sb">
+        <span className="nm">{b.label}<small>{b.sub}</small></span>
+        <span className="tr"><i className={b.kind} style={{ width: `${(b.v / max) * 100}%` }} /></span>
+        <b>{money(b.v)}</b><span className="sh">{total ? pct((b.v / total) * 100) : "–"}</span>
+      </div>)}</div>
+      <p className="small muted">{tr("Average of the simulated years; the rows add up to the year's average ({} {}).", money(total), d.currency)}</p>
+      <h3 className="fc-h3">{tr("How deals from each source went, last two years")}</h3>
+      <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Deals by source")}>
+        <table className="fc-table"><thead><tr><th>{tr("Source")}</th><th>{tr("Deals")}</th><th>{tr("Won")}</th><th>{tr("Lost")}</th><th>{tr("Win rate")}</th><th>{tr("Average won deal")}</th><th>{tr("Median days to win")}</th><th>{tr("Open now")}</th></tr></thead>
+          <tbody>{bs.rows.map((r: any) => <tr key={r.source}><td>{NAME[r.source] || tr(r.source)}{r.inferred ? <div className="xs muted">{tr("{} from Source origin", r.inferred)}</div> : null}</td>
+            <td>{r.deals}</td><td>{r.won}</td><td>{r.lost}</td><td>{r.win_rate == null ? "–" : pct(r.win_rate * 100)}</td><td>{r.avg_won_value == null ? "–" : money(r.avg_won_value)}</td>
+            <td>{r.median_days_to_win == null ? "–" : Math.round(r.median_days_to_win)}</td><td>{r.open ? `${r.open} · ${money(r.open_value)}` : "–"}</td></tr>)}</tbody></table>
+      </div>
+      <p className="small muted">{tr("Win rate counts decided deals only (won and lost). With few deals per source, read it as a direction, not a rate.")}</p>
+    </>
+  );
+}
+
 export default function Forecast({ canManage }: { canManage: boolean }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [retry, setRetry] = useState(0);
   const [tab, setTab] = useState("quarters"); const [busy, setBusy] = useState(""); const [note, setNote] = useState("");
@@ -287,7 +320,7 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
   const b = d.result.buckets.slice(1) as any[];
   const openShare = y.mean > 0 ? b.reduce((a: number, q: any) => a + q.open, 0) / y.mean : 0;
   const tabs = [{ key: "quarters", label: tr("By quarter") }, { key: "funnel", label: tr("Funnel") }, { key: "drivers", label: tr("What moves it") },
-    { key: "outbound", label: tr("Outbound") }, { key: "deals", label: tr("Deals and history") }, { key: "assumptions", label: tr("Assumptions") }];
+    { key: "sources", label: tr("Sources") }, { key: "outbound", label: tr("Outbound") }, { key: "deals", label: tr("Deals and history") }, { key: "assumptions", label: tr("Assumptions") }];
   return (
     <>
       <PageHeader eyebrow="Revenue" title="Forecast" sub={tr("Closed-won revenue for {}: the open Pipedrive pipeline plus the deals outbound and inbound should bring, played out {} times.", d.year, String(d.runs))}
@@ -345,6 +378,7 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
             <p className="small muted mt-0">{tr("Change in average revenue for the year when one input is 20% lower or higher.")} <i className="fc-sw fc-up-sw" /> {tr("raises it")} <i className="fc-sw fc-down-sw" /> {tr("lowers it")}</p>
             <Sensitivity d={d} />
           </>}
+          {tab === "sources" && <BySource d={d} />}
           {tab === "outbound" && <Outbound d={d} />}
           {tab === "deals" && <div className="fc-two">
             <div><h3 className="fc-h3 mt-0">{tr("Deals taking longer than usual")}</h3>

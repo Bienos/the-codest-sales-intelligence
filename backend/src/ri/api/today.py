@@ -160,7 +160,7 @@ def _org(o: dict[str, Any] | None, contacts: bool) -> dict[str, Any] | None:
     if not o:
         return None
     return {"id": o["id"], "name": o["name"], "country": o["country"], "region": target_region(o["country"]), "logo_url": o.get("logo_url"),
-            "priority": o["list_priority"] if o["list_priority"] in _PRIORITY else None, "relationship": o["relationship"],
+            "priority": o["list_priority"] if o["list_priority"] in _PRIORITY else None, "relationship": o["relationship"], "tier": o.get("tier"),
             "people": int(o["people"]) if contacts else None, "people_with_email": int(o["people_with_email"]) if contacts else None}
 
 
@@ -178,7 +178,11 @@ def _targets(conn: Conn, p: Principal) -> dict[str, dict[str, Any]]:
                    FROM employment em JOIN people pe ON pe.id=em.person_id AND pe.erased_at IS NULL GROUP BY em.organization_id) pc
           ON pc.organization_id=o.id
         WHERE ({where}) AND {target_sql()}""", args)      # noqa: S608
-    return {r["id"]: {**r, "list_score": float(r["list_score"]) if r["list_score"] is not None else None} for r in rows}
+    out = {r["id"]: {**r, "list_score": float(r["list_score"]) if r["list_score"] is not None else None} for r in rows}
+    from ..tiers import tiers_for
+    for oid, t in tiers_for(conn, list(out)).items():
+        out[oid]["tier"] = t                                  # the one account tier, the same on every page
+    return out
 
 
 def _list_signals(conn: Conn, targets: dict[str, dict[str, Any]], today: date) -> list[dict[str, Any]]:

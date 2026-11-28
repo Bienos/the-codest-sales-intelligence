@@ -7,7 +7,7 @@ import { FAMILY, familyOf, SHORT } from "../components/Signals";
 import { countryName, staffCount } from "./targetMarket";
 import { Conversations } from "./Connections";
 import { AccountDeadlines } from "./Calendar";
-import { Badge, Err, humanize, Skeleton, reloadPage, safeHref, Tabs, TIER, useLogo } from "../components/ui";
+import { AccountTier, Badge, Err, humanize, Skeleton, reloadPage, safeHref, Tabs, TIER, useLogo } from "../components/ui";
 import "../styles/account.css";
 import "../styles/suppliers.css";
 
@@ -369,7 +369,7 @@ function RelationshipPanel({ rel, orgId, onSaved, onOwner }: { rel: any; orgId: 
     <p className="ac-purpose">{tr("Whether we already know them, and who on our team looks after the account.")}</p>
     <div className="rel-owner"><span className="ac-note">{tr("Account owner")}</span><span><OwnerControl rel={rel} orgId={orgId} onChange={onOwner} /></span></div>
     <div className="rel-now"><RelBadge rel={rel} />
-      {rec?.status ? <span className="ac-note">{tr("Recorded by {} on {}", rec.set_by, fmtDate(rec.set_at))}</span>
+      {rec?.status ? <span className="ac-note">{rec.set_by === "pipedrive" ? tr("From Pipedrive, updated {}", fmtDate(rec.set_at)) : tr("Recorded by {} on {}", rec.set_by, fmtDate(rec.set_at))}</span>
         : <span className="small">{tr("Our data suggests: {}.", tr(REL_LABEL[rel.suggested]))} {tr(rel.suggested_why)}</span>}</div>
     {rec?.note && <p className="small mt-2">{rec.note}</p>}
     {rel.can_edit && !editing && <div className="row gap-2 mt-2">
@@ -1527,6 +1527,7 @@ export function Account({ me }: { me: { permissions: string[] } }) {
             <h1>{a.display_name}</h1>
             {(sector || hq || size) && <p className="ac-sub">{[sector, hq, size, ownership].filter(Boolean).map((x, i) => <span key={i}>{x}</span>)}</p>}
             <div className="ac-links">
+              {d.tier && <AccountTier t={d.tier} onNavy withWhy />}
               <RelBadge rel={rel} onNavy />
               {a.canonical_domain && <a href={`https://${a.canonical_domain}`} target="_blank" rel="noreferrer noopener" title={a.canonical_domain}><Ic.web /><span>{a.canonical_domain}</span></a>}
               {companyLinkedIn ? <a href={safeHref(companyLinkedIn)} target="_blank" rel="noreferrer noopener"><Ic.linkedin /><span>LinkedIn</span></a>

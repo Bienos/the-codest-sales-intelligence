@@ -122,6 +122,11 @@ def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> d
         idx = (np.arange(R)[:, None] * NB + b)[won]
         rev_open += np.bincount(idx, weights=val[won], minlength=R * NB).reshape(R, NB)
         wins += np.bincount(idx, minlength=R * NB).reshape(R, NB)
+        in_year = won & (b >= 1) & (b <= 4)
+        open_by_deal = (val * in_year).sum(axis=0) / R            # each open deal's average contribution to the year
+    else:
+        open_by_deal = np.zeros(0)
+    stream_year = [0.0] * len(inp.streams)
     M = len(cal.months)
     if M:
         off, length = cal.months[:, 0], cal.months[:, 1]
@@ -138,6 +143,7 @@ def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> d
             idx = (np.arange(R)[:, None, None] * NB + b)[ok]
             rev_new += np.bincount(idx, weights=val[ok], minlength=R * NB).reshape(R, NB)
             wins += np.bincount(idx, minlength=R * NB).reshape(R, NB)
+            stream_year[s] = float((val * (ok & (b >= 1) & (b <= 4))).sum() / R)
     total = rev_open + rev_new
     year = total[:, 1:5].sum(axis=1)
     out = {"mean": float(year.mean()), "wins": float(wins[:, 1:5].sum(axis=1).mean())}
@@ -149,6 +155,8 @@ def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> d
         out["buckets"] = [{**pct(total[:, b]), "open": float(rev_open[:, b].mean()), "new": float(rev_new[:, b].mean()),
                            "wins": float(wins[:, b].mean())} for b in range(5)]
         out["_year_samples"] = year
+        out["_open_by_deal"] = [float(x) for x in open_by_deal]
+        out["stream_year"] = stream_year
     return out
 
 

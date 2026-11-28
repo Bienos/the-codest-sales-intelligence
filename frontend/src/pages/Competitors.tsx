@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
 import { api, patch, post, put } from "../api";
-import { tr } from "../locale";
+import { tr, useLanguage } from "../locale";
 import { Err, Skeleton } from "../components/ui";
 import "../styles/competitors.css";
 import { Duel, Momentum, ScoreGrid, StandRanges, standTally } from "./CompetitorVisuals";
@@ -57,7 +57,8 @@ export default function Competitors() {
   const [err, setErr] = useState<unknown>(null);
   const [n, setN] = useState(0);
   const reload = () => setN((x) => x + 1);
-  useEffect(() => { setErr(null); api("/api/competitors").then(setD).catch(setErr); }, [n]);
+  const lang = useLanguage();          // the text is translated on the server; switching language fetches it again
+  useEffect(() => { setErr(null); api(`/api/competitors?lang=${lang}`).then(setD).catch(setErr); }, [n, lang]);
   if (err) return <Err e={err} onRetry={reload} />;
   if (!d) return <Skeleton rows={6} />;
   if (d.empty) return <div className="empty"><b>{tr("No competitors loaded yet")}</b>{tr("The research seed loads when the server starts (ri seed). Ask an administrator to run it.")}</div>;
@@ -218,7 +219,10 @@ function Landscape({ d, all, asOf }: Ctx) {
         <div className="ct-chart"><div className="inner">
           <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={tr("Positioning map of tracked competitors")}>
             {[0, 2.5, 5, 7.5, 10].map((i) => <g key={i}><line className="grid" x1={X(i)} x2={X(i)} y1={T} y2={T + ph} /><line className="grid" x1={L} x2={L + pw} y1={Y(i)} y2={Y(i)} /></g>)}
-            <rect className="zone" x={X(6.5)} y={Y(10)} width={X(10) - X(6.5)} height={Y(5) - Y(10)} /><text className="zl" x={X(6.6)} y={Y(10) + 14}>{tr("Specialist and owns delivery")}</text>
+            <rect className="zone" x={X(6.5)} y={Y(10)} width={X(10) - X(6.5)} height={Y(5) - Y(10)} /><text className="zl" x={X(6.6)} y={Y(10) + 14}>{tr("Specialist")}</text><text className="zl" x={X(6.6)} y={Y(10) + 27}>{tr("and owns delivery")}</text>
+            <text className="qc" x={X(0.15)} y={Y(10) + 14}>{tr("Generalists selling outcomes")}</text>
+            <text className="qc" x={X(0.15)} y={Y(0) - 8}>{tr("Generalists selling people")}</text>
+            <text className="qc" x={X(9.85)} y={Y(0) - 8} textAnchor="end">{tr("Specialists selling people")}</text>
             <line className="axis" x1={L} x2={L + pw} y1={T + ph} y2={T + ph} /><line className="axis" x1={L} x2={L} y1={T} y2={T + ph} />
             <text x={L} y={T + ph + 20}>{tr("Generalist")}</text><text x={L + pw} y={T + ph + 20} textAnchor="end">{tr("Financial-services specialist")}</text>
             <text x={L + pw / 2} y={T + ph + 44} textAnchor="middle" className="ql">{tr("Who they sell to →")}</text>
@@ -252,7 +256,8 @@ function Landscape({ d, all, asOf }: Ctx) {
               <i className="k1" style={{ width: `${o.buyers}%` }} /><i className="k2" style={{ width: `${o.selling}%` }} /><i className="k3" style={{ width: `${o.markets}%` }} /><i className="k4" style={{ width: `${o.size}%` }} /></span>
             <b className="num">{o.total}</b></div>; })}
         </div>
-        <div className="card"><h3 className="ct-h">{tr("Reading the map")}</h3>{d.landscapeNotes.map((t: string, i: number) => <p key={i} className="small">{t}</p>)}</div>
+        <div className="card"><h3 className="ct-h">{tr("Reading the map")}</h3><div className="ct-notes">{d.landscapeNotes.map((t: string, i: number) => { const cut = t.indexOf(". "); const head = cut > 0 ? t.slice(0, cut + 1) : t, rest = cut > 0 ? t.slice(cut + 2) : "";
+          return <div key={i} className="ct-note-i"><span className="n">{i + 1}</span><p className="small m-0"><b>{head}</b> {rest}</p></div>; })}</div></div>
       </div>
       <div className="card"><h3 className="ct-h">{tr("What the buyer can do instead of hiring any of us")}</h3>
         <div className="ct-g4">{d.alternatives.map((a: any) => <div key={a.name} className="ct-alt"><b>{a.name}</b><p className="small">{a.evidence}</p><Src f={{ source: a.source }} asOf={asOf} /></div>)}</div>
@@ -266,24 +271,42 @@ function Compare({ d, byKey, asOf }: Ctx) {
   const [pick, setPick] = useState<string[]>(d.defaultCompare || []);
   const closest = d.competitors.slice().sort((a: Comp, b: Comp) => b.overlap.total - a.overlap.total)[0];
   const [rival, setRival] = useState<string>(closest?.key || "");
+  const [same, setSame] = useState(false); const [full, setFull] = useState(false);
   const cols: Comp[] = [d.us, ...pick.map((k) => byKey[k]).filter(Boolean)];
   const cell = (f: Fact) => <div className="ct-cell"><span className="v"><Val f={f} /></span><Src f={f} asOf={asOf} /></div>;
   const list = (a?: string[]) => (a && a.length ? <span className="small">{a.join(", ")}</span> : <span className="muted">{tr("Not found")}</span>);
-  const rows: [string, (c: Comp) => ReactNode][] = [
-    ["Origin and HQ", (c) => <><Dot c={c} /> {c.hq}</>], ["Founded", (c) => c.founded], ["Ownership", (c) => cell(c.ownership)], ["Headcount", (c) => cell(c.headcount)],
+  // [label, render, raw value for "same in every column"]
+  const rows: [string, (c: Comp) => ReactNode, ((c: Comp) => string)?][] = [
+    ["Origin and HQ", (c) => <><Dot c={c} /> {c.hq}</>], ["Founded", (c) => c.founded, (c) => String(c.founded ?? "")], ["Ownership", (c) => cell(c.ownership)], ["Headcount", (c) => cell(c.headcount)],
     ["Revenue", (c) => cell(c.revenue)], ["Homepage headline", (c) => <div className="ct-cell"><span className="q">{c.hero?.value ? `“${c.hero.value}”` : tr("Not found")}</span><Src f={c.hero} asOf={asOf} /></div>],
-    ["In one line", (c) => <span className="small">{c.oneLiner}</span>], ["Archetype", (c) => c.archetype],
-    ["What they sell", (c) => <span className="small">{(c.offers || []).map((o: string) => tr(OFFERS[o])).join("; ") || tr("Not found")}</span>], ["Engagement models", (c) => list(c.models)],
+    ["In one line", (c) => <span className="small">{c.oneLiner}</span>], ["Archetype", (c) => c.archetype, (c) => String(c.archetype ?? "")],
+    ["What they sell", (c) => <span className="small">{(c.offers || []).map((o: string) => tr(OFFERS[o])).join("; ") || tr("Not found")}</span>, (c) => (c.offers || []).slice().sort().join(",")],
+    ["Engagement models", (c) => list(c.models), (c) => (c.models || []).slice().sort().join(",")],
     ["AI in the offer", (c) => <div className="ct-cell"><Meter n={c.ai?.score ?? 0} /><span className="small">{c.ai?.value}</span><Src f={c.ai} asOf={asOf} /></div>],
     ["Financial services", (c) => <div className="ct-cell"><Meter n={c.fs?.score ?? 0} /><span className="small">{c.fs?.note}</span><Src f={c.fs} asOf={asOf} /></div>],
-    ["Markets", (c) => <Markets c={c} />],
+    ["Markets", (c) => <Markets c={c} />, (c) => (c.markets || []).slice().sort().join(",")],
     ["Clutch", (c) => (c.clutch ? <div className="ct-cell"><span className="v">{tr("{} from {} reviews", c.clutch.rating ?? "–", c.clutch.reviews ?? "–")}</span><span className="xs muted">{c.clutch.rate}{c.clutch.min ? ` · min ${c.clutch.min}` : ""}{c.clutch.latest ? ` · ${tr("last review")} ${fmtD(c.clutch.latest)}` : ""}</span><Src f={c.clutch} asOf={asOf} /></div> : <span className="muted">{tr("Not found")}</span>)],
-    ["Certifications and partners", (c) => list(c.certs)], ["Named clients", (c) => list(c.clients)],
+    ["Certifications and partners", (c) => list(c.certs), (c) => (c.certs || []).join(",")], ["Named clients", (c) => list(c.clients)],
     ["Open roles on justjoin.it", (c) => (c.jobs ? cell(c.jobs) : <span className="muted">{tr("Not counted")}</span>)],
     ["Where we meet them", (c) => (c.tier === 0 ? "–" : <span className="small">{tr("{} accounts · {} public awards", c.presence.accounts, c.presence.awards)}</span>)],
     ["Latest moves", (c) => (c.moves.length ? c.moves.slice(0, 3).map((m: Move) => <div key={m.id} className="small"><span className="ct-age">{fmtD(m.date)}</span> {m.headline}</div>) : <span className="muted">{tr("None recorded")}</span>)],
   ];
+  const isSame = (r: (typeof rows)[number]) => !!r[2] && cols.length > 1 && cols.every((c) => r[2]!(c) === r[2]!(cols[0]));
+  const shown = rows.filter((r) => same || !isSame(r));
+  const hidden = rows.length - shown.length;
   const groups: Record<string, string> = { "Origin and HQ": "Scale", "Homepage headline": "Positioning", "What they sell": "Offer", "Financial services": "Focus", Clutch: "Proof and price", "Open roles on justjoin.it": "Momentum" };
+  // headline numbers: one row per measure, a bar per firm scaled to the best value in the row
+  const num = (v: any) => (v == null || v === "" || isNaN(Number(v)) ? null : Number(v));
+  const metrics: [string, (c: Comp) => number | null, (v: number) => string, number?][] = [
+    ["Overlap with us", (c) => (c.tier === 0 ? null : num(c.overlap?.total)), (v) => String(v), 100],
+    ["Headcount", (c) => num(c.headcount?.n), (v) => v.toLocaleString()],
+    ["Clutch rating", (c) => num(c.clutch?.rating), (v) => v.toFixed(1), 5],
+    ["Clutch reviews", (c) => num(c.clutch?.reviews), (v) => String(v)],
+    ["Financial-services focus", (c) => num(c.fs?.score), (v) => `${v}/3`, 3],
+    ["AI in the offer", (c) => num(c.ai?.score), (v) => `${v}/3`, 3],
+    ["Markets covered", (c) => (c.markets ? c.markets.length : null), (v) => `${v}/5`, 5],
+    ["Open roles", (c) => num(c.jobs?.n), (v) => String(v)],
+  ];
   return (
     <section className="ct-view">
       <p className="sub">{tr("Three ways to compare: one rival head to head, every direct competitor on one grid, and the full evidence field by field with its sources.")}</p>
@@ -295,12 +318,27 @@ function Compare({ d, byKey, asOf }: Ctx) {
         {d.competitors.slice().sort((a: Comp, b: Comp) => a.tier - b.tier || a.name.localeCompare(b.name)).map((c: Comp) => { const on = pick.includes(c.key);
           return <button key={c.key} type="button" aria-pressed={on} disabled={!on && pick.length >= 4} onClick={() => setPick(on ? pick.filter((k) => k !== c.key) : [...pick, c.key])}><Dot c={c} />{c.name}</button>; })}
       </div></div>
-      <div className="card flush"><div className="ct-scroll"><table className="ct-cmp"><thead><tr><th className="rowh" />{cols.map((c) => <th key={c.key} className={c.tier === 0 ? "us" : ""}>{c.name}<div className="xs muted">{tr(TIER[c.tier])}</div></th>)}</tr></thead><tbody>
-        {rows.map(([label, fn]) => <FragmentRows key={label} group={groups[label]} n={cols.length + 1}><tr><th className="rowh">{tr(label)}</th>{cols.map((c) => <td key={c.key} className={c.tier === 0 ? "us" : ""}>{fn(c)}</td>)}</tr></FragmentRows>)}
+      <div className="card"><h3 className="ct-h">{tr("Headline numbers")}</h3>
+        <p className="xs muted">{tr("Each bar is scaled to the highest value in its row. Hover a bar for the exact value; an empty cell means the fact was not found.")}</p>
+        <div className="ct-scroll"><div className="ct-nums" style={{ gridTemplateColumns: `minmax(150px, 1.1fr) repeat(${cols.length}, minmax(110px, 1fr))` }}>
+          <span />{cols.map((c) => <span key={c.key} className={`hd${c.tier === 0 ? " us" : ""}`}>{c.name}</span>)}
+          {metrics.map(([label, get, fmt, cap]) => { const vals = cols.map(get); const max = cap ?? Math.max(1, ...vals.map((v) => v ?? 0));
+            return <FragmentCells key={label}><span className="lb">{tr(label)}</span>{cols.map((c, i) => { const v = vals[i];
+              return <span key={c.key} className={`cl${c.tier === 0 ? " us" : ""}`} title={v == null ? tr("Not found") : `${c.name}: ${fmt(v)}`}>
+                {v == null ? <span className="muted xs">–</span> : <><span className="tr"><i style={{ width: `${Math.max(2, (v / max) * 100)}%` }} /></span><b>{fmt(v)}</b></>}</span>; })}</FragmentCells>; })}
+        </div></div>
+      </div>
+      <div className="ct-row ct-cmpctl">
+        <label className="small"><input type="checkbox" checked={same} onChange={(e) => setSame(e.target.checked)} /> {tr("Show rows that are the same for everyone")}{!same && hidden > 0 ? ` (${tr("{} hidden", hidden)})` : ""}</label>
+        <label className="small"><input type="checkbox" checked={full} onChange={(e) => setFull(e.target.checked)} /> {tr("Full descriptions")}</label>
+      </div>
+      <div className="card flush"><div className="ct-scroll"><table className={`ct-cmp${full ? "" : " clamp"}`}><thead><tr><th className="rowh" />{cols.map((c) => <th key={c.key} className={c.tier === 0 ? "us" : ""}>{c.name}<div className="xs muted">{tr(TIER[c.tier])}</div></th>)}</tr></thead><tbody>
+        {shown.map(([label, fn]) => <FragmentRows key={label} group={groups[label]} n={cols.length + 1}><tr><th className="rowh">{tr(label)}</th>{cols.map((c) => <td key={c.key} className={c.tier === 0 ? "us" : ""}>{fn(c)}</td>)}</tr></FragmentRows>)}
       </tbody></table></div></div>
     </section>
   );
 }
+const FragmentCells = ({ children }: { children: ReactNode }) => <>{children}</>;
 const FragmentRows = ({ group, n, children }: { group?: string; n: number; children: ReactNode }) => <>{group && <tr className="grp"><th colSpan={n}>{tr(group)}</th></tr>}{children}</>;
 
 /* ------------------------------------------------------------------ Profiles */
@@ -487,6 +525,7 @@ function Moves({ d, asOf }: Ctx) {
 }
 
 /* ------------------------------------------------------------------ Patterns */
+const SR: Record<string, number> = { strong: 0, emerging: 1, weak: 2 };
 function Patterns({ d, asOf }: Ctx) {
   const bw = d.bellwethers as any[];
   const max = Math.max(1, ...bw.map((b) => Math.abs(b.growth)));
@@ -510,13 +549,22 @@ function Patterns({ d, asOf }: Ctx) {
         <details className="ct-tbl"><summary>{tr("Show as table")}</summary><table className="ct-data"><thead><tr><th>{tr("Company")}</th><th>{tr("Period")}</th><th>{tr("Growth")}</th><th>{tr("Note and source")}</th></tr></thead><tbody>
           {bw.map((b) => <tr key={b.name}><td>{b.name}</td><td>{b.period}</td><td className="num">{b.growth > 0 ? "+" : ""}{b.growth}%</td><td className="small">{b.note} <a href={b.source} target="_blank" rel="noopener noreferrer">{host(b.source)}</a></td></tr>)}</tbody></table></details>
       </div>
-      <div className="ct-g2">{d.patterns.map((p: any) => { const ind = p.indicator || {}; const pct = ind.of ? Math.round((ind.count / ind.of) * 100) : 0;
-        return <div key={p.title} className="card ct-pat"><div className="ct-row spread"><h3 className="ct-h plain">{p.title}</h3><span className={`ct-strength ${p.strength}`}>{tr(({ strong: "Strong evidence", emerging: "Emerging", weak: "Weak signal" } as any)[p.strength] || p.strength)}</span></div>
-          <p className="stmt">{p.statement}</p>
-          {ind.of ? <div><div className="ct-row spread"><span className="small">{ind.label}</span><b className="small">{tr("{} of {}", ind.count, ind.of)}</b></div><div className="ct-bar" role="img" aria-label={tr("{} of {}", ind.count, ind.of)}><i style={{ width: `${pct}%` }} /></div>
-            {ind.names && <p className="xs muted">{ind.names.join(", ")}</p>}</div> : null}
-          <ul className="ct-ul small">{p.evidence.map((e: any, i: number) => <li key={i}>{e.text} {e.source && <a className="xs" href={e.source} target="_blank" rel="noopener noreferrer">{host(e.source)}</a>}</li>)}</ul>
-          <p className="ct-so"><b>{tr("For us:")}</b> {p.meaning}</p><p className="xs muted"><b>{tr("Watch:")}</b> {p.watch}</p></div>; })}</div>
+      <div className="card"><h3 className="ct-h">{tr("Signals we are tracking")}</h3>
+        <p className="xs muted">{tr("Strongest evidence first. The bar shows how many of the tracked firms show the signal. Open a row for the evidence and what to watch.")}</p>
+        <div className="ct-sigs">{d.patterns.slice().sort((a: any, b: any) => (SR[a.strength] ?? 9) - (SR[b.strength] ?? 9) || ((b.indicator?.count || 0) / (b.indicator?.of || 1)) - ((a.indicator?.count || 0) / (a.indicator?.of || 1))).map((p: any) => {
+          const ind = p.indicator || {}; const pc = ind.of ? Math.round((ind.count / ind.of) * 100) : 0;
+          return <details key={p.title} className={`ct-sig ${p.strength}`}><summary>
+            <span className="t"><b>{p.title}</b><span className={`ct-strength ${p.strength}`}>{tr(({ strong: "Strong evidence", emerging: "Emerging", weak: "Weak signal" } as any)[p.strength] || p.strength)}</span></span>
+            {ind.of ? <span className="ind"><span className="ct-bar" role="img" aria-label={tr("{} of {}", ind.count, ind.of)}><i style={{ width: `${pc}%` }} /></span><b className="small num">{tr("{} of {}", ind.count, ind.of)}</b></span> : <span />}
+            <span className="act small"><b>{tr("For us:")}</b> {p.meaning}</span>
+          </summary>
+            <div className="ct-sig-body">
+              <p className="stmt">{p.statement}</p>
+              {ind.label && <p className="small"><b>{ind.label}</b>{ind.names ? `: ${ind.names.join(", ")}` : ""}</p>}
+              <ul className="ct-ul small">{p.evidence.map((e: any, i: number) => <li key={i}>{e.text} {e.source && <a className="xs" href={e.source} target="_blank" rel="noopener noreferrer">{host(e.source)}</a>}</li>)}</ul>
+              <p className="xs muted"><b>{tr("Watch:")}</b> {p.watch}</p>
+            </div></details>; })}</div>
+      </div>
       <div className="ct-g3">
         <div className="card"><h3 className="ct-h">{tr("What buyers say")}</h3><ul className="ct-ul small">{d.buyers.map((b: any, i: number) => <li key={i}>{b.text} <a className="xs" href={b.source} target="_blank" rel="noopener noreferrer">{host(b.source)}</a></li>)}</ul></div>
         <div className="card"><h3 className="ct-h">{tr("Price")}</h3><p className="xs muted">{tr("Hourly band each tracked firm lists on Clutch (hover a row for the names), then public rate benchmarks.")}</p>
@@ -536,7 +584,12 @@ function HeadToHead({ d, byKey, reload }: Ctx) {
   return (
     <section className="ct-view">
       <p className="sub">{tr("Where we actually meet each competitor, and how often we win. Won and lost follow the deal's status in Pipedrive. A win rate shows once {} deals against a firm are decided.", h.min_decided)}</p>
-      {rows.length === 0 ? <div className="empty"><b>{tr("No deal names a competitor yet")}</b>{tr("Record competitors on your deals below, or ask an administrator to connect the Pipedrive deal field (RI_PIPEDRIVE_COMPETITOR_FIELD).")}</div> :
+      {rows.length === 0 ? <div className="card ct-steps-card"><h3 className="ct-h">{tr("No deal names a competitor yet")}</h3>
+        <ol className="ct-steps">
+          <li><b>{tr("Name the competitor on a deal")}</b><span className="small">{tr("Below, or in a Pipedrive deal field once an administrator connects it (RI_PIPEDRIVE_COMPETITOR_FIELD).")}</span></li>
+          <li><b>{tr("Mark who won")}</b><span className="small">{tr("Won and lost come from the deal's status in Pipedrive; add why we lost when we did.")}</span></li>
+          <li><b>{tr("See your win rate against them")}</b><span className="small">{tr("After {} decided deals against a firm, its win rate and threat index appear here.", h.min_decided)}</span></li>
+        </ol></div> :
         <div className="card flush"><div className="ct-scroll"><table className="ct-data"><thead><tr><th>{tr("Competitor")}</th><th>{tr("Deals met")}</th><th>{tr("Share of our deals")}</th><th>{tr("Won")}</th><th>{tr("Lost")}</th><th>{tr("Win rate")}</th><th>{tr("Threat index")}</th><th>{tr("Top lost reason")}</th><th>{tr("At your accounts")}</th><th>{tr("Public awards")}</th></tr></thead><tbody>
           {rows.map(([k, s]) => { const c = byKey[k]; return <tr key={k}><td><ProfileLink c={c} /></td><td className="num">{s.met}</td><td className="num">{Math.round(s.share * 100)}%</td><td className="num">{s.won}</td><td className="num">{s.lost}</td>
             <td className="num">{s.win_rate == null ? <span className="muted">{tr("Too few")}</span> : `${Math.round(s.win_rate * 100)}%`}</td><td className="num">{s.threat ?? "–"}</td><td>{s.top_lost_reason || "–"}</td><td className="num">{c.presence.accounts}</td><td className="num">{c.presence.awards}</td></tr>; })}
@@ -549,26 +602,42 @@ function HeadToHead({ d, byKey, reload }: Ctx) {
 
 function RecordDeals({ d, reload }: { d: any; reload: () => void }) {
   const [q, setQ] = useState(""); const [items, setItems] = useState<any[] | null>(null); const [err, setErr] = useState<unknown>(null); const [n, setN] = useState(0);
-  const [pick, setPick] = useState<Record<number, { competitor: string; role: string; reason: string }>>({});
+  const [st, setSt] = useState("open"); const [limit, setLimit] = useState(15); const [edit, setEdit] = useState<number | null>(null);
+  const [p, setP0] = useState({ competitor: "", role: "unknown", reason: "" });
   useEffect(() => { const t = setTimeout(() => api(`/api/competitors/deals${q ? `?q=${encodeURIComponent(q)}` : ""}`).then((r) => setItems(r.items)).catch(setErr), q ? 300 : 0); return () => clearTimeout(t); }, [q, n]);
   const opts = d.competitors.slice().sort((a: Comp, b: Comp) => a.name.localeCompare(b.name));
-  const save = (id: number) => { const p = pick[id]; if (!p?.competitor) return; put(`/api/competitors/deals/${id}`, { competitor: p.competitor, role: p.role || "unknown", reason: p.reason || null }).then(() => { setN((x) => x + 1); reload(); }).catch(setErr); };
+  const setP = (k: string, v: string) => setP0({ ...p, [k]: v });
+  const open = (id: number) => { setEdit(edit === id ? null : id); setP0({ competitor: "", role: "unknown", reason: "" }); };
+  const save = (id: number) => { if (!p.competitor) return; put(`/api/competitors/deals/${id}`, { competitor: p.competitor, role: p.role || "unknown", reason: p.reason || null }).then(() => { setEdit(null); setN((x) => x + 1); reload(); }).catch(setErr); };
   const remove = (id: number, k: string) => api(`/api/competitors/deals/${id}/${k}`, { method: "DELETE" }).then(() => { setN((x) => x + 1); reload(); }).catch(setErr);
+  const count = (s: string) => (items || []).filter((x) => s === "all" || x.status === s).length;
+  const list = (items || []).filter((x) => st === "all" || x.status === st);
+  const named = (items || []).filter((x) => x.competitors.length).length;
+  const STATUS: [string, string][] = [["open", "Open deals"], ["won", "Won deals"], ["lost", "Lost deals"], ["all", "All deals"]];
   return (
-    <div className="card"><h3 className="ct-h">{tr("Record who we met on a deal")}</h3>
+    <div className="card"><div className="ct-row spread"><h3 className="ct-h">{tr("Record who we met on a deal")}</h3>{items && <span className="small muted">{tr("{} of {} deals name a competitor", named, items.length)}</span>}</div>
       <p className="xs muted">{tr("Your deals from Pipedrive. Name every competitor the buyer mentioned; mark who won when you know.")}</p>
-      <div className="ct-filters"><input type="search" aria-label={tr("Find a deal")} placeholder={tr("Find a deal")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-      {err ? <Err e={err} /> : !items ? <Skeleton rows={2} /> : items.length === 0 ? <p className="small muted">{tr("No deals found in your accounts.")}</p> :
-        <div className="ct-scroll"><table className="ct-data"><thead><tr><th>{tr("Deal")}</th><th>{tr("Named so far")}</th><th>{tr("Add a competitor")}</th></tr></thead><tbody>
-          {items.map((x) => { const p = pick[x.id] || { competitor: "", role: "unknown", reason: "" }; const setP = (k: string, v: string) => setPick({ ...pick, [x.id]: { ...p, [k]: v } });
-            return <tr key={x.id}><td><b>{x.title}</b><div className="xs muted">{x.stage || ""}{x.status ? ` · ${x.status}` : ""}</div></td>
-              <td className="small">{x.competitors.length ? x.competitors.map((k: string) => <span key={k} className="ct-chip">{d.competitors.find((c: Comp) => c.key === k)?.name || k} <button type="button" className="ct-x" aria-label={tr("Remove")} onClick={() => remove(x.id, k)}>×</button></span>) : <span className="muted">–</span>}</td>
-              <td><div className="ct-row">
-                <select aria-label={tr("Competitor")} value={p.competitor} onChange={(e) => setP("competitor", e.target.value)}><option value="">{tr("Choose a firm")}</option>{opts.map((c: Comp) => <option key={c.key} value={c.key}>{c.name}</option>)}</select>
-                <select aria-label={tr("Role")} value={p.role} onChange={(e) => setP("role", e.target.value)}>{Object.entries(ROLE).map(([k, v]) => <option key={k} value={k}>{tr(v)}</option>)}</select>
-                {p.role === "lost_to" && <input aria-label={tr("Why we lost")} placeholder={tr("Why we lost")} value={p.reason} onChange={(e) => setP("reason", e.target.value)} maxLength={300} />}
-                <button type="button" disabled={!p.competitor} onClick={() => save(x.id)}>{tr("Add")}</button></div></td></tr>; })}
-        </tbody></table></div>}
+      <div className="ct-filters">
+        <span className="ct-seg">{STATUS.map(([k, l]) => <button key={k} type="button" aria-pressed={st === k} onClick={() => { setSt(k); setLimit(15); }}>{tr(l)} <span className="muted">{items ? count(k) : ""}</span></button>)}</span>
+        <input type="search" aria-label={tr("Find a deal")} placeholder={tr("Find a deal")} value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
+      {err ? <Err e={err} /> : !items ? <Skeleton rows={2} /> : list.length === 0 ? <p className="small muted">{tr("No deals here.")}</p> : <>
+        <div className="ct-deals">{list.slice(0, limit).map((x) => <div key={x.id} className="ct-deal">
+          <div className="ct-deal-h">
+            <span className={`ct-st ${x.status || ""}`}>{tr(({ open: "Deal open", won: "Deal won", lost: "Deal lost" } as any)[x.status] || x.status || "")}</span>
+            <span className="tt"><b>{x.title}</b>{x.stage && <span className="xs muted"> · {x.stage}</span>}</span>
+            <span className="ct-chips m-0">{x.competitors.map((k: string) => <span key={k} className="ct-chip">{d.competitors.find((c: Comp) => c.key === k)?.name || k} <button type="button" className="ct-x" aria-label={tr("Remove")} onClick={() => remove(x.id, k)}>×</button></span>)}</span>
+            <button type="button" className="ct-addbtn" aria-expanded={edit === x.id} onClick={() => open(x.id)}>{edit === x.id ? tr("Cancel") : tr("Add a competitor")}</button>
+          </div>
+          {edit === x.id && <div className="ct-row ct-deal-f">
+            <select aria-label={tr("Competitor")} value={p.competitor} onChange={(e) => setP("competitor", e.target.value)}><option value="">{tr("Choose a firm")}</option>{opts.map((c: Comp) => <option key={c.key} value={c.key}>{c.name}</option>)}</select>
+            <select aria-label={tr("Role")} value={p.role} onChange={(e) => setP("role", e.target.value)}>{Object.entries(ROLE).map(([k, v]) => <option key={k} value={k}>{tr(v)}</option>)}</select>
+            {p.role === "lost_to" && <input aria-label={tr("Why we lost")} placeholder={tr("Why we lost")} value={p.reason} onChange={(e) => setP("reason", e.target.value)} maxLength={300} />}
+            <button type="button" disabled={!p.competitor} onClick={() => save(x.id)}>{tr("Save")}</button>
+          </div>}
+        </div>)}</div>
+        {list.length > limit && <button type="button" className="secondary mt-2" onClick={() => setLimit(limit + 15)}>{tr("Show {} more", Math.min(15, list.length - limit))}</button>}
+      </>}
     </div>
   );
 }
@@ -601,23 +670,31 @@ function Method({ d }: Ctx) {
   const M = d.method || {};
   const rub = (rows?: string[][]) => <table className="ct-rub"><tbody>{(rows || []).map((r, i) => <tr key={i}><td>{r[0]}</td><td>{r[1]}</td></tr>)}</tbody></table>;
   const lst = (rows?: string[]) => <ul className="ct-ul small">{(rows || []).map((r, i) => <li key={i}>{r}</li>)}</ul>;
+  const sections: [string, string, ReactNode][] = [
+    ["Questions this tracker answers", "What leaders, sales and marketing use it for", rub(M.questions)],
+    ["Tiers", "Who counts as direct, adjacent or reference", rub(M.tiers)],
+    ["Evidence grades and freshness", "Official, reported, estimate; flagged after 18 months", lst(M.grades)],
+    ["Financial-services focus (0–3)", "How the specialisation score is given", rub(M.fs)],
+    ["What they sell: people or outcomes", "How firms are placed on the map's vertical axis", rub(M.model)],
+    ["AI in the offer (0–3)", "How the AI score is given", rub(M.ai)],
+    ["Move impact", "When a move counts as high, medium or low for us", rub(M.impact)],
+    ["Overlap with us (0–100)", "The four parts of the overlap score", lst(M.overlap)],
+    ["Cadence and owners", "What is checked weekly, monthly, quarterly, and by whom", rub(M.cadence)],
+    ["How the data is collected", "Automated checks and what is done by hand", rub(M.collection)],
+    ["Rules we keep", "Public sources only; no pretexting; companies, not people", lst(M.ethics)],
+  ];
   return (
     <section className="ct-view">
       <p className="sub">{tr("How companies are chosen, scored and kept current, so anyone can check a number or challenge a placement.")}</p>
-      <div className="card"><h3 className="ct-h">{tr("Questions this tracker answers")}</h3>{rub(M.questions)}</div>
-      <div className="ct-g2">
-        <div className="card"><h3 className="ct-h">{tr("Tiers")}</h3>{rub(M.tiers)}</div>
-        <div className="card"><h3 className="ct-h">{tr("Evidence grades and freshness")}</h3>{lst(M.grades)}</div>
-        <div className="card"><h3 className="ct-h">{tr("Financial-services focus (0–3)")}</h3>{rub(M.fs)}</div>
-        <div className="card"><h3 className="ct-h">{tr("What they sell: people or outcomes")}</h3>{rub(M.model)}</div>
-        <div className="card"><h3 className="ct-h">{tr("AI in the offer (0–3)")}</h3>{rub(M.ai)}</div>
-        <div className="card"><h3 className="ct-h">{tr("Move impact")}</h3>{rub(M.impact)}</div>
-        <div className="card"><h3 className="ct-h">{tr("Overlap with us (0–100)")}</h3>{lst(M.overlap)}</div>
-        <div className="card"><h3 className="ct-h">{tr("Cadence and owners")}</h3>{rub(M.cadence)}</div>
-        <div className="card"><h3 className="ct-h">{tr("How the data is collected")}</h3>{rub(M.collection)}</div>
-        <div className="card"><h3 className="ct-h">{tr("Rules we keep")}</h3>{lst(M.ethics)}</div>
+      <div className="ct-kpis">
+        <div className="ct-kpi"><span className="ct-label">{tr("Three tiers")}</span><span className="small">{tr("Tier 1: the seven firms most likely to meet us. Tier 2: adjacent. Tier 3: reference.")}</span></div>
+        <div className="ct-kpi"><span className="ct-label">{tr("Three grades")}</span><span className="small ct-gl"><span><i className="ct-gr official" />{tr("Official")}</span><span><i className="ct-gr reported" />{tr("Reported")}</span><span><i className="ct-gr estimate" />{tr("Estimate")}</span></span></div>
+        <div className="ct-kpi"><span className="ct-label">{tr("Overlap score")}</span><span className="small">{tr("Same buyers 30, same way of selling 30, same markets 20, similar size 20.")}</span></div>
+        <div className="ct-kpi"><span className="ct-label">{tr("Kept current")}</span><span className="small">{tr("Tier 1 weekly, tier 2 monthly, the whole list quarterly. A person confirms every automated finding.")}</span></div>
       </div>
-      <div className="card"><h3 className="ct-h">{tr("Sources used in the seed")}</h3><p className="small">{M.sourcesNote}</p></div>
+      <div className="card ct-acc">{sections.map(([t, hint, body], i) => <details key={t} open={i === 0}><summary><b>{tr(t)}</b><span className="xs muted">{tr(hint)}</span></summary><div className="ct-acc-b">{body}</div></details>)}
+        <details><summary><b>{tr("Sources used in the seed")}</b><span className="xs muted">{tr("Where the starting data came from")}</span></summary><div className="ct-acc-b"><p className="small">{M.sourcesNote}</p></div></details>
+      </div>
     </section>
   );
 }

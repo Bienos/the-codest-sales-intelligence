@@ -2,6 +2,7 @@
 @import "../design-system/landing.css";
 @import "./components.css";
 @import "./styles/shell.css";
+@import "./styles/tier.css";
 
 @media (max-width: 640px) {
   .first-results { display: flow-root; min-block-size: 22rem; }

@@ -193,3 +193,12 @@
   .ff-chart { min-width: 540px; }
   .ff-to { display: none; }
 }
+
+/* sources: ranked bars, one hue for what is open, purple for deals still to come */
+.fc-src-bars { display: grid; gap: 2px; margin: 8px 0; }
+.fc-sb { display: grid; grid-template-columns: minmax(150px, 1.2fr) minmax(0, 2fr) 70px 48px; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--tint-1); font-size: var(--fs-sm); }
+.fc-sb .nm { display: grid; color: var(--navy); font-weight: 600; } .fc-sb .nm small { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+.fc-sb .tr { height: 18px; background: var(--tint-1); } .fc-sb .tr i { display: block; height: 100%; min-width: 2px; }
+.fc-sb .tr i.open { background: var(--navy); } .fc-sb .tr i.new { background: var(--purple); }
+.fc-sb b { text-align: right; color: var(--navy); font-variant-numeric: tabular-nums; } .fc-sb .sh { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) { .fc-sb { grid-template-columns: minmax(0, 1fr) 64px 44px; } .fc-sb .tr { grid-column: 1 / -1; grid-row: 2; } }

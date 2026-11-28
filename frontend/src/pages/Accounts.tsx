@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, fmtDate, getToken, post } from "../api";
 import { CHECKING, ListLeadLine } from "./Prospects";
 import { REGIONS, countryName } from "./targetMarket";
-import { Badge, Err, Skeleton, groupName, safeHref } from "../components/ui";
+import { AccountTier, Badge, Err, Skeleton, groupName, safeHref } from "../components/ui";
 import { CompanyAvatar, ListRank, ago } from "../components/Findings";
 import { signalName } from "../components/Signals";
 import "../styles/accounts.css";
@@ -66,7 +66,7 @@ function AddCompany({ onClose }: { onClose: () => void }) {
 
 /** Forty companies a page on a computer, twenty on a phone (a shorter scroll to the page buttons). */
 const SIZE = typeof window !== "undefined" && window.matchMedia?.("(max-width: 820px)").matches ? 20 : 40;
-const SORTS: [string, string][] = [["score", "Strongest signals"], ["priority", "Lead list priority"], ["list_score", "List score"], ["recent", "Newest signal"], ["size", "Largest first"], ["name", "Company name"]];
+const SORTS: [string, string][] = [["tier", "Tier"], ["score", "Strongest signals"], ["priority", "Lead list priority"], ["list_score", "List score"], ["recent", "Newest signal"], ["size", "Largest first"], ["name", "Company name"]];
 /** On/off filters, kept in the address so a filtered list survives opening a company and coming back. [address key, API parameter, API value, label] */
 const TOGGLES: [string, string, string, string][] = [
   ["email", "has_email", "true", "With email"],
@@ -460,7 +460,7 @@ function AccountRow({ r, view, research, selectable, selected, full, onSelect, o
         <button type="button" onClick={() => onDecide("reject")}>{tr("Remove from list")}</button></div>}
     </div>
     <div className="acc-nums">
-      <div className="acc-rank"><ListRank priority={r.list_priority} score={r.list_score} /></div>
+      <div className="acc-rank"><AccountTier t={r.tier} /><ListRank priority={r.list_priority} score={r.list_score} /></div>
       <div className="acc-ppl">
         {view === "target" ? <ContactsCell r={r} /> : view === "filling" ? <MissingCell r={r} />
           : <span className="acc-why">{tr(WHY_NOT[r.not_fit] ?? WHY_NOT.other)}</span>}

@@ -96,6 +96,7 @@ class History:
     won_values: list[float]
     won_in_year: dict[str, Any]
     health: dict[str, Any]
+    deal_rows: list[dict[str, Any]] = field(default_factory=list)      # every deal in the pipeline: status, dates, value, source
 
 
 def measure(conn: Conn, funnel: Funnel, *, now: datetime | None = None, lookback_days: int = 730, entry_window_days: int = 180, year: int | None = None,
@@ -116,7 +117,8 @@ def measure(conn: Conn, funnel: Funnel, *, now: datetime | None = None, lookback
     S = len(funnel.stages)
     stats = [StageStats() for _ in range(S)]
     known = [s.id for s in funnel.stages] + list(funnel.won_ids) + list(funnel.parking_ids)
-    deals = qa(conn, "SELECT crm_id, title, stage_id, status, value, currency, owner_id, add_time, stage_change_time, won_time, history_backfilled_at, pipeline_id "
+    deals = qa(conn, "SELECT crm_id, title, stage_id, status, value, currency, owner_id, add_time, stage_change_time, won_time, lost_time, history_backfilled_at, pipeline_id, "
+                     "lead_source_raw, origin "
                      "FROM crm_deals WHERE (%s::bigint IS NOT NULL AND pipeline_id=%s) OR (stage_id = ANY(%s))", (funnel.pipeline_id, funnel.pipeline_id, known))
     ids = [d["crm_id"] for d in deals]
     by_deal: dict[int, list[dict[str, Any]]] = {}
@@ -149,6 +151,7 @@ def measure(conn: Conn, funnel: Funnel, *, now: datetime | None = None, lookback
             elif cur_idx is not None:
                 entered = next((e["at"] for e in reversed(ev) if e["to_stage_id"] == d["stage_id"]), None) or d["stage_change_time"] or d["add_time"]
                 open_deals.append({"crm_id": d["crm_id"], "title": d["title"], "stage_index": cur_idx, "value": money(d) or None, "currency": d["currency"],
+                                   "lead_source_raw": d["lead_source_raw"], "origin": d["origin"],
                                    "days_in_stage": max(0.0, (now - entered).total_seconds() / DAY) if entered else 0.0, "owner_id": d["owner_id"]})
         if not ev:
             continue
@@ -205,4 +208,6 @@ def measure(conn: Conn, funnel: Funnel, *, now: datetime | None = None, lookback
         warnings.append(f"{no_value} of {len(open_deals)} open deals have no value in Pipedrive; the forecast gives each the average deal value.")
     health = {"deals": len(deals), "deals_with_history": with_history, "deals_backfilled": total_backfilled, "events_by_source": sources,
               "first_event_at": min((e["at"] for rows in by_deal.values() for e in rows), default=None), "open_currencies": currencies, "warnings": warnings}
-    return History(funnel, stats, open_deals, parked, entries, entry_window_days, won_values, won_year, health)
+    rows = [{"status": d["status"], "add_time": d["add_time"], "won_time": d["won_time"], "lost_time": d["lost_time"], "value": money(d),
+             "lead_source_raw": d["lead_source_raw"], "origin": d["origin"]} for d in deals if d["add_time"] is None or d["add_time"] >= since]
+    return History(funnel, stats, open_deals, parked, entries, entry_window_days, won_values, won_year, health, rows)

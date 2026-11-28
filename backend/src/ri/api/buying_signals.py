@@ -491,6 +491,10 @@ def buying_signals(conn: Conn, p: Principal, *, days: int = 90, region: str = ""
         pulse_raw = []
 
     orgs = _companies(conn, p, sorted({i["organization_id"] for i in raw} | {i["organization_id"] for i in pulse_raw}))
+    from ..tiers import tiers_for
+    for oid, t in tiers_for(conn, list(orgs)).items():
+        if oid in orgs:
+            orgs[oid]["tier"] = t                            # the one account tier, the same on every page
     companies = _group(raw, orgs, now)
     by_org = {c["organization"]["id"] for c in companies}
     if p.can("contacts.read"):

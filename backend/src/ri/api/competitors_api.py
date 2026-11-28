@@ -56,10 +56,10 @@ def register(app: FastAPI) -> None:
         return request.app.state.db.tx()
 
     @app.get("/api/competitors")
-    def tracker(request: Request, p: Principal = Depends(require("competitors.read"))):
+    def tracker(request: Request, lang: str = Query("en", pattern="^(en|pl)$"), p: Principal = Depends(require("competitors.read"))):
         scope, args = org_scope_sql(p, "o.id")
         with tx(request) as conn:
-            data = ct.tracker(conn, scope, args)
+            data = ct.tracker(conn, scope, args, lang=lang)
             data["can"] = {"manage": p.can("competitors.manage"), "record": p.can("competitors.record")}
             if p.can("competitors.manage") and not data.get("empty"):
                 data["waiting"] = conn.execute("SELECT count(*) AS n FROM competitor_moves WHERE status='candidate'").fetchone()["n"]

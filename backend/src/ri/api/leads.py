@@ -43,6 +43,7 @@ SORTS = {"score": lambda r: (-(float(r["score"] or 0)), _LIST_RANK.get(r["list_p
          "recent": lambda r: (r["last_signal_at"] is None, -(r["last_signal_at"].timestamp() if r["last_signal_at"] else 0), r["name"].lower()),
          # the lead list's own ranking: priority first, then its score; companies the list does not rank go last
          "priority": lambda r: (_LIST_RANK.get(r["list_priority"] or "", 9), -(float(r["list_score"] or -1)), r["name"].lower()),
+         "tier": lambda r: ((r.get("tier") or {}).get("n", 9), -(float(r["score"] or 0)), _LIST_RANK.get(r["list_priority"] or "", 9), r["name"].lower()),
          "list_score": lambda r: (r["list_score"] is None, -(float(r["list_score"] or 0)), _LIST_RANK.get(r["list_priority"] or "", 9), r["name"].lower())}
 # The same chain the account list shows as a verified signal (signals.seller.leading_signals): an active, verified signal on a
 # verified event, backed by a supported, anchored claim with a web source. Used to filter on "has a verified signal".
@@ -106,6 +107,10 @@ def _rows(conn, p: Principal, q: str, scope: str = "", *, every_state: bool = Fa
         row["missing"] = missing_facts(row) if r["state"] == "review" else []
         row["not_fit"] = not_fit_reason(row) if r["state"] == "other" else None
         out.append(row)
+    from ..tiers import tiers_for
+    tiers = tiers_for(conn, [r["id"] for r in out])          # the one account tier, the same on every page
+    for row in out:
+        row["tier"] = tiers.get(row["id"])
     return out
 
 
@@ -214,7 +219,7 @@ def register_leads(app: FastAPI) -> None:
     Params = dict(q=Query("", max_length=120), region=Query("", pattern="^(|uk|dach|nordics|poland|europe|international|us|other|unknown)$"),
                   icp=Query("", max_length=40), segment=Query("", max_length=60), band=Query("", pattern="^(|hot|warm|watch|none)$"),
                   origin=Query("", pattern="^(|list|added|discovered)$"), watched=Query(False), signal_days=Query(0, ge=0, le=365), shortlist=Query(False), public=Query(False), lane=Query("", pattern="^(|public)$"), focus=Query("", pattern="^(|finance|other|unclassified)$"),
-                  qualification=Query("", pattern="^(|pending_qualification)$"), sort=Query("score", pattern="^(score|name|size|recent|priority|list_score)$"), scope=Query("", pattern="^(|target|review|other)$"),
+                  qualification=Query("", pattern="^(|pending_qualification)$"), sort=Query("score", pattern="^(score|name|size|recent|priority|list_score|tier)$"), scope=Query("", pattern="^(|target|review|other)$"),
                   priority=Query("", pattern="^(|P1|P2|P3)$"), has_email=Query(False), has_signal=Query(False), by_region=Query(True))
 
     @app.get("/api/leads")
