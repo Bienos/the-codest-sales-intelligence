@@ -121,7 +121,7 @@ def sync_account_plans(conn: Conn, limit: int = 100) -> int:
 # Money (all figures per 30-day month; the reservation per search is 0.01 dollars, what Exa bills for this call is about 0.005 to 0.007):
 #   25 searches a day x 30 = 750 searches = about $5.25 reported ($7.50 if every search were billed at the reservation; the cap in
 #   Settings.discovery_coverage_searches_per_run is what bounds it, so even then it stays under $8). The 81 general saved searches add about
-#   $2.50. Everything automatic stops at 60% of the monthly Exa cap ($12 of $20), so sellers' own buttons, company research and people
+#   $2.50. Everything automatic stops at 60% of the monthly Exa cap ($24 of $40), so sellers' own buttons, company research and people
 #   search always keep at least $8.
 # Pace: about 840 accounts / 25 a day = about 34 days, inside the 4 to 6 weeks asked for; an account is not searched again before
 #   Settings.discovery_coverage_cycle_days (35) have passed, so a smaller group costs less, never more.

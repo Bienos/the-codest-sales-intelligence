@@ -67,7 +67,7 @@ LANES: tuple[Lane, ...] = (
     Lane("competitor_watch", "Competitor checks",
          "Once a day, queues the competitor check: new public awards won by tracked firms, open roles on justjoin.it, homepage headlines (weekly per firm) and news through Exa (within the Exa budget). Findings wait in Competitors, Review.", HOUR, can_pause=True, main=True, queues="competitor_watch"),
     Lane("research_sprint", "Company research for P1 and P2 accounts",
-         "Every hour, queues Exa company research for two P1 accounts without a profile (then P2), at most 12 a day, while automatic web search is under 60% of this month's Exa budget.",
+         "Every hour, queues Exa company research for up to three P1 accounts without a profile (then P2), at most 40 a day, while automatic web search is under 60% of this month's Exa budget.",
          HOUR, can_pause=True, main=True, queues="account_profile"),
     Lane("crm_relationships", "Relationship from Pipedrive",
          "Every hour, sets each linked account's relationship with us from its Pipedrive deals (client, past client, in talks, or a prospect with lost deals). Never changes one a person set.",
