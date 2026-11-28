@@ -299,12 +299,12 @@ def run(conn: Conn, *, fetch: Fetch, search: Callable[[str, dict[str, Any]], lis
     return out
 
 
-def http_fetch(url: str) -> str:
+def http_fetch(url: str, headers: dict[str, str] | None = None) -> str:
     """One public page, through the client that only reaches public addresses and re-checks every redirect."""
     from .sources.safe import SafeClient
 
     async def go() -> str:
-        r = await SafeClient(timeout=20).get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; CodestResearch/1.0)", "Accept": "text/html,application/xml"},
+        r = await SafeClient(timeout=20).get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; CodestResearch/1.0)", "Accept": "text/html,application/xml", **(headers or {})},
                                              follow_redirects=True)
         r.raise_for_status()
         return r.text[:3_000_000]

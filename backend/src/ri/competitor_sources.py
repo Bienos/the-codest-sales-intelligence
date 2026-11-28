@@ -41,7 +41,7 @@ UA_NOTE = "Mozilla/5.0 (compatible; CodestResearch/1.0)"
 DAYS = {"sitemap": {1: 7, 2: 7, 3: 30}, "feed": {1: 7, 2: 7, 3: 30}, "gdelt": {1: 7, 2: 7}, "clutch": {1: 30, 2: 30, 3: 30},
         "careers": {1: 7, 2: 7, 3: 30}, "nfj": {1: 7, 2: 7, 3: 30}, "krs": {1: 30, 2: 30, 3: 30}, "ch": {1: 30, 2: 30, 3: 30},
         "aws": {1: 30, 2: 30, 3: 30}}
-PER_RUN = {"sitemap": 10, "feed": 15, "clutch": 15, "careers": 15, "nfj": 15, "krs": 10, "ch": 10, "aws": 10}
+PER_RUN = {"sitemap": 10, "feed": 15, "clutch": 15, "careers": 15, "nfj": 15, "krs": 10, "ch": 10, "aws": 15}
 GDELT_GAP_S = 5.5
 GDELT_PER_QUERY = 6
 MAX_SITEMAP_URLS = 25_000
@@ -321,6 +321,9 @@ def parse_clutch(html: str) -> dict[str, Any]:
     t = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", t)))
     m = re.search(r"(\d\.\d)\s+\d\.\d+\s+(\d[\d,]*)\s+reviews?", t) or re.search(r"(\d\.\d)\D{0,40}?(\d[\d,]*)\s+reviews?", t)
     quotes = re.findall(r"“([^”]{20,240})”|\"([^\"]{20,240})\"", t)
+    if not m and "Review Widget" in t:                     # a profile without reviews yet: the widget shows only the name
+        n = re.search(r"(\d[\d,]*)\s+reviews?", t)
+        return {"rating": None, "reviews": int(n.group(1).replace(",", "")) if n else 0, "quotes": []}
     return {"rating": float(m.group(1)) if m else None, "reviews": int(m.group(2).replace(",", "")) if m else None,
             "quotes": [a or b for a, b in quotes][:3]}
 
@@ -410,6 +413,20 @@ def ats_jobs(kind: str, slug: str, fetch: Fetch) -> tuple[list[dict[str, str]], 
     if kind == "ashby":
         d = json.loads(fetch(f"https://api.ashbyhq.com/posting-api/job-board/{s}"))
         return [{"title": j.get("title", ""), "location": j.get("location", "")} for j in d.get("jobs") or []], f"https://jobs.ashbyhq.com/{s}"
+    if kind == "bamboohr":
+        d = json.loads(_get(fetch, f"https://{s}.bamboohr.com/careers/list", {"Accept": "application/json"}))
+        return [{"title": j.get("jobOpeningName", ""), "location": " ".join(str((j.get("location") or {}).get(x) or "") for x in ("city", "state"))}
+                for j in d.get("result") or []], f"https://{s}.bamboohr.com/careers"
+    if kind == "breezy":
+        return [{"title": j.get("name", ""), "location": (j.get("location") or {}).get("name", "")} for j in json.loads(fetch(f"https://{s}.breezy.hr/json"))], f"https://{s}.breezy.hr/"
+    if kind == "traffit":
+        d = json.loads(_get(fetch, f"https://{s}.traffit.com/public/job_posts/published", {"Accept": "application/json", "X-Request-Page-Size": "100"}))
+        out = []
+        for j in d:
+            adv = j.get("advert") or {}
+            geo = next((v.get("value") for v in adv.get("values") or [] if v.get("field_id") == "geolocation"), "") or ""
+            out.append({"title": adv.get("name", ""), "location": geo if isinstance(geo, str) else json.dumps(geo)})
+        return out, f"https://{s}.traffit.com/career/"
     if kind in ("teamtailor", "personio"):
         url = slug if slug.startswith("https://") else (f"https://{s}.teamtailor.com/jobs.rss" if kind == "teamtailor" else f"https://{s}.jobs.personio.de/xml")
         xml = fetch(url)
@@ -418,14 +435,26 @@ def ats_jobs(kind: str, slug: str, fetch: Fetch) -> tuple[list[dict[str, str]], 
     raise ValueError(f"unknown job system {kind}")
 
 
+def _get(fetch: Fetch, url: str, headers: dict[str, str]) -> str:
+    """A GET with extra headers when the fetcher takes them (the live one does; simple test fakes do not)."""
+    try:
+        return fetch(url, headers=headers)            # type: ignore[call-arg]
+    except TypeError:
+        return fetch(url)
+
+
 NFJ = "https://nofluffjobs.com/api/search/posting?page=1&salaryCurrency=PLN&salaryPeriod=month&region=pl"
 
 
 def nfj_jobs(name: str, post: Post) -> list[dict[str, str]]:
     d = json.loads(post(NFJ, {"criteriaSearch": {"company": [name]}, "page": 1}))
     want = ct.name_keys({"name": name})
-    out = []
+    out, seen = [], set()
     for p in d.get("postings") or []:
+        ref = p.get("reference") or p.get("id") or p.get("url") or p.get("title")
+        if ref in seen:                                   # one posting per city: count each job once
+            continue
+        seen.add(ref)
         comp = str(p.get("name") or (p.get("company") or {}).get("name") or "")
         if comp and not (ct.name_keys({"name": comp}) & want) and name.lower() not in comp.lower():
             continue
@@ -521,10 +550,14 @@ def registers(conn: Conn, comps: list[dict[str, Any]], fetch: Fetch, now: dateti
         n = str(_track(c)["krs"][0]).zfill(10)
         try:
             raw = fetch(KRS_API.format(n=n))
+            if "Przerwa techniczna" in raw[:2000]:
+                raise ConnectionError("register under maintenance")
             got = parse_krs(json.loads(raw))
         except Exception as exc:  # noqa: BLE001
             failed += 1
-            remember(conn, c["key"], "krs", (last_run(conn, c["key"], "krs") or {}).get("last_value"), now, error=type(exc).__name__)
+            remember(conn, c["key"], "krs", (last_run(conn, c["key"], "krs") or {}).get("last_value"), now, error=str(exc)[:80] if isinstance(exc, ConnectionError) else type(exc).__name__)
+            if isinstance(exc, ConnectionError):
+                break                                      # the whole register is down: try again tomorrow
             continue
         prev = (last_run(conn, c["key"], "krs") or {}).get("last_value") or {}
         src = f"https://wyszukiwarka-krs.ms.gov.pl/details?krs={n}"
@@ -656,39 +689,43 @@ def _fuzzy(match: dict[str, str], name: str) -> str | None:
 
 
 # ------------------------------------------------------------------ partner programmes: AWS and vendor pages
-AWS = "https://api.finder.partners.aws.a2z.com/search?locale=en&highlight=on&sourceFilter=searchPage&size=25&from=0&query={q}"
+AWS = "https://api.finder.partners.aws.a2z.com/search?locale=en&highlight=on&sourceFilter=searchPage&size=25&from=0&kw={q}"     # 'kw', not 'query'
 
 
-def aws(conn: Conn, comps: list[dict[str, Any]], fetch: Fetch, now: datetime) -> dict[str, int]:
+def _host(u: str) -> str:
+    return (urlparse(u if "//" in u else "https://" + u).hostname or "").lower().removeprefix("www.")
+
+
+def aws(conn: Conn, comps: list[dict[str, Any]], fetch: Fetch, now: datetime, sleep: Callable[[float], None] = time.sleep) -> dict[str, int]:
+    """AWS Partner finder, searched by name and matched to the firm by website domain: tier, certifications, competencies, case studies."""
     done = made = failed = 0
-    for c in _due_firms(conn, comps, "aws", now, lambda c: _track(c).get("aws")):
+    for c in _due_firms(conn, comps, "aws", now, lambda c: _host(c.get("url") or "")):
+        if done:
+            sleep(0.5)
         done += 1
-        a = _track(c)["aws"]
-        host = (urlparse(a.get("website") or c.get("url") or "").hostname or "").removeprefix("www.")
+        hosts = {_host(c.get("url") or ""), _host((_track(c).get("aws") or {}).get("website") or "")} - {""}
         try:
-            res = json.loads(fetch(AWS.format(q=quote(a.get("name") or c["name"]))))["message"]["results"]
-            hit = next((r["_source"] for r in res if host and host in (r["_source"].get("website") or "")), None)
+            res = json.loads(fetch(AWS.format(q=quote(c["name"]))))["message"].get("results") or []
         except Exception as exc:  # noqa: BLE001
             failed += 1
             remember(conn, c["key"], "aws", None, now, error=type(exc).__name__)
             continue
+        hit = next((r["_source"] for r in res if _host(r.get("_source", {}).get("website") or "") in hosts), None)
         if not hit:
             remember(conn, c["key"], "aws", {"listed": False}, now)
             continue
         got = {"listed": True, "tier": hit.get("current_program_status"), "certifications": hit.get("aws_certifications_count"),
                "competencies": hit.get("competencies_count"), "caseStudies": hit.get("references_casestudy_count")}
+        src = f"https://partners.amazonaws.com/search/partners?keyword={quote(hit.get('name') or c['name'])}"
         set_fact(conn, c["key"], "aws", {**got, "value": f"AWS {got['tier']} partner, {got['certifications']} certifications, {got['competencies']} competencies",
-                                         "source": f"https://partners.amazonaws.com/search/partners?keyword={quote(hit.get('name') or c['name'])}",
-                                         "asOf": _today(now), "grade": "official"})
+                                         "source": src, "asOf": _today(now), "grade": "official"})
         prev = (last_run(conn, c["key"], "aws") or {}).get("last_value") or {}
         if prev.get("listed") and prev.get("tier") != got["tier"]:
             made += candidate(conn, c["key"], day=_today(now), kind="partner", headline=f"AWS partner tier changes: {prev.get('tier')} to {got['tier']}",
-                              source=_tag(f"https://partners.amazonaws.com/search/partners?keyword={quote(c['name'])}", now), grade="official", impact=1,
-                              actor="collector:aws")
+                              source=_tag(src, now), grade="official", impact=1, actor="collector:aws")
         if prev.get("listed") and (got["competencies"] or 0) > (prev.get("competencies") or 0):
             made += candidate(conn, c["key"], day=_today(now), kind="partner", headline=f"New AWS competency: {prev.get('competencies') or 0} to {got['competencies']}",
-                              source=_tag(f"https://partners.amazonaws.com/search/partners?keyword={quote(c['name'])}", now) + "-comp", grade="official",
-                              impact=1, actor="collector:aws")
+                              source=_tag(src, now) + "-comp", grade="official", impact=1, actor="collector:aws")
         remember(conn, c["key"], "aws", got, now)
     return {"aws_checked": done, "aws_candidates": made, "aws_failed": failed}
 
@@ -730,7 +767,7 @@ def run_all(conn: Conn, comps: list[dict[str, Any]], *, fetch: Fetch, post: Post
     out: dict[str, Any] = {}
     for step in (lambda: tenders(conn, comps, fetch, now, sleep), lambda: sitemaps(conn, comps, fetch, now), lambda: feeds(conn, comps, fetch, now),
                  lambda: gdelt(conn, comps, fetch, now, sleep), lambda: clutch(conn, comps, fetch, now), lambda: careers(conn, comps, fetch, post, now),
-                 lambda: registers(conn, comps, fetch, now), lambda: aws(conn, comps, fetch, now), lambda: partner_pages(conn, comps, fetch, now)):
+                 lambda: registers(conn, comps, fetch, now), lambda: aws(conn, comps, fetch, now, sleep), lambda: partner_pages(conn, comps, fetch, now)):
         try:
             out.update(step())
         except Exception as exc:  # noqa: BLE001  (one broken source never stops the others)

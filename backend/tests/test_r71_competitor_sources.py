@@ -211,14 +211,14 @@ def test_aws_tier_and_vendor_partner_pages(conn):
     ct.load_seed(conn)
     f = firm(conn)
     host = f["url"]
-    track(conn, f["key"], aws={"name": f["name"], "website": host})
 
     def aws(tier, comp):
         return json.dumps({"message": {"results": [{"_source": {"name": f["name"], "website": host, "current_program_status": tier, "aws_certifications_count": 40,
                                                                  "competencies_count": comp, "references_casestudy_count": 3}}]}})
-    cs.aws(conn, cw.tracked(conn), pages({"https://api.finder.partners.aws.a2z.com/*": aws("Select", 0)}), NOW)
+    out = cs.aws(conn, cw.tracked(conn), pages({"https://api.finder.partners.aws.a2z.com/*": aws("Select", 0)}), NOW, sleep=lambda s: None)
+    assert out["aws_checked"] == cs.PER_RUN["aws"]
     assert conn.execute("SELECT profile->'aws'->>'tier' t FROM competitors WHERE key=%s", (f["key"],)).fetchone()["t"] == "Select"
-    cs.aws(conn, cw.tracked(conn), pages({"https://api.finder.partners.aws.a2z.com/*": aws("Advanced", 1)}), NOW + timedelta(days=31))
+    cs.aws(conn, cw.tracked(conn), pages({"https://api.finder.partners.aws.a2z.com/*": aws("Advanced", 1)}), NOW + timedelta(days=31), sleep=lambda s: None)
     assert sorted(m["headline"] for m in cands(conn, f["key"], "collector:aws")) == ["AWS partner tier changes: Select to Advanced", "New AWS competency: 0 to 1"]
     page1 = "<html><li>Accenture</li></html>"
     page2 = f"<html><li>Accenture</li><li>{f['name']}</li></html>"

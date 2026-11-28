@@ -256,7 +256,22 @@
    "fitNote": "The closest copy of our offer and price, with a 60% fintech client mix and UK buyers.",
    "aliases": [
     "TSH"
-   ]
+   ],
+   "track": {
+    "clutchUid": 23705,
+    "krs": [
+     "0000435101"
+    ],
+    "ats": {
+     "kind": "traffit",
+     "slug": "tsh"
+    },
+    "sitemap": "https://tsh.io/sitemap.xml",
+    "aws": {
+     "website": "https://tsh.io"
+    },
+    "careers": "https://tsh.io/career"
+   }
   },
   {
    "name": "STX Next",
@@ -412,7 +427,30 @@
    },
    "key": "stx-next",
    "reference": false,
-   "fitNote": "Finance and insurance in its headline, offices in London and Germany, and private-equity money to buy firms like us."
+   "fitNote": "Finance and insurance in its headline, offices in London and Germany, and private-equity money to buy firms like us.",
+   "track": {
+    "clutchUid": 21384,
+    "krs": [
+     "0000967074"
+    ],
+    "ukCompany": "13904248",
+    "ats": {
+     "kind": "traffit",
+     "slug": "stxnext"
+    },
+    "nfj": "STX Next",
+    "sitemap": "https://www.stxnext.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic (Claude Partner Network)",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.stxnext.com"
+    },
+    "careers": "https://career.stxnext.com/"
+   }
   },
   {
    "name": "10Clouds",
@@ -489,7 +527,7 @@
     "reviews": 95,
     "rate": "$50–99/hr",
     "min": "$25,000+",
-    "source": "https://10clouds.com/",
+    "source": "https://clutch.co/profile/10clouds-financial-institutions",
     "asOf": "2026-11",
     "grade": "reported"
    },
@@ -567,7 +605,25 @@
     "grade": "reported"
    },
    "key": "10clouds",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 2215142,
+    "krs": [
+     "0000996025"
+    ],
+    "sitemap": "https://10clouds.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Mambu",
+      "url": "https://mambu.com/en/partner-finder"
+     },
+     {
+      "vendor": "Anthropic/Claude",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "careers": "https://10clouds.com/careers/"
+   }
   },
   {
    "name": "Miquido",
@@ -705,7 +761,20 @@
    "quickDismiss": "They are mobile specialists and good at it. If the work sits in the platform, data or integration behind the app, that is outside their focus and inside ours.",
    "key": "miquido",
    "reference": false,
-   "fitNote": "Bank and insurer clients, the UK and DACH as priority markets, our size, and now outcome-based prices."
+   "fitNote": "Bank and insurer clients, the UK and DACH as priority markets, our size, and now outcome-based prices.",
+   "track": {
+    "clutchUid": 32853,
+    "krs": [
+     "0000651969",
+     "0000762910"
+    ],
+    "ats": {
+     "kind": "bamboohr",
+     "slug": "miquido"
+    },
+    "sitemap": "https://www.miquido.com/sitemaps.xml",
+    "careers": "https://careers.miquido.com/job-offers/"
+   }
   },
   {
    "name": "Brainhub",
@@ -834,7 +903,16 @@
    ],
    "quickDismiss": "They sell vetted engineers, as we do, and are now part of STX Next. We add responsibility for an agreed scope, and the people you meet are the people who stay.",
    "key": "brainhub",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 31689,
+    "krs": [
+     "0000622336"
+    ],
+    "rss": "https://brainhub.eu/library/rss.xml",
+    "sitemap": "https://brainhub.eu/sitemap.xml",
+    "careers": "https://career.stxnext.com/"
+   }
   },
   {
    "name": "Pragmatic Coders",
@@ -953,7 +1031,20 @@
    "quickDismiss": "They are a good small fintech builder, known for rescues. For steady work on a live system that may need a second team, ask how fast they can staff it.",
    "key": "pragmatic-coders",
    "reference": false,
-   "fitNote": "A fintech builder of our size with a UK challenger-bank reference."
+   "fitNote": "A fintech builder of our size with a UK challenger-bank reference.",
+   "track": {
+    "clutchUid": 32879,
+    "krs": [
+     "0000601571"
+    ],
+    "ats": {
+     "kind": "recruitee",
+     "slug": "pragmaticcoders"
+    },
+    "rss": "https://www.pragmaticcoders.com/blog/feed",
+    "sitemap": "https://www.pragmaticcoders.com/sitemap_index.xml",
+    "careers": "https://kariera.pragmaticcoders.com/ofertypracy"
+   }
   },
   {
    "name": "Netguru",
@@ -1099,7 +1190,23 @@
     "grade": "reported"
    },
    "key": "netguru",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 22759,
+    "krs": [
+     "0000745671"
+    ],
+    "ats": {
+     "kind": "workable",
+     "slug": "netguru"
+    },
+    "rss": "https://www.netguru.com/blog/rss.xml",
+    "sitemap": "https://www.netguru.com/sitemap.xml",
+    "aws": {
+     "website": "https://www.netguru.com"
+    },
+    "careers": "https://www.netguru.com/join-netguru"
+   }
   },
   {
    "name": "Monterail",
@@ -1220,7 +1327,20 @@
     }
    ],
    "key": "monterail",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 80298,
+    "krs": [
+     "0000357415"
+    ],
+    "ats": {
+     "kind": "workable",
+     "slug": "monterail"
+    },
+    "rss": "https://www.monterail.com/blog/rss.xml",
+    "sitemap": "https://www.monterail.com/sitemap_index.xml",
+    "careers": "https://www.monterail.com/careers"
+   }
   },
   {
    "name": "Boldare",
@@ -1323,7 +1443,21 @@
    "questions": [],
    "moves": [],
    "key": "boldare",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 25610,
+    "krs": [
+     "0000914518"
+    ],
+    "ats": {
+     "kind": "breezy",
+     "slug": "boldare"
+    },
+    "nfj": "Boldare",
+    "rss": "https://www.boldare.com/rss.xml",
+    "sitemap": "https://www.boldare.com/sitemap-index.xml",
+    "careers": "https://www.boldare.com/career/"
+   }
   },
   {
    "name": "Software Mansion",
@@ -1441,7 +1575,31 @@
    ],
    "entryOffer": "Paid one-hour expert consultations",
    "key": "software-mansion",
-   "reference": true
+   "reference": true,
+   "track": {
+    "clutchUid": 507235,
+    "krs": [
+     "0000961952"
+    ],
+    "ats": {
+     "kind": "recruitee",
+     "slug": "swmansion"
+    },
+    "nfj": "Software Mansion",
+    "rss": "https://swmansion.com/rss.xml",
+    "sitemap": "https://swmansion.com/sitemap-index.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic (Claude Partner Network)",
+      "url": "https://claude.com/marketplace/service-partners"
+     },
+     {
+      "vendor": "Expo",
+      "url": "https://expo.dev/consultants"
+     }
+    ],
+    "careers": "https://swmansion.com/careers/"
+   }
   },
   {
    "name": "Tooploox",
@@ -1543,7 +1701,17 @@
     }
    ],
    "key": "tooploox",
-   "reference": true
+   "reference": true,
+   "track": {
+    "clutchUid": 32203,
+    "krs": [
+     "0000445336"
+    ],
+    "nfj": "Tooploox",
+    "rss": "https://tooploox.com/feed/",
+    "sitemap": "https://tooploox.com/sitemap_index.xml",
+    "careers": "https://tooploox.com/careers"
+   }
   },
   {
    "name": "Polcode",
@@ -1651,7 +1819,20 @@
     }
    ],
    "key": "polcode",
-   "reference": true
+   "reference": true,
+   "track": {
+    "clutchUid": 150925,
+    "krs": [
+     "0000525949"
+    ],
+    "ats": {
+     "kind": "traffit",
+     "slug": "polcode"
+    },
+    "nfj": "Polcode",
+    "sitemap": "https://polcode.com/sitemap.xml",
+    "careers": "https://polcode.com/career"
+   }
   },
   {
    "name": "Software Mind",
@@ -1824,7 +2005,23 @@
    ],
    "key": "software-mind",
    "reference": false,
-   "fitNote": "Our dedicated-team model, finance listed first, and present in all four of our markets."
+   "fitNote": "Our dedicated-team model, finance listed first, and present in all four of our markets.",
+   "track": {
+    "clutchUid": 70997,
+    "krs": [
+     "0001180898"
+    ],
+    "ukCompany": "15830163",
+    "ats": {
+     "kind": "smartrecruiters",
+     "slug": "SoftwareMind"
+    },
+    "sitemap": "https://softwaremind.com/sitemap_index.xml",
+    "aws": {
+     "website": "https://www.softwaremind.com"
+    },
+    "careers": "https://softwaremind.com/careers/"
+   }
   },
   {
    "name": "Future Processing",
@@ -1996,7 +2193,30 @@
    },
    "key": "future-processing",
    "reference": false,
-   "fitNote": "UK insurers and finance, offices in London, Stockholm and Germany, and the same AI story."
+   "fitNote": "UK insurers and finance, offices in London, Stockholm and Germany, and the same AI story.",
+   "track": {
+    "clutchUid": 24388,
+    "krs": [
+     "0000817352"
+    ],
+    "ukCompany": "15305831",
+    "ats": {
+     "kind": "lever",
+     "slug": "fp"
+    },
+    "rss": "https://www.future-processing.com/blog/feed/",
+    "sitemap": "https://www.future-processing.com/sitemap_index.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic (Claude Partner Network)",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.future-processing.com/"
+    },
+    "careers": "https://kariera.future-processing.pl/oferty-pracy/"
+   }
   },
   {
    "name": "Neontri",
@@ -2124,7 +2344,16 @@
    "moves": [],
    "key": "neontri",
    "reference": false,
-   "fitNote": "The same model in Polish banking and payments, with the deepest Polish bank names."
+   "fitNote": "The same model in Polish banking and payments, with the deepest Polish bank names.",
+   "track": {
+    "clutchUid": 708829,
+    "krs": [
+     "0000982018"
+    ],
+    "rss": "https://neontri.com/feed/",
+    "sitemap": "https://neontri.com/sitemap_index.xml",
+    "careers": "https://neontri.com/career/"
+   }
   },
   {
    "name": "Code & Pepper",
@@ -2255,7 +2484,20 @@
    "fitNote": "Regulated-tech product engineering at our size, with UK fintech references.",
    "aliases": [
     "Code and Pepper"
-   ]
+   ],
+   "track": {
+    "clutchUid": 40451,
+    "krs": [
+     "0000509492"
+    ],
+    "ats": {
+     "kind": "recruitee",
+     "slug": "codepepper"
+    },
+    "rss": "https://codeandpepper.com/feed/",
+    "sitemap": "https://codeandpepper.com/sitemap_index.xml",
+    "careers": "https://careers.codeandpepper.com/"
+   }
   },
   {
    "name": "Altkom Software",
@@ -2391,7 +2633,23 @@
    "aliases": [
     "Altkom Software & Consulting",
     "Altkom"
-   ]
+   ],
+   "track": {
+    "clutchUid": 225521,
+    "krs": [
+     "0000448403"
+    ],
+    "ats": {
+     "kind": "traffit",
+     "slug": "asc"
+    },
+    "rss": "https://www.altkomsoftware.com/feed/",
+    "sitemap": "https://www.altkomsoftware.com/sitemap_index.xml",
+    "aws": {
+     "website": "https://www.altkomsoftware.com/"
+    },
+    "careers": "https://www.altkomsoftware.com/career/"
+   }
   },
   {
    "name": "Britenet",
@@ -2537,7 +2795,22 @@
     }
    ],
    "key": "britenet",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 428513,
+    "krs": [
+     "0000264919",
+     "0000554163",
+     "0000637660",
+     "0000632480",
+     "0000637964",
+     "0000555961"
+    ],
+    "nfj": "Britenet",
+    "rss": "https://britenet.eu/blog-post/feed/",
+    "sitemap": "https://britenet.eu/content/sitemap-index.xml",
+    "careers": "https://britenet.eu/job-offers/"
+   }
   },
   {
    "name": "Sii Poland",
@@ -2702,7 +2975,20 @@
    "reference": false,
    "aliases": [
     "Sii"
-   ]
+   ],
+   "track": {
+    "clutchUid": 1387011,
+    "krs": [
+     "0000249203"
+    ],
+    "nfj": "Sii Polska",
+    "rss": "https://sii.pl/feed/",
+    "sitemap": "https://sii.pl/sitemap.xml",
+    "aws": {
+     "website": "https://www.sii.pl"
+    },
+    "careers": "https://sii.pl/kariera/"
+   }
   },
   {
    "name": "Spyrosoft",
@@ -2869,7 +3155,33 @@
     "grade": "reported"
    },
    "key": "spyrosoft",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 18539,
+    "krs": [
+     "0000616387",
+     "0000724282",
+     "0000602767",
+     "0000982635",
+     "0000946182",
+     "0001021782"
+    ],
+    "ukCompany": "09952842",
+    "ats": {
+     "kind": "teamtailor",
+     "slug": "https://careers.spyro-soft.com/jobs.rss"
+    },
+    "nfj": "Spyrosoft",
+    "rss": "https://spyro-soft.com/feed",
+    "sitemap": "https://spyro-soft.com/sitemap_index.xml",
+    "partnerPages": [
+     {
+      "vendor": "Appian",
+      "url": "https://appian.com/partners/partner-program/all-partners/spyrosoft-s-a"
+     }
+    ],
+    "careers": "https://careers.spyro-soft.com/jobs"
+   }
   },
   {
    "name": "Billennium",
@@ -2980,7 +3292,19 @@
     }
    ],
    "key": "billennium",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 838116,
+    "krs": [
+     "0000769422"
+    ],
+    "rss": "https://billennium.com/feed/",
+    "sitemap": "https://billennium.com/sitemap_index.xml",
+    "aws": {
+     "website": "https://www.billennium.com"
+    },
+    "careers": "https://billennium.com/career/"
+   }
   },
   {
    "name": "Sollers Consulting",
@@ -3114,7 +3438,24 @@
    "reference": false,
    "aliases": [
     "Sollers"
-   ]
+   ],
+   "track": {
+    "clutchUid": 2374577,
+    "krs": [
+     "0000191247",
+     "0000738636"
+    ],
+    "ukCompany": "14846071",
+    "rss": "https://sollers.com/en/insights/feed/",
+    "sitemap": "https://sollers.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Camunda",
+      "url": "https://camunda.com/partners/sollers-consulting/"
+     }
+    ],
+    "careers": "https://sollers.com/en/career/"
+   }
   },
   {
    "name": "Ailleron",
@@ -3234,7 +3575,15 @@
     }
    ],
    "key": "ailleron",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 1883535,
+    "krs": [
+     "0000385276"
+    ],
+    "sitemap": "https://ailleron.com/sitemap_index.xml",
+    "careers": "https://ailleron.com/career/job-openings/"
+   }
   },
   {
    "name": "Sparkbit",
@@ -3335,7 +3684,14 @@
     }
    ],
    "key": "sparkbit",
-   "reference": true
+   "reference": true,
+   "track": {
+    "clutchUid": 41595,
+    "krs": [
+     "0000729100"
+    ],
+    "sitemap": "https://www.sparkbit.pl/sitemap.xml"
+   }
   },
   {
    "name": "Avenga",
@@ -3501,7 +3857,31 @@
    "fitNote": "Polish delivery roots, a DACH presence and a Nordic core-banking reference.",
    "aliases": [
     "IT Kontrakt"
-   ]
+   ],
+   "track": {
+    "clutchUid": 166273,
+    "krs": [
+     "0000210937",
+     "0000518453"
+    ],
+    "ats": {
+     "kind": "teamtailor",
+     "slug": "avenga"
+    },
+    "nfj": "AVENGA (Agencja Pracy, nr KRAZ: 8448)",
+    "rss": "https://www.avenga.com/feed/",
+    "sitemap": "https://www.avenga.com/sitemap_index.xml",
+    "partnerPages": [
+     {
+      "vendor": "Mambu",
+      "url": "https://mambu.com/en/partner/avenga"
+     }
+    ],
+    "aws": {
+     "website": "https://www.avenga.com/"
+    },
+    "careers": "https://career.avenga.com/"
+   }
   },
   {
    "name": "N-iX",
@@ -3664,9 +4044,27 @@
    "plDelivery": true,
    "key": "n-ix",
    "reference": false,
-   "aliases": [
-    "NIX Solutions"
-   ]
+   "track": {
+    "clutchUid": 26171,
+    "krs": [
+     "0000603215"
+    ],
+    "ats": {
+     "kind": "greenhouse",
+     "slug": "nix"
+    },
+    "sitemap": "https://www.n-ix.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic (Claude Partner Network)",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.n-ix.com"
+    },
+    "careers": "https://careers.n-ix.com/jobs/"
+   }
   },
   {
    "name": "ELEKS",
@@ -3800,7 +4198,20 @@
    "reference": false,
    "aliases": [
     "ELEKS Holding"
-   ]
+   ],
+   "track": {
+    "clutchUid": 26793,
+    "krs": [
+     "0000452889"
+    ],
+    "ukCompany": "08066391",
+    "rss": "https://eleks.com/feed/",
+    "sitemap": "https://eleks.com/sitemap_index.xml",
+    "aws": {
+     "website": "https://www.eleks.com"
+    },
+    "careers": "https://careers.eleks.com/"
+   }
   },
   {
    "name": "Scalefocus",
@@ -3939,7 +4350,13 @@
     }
    ],
    "key": "scalefocus",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 146659,
+    "rss": "https://www.scalefocus.com/feed?post_type=blog",
+    "sitemap": "https://www.scalefocus.com/sitemaps.xml",
+    "careers": "https://www.scalefocus.com/careers"
+   }
   },
   {
    "name": "Infinum",
@@ -4092,7 +4509,22 @@
     }
    ],
    "key": "infinum",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 40190,
+    "ukCompany": "13515646",
+    "sitemap": "https://infinum.com/sitemap_index.xml",
+    "partnerPages": [
+     {
+      "vendor": "Stripe",
+      "url": "https://stripe.partners/directory/infinum"
+     }
+    ],
+    "aws": {
+     "website": "https://infinum.com"
+    },
+    "careers": "https://infinum.com/careers/"
+   }
   },
   {
    "name": "Intellias",
@@ -4219,7 +4651,18 @@
    },
    "plDelivery": true,
    "key": "intellias",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 22025,
+    "krs": [
+     "0000782683"
+    ],
+    "sitemap": "https://intellias.com/sitemap_index.xml",
+    "aws": {
+     "website": "https://www.intellias.com/"
+    },
+    "careers": "https://career.intellias.com/vacancies/"
+   }
   },
   {
    "name": "Ciklum",
@@ -4334,7 +4777,26 @@
    ],
    "plDelivery": true,
    "key": "ciklum",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 22168,
+    "krs": [
+     "0000577486"
+    ],
+    "ukCompany": "07322381",
+    "rss": "https://www.ciklum.com/feed/",
+    "sitemap": "https://www.ciklum.com/sitemap_index.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic/Claude",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.ciklum.com"
+    },
+    "careers": "https://jobs.ciklum.com/"
+   }
   },
   {
    "name": "Mindera",
@@ -4446,7 +4908,23 @@
     }
    ],
    "key": "mindera",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 643375,
+    "ukCompany": "10398155",
+    "ats": {
+     "kind": "workable",
+     "slug": "minderacraft"
+    },
+    "sitemap": "https://mindera.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Shopify",
+      "url": "https://www.shopify.com/partners/directory/partner/mindera"
+     }
+    ],
+    "careers": "https://mindera.com/careers"
+   }
   },
   {
    "name": "Scott Logic",
@@ -4563,7 +5041,27 @@
     }
    ],
    "key": "scott-logic",
-   "reference": false
+   "reference": false,
+   "track": {
+    "clutchUid": 61720,
+    "ukCompany": "05377430",
+    "ats": {
+     "kind": "lever",
+     "slug": "scottlogic"
+    },
+    "rss": "https://blog.scottlogic.com/feed.xml",
+    "sitemap": "https://www.scottlogic.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic/Claude",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.scottlogic.com/"
+    },
+    "careers": "https://www.scottlogic.com/careers/vacancies"
+   }
   },
   {
    "name": "Pentalog",
@@ -4655,7 +5153,10 @@
    "moves": [],
    "plDelivery": true,
    "key": "pentalog",
-   "reference": true
+   "reference": true,
+   "track": {
+    "clutchUid": 1176372
+   }
   },
   {
    "name": "HTEC",
@@ -4761,7 +5262,15 @@
    "reference": true,
    "aliases": [
     "HTEC Group"
-   ]
+   ],
+   "track": {
+    "clutchUid": 1615050,
+    "sitemap": "https://htec.com/sitemap_index.xml",
+    "aws": {
+     "website": "https://htec.com/"
+    },
+    "careers": "https://htec.com/careers/"
+   }
   },
   {
    "name": "Endava",
@@ -4889,7 +5398,20 @@
     "grade": "reported"
    },
    "key": "endava",
-   "reference": true
+   "reference": true,
+   "track": {
+    "clutchUid": 512390,
+    "krs": [
+     "0000946315"
+    ],
+    "ukCompany": "05722669",
+    "ats": {
+     "kind": "smartrecruiters",
+     "slug": "Endava"
+    },
+    "sitemap": "https://www.endava.com/sitemap.xml",
+    "careers": "https://www.endava.com/careers/jobs"
+   }
   },
   {
    "name": "Apptension",
@@ -5015,7 +5537,15 @@
    "moves": [],
    "key": "apptension",
    "reference": false,
-   "fitNote": "A small AI-first product studio; overlaps on AI-accelerated delivery, not on financial services."
+   "fitNote": "A small AI-first product studio; overlaps on AI-accelerated delivery, not on financial services.",
+   "track": {
+    "clutchUid": 33589,
+    "krs": [
+     "0000534235"
+    ],
+    "sitemap": "https://apptension.com/sitemap.xml",
+    "careers": "https://apptension.com/careers"
+   }
   },
   {
    "name": "DataArt",
@@ -5197,7 +5727,30 @@
    ],
    "key": "dataart",
    "reference": false,
-   "fitNote": "A larger, AI-led rival in UK and DACH finance, with Polish delivery."
+   "fitNote": "A larger, AI-led rival in UK and DACH finance, with Polish delivery.",
+   "track": {
+    "clutchUid": 359868,
+    "krs": [
+     "0000514163"
+    ],
+    "ukCompany": "04332565",
+    "rss": "https://dataart.medium.com/feed",
+    "sitemap": "https://www.dataart.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic (Claude Partner Network)",
+      "url": "https://claude.com/marketplace/service-partners"
+     },
+     {
+      "vendor": "Stripe",
+      "url": "https://stripe.com/partners/dataart"
+     }
+    ],
+    "aws": {
+     "website": "https://www.dataart.com"
+    },
+    "careers": "https://www.dataart.team/vacancies"
+   }
   },
   {
    "name": "Droids On Roids",
@@ -5332,7 +5885,14 @@
    ],
    "key": "droids-on-roids",
    "reference": false,
-   "fitNote": "Mobile-first app studio with fintech cases; now Apadmi's Polish delivery arm."
+   "fitNote": "Mobile-first app studio with fintech cases; now Apadmi's Polish delivery arm.",
+   "track": {
+    "clutchUid": 22955,
+    "krs": [
+     "0001175305"
+    ],
+    "careers": "https://www.thedroidsonroids.com/career"
+   }
   },
   {
    "name": "EPAM Systems",
@@ -5487,7 +6047,15 @@
    ],
    "key": "epam",
    "reference": true,
-   "fitNote": "A scale benchmark that big banks already trust; we win on scoped work, named senior people and cost."
+   "fitNote": "A scale benchmark that big banks already trust; we win on scoped work, named senior people and cost.",
+   "track": {
+    "clutchUid": 300066,
+    "krs": [
+     "0000390124"
+    ],
+    "ukCompany": "04832183",
+    "careers": "https://careers.epam.com/en/jobs"
+   }
   },
   {
    "name": "Exadel",
@@ -5645,7 +6213,30 @@
    "key": "exadel",
    "reference": false,
    "fitNote": "Codete no longer exists as a brand; we compete with Exadel, a large AI-first group with Polish delivery and a financial services practice.",
-   "plDelivery": true
+   "plDelivery": true,
+   "track": {
+    "clutchUid": 2327488,
+    "krs": [
+     "0000557270",
+     "0000983688"
+    ],
+    "ukCompany": "16524236",
+    "ats": {
+     "kind": "greenhouse",
+     "slug": "exadelinc"
+    },
+    "sitemap": "https://exadel.com/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic/Claude",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.exadel.com/"
+    },
+    "careers": "https://exadel.com/careers/careers"
+   }
   },
   {
    "name": "Finanteq",
@@ -5794,7 +6385,16 @@
    ],
    "key": "finanteq",
    "reference": false,
-   "fitNote": "A Polish mobile banking specialist, now German-owned; strong in the app, not the platform."
+   "fitNote": "A Polish mobile banking specialist, now German-owned; strong in the app, not the platform.",
+   "track": {
+    "clutchUid": 859250,
+    "krs": [
+     "0000521114"
+    ],
+    "nfj": "FINANTEQ SA",
+    "sitemap": "https://www.finanteq.com/sitemap.xml",
+    "careers": "https://jobs.finanteq.com/jobs"
+   }
   },
   {
    "name": "GFT Poland",
@@ -5977,7 +6577,30 @@
    ],
    "key": "gft-poland",
    "reference": false,
-   "fitNote": "Tier 1 group with large Polish delivery; we meet it at banks, but its sweet spot is bigger programmes than ours."
+   "fitNote": "Tier 1 group with large Polish delivery; we meet it at banks, but its sweet spot is bigger programmes than ours.",
+   "track": {
+    "clutchUid": 1206288,
+    "krs": [
+     "0000284121"
+    ],
+    "ukCompany": "04171603",
+    "nfj": "GFT Poland",
+    "sitemap": "https://www.gft.com/pl/pl/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Mambu",
+      "url": "https://mambu.com/en/partner-finder"
+     },
+     {
+      "vendor": "10x Banking",
+      "url": "https://www.10xbanking.com/platform/partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.gft.com"
+    },
+    "careers": "https://www.gft.com/pl/pl/career"
+   }
   },
   {
    "name": "Merixstudio",
@@ -6132,7 +6755,15 @@
    ],
    "key": "merixstudio",
    "reference": false,
-   "fitNote": "Design-led product studio with an AI delivery pitch; meets us on fintech product work, not on banking."
+   "fitNote": "Design-led product studio with an AI delivery pitch; meets us on fintech product work, not on banking.",
+   "track": {
+    "clutchUid": 15386,
+    "krs": [
+     "0000938427"
+    ],
+    "sitemap": "https://www.merixstudio.com/sitemap.xml",
+    "careers": "https://careers.merixstudio.com/"
+   }
   },
   {
    "name": "Sigma Software",
@@ -6317,7 +6948,25 @@
    ],
    "key": "sigma-software",
    "reference": false,
-   "fitNote": "A Nordic-owned generalist with Polish delivery; we meet it in Swedish deals more than in finance."
+   "fitNote": "A Nordic-owned generalist with Polish delivery; we meet it in Swedish deals more than in finance.",
+   "track": {
+    "clutchUid": 86469,
+    "krs": [
+     "0000520567"
+    ],
+    "ukCompany": "15533363",
+    "sitemap": "https://sigma.software/sitemap_index.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic/Claude",
+      "url": "https://claude.com/marketplace/service-partners"
+     }
+    ],
+    "aws": {
+     "website": "https://www.sigma.software"
+    },
+    "careers": "https://career.sigma.software/what-we-offer/vacancies/"
+   }
   },
   {
    "name": "SoftServe",
@@ -6475,7 +7124,29 @@
    ],
    "key": "softserve",
    "reference": true,
-   "fitNote": "A scale benchmark with Polish delivery; we win on financial-services focus, seniority and a smaller first step."
+   "fitNote": "A scale benchmark with Polish delivery; we win on financial-services focus, seniority and a smaller first step.",
+   "track": {
+    "clutchUid": 26389,
+    "krs": [
+     "0000395752"
+    ],
+    "nfj": "SoftServe",
+    "sitemap": "https://www.softserveinc.com/en-us/sitemap.xml",
+    "partnerPages": [
+     {
+      "vendor": "Anthropic (Claude Partner Network)",
+      "url": "https://claude.com/marketplace/service-partners"
+     },
+     {
+      "vendor": "Stripe",
+      "url": "https://stripe.com/partners/directory"
+     }
+    ],
+    "aws": {
+     "website": "https://www.softserveinc.com/"
+    },
+    "careers": "https://career.softserveinc.com/en-us/vacancies"
+   }
   },
   {
    "name": "Ulam Labs",
@@ -6625,7 +7296,15 @@
    ],
    "key": "ulam-labs",
    "reference": false,
-   "fitNote": "Former Polish fintech and blockchain shop now focused on MedTech; rarely a rival for financial services work."
+   "fitNote": "Former Polish fintech and blockchain shop now focused on MedTech; rarely a rival for financial services work.",
+   "track": {
+    "clutchUid": 93488,
+    "krs": [
+     "0001212036"
+    ],
+    "sitemap": "https://ulam.io/sitemap.xml",
+    "careers": "https://ulam.io/careers/"
+   }
   },
   {
    "name": "Vacuumlabs",
@@ -6767,7 +7446,13 @@
    ],
    "key": "vacuumlabs",
    "reference": false,
-   "fitNote": "Banking specialist with a product-team model like ours, delivering from Slovakia, Czechia and Hungary."
+   "fitNote": "Banking specialist with a product-team model like ours, delivering from Slovakia, Czechia and Hungary.",
+   "track": {
+    "clutchUid": 1458674,
+    "rss": "https://vacuumlabs.com/feed/?post_type=custom_post",
+    "sitemap": "https://vacuumlabs.com/sitemap_index.xml",
+    "careers": "https://vacuumlabs.com/careers/"
+   }
   }
  ],
  "market": {

@@ -199,7 +199,7 @@ vendors:
   - {name: Grid Dynamics, category: engineering_partner}
   - {name: SoftServe, category: engineering_partner}
   - {name: Intellias, category: engineering_partner}
-  - {name: N-iX, category: engineering_partner, aliases: [NIX Solutions]}
+  - {name: N-iX, category: engineering_partner}
   - {name: Ciklum, category: engineering_partner}
   - {name: Avenga, category: engineering_partner}
   - {name: Eleks, category: engineering_partner}

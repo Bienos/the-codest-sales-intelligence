@@ -346,7 +346,7 @@ const CHECKS: [string, string, (c: Comp) => boolean][] = [
   ["homepage", "Homepage headline", (c) => !!c.url], ["sitemap", "New pages on their site", (c) => !!c.url], ["feed", "Their blog and news feed", (c) => !!c.url],
   ["gdelt", "News coverage (GDELT)", (c) => c.tier !== 3], ["news", "News search (Exa)", (c) => c.tier !== 3], ["clutch", "Clutch rating and reviews", (c) => !!c.track?.clutchUid],
   ["careers", "Their job system and NoFluffJobs", (c) => !!(c.track?.ats?.slug || c.track?.nfj)], ["krs", "Polish register (KRS)", (c) => !!c.track?.krs?.length],
-  ["ch", "UK Companies House", (c) => !!c.track?.ukCompany], ["aws", "AWS partner finder", (c) => !!c.track?.aws],
+  ["ch", "UK Companies House", (c) => !!c.track?.ukCompany], ["aws", "AWS partner finder", (c) => !!c.url],
 ];
 function Tracking({ c }: { c: Comp }) {
   return <details className="card ct-track"><summary><h3 className="ct-h">{tr("How we track this firm")}</h3></summary>
