@@ -243,6 +243,36 @@ def record_deal_change(conn: Conn, d: dict[str, Any], prev: dict[str, Any] | Non
     return _add_transitions(conn, d["id"], rows, pipeline_id=_int(d.get("pipeline_id")), value=d.get("value"), currency=d.get("currency"))
 
 
+ACTIVITY_KEEP = ("id", "type", "owner_id", "deal_id", "org_id", "person_id", "lead_id", "done", "due_date", "due_time", "duration", "busy",
+                 "add_time", "update_time", "marked_as_done_time")      # no note, participants or attendees: they carry personal text
+
+
+def _ref(v: Any) -> Any:
+    return v.get("value") if isinstance(v, dict) else v            # v1 sends {"value": id, ...}, v2 sends the id
+
+
+def upsert_activity(conn: Conn, a: dict[str, Any]) -> None:
+    """One Pipedrive activity into crm_activities. Deleted ones leave the mirror. Due time is UTC in Pipedrive; an activity with a date
+    and no time is due at the start of that day."""
+    if a.get("is_deleted") or a.get("active_flag") is False:
+        conn.execute("DELETE FROM crm_activities WHERE crm_id=%s", (a["id"],))
+        return
+    day = _day(a.get("due_date"))
+    due = None
+    if day:
+        hhmm = str(a.get("due_time") or "").strip()
+        due = _ts(f"{day.isoformat()}T{hhmm}:00Z") if len(hhmm) == 5 else datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+    done = bool(a.get("done"))
+    conn.execute(
+        "INSERT INTO crm_activities(crm_id, crm_org_id, crm_deal_id, crm_person_id, type, subject, done, due_at, done_at, owner_id, update_time, raw, synced_at) "
+        "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now()) ON CONFLICT (crm_id) DO UPDATE SET crm_org_id=EXCLUDED.crm_org_id, crm_deal_id=EXCLUDED.crm_deal_id, "
+        "crm_person_id=EXCLUDED.crm_person_id, type=EXCLUDED.type, subject=EXCLUDED.subject, done=EXCLUDED.done, due_at=EXCLUDED.due_at, done_at=EXCLUDED.done_at, "
+        "owner_id=EXCLUDED.owner_id, update_time=EXCLUDED.update_time, raw=EXCLUDED.raw, synced_at=now()",
+        (a["id"], _ref(a.get("org_id")), _ref(a.get("deal_id")), _ref(a.get("person_id")), a.get("type"), (a.get("subject") or "")[:500], done, due,
+         _ts(a.get("marked_as_done_time")) if done else None, _ref(a.get("owner_id") or a.get("user_id")), _ts(a.get("update_time")),
+         jb({k: a.get(k) for k in ACTIVITY_KEEP if k in a})))
+
+
 def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = None, *, source: str = "sync") -> None:
     if d.get("is_deleted"):
         conn.execute("DELETE FROM crm_deals WHERE crm_id=%s", (d["id"],))
@@ -375,6 +405,23 @@ def ensure_deal_webhook(reader: PipedriveReader, public_url: str, password: str)
     return {"webhook": "created", "id": (r.json().get("data") or {}).get("id")}
 
 
+def sync_activities(conn: Conn, reader: PipedriveReader) -> int:
+    """Activities changed since the watermark (all of them on the first run), committed with the watermark so a failure re-reads them."""
+    wm = q1(conn, "SELECT watermark FROM sync_state WHERE system='pipedrive' AND entity='activities'")
+    newest = wm["watermark"] if wm else None
+    n = 0
+    with conn.transaction():
+        for rec in reader.paged("/activities", updated_since=newest):
+            upsert_activity(conn, rec)
+            n += 1
+            if rec.get("update_time") and (newest is None or rec["update_time"] > newest):
+                newest = rec["update_time"]
+        conn.execute("INSERT INTO sync_state(system, entity, watermark) VALUES ('pipedrive','activities',%s) "
+                     "ON CONFLICT (system, entity) DO UPDATE SET watermark=EXCLUDED.watermark", (newest,))
+    conn.commit()
+    return n
+
+
 def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, str] | None = None) -> dict[str, Any]:
     """Watermark-based; the watermark advances only after a durable commit. Periodic full reconcile repairs missed webhooks."""
     out: dict[str, Any] = {"organizations": 0, "persons": 0, "deals": 0}
@@ -430,6 +477,13 @@ def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, s
         if full_pass:
             conn.execute("INSERT INTO sync_state(system, entity, watermark) VALUES ('pipedrive',%s,'done') ON CONFLICT DO NOTHING", (fields_mark,))
         conn.commit()
+    try:          # calls, meetings and tasks: next step and last contact per deal. Its own step, so a problem here never stops the deal mirror
+        out["activities"] = sync_activities(conn, reader)
+    except ConnectorBlocked:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        conn.rollback()
+        out["activities_error"] = f"{type(exc).__name__}: {exc}"[:200]
     if open_seen:
         try:      # roles, people, monthly rate and billing start, when sellers price deals with products
             with conn.transaction():
