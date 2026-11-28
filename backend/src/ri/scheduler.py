@@ -66,6 +66,12 @@ LANES: tuple[Lane, ...] = (
          86400, can_pause=True, main=True),
     Lane("competitor_watch", "Competitor checks",
          "Once a day, queues the competitor check: new public awards won by tracked firms, open roles on justjoin.it, homepage headlines (weekly per firm) and news through Exa (within the Exa budget). Findings wait in Competitors, Review.", HOUR, can_pause=True, main=True, queues="competitor_watch"),
+    Lane("research_sprint", "Company research for P1 and P2 accounts",
+         "Every hour, queues Exa company research for two P1 accounts without a profile (then P2), at most 12 a day, while automatic web search is under 60% of this month's Exa budget.",
+         HOUR, can_pause=True, main=True, queues="account_profile"),
+    Lane("crm_relationships", "Relationship from Pipedrive",
+         "Every hour, sets each linked account's relationship with us from its Pipedrive deals (client, past client, in talks, or a prospect with lost deals). Never changes one a person set.",
+         HOUR, can_pause=True),
     Lane("degraded_sources", "Late sources", "Marks a source that missed its scheduled reads as late."),
     Lane("expiry", "Signal expiry", "Ends buying signals whose time window has passed."),
     Lane("initiatives", "Programme deadlines", "Moves programmes on when their next milestone date has passed."),
@@ -429,6 +435,10 @@ def run_maintenance(conn: Conn, now: datetime | None = None) -> dict:
     step("hard_to_fill_roles", lambda: emit_hard_to_fill(conn, now), more=lambda r: bool((r or {}).get("hard_to_fill_more")))
     from .competitor_watch import schedule as schedule_competitor_watch
     step("competitor_watch", lambda: schedule_competitor_watch(conn, now))
+    from .research.sprint import schedule as schedule_research_sprint
+    step("research_sprint", lambda: schedule_research_sprint(conn, now))
+    from .crm.relationships import fill_from_pipedrive
+    step("crm_relationships", lambda: fill_from_pipedrive(conn, now))
     step("degraded_sources", lambda: evaluate_staleness(conn, now_fn=lambda: now))
     step("expiry", lambda: sweep_expiry(conn, now))
     step("initiatives", lambda: refresh(conn, now))

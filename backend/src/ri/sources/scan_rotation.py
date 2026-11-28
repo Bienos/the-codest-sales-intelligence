@@ -10,7 +10,8 @@ Which accounts, in this order (``candidates``)
      (the same exclusion the daily check uses: an account with an active "stop" finding is not pursued);
   2. never checked first, then the oldest check. "Checked" is the later of the account's ``account_source_coverage`` record and the last time
      one of its pages in ``account_endpoints`` was read, so a scan from any source (daily, weekly, a seller's button) counts;
-  3. among accounts never checked: on the master list first, then by account score, then by id (stable).
+  3. among accounts never checked: the lead list's P1 accounts first, then P2, then P3 and the rest; within each, on the master list first,
+     then by account score, then by id (stable).
   An account checked less than ``rescan_days`` ago (never fewer than 14) is left alone.
 
 What it skips
@@ -22,6 +23,9 @@ What it skips
 Limits (``Limits``, settings ``RI_SCAN_ROTATION_*`` in ``config.Settings``)
   * ``per_day`` 20 accounts a day, ``per_run`` 2 accounts per hourly run (so the day's 20 are queued over the first ten hours, not in a burst),
   * ``max_queued`` 6 jobs of this lane waiting or running at once: the background worker also reads every source, so it is never flooded.
+  * Coverage sprint: while any P1 or P2 account with a website has never been checked, the lane runs faster (at least ``SPRINT_PER_DAY``
+    a day, ``SPRINT_PER_RUN`` an hour, ``SPRINT_MAX_QUEUED`` waiting at once) and says how many are left (``sprint_left``). Once they are all
+    checked it falls back to the normal pace by itself. A ``per_day`` of 0 (paused) is never raised. The AI limit stop below still applies.
 
 Money and the AI
   * Reading pages costs no Exa. Discovery of an account's pages and every read use public pages and public job-board APIs only, through the
@@ -56,6 +60,10 @@ DEFAULT_PER_DAY = 20                  # accounts queued in a UTC day: 20 a day c
 DEFAULT_PER_RUN = 2                   # accounts per hourly run
 DEFAULT_MAX_QUEUED = 6                # jobs of this lane waiting or running at once
 DEFAULT_RESCAN_DAYS = 14              # a checked account is left alone this long
+SPRINT_PER_DAY = 60                   # while P1/P2 accounts wait for their first check: about 800 of them in two weeks
+SPRINT_PER_RUN = 5
+SPRINT_MAX_QUEUED = 10
+SPRINT_PRIORITIES = ("P1", "P2")
 MIN_RESCAN_DAYS = 14                  # a setting can lengthen the interval, never shorten it
 FAILED_PAUSE_DAYS = 3                 # an account whose scan failed is not queued again for this long
 AI_RESERVE_FRACTION = 0.3             # the same reserve as jobs.handlers.account_scan sets on its extractor: stop at 70% of the monthly AI limit
@@ -90,14 +98,15 @@ class Limits:
 def targets(conn: Conn) -> list[dict[str, Any]]:
     """Every target account, oldest-checked first (never checked first), with the time of its last check. One query; about 900 rows."""
     return qa(conn, f"""
-        SELECT o.id AS organization_id, o.display_name, nullif(btrim(o.canonical_domain), '') AS website,
+        SELECT o.id AS organization_id, o.display_name, nullif(btrim(o.canonical_domain), '') AS website, o.list_priority,
                coalesce(sc.stopped, false) AS stopped, GREATEST(c.last_at, e.last_at) AS last_checked_at
         FROM organizations o
         LEFT JOIN account_scores sc ON sc.organization_id = o.id
         LEFT JOIN (SELECT organization_id, max(updated_at) AS last_at FROM account_source_coverage GROUP BY 1) c ON c.organization_id = o.id
         LEFT JOIN (SELECT organization_id, max(last_scanned_at) AS last_at FROM account_endpoints GROUP BY 1) e ON e.organization_id = o.id
         WHERE {target_sql('o')}
-        ORDER BY GREATEST(c.last_at, e.last_at) ASC NULLS FIRST, o.in_master_list DESC, sc.score DESC NULLS LAST, o.id
+        ORDER BY GREATEST(c.last_at, e.last_at) ASC NULLS FIRST,
+                 CASE o.list_priority WHEN 'P1' THEN 0 WHEN 'P2' THEN 1 WHEN 'P3' THEN 2 ELSE 3 END, o.in_master_list DESC, sc.score DESC NULLS LAST, o.id
         """)   # noqa: S608 - target_sql builds fixed SQL
 
 
@@ -165,6 +174,10 @@ def schedule(conn: Conn, now: datetime | None = None, limits: Limits | None = No
                            "targets_checked": sum(1 for r in scannable if r["last_checked_at"] is not None), "targets_total": len(scannable),
                            "targets_without_website": sum(1 for r in rows if not r["website"] and not r["stopped"])}
 
+    out["sprint_left"] = sum(1 for r in scannable if r["last_checked_at"] is None and r.get("list_priority") in SPRINT_PRIORITIES)
+    if out["sprint_left"] and limits.per_day > 0:
+        limits = Limits(per_day=max(limits.per_day, SPRINT_PER_DAY), per_run=max(limits.per_run, SPRINT_PER_RUN),
+                        max_queued=max(limits.max_queued, SPRINT_MAX_QUEUED), rescan_days=limits.rescan_days)
     share = ai_share_left(conn, now)
     if share is not None and share < AI_RESERVE_FRACTION:
         out["held_by"] = "ai_budget"            # the last 30% of the month's AI limit is kept for the sellers' own checks

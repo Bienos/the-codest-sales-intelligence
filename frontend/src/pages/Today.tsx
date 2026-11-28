@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, post } from "../api";
 import { counted, getLanguage, number, tr, useLanguage } from "../locale";
-import { Err, Skeleton, safeHref, useLogo } from "../components/ui";
+import { AccountTier, Err, Skeleton, safeHref, useLogo } from "../components/ui";
+import type { AccountTierInfo } from "../components/ui";
 import { ReplyCard, ReplyComposer, firstWords, useReplyConfig } from "../components/Replies";
 import { Feedback, canRate } from "../components/Feedback";
 import type { ReplyInfo } from "../components/Replies";
@@ -12,7 +13,7 @@ import "../styles/today.css";
 /** Today: a work cockpit. A short ranked list of who to contact today (left) and the brief for the one you picked (right): what
  *  happened, who to write to, the opening line and one next step. Above it, tender deadlines for the next two weeks and what is new. */
 
-type Org = { id: string; name: string; country: string | null; region: string; priority: string | null; relationship: string | null;
+type Org = { id: string; name: string; country: string | null; region: string; priority: string | null; relationship: string | null; tier?: AccountTierInfo | null;
   people: number | null; people_with_email: number | null; logo_url?: string | null };
 type Kind = "reply" | "tender" | "signal" | "follow_up";
 type Person = { id: string; name: string; title: string | null };
@@ -393,7 +394,7 @@ function Row({ a, rank, selected, onSelect }: { a: Action; rank: number; selecte
       <span className="td-rank" aria-hidden="true">{rank}</span>
       <Mono name={nameOf(a)} size="sm" logo={a.organization?.logo_url} />
       <span className="td-row-main">
-        <span className="td-row-name">{nameOf(a)}</span>
+        <span className="td-row-name">{nameOf(a)} <AccountTier t={a.organization?.tier} /></span>
         <span className="td-row-why">
           <Chip w={w}>{a.regulation ? tr("Legal deadline") : tr(WHY_SHORT[w])}</Chip>
           <span className={`td-row-cue${soon ? " is-soon" : ""}`}>{cue(a)}</span>
@@ -483,6 +484,7 @@ function BriefPanel({ a, rank, total, slot, canCampaign, onMark, onBack }: { a: 
           <div>
             <h2 id="td-brief-h">{org ? <Link to={`/accounts/${org.id}`}>{name}</Link> : name}</h2>
             {facts.length > 0 && <p className="td-b-facts">{facts.map((f) => <span key={f}>{f}</span>)}</p>}
+            {org?.tier && <p className="td-b-tier"><AccountTier t={org.tier} withWhy /></p>}
           </div>
         </div>
         <p className="td-b-why">{whyReason(a)}</p>

@@ -330,7 +330,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
                                     "AND (deadline_at IS NULL OR deadline_at > now()) ORDER BY deadline_at NULLS LAST LIMIT 3", (oid,))
             why = page.why_now(lead_signal=lead, signals=signals, list_signals=list_signals, recent=((profile or {}).get("content") or {}).get("recent") or [],
                                tenders=open_tenders, list_profile=list_profile, opportunities=opportunities, now=now)
-            return {"account": dict(o, id=str(o["id"])), "list_profile": list_profile, "list_signals": list_signals, "buying_signal": lead, "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
+            from ..tiers import tiers_for
+            return {"account": dict(o, id=str(o["id"])), "tier": tiers_for(conn, [str(o["id"])]).get(str(o["id"])), "list_profile": list_profile, "list_signals": list_signals, "buying_signal": lead, "score": score, "crm": crm, "ownership_verified": bool(crm and crm["owner_id"]), "source_rows": sources,
                     "opportunities": opportunities, "why_now": why, "initiatives": [dict(i, id=str(i["id"])) for i in inits], "signals": signals, "suppliers": suppliers,
                     "routes": routes, "buyers": buyers, "coverage": coverage, "source_coverage_note": "Only source families listed above are monitored; missing families mean visibility unknown, not 'no activity'."}
 
