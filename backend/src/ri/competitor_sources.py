@@ -242,7 +242,11 @@ def _date(s: str, now: datetime) -> str:
 def feeds(conn: Conn, comps: list[dict[str, Any]], fetch: Fetch, now: datetime) -> dict[str, int]:
     from .competitor_watch import guess_type
     done = made = failed = 0
-    for c in _due_firms(conn, comps, "feed", now, lambda c: (c.get("url") or "").startswith("https://")):
+    def wanted(c: dict[str, Any]) -> bool:              # a site found to have no feed is looked at again monthly, not weekly
+        r = last_run(conn, c["key"], "feed")
+        none = r and isinstance(r.get("last_value"), dict) and r["last_value"].get("feed") is None and not _track(c).get("rss")
+        return (c.get("url") or "").startswith("https://") and not (none and r["last_run_at"] and now - r["last_run_at"] < timedelta(days=30))
+    for c in _due_firms(conn, comps, "feed", now, wanted):
         done += 1
         prev = (last_run(conn, c["key"], "feed") or {}).get("last_value") or {}
         try:
@@ -364,6 +368,7 @@ ROLE_KINDS: list[tuple[str, str]] = [
     ("data", r"\b(data engineer|data architect|analytics engineer|bi developer|databricks|snowflake|data platform)\b"),
     ("lead", r"\b(delivery (manager|lead|director)|project manager|program(me)? manager|engagement manager|scrum master|product owner)\b"),
 ]
+NOT_SALES = r"\b(engineer|developer|analyst|designer|tester|qa|architect|administrator|recruiter)\b"      # 'Sales Operations Analyst' does not sell
 MARKETS = {"UK": r"\b(uk|united kingdom|london|manchester|edinburgh|britain|england)\b", "DACH": r"\b(dach|germany|deutschland|berlin|munich|münchen|hamburg|frankfurt|austria|vienna|wien|switzerland|zurich|zürich)\b",
            "Nordics": r"\b(nordics?|sweden|stockholm|denmark|copenhagen|norway|oslo|finland|helsinki)\b", "US": r"\b(usa|us|united states|new york|boston|chicago|san francisco|austin)\b"}
 
@@ -374,10 +379,11 @@ def classify_roles(jobs: list[dict[str, str]]) -> dict[str, Any]:
     for j in jobs:
         t = f"{j.get('title') or ''} ".lower()
         loc = f"{j.get('location') or ''} {j.get('title') or ''}".lower()
+        seller = bool(re.search(ROLE_KINDS[0][1], t)) and not re.search(NOT_SALES, t)
         for k, pat in ROLE_KINDS:
-            if re.search(pat, t):
+            if re.search(pat, t) and (k != "sales" or seller):
                 mix[k] += 1
-        if re.search(ROLE_KINDS[0][1], t):
+        if seller:
             for m, pat in MARKETS.items():
                 if re.search(pat, loc):
                     sales_markets[m] = sales_markets.get(m, 0) + 1
@@ -499,7 +505,7 @@ def careers(conn: Conn, comps: list[dict[str, Any]], fetch: Fetch, post: Post | 
                 if n > (prev.get("salesMarkets") or {}).get(m, 0) and m in ("UK", "DACH", "Nordics"):
                     made += candidate(conn, c["key"], day=_today(now), kind="market", headline=f"Hiring sales in {m}: {n} open sales role{'s' if n > 1 else ''}",
                                       source=_tag(sources[0], now) + f"-sales-{m}", grade="official", impact=2 if c["tier"] == 1 else 1, actor="collector:careers",
-                                      detail="; ".join(j["title"] for j in jobs if re.search(ROLE_KINDS[0][1], j["title"].lower()))[:500])
+                                      detail="; ".join(j["title"] for j in jobs if re.search(ROLE_KINDS[0][1], j["title"].lower()) and not re.search(NOT_SALES, j["title"].lower()))[:500])
             if mix["ai"] - (prev.get("ai") or 0) >= 3:
                 made += candidate(conn, c["key"], day=_today(now), kind="hiring", headline=f"More AI and data science roles: {prev.get('ai') or 0} to {mix['ai']}",
                                   source=_tag(sources[0], now) + "-ai", grade="official", impact=1, actor="collector:careers")
