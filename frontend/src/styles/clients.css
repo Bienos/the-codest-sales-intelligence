@@ -3,6 +3,7 @@
 .cl-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
 .cl-filter button { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-block-size: 36px; padding: 0 12px;
   border: 1px solid var(--line); background: var(--white); font: 600 var(--fs-sm)/1 var(--font-body); color: var(--navy); }
+.cl-filter button { white-space: nowrap; }
 .cl-filter button b { font: 800 var(--fs-sm)/1 var(--font-head); color: var(--muted); }
 .cl-filter button:hover { border-color: var(--navy); background: var(--tint-1); }
 .cl-filter button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: var(--white); }

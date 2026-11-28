@@ -129,7 +129,7 @@ function Outbound({ d }: { d: any }) {
       <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Outbound by campaign")}>
         <table className="fc-table"><thead><tr><th>{tr("Campaign")}</th><th>{tr("Leads")}</th><th>{tr("Emails")}</th><th>{tr("Replied")}</th><th>{tr("Interested")}</th><th>{tr("Bounced")}</th></tr></thead>
           <tbody>{o.campaigns.map((c: any) => <tr key={c.name}><td>{c.name}</td><td>{c.leads}</td><td>{c.sends}</td><td>{c.replied} <span className="muted">({rate(c.replied, c.leads)})</span></td><td>{c.interested}</td>
-            <td>{c.bounced}{c.sends > 0 && c.bounced / c.sends >= 0.08 && <> <Badge kind="warn">{tr("Check list quality")}</Badge></>}</td></tr>)}
+            <td>{c.bounced}{c.leads > 0 && c.bounced / c.leads >= 0.05 && <> <Badge kind="warn">{tr("Check list quality")}</Badge></>}</td></tr>)}
             {o.campaigns.length === 0 && <tr><td colSpan={6} className="muted">{tr("No lemlist activity mirrored yet.")}</td></tr>}</tbody>
           {o.campaigns.length > 0 && <tfoot><tr><td>{tr("All campaigns")}</td><td>{o.contacted}</td><td>{o.sends}</td><td>{o.replied} <span className="muted">({rate(o.replied, o.contacted)})</span></td><td>{o.interested}</td><td>{o.bounced}</td></tr></tfoot>}
         </table>

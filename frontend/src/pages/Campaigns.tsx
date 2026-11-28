@@ -6,6 +6,8 @@ import { Badge, Empty, Err, Skeleton, Strength, groupName, safeHref } from "../c
 import { SignalOption, signalName } from "../components/Signals";
 import { REGIONS } from "./targetMarket";
 import "../styles/campaigns.css";
+import "../styles/forecast.css";
+import { CampaignResults } from "./CampaignResults";
 
 /* A campaign writes to every company showing the same buying signal. It moves through four stages:
    Draft (you check the people and the emails) -> Approval (someone else approves) -> In Lemlist (created there, you press Launch)
@@ -186,6 +188,7 @@ export function CampaignList() {
   const [err, setErr] = useState<unknown>(null);
   const [params, setParams] = useSearchParams();
   const filter = params.get("stage") ?? "";
+  const view = params.get("view") === "results" ? "results" : "ours";
   useEffect(() => { api("/api/signal-campaigns").then(setData).catch(setErr); }, []);
   const items: any[] = data?.items ?? [];
   const f = FILTERS.find((x) => x.key === filter) ?? FILTERS[0];
@@ -201,7 +204,11 @@ export function CampaignList() {
     </div>
     <HowItWorks />
     {data && <OutboundNotice configured={data.lemlist_configured} enabled={data.outbound_enabled} />}
-    {err ? <Err e={err} /> : !data ? <Skeleton rows={3} /> : items.length === 0 ? <StartFromSignals /> : <>
+    <div className="cg-filter cr-views" role="group" aria-label={tr("What to show")}>
+      <button type="button" aria-pressed={view === "ours"} onClick={() => setParams({}, { replace: true })}>{tr("Our campaigns")}</button>
+      <button type="button" aria-pressed={view === "results"} onClick={() => setParams({ view: "results" }, { replace: true })}>{tr("Results in Lemlist")}</button>
+    </div>
+    {view === "results" ? <CampaignResults /> : err ? <Err e={err} /> : !data ? <Skeleton rows={3} /> : items.length === 0 ? <StartFromSignals /> : <>
       <div className="cg-filter scroll-x" role="group" aria-label={tr("Show campaigns by stage")}>
         {FILTERS.map((x) => { const n = items.filter((c) => x.match(c.stage)).length;
           return <button key={x.key} type="button" aria-pressed={x.key === f.key} onClick={() => setParams(x.key ? { stage: x.key } : {}, { replace: true })}>
