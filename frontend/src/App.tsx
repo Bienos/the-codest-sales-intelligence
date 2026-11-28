@@ -22,9 +22,14 @@ import BuyingSignals, { IconSignals } from "./pages/BuyingSignals";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
 import Forecast, { IconForecast } from "./pages/Forecast";
 import Competitors from "./pages/Competitors";
+import Assistant from "./pages/Assistant";
+import ConnectAuthorize from "./pages/ConnectAuthorize";
 import { Err, Skeleton, lab, useScrollHints, IconAccounts, IconAdmin, IconFeed, IconGuide, IconKnowledge, IconLibrary, IconToday, IconPeople, IconCampaign, IconTender, IconCompetitors, Brand } from "./components/ui";
 
 type Me = { email: string; role: string; permissions: string[] };
+
+const IconAssistant = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="square" aria-hidden="true">
+  <path d="M4 5h16v11H9l-5 4z" /><path d="M8 10h.01M12 10h.01M16 10h.01" /></svg>;
 
 function emailFromToken(t: string | null): string | undefined {
   try { return JSON.parse(atob((t ?? "").split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).email; } catch { return undefined; }
@@ -97,6 +102,8 @@ export default function App() {
       {signInError ? <Err e={signInError} onRetry={() => setN((value) => value + 1)} /> : <Skeleton label={tr("Signing you in")} />}
     </main>
   </div>;
+  // Claude or ChatGPT sent the person here to approve a connection: a focused page, no navigation around it
+  if (loc.pathname === "/connect/authorize") return <ConnectAuthorize />;
   const can = (p: string) => me.permissions.includes(p);
   const link = (to: string, label: string, Ico: any) => <NavLink to={to} aria-label={label} className={({ isActive }) => `navlink${isActive ? " active" : ""}`}><Ico /><span>{label}</span></NavLink>;
   return (
@@ -114,6 +121,7 @@ export default function App() {
           <span className="nav-lang"><LanguageSwitcher /></span>
           <span className="nav-group">{tr("Work")}</span>
           {can("today.read") && link("/today", tr("Today"), IconToday)}
+          {link("/assistant", tr("Ask"), IconAssistant)}
           {can("accounts.read") && link("/signals", tr("Buying signals"), IconSignals)}
           {can("accounts.read") && link("/accounts", tr("Accounts"), IconAccounts)}
           {can("contacts.read") && link("/people", tr("People"), IconPeople)}
@@ -156,6 +164,7 @@ export default function App() {
           <Route path="/campaigns/:id" element={<div className="page"><CampaignDetail key={loc.pathname} canDecide={can("approvals.decide")} /></div>} />
           <Route path="/guide" element={<Guide can={can} />} />
           <Route path="/connections" element={<div className="page"><Connections /></div>} />
+          <Route path="/assistant" element={<div className="page"><Assistant email={me.email} /></div>} />
           <Route path="/feed" element={<div className="page"><Feed /></div>} />
           <Route path="/renewals" element={<Navigate to="/accounts" replace />} />
           <Route path="/search" element={<div className="page"><Search /></div>} />

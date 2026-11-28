@@ -15,6 +15,7 @@ envVarGroups:
       - {key: RI_LEMLIST_WEBHOOK_SECRET, sync: false}    # set later: long random string; register https://<app>/webhooks/lemlist/<secret> in Lemlist
       - {key: APOLLO_API_KEY, sync: false}               # set later: find decision makers; reveals need RI_PAID_ENRICHMENT_ENABLED, a price and approval
       - {key: SLACK_WEBHOOK_URL, sync: false}            # optional daily digest; also gets the Monday competitor digest
+      - {key: RI_VAULT_KEY, sync: false}                 # seals each person's own credentials (Gmail, Lemlist, their own Anthropic key for the assistant); generate with `python -c "from ri.vault import new_key; print(new_key())"`
       - {key: RI_SMTP_PASSWORD, sync: false}             # optional: Monday competitor digest by email (with RI_SMTP_HOST, RI_SMTP_USER, RI_SMTP_FROM)
 services:
   - type: web
@@ -38,6 +39,10 @@ services:
       - {key: RI_EXA_MONTHLY_CAP_USD, value: "20"}                 # hard monthly cap for Exa (USD)
       - {key: RI_ANTHROPIC_MONTHLY_TOKEN_CAP, value: "10000000"}   # hard monthly cap on model tokens (about $1.60 at Haiku list price); raise deliberately
       - {key: RI_ANTHROPIC_MODEL, value: "claude-haiku-5-5"}      # model that reads pages; claude-sonnet-5-5 is more accurate at about 20x the price
+      - {key: RI_ASSISTANT_MONTHLY_TOKEN_CAP, value: "3000000"}   # the in-app assistant's own monthly token allowance on the company key (0 = off); separate from page reading
+      - {key: RI_ASSISTANT_MODEL, value: "claude-haiku-5-5"}      # in-app assistant on the company key; people with their own key get claude-sonnet-5-5 (RI_ASSISTANT_PERSONAL_MODEL)
+      # People's own Claude / ChatGPT connect to https://<app>/mcp (OAuth sign-in through this app). Sign-ins may only return to claude.ai, claude.com,
+      # chatgpt.com, openai.com or the person's own computer; widen with RI_MCP_REDIRECT_HOSTS (comma-separated hosts). RI_MCP_REFRESH_DAYS (default 30).
       - {fromGroup: ri-secrets}
   - type: worker
     name: ri-worker

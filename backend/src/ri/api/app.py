@@ -117,6 +117,8 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     app.state.verifier = verifier or TokenVerifier(settings)
     app.state.writer_factory = writer_factory
     app.state.limiter = RateLimiter(settings.api_rate_per_minute)
+    import secrets as _secrets
+    app.state.internal_key = _secrets.token_bytes(32)       # signs the assistants' in-process reads (api/auth.py issue_internal); never leaves memory
 
     @app.middleware("http")
     async def body_limit(request: Request, call_next):
@@ -133,7 +135,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     async def rate_limit(request: Request, call_next):
         """Per-caller ceiling on API calls, so one person or a leaked token cannot flood the API or burn the shared budgets. Generous for people."""
         from fastapi.responses import JSONResponse
-        if request.url.path.startswith(("/api/", "/webhooks/")) and request.url.path not in {"/api/config"}:
+        if request.url.path.startswith(("/api/", "/webhooks/", "/mcp", "/oauth/")) and request.url.path not in {"/api/config"}:
             key = (request.headers.get("authorization") or "")[-32:] or (request.client.host if request.client else "anon")
             if not app.state.limiter.allow(key):
                 return JSONResponse({"detail": "Too many requests. Wait a minute and try again."}, status_code=429, headers={"Retry-After": "60"})
@@ -148,7 +150,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
         h.setdefault("Referrer-Policy", "no-referrer")
         h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
         h.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")     # Google Sign-In popup needs this relaxed value
-        if request.url.path.startswith(("/api/", "/webhooks/", "/metrics")):
+        if request.url.path.startswith(("/api/", "/webhooks/", "/metrics", "/mcp", "/oauth/", "/.well-known/")):
             h.setdefault("Cache-Control", "no-store")                             # never cache personal or commercial data
         else:
             h.setdefault("Content-Security-Policy", CSP)
@@ -605,4 +607,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from .feedback_api import register_feedback; register_feedback(app)      # noqa: E702  (was this useful? per item, and per rule in the Library)
     from .forecast import register as register_forecast; register_forecast(app)      # noqa: E702  (revenue forecast: funnel history, outbound, simulated year)
     from .competitors_api import register as register_competitors; register_competitors(app)      # noqa: E702  (competitor tracker: profiles, moves, where we meet them)
+    from .oauth import register as register_oauth; register_oauth(app)      # noqa: E702  (sign-in for people's own Claude / ChatGPT: OAuth 2.1 + client registration)
+    from .mcp import register as register_mcp; register_mcp(app)      # noqa: E702  (the MCP server those assistants talk to, read-only, as the person)
+    from .assistant_api import register as register_assistant; register_assistant(app)      # noqa: E702  (the in-app assistant chat)
     return app
