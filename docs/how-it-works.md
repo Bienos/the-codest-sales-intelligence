@@ -66,7 +66,7 @@ Every account carries one tier, the same on Today, Accounts, Buying signals and 
 Every buying signal and tender on Today and Buying signals has "Was this useful?" under its evidence. "No" asks why (wrong company, out of date, not our kind of work, job ad not real, already talking to them, no real need). The answer never hides the item. Library, Signals shows per rule how often sellers found it useful and the reasons against it, for tuning the rules. Replies and meetings count for more than these answers.
 
 ## Limits on the parts that cost money
-- **Exa: $20 a month.** Automatic searches stop at 60% of it ($12). The rest is kept for sellers pressing "Research with Exa" or "Find suppliers with Exa", so those buttons always work.
+- **Exa: $40 a month.** Automatic searches stop at 60% of it ($24). The rest is kept for sellers pressing "Research with Exa" or "Find suppliers with Exa", so those buttons always work.
 - **AI: 60 million tokens a month.** Background reading stops at 70%. Sellers' own checks keep the last 30%.
 - **Apollo:** subscription credits only. The platform never buys more.
 - Every paid call is recorded with what it was for (Administration, Usage). Feeds, tender APIs, company pages and job APIs cost nothing to read.

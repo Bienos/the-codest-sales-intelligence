@@ -35,7 +35,7 @@ services:
       - {key: RI_API_RATE_PER_MINUTE, value: "600"}           # per-caller API ceiling
       - {key: PIPEDRIVE_DOMAIN, value: thecodestltd}
       - {key: RI_PUBLIC_URL, value: "https://ri-api-oust.onrender.com"}   # links in digests (the scheduler has no address of its own)
-      - {key: RI_EXA_MONTHLY_CAP_USD, value: "20"}                 # hard monthly cap for Exa (USD)
+      - {key: RI_EXA_MONTHLY_CAP_USD, value: "40"}                 # hard monthly cap for Exa (USD); raised from 20 on 28 Nov 2026 for the P1/P2 research sprint
       - {key: RI_ANTHROPIC_MONTHLY_TOKEN_CAP, value: "60000000"}   # hard monthly cap on model tokens (about $26 a month at Nov 2026 usage prices); raise deliberately
       - {key: RI_RESEARCH_SPRINT_PER_DAY, value: "40"}             # P1/P2 company research profiles a day (about 3 US cents of Exa each); 0 pauses
       - {key: RI_ANTHROPIC_MODEL, value: "claude-haiku-5-5"}      # model that reads pages; claude-sonnet-5-5 is more accurate at about 20x the price
