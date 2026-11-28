@@ -606,6 +606,7 @@ def create_app(settings: Settings, *, db: Database | None = None, verifier: Toke
     from .regulatory_calendar import register_regulatory_calendar; register_regulatory_calendar(app)      # noqa: E702  (EU deadlines pinned to accounts)
     from .feedback_api import register_feedback; register_feedback(app)      # noqa: E702  (was this useful? per item, and per rule in the Library)
     from .forecast import register as register_forecast; register_forecast(app)      # noqa: E702  (revenue forecast: funnel history, outbound, simulated year)
+    from .book import register as register_book; register_book(app)                      # noqa: E702  (client book, campaign results)
     from .competitors_api import register as register_competitors; register_competitors(app)      # noqa: E702  (competitor tracker: profiles, moves, where we meet them)
     from .oauth import register as register_oauth; register_oauth(app)      # noqa: E702  (sign-in for people's own Claude / ChatGPT: OAuth 2.1 + client registration)
     from .mcp import register as register_mcp; register_mcp(app)      # noqa: E702  (the MCP server those assistants talk to, read-only, as the person)

@@ -1,0 +1,18 @@
+/* Client book (pages/Clients.tsx). Tiles, flag filter and the table reuse forecast.css; this adds the layout around them. */
+.cl-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 14px; }
+.cl-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.cl-filter button { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-block-size: 36px; padding: 0 12px;
+  border: 1px solid var(--line); background: var(--white); font: 600 var(--fs-sm)/1 var(--font-body); color: var(--navy); }
+.cl-filter button b { font: 800 var(--fs-sm)/1 var(--font-head); color: var(--muted); }
+.cl-filter button:hover { border-color: var(--navy); background: var(--tint-1); }
+.cl-filter button[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: var(--white); }
+.cl-filter button[aria-pressed="true"] b { color: var(--on-navy-muted); }
+.cl-filter button:focus-visible { outline: 3px solid var(--purple); outline-offset: 1px; }
+.cl-table td { vertical-align: top; }
+.cl-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cl-name { all: unset; cursor: pointer; font-weight: 700; color: var(--navy); border-bottom: 1px dotted var(--muted); }
+.cl-name:focus-visible { outline: 3px solid var(--purple); outline-offset: 2px; }
+.cl-soon { font-weight: 700; }
+.cl-soon::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; background: var(--dot-warn); }
+.cl-detail td { background: var(--tint-1); }
+.cl-detail ul { margin: 4px 0 10px; padding-left: 18px; }

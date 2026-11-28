@@ -21,6 +21,7 @@ import Connections from "./pages/Connections";
 import BuyingSignals, { IconSignals } from "./pages/BuyingSignals";
 import { CampaignDetail, CampaignList, NewCampaign } from "./pages/Campaigns";
 import Forecast, { IconForecast } from "./pages/Forecast";
+import Clients, { IconClients } from "./pages/Clients";
 import Competitors from "./pages/Competitors";
 import Assistant from "./pages/Assistant";
 import ConnectAuthorize from "./pages/ConnectAuthorize";
@@ -130,6 +131,7 @@ export default function App() {
           {(can("today.read") || can("explorer.read")) && link("/tenders", tr("Open tenders"), IconTender)}
           {can("accounts.read") && link("/calendar", tr("Calendar"), IconCalendar)}
           {can("forecast.read") && link("/forecast", tr("Forecast"), IconForecast)}
+          {can("forecast.read") && link("/clients", tr("Client book"), IconClients)}
           {can("competitors.read") && link("/competitors", tr("Competitors"), IconCompetitors)}
           <span className="nav-group">{tr("Look up")}</span>
           {link("/library", tr("Library"), IconLibrary)}
@@ -155,6 +157,7 @@ export default function App() {
           <Route path="/tenders" element={<div className="page"><Tenders canRefresh={can("admin.sources")} /></div>} />
           <Route path="/calendar" element={<div className="page"><Calendar /></div>} />
           <Route path="/forecast" element={<div className="page">{can("forecast.read") ? <Forecast canManage={can("forecast.manage")} /> : <Navigate to="/" replace />}</div>} />
+          <Route path="/clients" element={<div className="page">{can("forecast.read") ? <Clients /> : <Navigate to="/" replace />}</div>} />
           <Route path="/competitors" element={<Navigate to="/competitors/briefing" replace />} />
           <Route path="/competitors/:view/:key?" element={<div className="page"><Competitors /></div>} />
           <Route path="/people" element={<div className="page"><People /></div>} />
