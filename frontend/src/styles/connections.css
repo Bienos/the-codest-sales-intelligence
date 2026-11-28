@@ -163,3 +163,25 @@
   .cn-conv .linkish, .cn-more, .cn-all { min-height: 40px; padding: 0; }
   .cn-empty a { display: inline-flex; align-items: center; min-height: 40px; }
 }
+
+/* ---------- Claude and ChatGPT (your own assistant, your own key) ---------- */
+.cn-ai { margin-top: 28px; min-width: 0; scroll-margin-top: 16px; }
+.cn-ai > h2 { font-size: var(--fs-xl); margin: 0 0 6px; }
+.cn-ai > .cn-for { margin: 0 0 14px; max-width: 72ch; }
+.cn-ai > .okmsg, .cn-ai > .err { margin: 14px 0 0; }
+.cn-ai .cn-card > .cn-secret { margin-top: 14px; }
+.cn-ai-how { display: grid; gap: 16px; margin-top: 16px; }
+.cn-ai-how h3 { margin: 0 0 6px; font-size: var(--fs-xs); letter-spacing: .12em; color: var(--muted); }
+.cn-ai-how ol { margin: 0 0 6px; padding-left: 20px; display: grid; gap: 4px; line-height: 1.5; color: var(--navy); }
+.cn-ai-how .cn-secret-row input { font-family: var(--font-head); font-size: var(--fs-sm); }
+.cn-ai-list { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.cn-ai-list h3 { margin: 0 0 8px; font-size: var(--fs-xs); letter-spacing: .12em; color: var(--muted); }
+.cn-ai-list ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.cn-ai-list li { display: grid; gap: 8px; }
+.cn-ai-list li b { color: var(--navy); }
+.cn-ai .cn-card form { margin-top: 12px; }
+@media (min-width: 900px) {
+  .cn-ai-how { grid-template-columns: 1fr 1fr; }
+  .cn-ai-how > div:last-child { grid-column: 1 / -1; }
+  .cn-ai-list li { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+}

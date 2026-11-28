@@ -18,6 +18,22 @@ import numpy as np
 SIG = 0.5         # spread of time in stage (lognormal sigma): about two thirds of deals take between 0.6x and 1.65x the median
 VSIG = 0.4        # spread of deal value around the average
 MIN_LEFT = 3.0    # an open deal already past its stage's typical time still needs a few days to move
+STALE = ((4.0, 0.25), (2.0, 0.5))   # (times the stage's median time already spent, factor on the chance of moving on)
+
+
+def stale_factor(age: np.ndarray, median_days: np.ndarray) -> np.ndarray:
+    """1, 0.5 past twice the stage's median time, 0.25 past four times. Used by the revenue forecast and the funnel outlook alike."""
+    ratio = np.asarray(age, dtype=float) / np.maximum(1.0, median_days)
+    f = np.ones_like(ratio, dtype=float)
+    for times, factor in sorted(STALE):                 # ascending, so the larger threshold wins
+        f = np.where(ratio > times, factor, f)
+    return f
+
+
+def residual(d: np.ndarray, age: np.ndarray) -> np.ndarray:
+    """Days an open deal still spends in its current stage, given a drawn stage time d and the days already spent there.
+    Inside the drawn time: what is left of it. Already past it: a fresh draw, so an overdue deal is not expected to close at once."""
+    return np.maximum(MIN_LEFT, np.where(d > age, d - age, d))
 
 
 @dataclass
@@ -112,10 +128,12 @@ def _walk(start: np.ndarray, t0: np.ndarray, age: np.ndarray, u_pass: np.ndarray
     t = np.broadcast_to(t0, alive.shape).astype(float)
     for i in range(S):
         here = start <= i
+        cur = start == i
         d = days[i] * np.exp(SIG * z_dur[..., i])
-        d = np.where(start == i, np.maximum(MIN_LEFT, d - age), d)
+        d = np.where(cur, residual(d, age), d)
+        p = np.where(cur, conv[i] * stale_factor(age, days[i]), conv[i])     # a deal long past the stage's usual time moves on less often
         t = t + np.where(here & alive, d, 0.0)
-        alive &= ~(here & (u_pass[..., i] >= conv[i]))
+        alive &= ~(here & (u_pass[..., i] >= p))
     return alive, t
 
 
@@ -202,7 +220,8 @@ def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> d
     return out
 
 
-def chance_at_least(res: dict, target: float) -> float | None:
+def chance_at_least(res: dict, target: float, already: float = 0.0) -> float | None:
+    """Share of runs in which what is already won this year plus what the run closes reaches the target."""
     if target <= 0 or "_year_samples" not in res:
         return None
-    return float((res["_year_samples"] >= target).mean())
+    return float((res["_year_samples"] + max(0.0, already) >= target).mean())

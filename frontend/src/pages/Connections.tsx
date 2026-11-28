@@ -4,6 +4,7 @@ import { ApiError, api, fmtDateTime, patch, post } from "../api";
 import { counted, getLanguage, tr } from "../locale";
 import { Err, Skeleton } from "../components/ui";
 import { SignatureSection } from "../components/EmailSignature";
+import { AiSection } from "../components/AiConnections";
 import "../styles/connections.css";
 
 /* ------------------------------------------------------------------ icons (same drawing rules as the rest of the app) */
@@ -142,6 +143,7 @@ export default function Connections() {
       </div>
       <SignatureSection />
     </>}
+    <AiSection />
   </div>;
 }
 

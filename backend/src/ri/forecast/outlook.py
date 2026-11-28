@@ -15,10 +15,9 @@ from typing import Any
 import numpy as np
 
 from ..db import Conn, qa
-from .engine import MIN_LEFT, SIG, _poisson_ppf
+from .engine import SIG, STALE, _poisson_ppf, residual, stale_factor
 
 RUNS = 2000
-STALE = ((4.0, 0.25), (2.0, 0.5))          # (times the stage's median time already spent, factor on the chance of moving on)
 WINDOWS = (30, 60, 90)
 Z80 = 1.2816
 
@@ -51,14 +50,6 @@ def reach(conv: list[float], days: list[float]) -> list[list[dict[str, float] | 
     return out
 
 
-def stale_factor(age: np.ndarray, median_days: np.ndarray) -> np.ndarray:
-    ratio = age / np.maximum(1.0, median_days)
-    f = np.ones_like(ratio, dtype=float)
-    for times, factor in sorted(STALE):                 # ascending, so the larger threshold wins
-        f = np.where(ratio > times, factor, f)
-    return f
-
-
 def _entries(start: np.ndarray, t0: np.ndarray, age: np.ndarray, u: np.ndarray, z: np.ndarray, conv: np.ndarray, days: np.ndarray) -> np.ndarray:
     """Time each simulated deal enters each stage (last column: won), NaN when it never does. Shapes broadcast as in engine._walk;
     `conv` is per stage, or per deal and stage (its last axis is the stage)."""
@@ -71,7 +62,7 @@ def _entries(start: np.ndarray, t0: np.ndarray, age: np.ndarray, u: np.ndarray, 
         here = start <= i
         ent[..., i] = np.where(alive & here, t, np.nan)
         d = days[i] * np.exp(SIG * z[..., i])
-        d = np.where(start == i, np.maximum(MIN_LEFT, d - age), d)
+        d = np.where(start == i, residual(d, age), d)
         t = t + np.where(here & alive, d, 0.0)
         alive &= ~(here & (u[..., i] >= conv[..., i]))
     ent[..., S] = np.where(alive, t, np.nan)

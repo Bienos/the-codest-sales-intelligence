@@ -242,7 +242,8 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
     max_lam = max([lam for lam, _ in base.streams] + [0.0]) * (1 + SENS_STEP) * 1.05
     dr = engine.Draws(RUNS, len(base.open_stage), len(base.conv), len(base.streams), len(cal.months), max_lam)
     res = engine.simulate(base, cal, dr)
-    chance = engine.chance_at_least(res, inp["target"])
+    already = float(h.won_in_year.get("value") or 0.0) if inp["year"] == now.year else 0.0      # the simulation only plays out what is still open
+    chance = engine.chance_at_least(res, inp["target"], already)
     res.pop("_year_samples", None)
     open_by_deal, win_by_deal = res.pop("_open_by_deal", []), res.pop("_win_by_deal", [])
     by_source = sources_view(conn, h, open_by_deal, res.get("stream_year") or [])
