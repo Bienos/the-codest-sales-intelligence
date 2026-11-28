@@ -71,7 +71,7 @@ EDITABLE = {"name", "url", "hq", "founded", "archetype", "ownership", "headcount
             "entryOffer", "offers", "ai", "fs", "markets", "offices", "clutch", "clients", "certs", "pos", "strengths", "weaknesses", "howWeWin", "questions",
             "quickDismiss", "jobs", "aliases", "plDelivery"}
 FACT_FIELDS = {"ownership", "headcount", "revenue", "hero", "jobs"}
-COLLECTED = ("jobs", "hero")            # facts the weekly collection keeps current (ri/competitor_watch.py)       # each is {value, source, asOf, grade}
+COLLECTED = ("jobs", "hero", "clutch", "roleMix", "aws")            # facts the weekly collection keeps current (ri/competitor_watch.py)       # each is {value, source, asOf, grade}
 
 
 # ------------------------------------------------------------------ loading the seed
@@ -269,6 +269,20 @@ def name_keys(c: dict[str, Any]) -> set[str]:
     return {k for k in out if len(k) >= 3}
 
 
+def match_name(match: dict[str, str], name: str) -> str | None:
+    """The tracked firm a company name refers to, also when it is a legal name ('STX NEXT S.A.', 'Software Mind sp. z o.o.', 'Endava Ltd'):
+    its own name keys first, then its first words."""
+    for k in name_keys({"name": name}):
+        if k in match:
+            return match[k]
+    words = re.sub(r"[^a-z0-9 ]+", " ", (name or "").lower()).split()
+    for n in range(min(4, len(words)), 0, -1):
+        k = name_key(" ".join(words[:n]))
+        if len(k) >= 4 and k in match:
+            return match[k]
+    return None
+
+
 def _matcher(comps: list[dict[str, Any]]) -> dict[str, str]:
     m: dict[str, str] = {}
     for c in comps:
@@ -383,6 +397,11 @@ def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = 
                 why = f"Overlap {o['total']} of 100 (buyers {o['buyers']}/30, way of selling {o['selling']}/30, markets {o['markets']}/20, size {o['size']}/20)."
             c["tierWhy"] = f"{fit} {why}".strip()
     us["tier"] = 0
+    per: dict[str, dict[str, Any]] = {}
+    for w in qa(conn, "SELECT competitor_key, check_name, last_run_at, last_error FROM competitor_watch WHERE competitor_key <> '_all'"):
+        per.setdefault(w["competitor_key"], {})[w["check_name"]] = {"at": w["last_run_at"].isoformat() if w["last_run_at"] else None, "error": w["last_error"]}
+    for c in comps:
+        c["watch"] = per.get(c["key"], {})
     us["moves"] = [_move_out(m) for m in by_key.get(us["key"], [])]
     us["score"] = {**scorecard(us, by_key.get(us["key"], []), as_of), "moves": None}        # our own moves are not tracked here
     ind = indicators(comps, by_key, meta.get("asOf") or as_of)

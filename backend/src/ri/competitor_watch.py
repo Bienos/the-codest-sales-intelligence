@@ -87,7 +87,7 @@ def awards_since(conn: Conn, comps: list[dict[str, Any]], now: datetime) -> int:
     made = 0
     for r in qa(conn, "SELECT notice_id, buyer_name, buyer_country, winners, awarded_on, official_url, title FROM awarded_contracts "
                       "WHERE relevant AND first_seen_at > %s AND official_url LIKE 'https://%%'", (cutoff,)):
-        for k in {match.get(ct.name_key(w)) for w in r["winners"]} - {None}:
+        for k in {ct.match_name(match, w) for w in r["winners"]} - {None}:
             ours = r["buyer_country"] in OUR_COUNTRIES
             made += candidate(conn, k, day=(r["awarded_on"] or now.date()).isoformat(), kind="client",
                               headline=f"Wins a public IT contract from {r['buyer_name'] or 'a public buyer'} ({r['buyer_country'] or '?'})",
@@ -278,12 +278,15 @@ def news(conn: Conn, comps: list[dict[str, Any]], search: Callable[[str, dict[st
 
 
 # ------------------------------------------------------------------ the job
-def run(conn: Conn, *, fetch: Fetch, search: Callable[[str, dict[str, Any]], list[dict[str, Any]]] | None = None, now: datetime | None = None) -> dict[str, Any]:
+def run(conn: Conn, *, fetch: Fetch, search: Callable[[str, dict[str, Any]], list[dict[str, Any]]] | None = None, now: datetime | None = None,
+        post: Callable[[str, dict[str, Any]], str] | None = None, sleep: Callable[[float], None] | None = None) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc)
     comps = tracked(conn)
     if not comps:
         return {"firms": 0}
     out: dict[str, Any] = {"firms": len(comps)}
+    from .competitor_sources import run_all                 # tenders first: the awards step below turns new wins into candidates
+    out.update(run_all(conn, comps, fetch=fetch, post=post, now=now, **({"sleep": sleep} if sleep else {})))
     out["award_candidates"] = awards_since(conn, comps, now)
     conn.commit()
     roles = open_roles(conn, comps, fetch, now)
@@ -296,13 +299,24 @@ def run(conn: Conn, *, fetch: Fetch, search: Callable[[str, dict[str, Any]], lis
     return out
 
 
-def http_fetch(url: str) -> str:
+def http_fetch(url: str, headers: dict[str, str] | None = None) -> str:
     """One public page, through the client that only reaches public addresses and re-checks every redirect."""
     from .sources.safe import SafeClient
 
     async def go() -> str:
-        r = await SafeClient(timeout=20).get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; CodestResearch/1.0)", "Accept": "text/html,application/xml"},
+        r = await SafeClient(timeout=20).get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; CodestResearch/1.0)", "Accept": "text/html,application/xml", **(headers or {})},
                                              follow_redirects=True)
+        r.raise_for_status()
+        return r.text[:3_000_000]
+    return asyncio.run(go())
+
+
+def http_post(url: str, body: dict[str, Any]) -> str:
+    """A JSON POST to a public address (job boards that search by POST), through the same public-address client."""
+    from .sources.safe import SafeClient
+
+    async def go() -> str:
+        r = await SafeClient(timeout=20).post(url, json=body, headers={"User-Agent": "Mozilla/5.0 (compatible; CodestResearch/1.0)", "Accept": "application/json"})
         r.raise_for_status()
         return r.text[:3_000_000]
     return asyncio.run(go())

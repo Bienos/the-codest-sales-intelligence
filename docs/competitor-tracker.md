@@ -311,3 +311,26 @@ Per-fact sources, with dates, are in `docs/prototypes/competitor-tracker-data.js
 - Bellwethers: [EPAM Q3 2026](https://www.sec.gov/Archives/edgar/data/0001352010/000135201026000048/exhibit99_q3x2026.htm), [Endava Q3 FY26](https://www.sec.gov/Archives/edgar/data/1656081/000165608126000015/endavapressreleaseq3fy26.htm), [Endava investigation update](https://www.financialcontent.com/article/bizwire-2026-10-28-endava-provides-update-on-audit-committee-investigation), [Globant Q3 2026](https://www.sec.gov/Archives/edgar/data/0001557860/000110465926130143/tm2630201d1_ex99-1.htm), [Grid Dynamics Q3 2026](https://stockstory.org/us/stocks/nasdaq/gdyn/news/earnings-call/gdyn-q3-deep-dive-ai-driven-delivery-boosts-margins-and-productivity-gains), [Nagarro Q3 2026](https://www.cantechletter.com/newswires/nagarro-releases-unaudited-q3-2026-results-posts-2-7-constant-currency-growth-for-9-months-ended-september-2026/), [Spyrosoft Q3 2026](https://www.bankier.pl/wiadomosc/SPYROSOFT-S-A-Wyniki-finansowe-QSr-3-2026-9236599.html), [Ailleron Q3 2026](https://ailleron.com/press-releases/grupa-ailleron-record-third-quarter-2026/), [Ework Q3 2026](https://www.placera.se/pressmeddelanden/ework-group-ework-group-publishes-interim-report-january-september-2026-stable-profitability-and-increased-activity-across-several-markets-20261022)
 - Polish market and deals: [ITwiz BEST100 2026](https://itwiz.pl/najwieksze-firmy-it-w-polsce-w-roku-2025-ranking-itwiz-best100/), [Tailwind and Software Mind](https://www.biznesradar.pl/a/145558,tailwind-rezygnuje-z-przejecia-software-mind), [Miquido transformation](https://xyz.pl/polacy-zbudowali-aplikacje-dla-ponad-100-mln-osob-teraz-przechodzi-gleboka-transformacje/), [ABSL 2026](https://absl.pl/en/news/p/business-services-sector-sets-development-path-polish-economy)
 - Data sources and rates: [KRS API notes](https://outreachpilot.pl/blog/api-krs-odpis-aktualny-json), [Companies House API](https://developer-specs.company-information.service.gov.uk/companies-house-public-data-api/reference), [Clutch terms](https://clutch.co/terms), [LinkedIn user agreement](https://www.linkedin.com/legal/user-agreement), [justjoin.it sitemap](https://justjoin.it/sitemaps/active-jobs/part0.xml), [Clutch pricing guide](https://clutch.co/developers/pricing), [Accelerance rates 2026](https://www.accelerance.com/blog/software-engineering-rates-2026), [DORA overview](https://en.wikipedia.org/wiki/Digital_Operational_Resilience_Act)
+
+## How we track them (automatic collection)
+
+The daily `competitor_watch` job (`backend/src/ri/competitor_watch.py` and `backend/src/ri/competitor_sources.py`) runs each source on its own cadence, a batch of firms at a time. Every source takes a baseline on its first run; after that, changes become candidate moves on the Review tab. Counts (Clutch reviews, job mix, AWS tier) are facts and update the profile directly. Per-firm identifiers live in each profile under `track` in `backend/rules/competitors_seed.json`, found and verified with live requests on 28 Nov 2026. Each profile shows "How we track this firm", with the last run and any error per source.
+
+| Source | What it gives | Cadence | Covers |
+|---|---|---|---|
+| Homepage | First heading on the homepage | weekly (tier 3 monthly) | all |
+| Sitemap | New service, industry, case-study, pricing, partner, office and press pages | weekly (tier 3 monthly) | 45 firms with a sitemap |
+| Own feed (RSS/Atom) | New blog and news posts | weekly | 23 firms with a feed |
+| GDELT | Press coverage naming the firm, six firms per query (one request per 5 seconds) | weekly, tiers 1-2 | firms with a distinctive name |
+| Exa | News search, inside the Exa budget (the account was out of credits on 28 Nov 2026) | weekly tier 1, monthly tier 2 | when the key works |
+| Clutch widget | Rating, review count, latest review quotes | monthly | all 48 |
+| Job systems | Open roles from Workable, Lever, Greenhouse, Recruitee, SmartRecruiters, Teamtailor, BambooHR, Breezy, Traffit; NoFluffJobs by company | weekly | 20 job systems, 12 NoFluffJobs names |
+| justjoin.it | Open offers per firm | daily | all |
+| Role mix | AI and data, finance domain, sales by market (UK, DACH, Nordics, US), delivery leads; sales hiring in our markets becomes a candidate | weekly | firms with a job system |
+| KRS | Board members and latest entry in the Polish court register | monthly | 41 firms (the API was down for maintenance on 28 Nov 2026) |
+| Companies House | Active UK officers (API when `COMPANIES_HOUSE_API_KEY` is set, else the public page) | monthly | 16 firms |
+| Public tenders | Award notices won by a tracked firm: TED (EU), BZP (Poland, CPV 72 and 48), Contracts Finder and Find a Tender (UK) | daily | all |
+| AWS Partner finder | Tier, certifications, competencies (searched with `kw=`, matched by website) | monthly | all |
+| Partner pages | Thought Machine, 10x Banking and per-firm vendor pages that list partners in plain HTML | monthly | all |
+
+Not covered, and why: LinkedIn (no permitted access), Salesforce, Microsoft, Google Cloud, Snowflake and Databricks partner directories (built in the browser or blocked), Clutch profile pages (Cloudflare; the widget is used instead), KRS financial statements (only as scanned documents).
