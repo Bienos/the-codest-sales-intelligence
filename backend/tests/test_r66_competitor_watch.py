@@ -38,13 +38,19 @@ def test_parsing_helpers():
     assert cw.guess_type("Neontri acquires a payments boutique") == "ma_buy" and cw.guess_type("A webinar") == "content"
 
 
+def t1(conn):
+    """A tier 1 firm, whichever the seed makes it: tests must not depend on one firm staying in the top seven."""
+    return next(c for c in ct.tracker(conn)["competitors"] if c["tier"] == 1)
+
+
 def test_homepage_change_waits_for_review_then_updates_the_profile(conn):
     ct.load_seed(conn)
-    url = conn.execute("select profile->>'url' u from competitors where key='neontri'").fetchone()["u"]
+    firm = t1(conn)
+    key, url = firm["key"], firm["url"]
     pages = {url: "<h1>Core banking engineering, done right</h1>", cw.JOBS_SITEMAP.format(0): sitemap()}
     out = cw.run(conn, fetch=fake_fetch(pages), now=NOW)
     assert out["headlines_changed"] >= 1
-    c = candidates(conn, "neontri")
+    c = candidates(conn, key)
     assert len(c) == 1 and c[0]["move_type"] == "positioning" and c[0]["payload"]["hero"] == "Core banking engineering, done right"
     assert all(m["headline"] != c[0]["headline"] for x in ct.tracker(conn)["competitors"] for m in x["moves"])      # not shown before review
     # the next day nothing is due; a week later the same headline is not suggested again
@@ -52,9 +58,9 @@ def test_homepage_change_waits_for_review_then_updates_the_profile(conn):
     cw.run(conn, fetch=f, now=NOW + timedelta(days=1))
     assert url not in f.calls                             # checked yesterday: not due (the batch moves on to other firms)
     cw.run(conn, fetch=fake_fetch(pages), now=NOW + timedelta(days=8))
-    assert len(candidates(conn, "neontri")) == 1
+    assert len(candidates(conn, key)) == 1
     ct.review_move(conn, str(c[0]["id"]), status="confirmed", actor="mkt@x", so_what="They now lead with core banking.")
-    hero = conn.execute("select profile->'hero' h from competitors where key='neontri'").fetchone()["h"]
+    hero = conn.execute("select profile->'hero' h from competitors where key=%s", (key,)).fetchone()["h"]
     assert hero["value"] == "Core banking engineering, done right" and hero["grade"] == "official" and hero["asOf"] == "2026-12-01"
 
 
@@ -71,24 +77,26 @@ def test_open_roles_are_counted_and_survive_a_reseed(conn):
 
 def test_new_awards_and_news_become_candidates(conn):
     ct.load_seed(conn)
+    firm = t1(conn)
+    key, name = firm["key"], firm["name"]
     conn.execute("insert into awarded_contracts(notice_id, buyer_name, buyer_country, winners, awarded_on, end_basis, relevant, official_url, title) "
-                 "values ('n9','Bank Gospodarstwa','PL','{\"Neontri sp. z o.o.\"}','2026-11-20','assumed',true,'https://ted.europa.eu/n9','Payment system')")
+                 "values ('n9','Bank Gospodarstwa','PL',%s,'2026-11-20','assumed',true,'https://ted.europa.eu/n9','Payment system')", ("{" + name + " sp. z o.o.}",))
     pages_seen = []
 
     def search(purpose, body):
         pages_seen.append(purpose)
-        if purpose.endswith(":neontri"):
-            return [{"url": "https://neontri.com/news/new-office", "title": "Neontri opens an office in Stockholm", "text": "Neontri opens a Nordic office.", "published": "2026-11-25"},
+        if purpose.endswith(":" + key):
+            return [{"url": firm["url"].rstrip("/") + "/news/new-office", "title": f"{name} opens an office in Stockholm", "text": f"{name} opens a Nordic office.", "published": "2026-11-25"},
                     {"url": "https://example.com/other", "title": "Unrelated fintech news", "text": "Nothing about them.", "published": "2026-11-25"}]
         return []
     out = cw.run(conn, fetch=fake_fetch({cw.JOBS_SITEMAP.format(0): sitemap()}), search=search, now=NOW)
     assert out["award_candidates"] == 1 and out["news_searches"] == cw.SEARCHES_PER_RUN
-    moves = {m["move_type"]: m for m in candidates(conn, "neontri")}
+    moves = {m["move_type"]: m for m in candidates(conn, key)}
     assert moves["client"]["source_url"] == "https://ted.europa.eu/n9" and moves["client"]["impact"] == 2       # our market, tier 1
     assert moves["market"]["grade"] == "official" and "Stockholm" in moves["market"]["headline"]
     assert not [m for m in candidates(conn) if m["source_url"] == "https://example.com/other"]                  # does not name the firm
     cw.run(conn, fetch=fake_fetch({}), search=search, now=NOW + timedelta(days=8))
-    assert len([m for m in candidates(conn, "neontri") if m["move_type"] == "client"]) == 1                     # never suggested twice
+    assert len([m for m in candidates(conn, key) if m["move_type"] == "client"]) == 1                     # never suggested twice
 
 
 def test_the_lane_queues_one_job_a_day(conn):

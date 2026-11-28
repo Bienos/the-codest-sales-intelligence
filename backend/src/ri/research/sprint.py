@@ -13,10 +13,12 @@ Money: one profile is about four Exa searches, about 3 US cents (production, Nov
     searches stop at, so sellers' own buttons always keep the rest;
   * at least ``AI_RESERVE_FRACTION`` (30%) of this month's AI limit is left (writing the profile uses the model);
   * the last ``STOP_AFTER_FAILURES`` sprint profiles did not all fail (a failure still costs the searches, so a broken run is not repeated).
-At ``PER_RUN`` an hour and ``PER_DAY`` a day it spends at most about 40 US cents a day. The lane ``research_sprint`` runs it hourly.
+At ``PER_RUN`` an hour and ``per_day()`` a day (``RI_RESEARCH_SPRINT_PER_DAY``, default ``PER_DAY`` = 40) it spends at most about $1.20 of Exa a day.
+The lane ``research_sprint`` runs it hourly.
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -27,13 +29,23 @@ from ..target_market import target_sql
 REQUESTED_BY = "research-sprint"
 KIND = "account_profile"
 PRIORITIES = ("P1", "P2")
-PER_RUN = 2
-PER_DAY = 12
-MAX_IN_FLIGHT = 3
+PER_RUN = 3
+PER_DAY = 40                      # raised from 12 on 28 Nov 2026: 194 P1 and 521 P2 accounts were still waiting
+MAX_DAY = PER_RUN * 24           # the hourly lane cannot queue more than this in a day
+MAX_IN_FLIGHT = 4
 FAILED_PAUSE_DAYS = 14
 STOP_AFTER_FAILURES = 3
 EST_COST_USD = 0.04
 AI_RESERVE_FRACTION = 0.3
+
+
+def per_day() -> int:
+    """``RI_RESEARCH_SPRINT_PER_DAY`` (0 to ``MAX_DAY``; 0 queues nothing), else ``PER_DAY``. A value that is not a whole number is ignored."""
+    raw = (os.environ.get("RI_RESEARCH_SPRINT_PER_DAY") or "").strip()
+    try:
+        return max(0, min(MAX_DAY, int(raw))) if raw else PER_DAY
+    except ValueError:
+        return PER_DAY
 
 
 def _settings():
@@ -103,9 +115,10 @@ def schedule(conn: Conn, now: datetime | None = None, settings: Any = None) -> d
         out["held_by"] = "ai_budget"
         return out
     busy = int((q1(conn, "SELECT count(*) AS n FROM account_profiles WHERE requested_by=%s AND status IN ('queued','running')", (REQUESTED_BY,)) or {"n": 0})["n"])
-    room = min(PER_RUN, PER_DAY - today, MAX_IN_FLIGHT - busy)
+    limit = per_day()
+    room = min(PER_RUN, limit - today, MAX_IN_FLIGHT - busy)
     if room <= 0:
-        out["held_by"] = "daily_limit" if PER_DAY - today <= 0 else "queue_busy"
+        out["held_by"] = "daily_limit" if limit - today <= 0 else "queue_busy"
         return out
     for oid in candidates(conn, now, room):
         rid = str(conn.execute("INSERT INTO account_profiles(organization_id, requested_by) VALUES (%s,%s) RETURNING id", (oid, REQUESTED_BY)).fetchone()["id"])  # type: ignore[index]

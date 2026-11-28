@@ -202,9 +202,9 @@ function Day({ can }: { can: Can }) {
 type Budget = { cap: number; spent: number };
 type Live = { exa?: Budget; ai?: Budget; aiUsd?: number | null; apollo?: Budget };
 
-// The limits set for production (Exa $20 a month, 30 million AI tokens a month; budget.py enforces them).
+// The limits set for production (Exa $40 a month, 60 million AI tokens a month; budget.py enforces them).
 // When the viewer may see costs, the live limits for this month replace these.
-const EXA_CAP = 20, AI_TOKENS = 30_000_000, AI_USD = 4.8;
+const EXA_CAP = 40, AI_TOKENS = 60_000_000, AI_USD = 9.6;
 
 const tokens = (n: number) => (n >= 1_000_000 ? tr("{} million", number(Math.round(n / 100_000) / 10)) : number(Math.round(n)));
 const usd = (n: number) => `$${n < 10 && n % 1 ? n.toFixed(2) : number(Math.round(n))}`;

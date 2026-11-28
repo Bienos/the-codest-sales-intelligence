@@ -4890,6 +4890,1884 @@
    },
    "key": "endava",
    "reference": true
+  },
+  {
+   "name": "Apptension",
+   "url": "https://apptension.com/",
+   "origin": "PL",
+   "hq": "Poznań",
+   "archetype": "Senior-only AI and SaaS product studio",
+   "founded": "2012",
+   "ownership": {
+    "value": "Founder-owned: three shareholders with 33.33% each; the three 2012 founders (Zbigniew Czarnecki, Artur Gutkowski, Michał Kleszcz) still lead it. Subsidiary Teamdeck Sp. z o.o. (100%). No acquisition found.",
+    "source": "https://www.emis.com/php/company-profile/PL/Apptension_Sp_z_oo_en_4465865.html",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "headcount": {
+    "value": "30+ senior engineers on the delivery team (own site); EMIS band 11–50 for 2025; Clutch band 50–249 looks out of date",
+    "n": 30,
+    "source": "https://apptension.com/about",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found in absolute terms; EMIS reports net sales down 40.9% in 2025",
+    "trend": "down",
+    "source": "https://www.emis.com/php/company-profile/PL/Apptension_Sp_z_oo_en_4465865.html",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "The senior team behind your AI and SaaS product",
+    "source": "https://apptension.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Poznań product studio of about 30 senior engineers that now sells AI-agent-assisted delivery, agentic MVPs and SaaS builds to startups and scale-ups in the US, UK and EU.",
+   "relevance": "Overlaps with us on AI-accelerated delivery and SaaS builds for UK clients, not on financial services.",
+   "services": [
+    "Agentic MVP development",
+    "Agentic SDLC implementation",
+    "Product and SaaS development",
+    "Generative AI development (RAG, voice agents, MCP servers, LangGraph agents)",
+    "Vibe-coded prototype to production",
+    "Legacy modernisation",
+    "Senior engineering team extension",
+    "Product consulting and discovery",
+    "Tech due diligence for investors"
+   ],
+   "models": [
+    "Launch: fixed-scope sprint, 6–12 weeks, 2–4 senior engineers",
+    "Scale: monthly senior pod, 4–6 engineers",
+    "Transform: milestone programme, 6+ months",
+    "Team extension, month to month"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "entryOffer": "Agentic SDLC: baseline, then the agent harness installed in one repository in two weeks; Launch: a fixed-scope sprint of 6–12 weeks.",
+   "ai": {
+    "score": 3,
+    "value": "Hero leads with “AI and SaaS product”; sells AI-agent-assisted delivery (“AI coding agents do the repetitive work, and a senior reviews every change”), Agentic SDLC and agentic MVPs; AI agents and generative AI lead its Clutch service mix.",
+    "source": "https://apptension.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 0,
+    "note": "No financial-services positioning or industry page; one payments case study (blkbx, a Stripe checkout app) among 48; Clutch shows 10% financial services with no FS-tagged review.",
+    "source": "https://apptension.com/case-studies",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "US",
+    "UK"
+   ],
+   "offices": "One office in Poznań; serves clients across the US, UK and EU.",
+   "clutch": {
+    "rating": 4.8,
+    "reviews": 22,
+    "rate": "$50–99/hr",
+    "min": "$25,000+",
+    "source": "https://clutch.co/profile/apptension",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "The Mill",
+    "Unit9",
+    "Universal Pictures",
+    "Riyadh Air",
+    "LESS_",
+    "VIU",
+    "mTab",
+    "blkbx"
+   ],
+   "certs": [],
+   "pos": {
+    "x": 1,
+    "y": 6,
+    "why": "Generalist (media, retail, health, SaaS; no financial-services line); leads with fixed-scope product builds and monthly senior pods, with team extension as a second line."
+   },
+   "strengths": [
+    "A clear AI-first delivery story: AI coding agents with senior review, sold as Agentic SDLC",
+    "Fixed-length entry offers (two-week Agentic SDLC install, 6–12 week Launch sprint)",
+    "22 Clutch reviews at 4.8 and well-known creative-industry names (The Mill, Universal Pictures, Netflix work)"
+   ],
+   "weaknesses": [
+    "No financial-services references, compliance story or bank names",
+    "Small and shrinking: about 30 engineers, EMIS band 11–50, net sales down about 41% in 2025",
+    "No published security certifications"
+   ],
+   "howWeWin": [
+    "Bank, insurer and fintech references, with the security and DORA answers regulated buyers ask for",
+    "Capacity to staff and keep a larger team for several years"
+   ],
+   "questions": [
+    "Which regulated financial clients has your supplier delivered for, and can we speak to one?",
+    "If the team needs to double in six months, where do the extra senior engineers come from?"
+   ],
+   "quickDismiss": "They are a good small AI and SaaS studio. For a bank or fintech that needs regulated-industry references and a team that can grow, that is what we bring.",
+   "moves": [],
+   "key": "apptension",
+   "reference": false,
+   "fitNote": "A small AI-first product studio; overlaps on AI-accelerated delivery, not on financial services."
+  },
+  {
+   "name": "DataArt",
+   "url": "https://www.dataart.com/",
+   "origin": "UA",
+   "plDelivery": true,
+   "hq": "New York; London office since 2001",
+   "archetype": "Global data and AI engineering group with industry practices",
+   "founded": "1997",
+   "ownership": {
+    "value": "Private. FTV Capital made a USD 75m growth investment in 2022; DEG and Da Vinci Capital invested in 2019. Shareholdings not found.",
+    "source": "https://www.dataart.com/company/about-us",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "headcount": {
+    "value": "6,000+ professionals in 40+ locations and 20+ countries",
+    "n": 6000,
+    "source": "https://www.dataart.com/company/about-us",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "USD 378m (preliminary) in 2022, up 25%; no later figure found. Older than 18 months, not current.",
+    "trend": "up",
+    "source": "https://forbes.ua/profile/dataart-394",
+    "asOf": "2023",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "Getting AI Right Starts Before the Pilot",
+    "source": "https://www.dataart.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "US-headquartered engineering group of 6,000+ with Ukrainian roots and five industry practices, finance first, now selling data and AI delivery through its own AI operating model, Artisyn.",
+   "relevance": "A larger rival for UK and DACH capital-markets, asset-management and insurance work, with five Polish delivery centres.",
+   "services": [
+    "Data strategy and data platforms",
+    "Data migration",
+    "AI strategy and generative AI",
+    "AI-accelerated engineering",
+    "Legacy modernisation and cloud migration",
+    "DevOps and quality engineering",
+    "UX/UI design and product strategy",
+    "Cybersecurity",
+    "Managed services and support"
+   ],
+   "models": [
+    "Domain Deployed Engineering: small industry teams embedded with the client and accountable for outcomes",
+    "Artisyn AI-enabled delivery model",
+    "Connect Framework: staged commitment as evidence builds",
+    "Custom development projects",
+    "Managed services"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 3,
+    "value": "Hero leads with AI (“Getting AI Right Starts Before the Pilot”); sells Artisyn, its own AI-enabled delivery model launched in February 2026; OpenAI and Anthropic Select partner.",
+    "source": "https://www.dataart.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 2,
+    "note": "Finance is the first of five industry practices and 30% of Clutch focus; names Nasdaq, Legal & General, Invesco, CIFC, Monex Europe, The Carlyle Group, Ledgebrook and Edenred.",
+    "source": "https://www.dataart.com/industries/data-analytics-in-finance",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "UK",
+    "DACH",
+    "US"
+   ],
+   "offices": "40+ locations in 20+ countries. Offices include New York, London, Zug and Munich; delivery in Poland (Krakow, Lodz, Lublin, Warsaw, Wroclaw), Ukraine, Bulgaria, Romania, Serbia, Latin America and India. No Nordic office listed.",
+   "clutch": {
+    "rating": 4.9,
+    "reviews": 26,
+    "rate": "$50–99/hr",
+    "min": "$100,000+",
+    "source": "https://clutch.co/profile/dataart",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "Nasdaq",
+    "Legal & General",
+    "Invesco",
+    "CIFC",
+    "Monex Europe",
+    "The Carlyle Group",
+    "Hayfin",
+    "Edenred",
+    "Unilever",
+    "Skyscanner"
+   ],
+   "certs": [
+    "ISO 27001",
+    "OpenAI Select Partner",
+    "Anthropic Claude Partner Network Select Partner",
+    "AWS",
+    "Azure",
+    "Snowflake"
+   ],
+   "pos": {
+    "x": 4,
+    "y": 7,
+    "why": "Finance leads five industry practices and is 30% of Clutch focus, but healthcare, travel, media and retail are sold too. Sells outcome-led AI and data programmes and managed services; Clutch minimum is USD 100,000."
+   },
+   "strengths": [
+    "Scale (6,000+) and 400+ clients, with 95% repeat business",
+    "Deep capital-markets and asset-management references (Nasdaq, Invesco, Carlyle)",
+    "A clear AI story: Artisyn, Domain Deployed Engineering, OpenAI and Anthropic partnerships"
+   ],
+   "weaknesses": [
+    "USD 100,000 minimum project size on Clutch; small mandates are not their target",
+    "Finance is one practice among five, beside healthcare, travel, media and retail",
+    "No revenue figure published since 2022"
+   ],
+   "howWeWin": [
+    "A smaller first step and senior people who stay on the account",
+    "Payments, fintech and banking build work in the UK, DACH, the Nordics and Poland",
+    "One accountable team rather than a large group's rotating staff"
+   ],
+   "questions": [
+    "Who from the proposed team will still be on your account in a year?",
+    "What is the smallest engagement they will take, and at what rate?",
+    "How much of the AI speed-up is measured on work like yours, not in case studies?"
+   ],
+   "quickDismiss": "DataArt is strong in capital markets and large data programmes. For a bank or fintech that wants a senior team without a six-figure minimum, we start smaller and keep the same people on the work.",
+   "moves": [
+    {
+     "date": "2026-11-17",
+     "type": "positioning",
+     "headline": "Launches “The Art of Getting It Right” as its standard for AI-era delivery",
+     "source": "https://www.dataart.com/company/newsroom/press-release/new-standard-approach-launch",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2026-09-23",
+     "type": "offer",
+     "headline": "Introduces Domain Deployed Engineering™: small industry teams accountable for AI outcomes",
+     "source": "https://www.dataart.com/company/newsroom/press-release/introducing-domain-deployed-engineering",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "Embedded teams that answer for results speak to the delivery-responsibility question banks ask us; expect it in UK and DACH bids."
+    },
+    {
+     "date": "2026-06-30",
+     "type": "partner",
+     "headline": "Named a Select partner in Anthropic's Claude Partner Network (Services Track)",
+     "source": "https://www.dataart.com/company/newsroom/press-release/dataart-joins-anthropic-s-claude-partner-network",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2026-02-18",
+     "type": "offer",
+     "headline": "Launches Artisyn, an AI-enabled delivery operating model",
+     "source": "https://www.dataart.com/company/newsroom/press-release/dataart-launches-artisyn",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "A named AI-accelerated delivery model with claimed metrics (up to 70% faster prototyping); we need our own measured AI delivery claims to answer it."
+    },
+    {
+     "date": "2025-03-27",
+     "type": "ma_buy",
+     "headline": "Acquires ACL Tech, a Chilean IT firm with 500+ staff",
+     "source": "https://www.einpresswire.com/article/797457241/dataart-expands-latam-presence-with-acquisition-of-acl-tech-a-leading-chilean-it-firm",
+     "grade": "official",
+     "impact": 1
+    }
+   ],
+   "key": "dataart",
+   "reference": false,
+   "fitNote": "A larger, AI-led rival in UK and DACH finance, with Polish delivery."
+  },
+  {
+   "name": "Droids On Roids",
+   "url": "https://www.thedroidsonroids.com/",
+   "origin": "PL",
+   "aliases": [],
+   "hq": "Wrocław",
+   "archetype": "Mobile app studio inside a UK mobile group",
+   "founded": "2011",
+   "ownership": {
+    "value": "Part of Apadmi Group (Manchester, UK) since January 2025; the footer reads “Part of Apadmi Group”. Apadmi has private equity investment from CBPE. Co-founder Wojtek Szwajkiewicz stays as CEO.",
+    "source": "https://www.apadmi.com/insights/apadmi-expands-further-into-europe-with-polish-acquisition/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "headcount": {
+    "value": "About 100 at the January 2025 acquisition (Apadmi: “add 100 true mobile experts”); Clutch band 50–249. Older than 18 months: re-check.",
+    "n": 100,
+    "source": "https://www.apadmi.com/insights/apadmi-and-droids-on-roids-why-weve-come-together/",
+    "asOf": "2025-01",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found",
+    "trend": "unknown",
+    "source": null,
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "Turn your idea into industry benchmark",
+    "source": "https://www.thedroidsonroids.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Wrocław mobile app studio of about 100 people, owned by UK group Apadmi since 2025; builds Flutter, Kotlin Multiplatform and native apps, with finance among its leading industries.",
+   "relevance": "Meets us on fintech mobile apps, and through Apadmi now sells into the UK.",
+   "services": [
+    "Product strategy workshop",
+    "Product research and discovery",
+    "Product design",
+    "Mobile app development",
+    "Web app development",
+    "Cross-platform development (Flutter, Kotlin Multiplatform)",
+    "Native iOS and Android apps",
+    "IoT apps"
+   ],
+   "models": [
+    "End-to-end product development",
+    "Free product strategy workshop",
+    "Handover to the client's team"
+   ],
+   "offers": [
+    "product"
+   ],
+   "ai": {
+    "score": 1,
+    "value": "No AI service line; AI appears in a blog guide and in a medtech case (Respire AI).",
+    "source": "https://www.thedroidsonroids.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 2,
+    "note": "Finance is listed first of six industries and is 25% of Clutch focus; case studies for SadaPay, Sarwa, HoneyBee, Metapro and mOne, and an Edenred Polska testimonial. No banks named.",
+    "source": "https://www.thedroidsonroids.com/expertise/fintech-app-development",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "PL",
+    "UK",
+    "Nordics"
+   ],
+   "offices": "One office in Wrocław; Apadmi Group offices in Manchester, London, Edinburgh, Amsterdam, Colombo and New York.",
+   "clutch": {
+    "rating": 4.9,
+    "reviews": 78,
+    "rate": "$50–99/hr",
+    "min": "$75,000+",
+    "source": "https://clutch.co/profile/droids-roids",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "CCC",
+    "Carlsberg",
+    "Sarwa",
+    "SadaPay",
+    "Edenred Polska",
+    "NCC",
+    "Steelwrist"
+   ],
+   "certs": [],
+   "pos": {
+    "x": 4,
+    "y": 7,
+    "why": "Generalist app studio where finance is one of the leading industries; sells end-to-end product builds with a $75,000 minimum, not staff."
+   },
+   "strengths": [
+    "Strong mobile brand: 4.9 on Clutch from 78 reviews",
+    "Real fintech app cases (SadaPay, Sarwa, HoneyBee)",
+    "Backing and UK client access through Apadmi"
+   ],
+   "weaknesses": [
+    "Mobile first; little visible backend, data or core-system work",
+    "No visible AI offer",
+    "Its portfolio now mixes in Apadmi's UK retail work (Co-op, Domino's), which blurs its own focus"
+   ],
+   "howWeWin": [
+    "Full-stack scope: backend, integrations and core systems, not only the app",
+    "Bank, payments and insurer references beyond consumer fintech",
+    "AI-accelerated delivery, which they do not offer"
+   ],
+   "questions": [
+    "Who builds and runs the backend and integrations behind the app?",
+    "Has your supplier delivered for regulated banks or insurers, not only consumer fintechs?",
+    "Since the Apadmi deal, who makes the decisions on your account: Wrocław or Manchester?"
+   ],
+   "quickDismiss": "They build very good mobile apps. If the work goes past the app into backend, integrations or regulated banking systems, that is where we fit better.",
+   "entryOffer": "Free product strategy workshop (about 20 hours of work)",
+   "moves": [
+    {
+     "date": "2025-01-23",
+     "type": "ma_sold",
+     "headline": "Acquired by Apadmi, a Manchester mobile consultancy backed by CBPE; leadership and team stay",
+     "source": "https://business-sale.com/news/business-sale/app-maker-apadmi-continues-european-expansion-with-polish-deal-227054",
+     "grade": "reported",
+     "impact": 2,
+     "sowhat": "A UK-owned group with Polish delivery can now pitch UK accounts much as we do, though more in retail and consumer apps than in banking."
+    }
+   ],
+   "key": "droids-on-roids",
+   "reference": false,
+   "fitNote": "Mobile-first app studio with fintech cases; now Apadmi's Polish delivery arm."
+  },
+  {
+   "name": "EPAM Systems",
+   "aliases": [
+    "EPAM"
+   ],
+   "url": "https://www.epam.com/",
+   "origin": "EU",
+   "plDelivery": true,
+   "hq": "Newtown, Pennsylvania, US",
+   "archetype": "Global listed engineering and consulting group",
+   "founded": "1993",
+   "ownership": {
+    "value": "Listed on the NYSE (EPAM); CEO Balazs Fejes since 1 September 2025, with co-founder Arkadiy Dobkin as Executive Chairman",
+    "source": "https://www.sec.gov/Archives/edgar/data/0001352010/000135201026000048/exhibit99_q3x2026.htm",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "headcount": {
+    "value": "About 63,650, including 57,350 delivery professionals (30 September 2026). Poland: about 5,050 delivery professionals at end-2025, its third-largest delivery location",
+    "n": 63650,
+    "source": "https://www.sec.gov/Archives/edgar/data/0001352010/000135201026000048/exhibit99_q3x2026.htm",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "$5.457bn in 2025 (2024: $4.728bn), up 15.4% (4.9% organic); Q3 2026 $1.426bn, up 2.3%; 2026 guidance +3.5–3.7%",
+    "trend": "up",
+    "source": "https://www.sec.gov/Archives/edgar/data/1352010/000135201026000010/exhibit99_q4x2025.htm",
+    "asOf": "2026-02",
+    "grade": "official"
+   },
+   "oneLiner": "NYSE-listed engineering and consulting group of about 63,650 people; financial services is its largest vertical at about 27% of revenue, and Poland is its third-largest delivery location.",
+   "relevance": "A scale benchmark that big banks and capital-markets firms already buy from, and a large employer in our Polish talent market.",
+   "services": [
+    "Digital engineering and platform modernisation",
+    "Business and experience consulting",
+    "AI-native engineering on the EPAM AI/RUN platform",
+    "Frontier AI Service: data generation, model evaluation and reinforcement learning environments",
+    "Capital-markets managed services and consulting (First Derivative)"
+   ],
+   "models": [
+    "Consulting-led transformation programmes",
+    "Engineering delivery with delivery responsibility",
+    "Managed services"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 3,
+    "value": "Q3 2026 results lead with “AI-native momentum” and the new Frontier AI Services; sells AI-native delivery on its own EPAM AI/RUN platform, with Cursor (January 2026) and OpenAI Advanced Partner (July 2026) partnerships.",
+    "source": "https://www.sec.gov/Archives/edgar/data/0001352010/000135201026000048/exhibit99_q3x2026.htm",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 2,
+    "note": "Financial services is the largest of five verticals: $384m, 26.9% of Q3 2026 revenue (25.9% for nine months); bought First Derivative (capital markets, 1,800+ people, Northern Ireland) in December 2024.",
+    "source": "https://www.sec.gov/Archives/edgar/data/1352010/000135201026000052/epam-20260930.htm",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "US",
+    "UK",
+    "PL"
+   ],
+   "offices": "HQ in Newtown, Pennsylvania; UK offices in London, Liverpool, Manchester and Newcastle; seven Polish locations (Kraków, Gdańsk, Wrocław, Warsaw, Katowice, Łódź and Poznań, opened July 2025). DACH and Nordic offices not verified.",
+   "clutch": {
+    "rating": 5.0,
+    "reviews": 1,
+    "rate": "$150–199/hr",
+    "min": "$100,000+",
+    "source": "https://clutch.co/profile/epam-systems",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [],
+   "certs": [],
+   "pos": {
+    "x": 3,
+    "y": 8,
+    "why": "Financial services is the largest vertical but about a quarter of revenue, beside four others; sells consulting-led engineering programmes, platforms and managed services."
+   },
+   "strengths": [
+    "Scale and stability: about 63,650 people, $5.5bn revenue, NYSE-listed, which big-bank procurement trusts",
+    "Deep financial-services and capital-markets practice, strengthened by First Derivative",
+    "Partnerships with OpenAI, Anthropic, Google, Microsoft and Cursor, and its own AI/RUN platform"
+   ],
+   "weaknesses": [
+    "Expensive with a high entry point: $150–199/hr and $100,000+ minimum on Clutch",
+    "Built for large programmes; the top ten clients are 21.6% of revenue, so mid-sized accounts get less attention",
+    "Growth has slowed to 2–3% organic in 2026"
+   ],
+   "howWeWin": [
+    "Scoped work below EPAM's minimums, such as a first phase or a single product team",
+    "Senior engineers named up front who stay on the account, and direct access to our leadership",
+    "Faster start and lower total cost for UK, DACH and Nordic fintechs and mid-sized banks"
+   ],
+   "questions": [
+    "How much of the proposed team is named, and how many of them will still be on it after six months?",
+    "Is this project big enough to get EPAM's best people, or will it compete with their largest clients?",
+    "What does the first three months cost, and could a smaller first phase prove the approach?"
+   ],
+   "quickDismiss": "EPAM is the safe choice for a multi-year programme with hundreds of people. For a scoped piece of financial-services work that needs a senior team quickly and at a lower cost, we are the better fit.",
+   "moves": [
+    {
+     "date": "2026-10-05",
+     "type": "offer",
+     "headline": "Launches Frontier AI Service: data generation, model evaluation and reinforcement learning environments for AI labs and enterprises",
+     "source": "https://finviz.com/news/398614/epam-unveils-new-frontier-ai-service-bridging-the-enterprise-intelligence-gap-for-genai-and-autonomous-agents",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2026-07-28",
+     "type": "partner",
+     "headline": "Joins the OpenAI Partner Network as an Advanced Partner",
+     "source": "https://finviz.com/news/373307/epam-and-openai-partner-to-help-enterprises-unlock-higher-value-through-applied-ai",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2026-01-08",
+     "type": "partner",
+     "headline": "Partners with Cursor to roll out AI-native engineering teams, paired with its AI/RUN delivery",
+     "source": "https://finviz.com/news/270551/epam-and-cursor-announce-strategic-partnership-to-build-and-scale-ai-native-teams-for-global-enterprises",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "Big banks will hear AI-native delivery from EPAM first; we need our own measured AI-accelerated delivery story, with numbers, for the same buyers."
+    },
+    {
+     "date": "2025-05-08",
+     "type": "leadership",
+     "headline": "Names Balazs Fejes, former head of its banking and financial services business, CEO from 1 September 2025; founder Arkadiy Dobkin becomes Executive Chairman",
+     "source": "https://www.sec.gov/Archives/edgar/data/1352010/000135201025000012/exhibit993pressrelease.htm",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2024-12-03",
+     "type": "ma_buy",
+     "headline": "Completes the purchase of First Derivative, a Northern Ireland capital-markets consulting and managed-services firm with 1,800+ people",
+     "source": "https://www.aap.com.au/aapreleases/cision20241203ae69649/",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "EPAM now has a UK capital-markets consulting and managed-services arm; expect it on more UK bank and investment-firm shortlists, so we should lead with scoped work below its minimums."
+    }
+   ],
+   "key": "epam",
+   "reference": true,
+   "fitNote": "A scale benchmark that big banks already trust; we win on scoped work, named senior people and cost."
+  },
+  {
+   "name": "Exadel",
+   "url": "https://exadel.com/",
+   "origin": "EU",
+   "aliases": [
+    "Codete",
+    "Codete GmbH",
+    "Exadel Poland"
+   ],
+   "hq": "Kraków; parent Exadel is based in Tampa, Florida",
+   "archetype": "Polish software house absorbed into a US AI and data engineering group",
+   "founded": "2010",
+   "ownership": {
+    "value": "Owned by Exadel since November 2022; Exadel is owned by an affiliate of Sun Capital Partners (The Next Web, May 2026). codete.com now redirects to exadel.com. Codete co-founder Karol Przystalski is Exadel's Chief AI Officer.",
+    "source": "https://exadel.com/about/our-companies",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "headcount": {
+    "value": "Codete alone: not found. Parent Exadel states 2,000+ engineers in 30 countries, with six Polish offices including Kraków.",
+    "n": 2000,
+    "source": "https://exadel.com/about",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found",
+    "trend": "unknown",
+    "source": null,
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "Build What Lasts.",
+    "source": "https://exadel.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Kraków software house bought by Exadel in 2022; the brand is now folded in and codete.com redirects to Exadel, a 2,000-engineer AI and data engineering group owned by Sun Capital, with a financial services practice.",
+   "relevance": "As Exadel: a large group with Polish delivery, a financial services practice, offices in London and Berlin and an AI-first pitch. A growing rival in our markets.",
+   "services": [
+    "AI-enabled product engineering",
+    "AI engineering",
+    "AI data engineering and analytics",
+    "Digital experiences",
+    "Programme delivery and modernisation leadership",
+    "AI maturity and readiness assessment"
+   ],
+   "models": [
+    "Projects and platforms with ownership of outcomes",
+    "Teams working inside the client's systems",
+    "Platforms built and operated for the client",
+    "Fixed-length AI readiness assessments"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 3,
+    "value": "Hero text: “We bring AI, data, and smart software engineering together”; sells its own agentic “Exadel Colleague”, AI assessments, and is a Preferred Partner in Anthropic's Claude Partner Network (November 2026).",
+    "source": "https://exadel.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 2,
+    "note": "Financial Services is one of seven industries, with its own page (core banking, KYC, AML, MiFID II); Banco Original and 9th Gear named; sister company CPQi works only for banks; 20% of Clutch focus.",
+    "source": "https://exadel.com/industry/financial-services",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "UK",
+    "DACH",
+    "PL",
+    "US"
+   ],
+   "offices": "Six Polish offices (Kraków, Warsaw, Gdańsk, Poznań, Szczecin, Białystok), plus Berlin, London and others across Europe, the Americas and Asia.",
+   "clutch": {
+    "rating": 4.8,
+    "reviews": 17,
+    "rate": null,
+    "min": null,
+    "source": "https://clutch.co/profile/exadel-0",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "Sun Capital Partners",
+    "EQS Group",
+    "Banco Original",
+    "9th Gear",
+    "Everpure"
+   ],
+   "certs": [],
+   "pos": {
+    "x": 4,
+    "y": 7,
+    "why": "Generalist across seven industries with a strong financial services line; sells AI and data programmes and platforms with ownership of outcomes, with teams inside client systems as a second line."
+   },
+   "strengths": [
+    "Scale: 2,000+ engineers and six Polish offices",
+    "Financial services depth through CPQi and a Head of Financial Services",
+    "A headline AI offer, with Anthropic partner status and its own agentic product"
+   ],
+   "weaknesses": [
+    "The Codete brand is gone; its DACH clients now deal with a US group",
+    "A large private equity-owned group; mid-size accounts may get less senior attention",
+    "Many recent acquisitions still to integrate"
+   ],
+   "howWeWin": [
+    "Senior attention and a stable team for mid-size banks and fintechs",
+    "One Polish company with clear ownership, not a group in the middle of integration",
+    "AI-accelerated delivery at a mid-size firm's price"
+   ],
+   "questions": [
+    "After the acquisitions, who will run your account and from which country?",
+    "How much of your team will be in Poland, and how much in Bulgaria, Latin America or Asia?",
+    "What share of your supplier's revenue will your project be?"
+   ],
+   "quickDismiss": "Codete is now Exadel, a large US group. If you want senior people who stay on your account and a supplier that is not busy integrating acquisitions, we are a better fit.",
+   "entryOffer": "AI readiness assessment in three tiers: Lite (3 days), Standard (4 weeks), Full (8 weeks)",
+   "moves": [
+    {
+     "date": "2026-11-19",
+     "type": "partner",
+     "headline": "Exadel becomes a Preferred Partner in Anthropic's Claude Partner Network",
+     "source": "https://exadel.com/news/exadel-earns-preferred-status-in-the-claude-partner-network-after-a-year-of-claude-in-production",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "Exadel will use its Anthropic status to sell AI-accelerated delivery to financial firms; we need our own proof of AI delivery in regulated work."
+    },
+    {
+     "date": "2026-11",
+     "type": "positioning",
+     "headline": "codete.com now redirects to exadel.com; the Codete brand no longer has its own site",
+     "source": "https://codete.com/",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "DACH buyers who knew Codete now meet a US group; some will want a smaller Polish partner, which opens a door for us."
+    },
+    {
+     "date": "2026-05-18",
+     "type": "ma_buy",
+     "headline": "Exadel buys Tangent, a London digital experience consultancy",
+     "source": "https://exadel.com/news/exadel-acquires-uk-based-consultancy-tangent",
+     "grade": "official",
+     "impact": 3,
+     "sowhat": "Exadel now has a London base alongside its Polish delivery and financial services practice, so it can compete with us directly for UK financial clients."
+    }
+   ],
+   "key": "exadel",
+   "reference": false,
+   "fitNote": "Codete no longer exists as a brand; we compete with Exadel, a large AI-first group with Polish delivery and a financial services practice.",
+   "plDelivery": true
+  },
+  {
+   "name": "Finanteq",
+   "url": "https://www.finanteq.com/",
+   "origin": "PL",
+   "aliases": [
+    "FINANTEQ S.A."
+   ],
+   "hq": "Lublin, Poland",
+   "archetype": "Mobile banking apps and ready-made banking modules",
+   "founded": "2014",
+   "ownership": {
+    "value": "Owned by Senacor Technologies AG (Eschborn, Germany) since October 2023; no longer independent",
+    "source": "https://senacor.com/en/senacor-acquires-finanteq/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "headcount": {
+    "value": "Nearly 200 experts (140 at the Senacor deal in 2023; Clutch band 50–249)",
+    "n": 200,
+    "source": "https://www.finanteq.com/about-us",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found",
+    "trend": "unknown",
+    "source": null,
+    "asOf": "2026-11",
+    "grade": null
+   },
+   "hero": {
+    "value": "Mobile Banking Development Experts",
+    "source": "https://www.finanteq.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Lublin mobile banking specialist owned by Germany's Senacor since 2023, building bank apps and selling its own modules to banks in Poland and the Middle East.",
+   "relevance": "Competes for Polish bank mobile-channel work; through Senacor it may reach DACH banks.",
+   "services": [
+    "Mobile banking app development",
+    "Smartwatch banking apps",
+    "UX/UI design studio",
+    "Consulting",
+    "Quality audits",
+    "Extentum no-code platform",
+    "Extentum AI GenAI platform",
+    "Pocket Branch video banking",
+    "OCR document processing",
+    "SuperWallet value-added services",
+    "Google Pay and Apple Pay integration",
+    "Mobile Token authorisation",
+    "Promon app security (partner)"
+   ],
+   "models": [
+    "Custom app projects with discovery, proposal and kick-off",
+    "Licensed ready-made modules",
+    "Dedicated in-house teams (no outsourcing)",
+    "SLA support and maintenance"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 2,
+    "value": "Sells Extentum AI, a GenAI platform for banks with its own page; the homepage leads with mobile banking, and a 2025 post calls it “Extentum AI by eLeader”, so ownership of the product is unclear.",
+    "source": "https://www.finanteq.com/extentum-ai",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 3,
+    "note": "Only banking: mobile banking apps and banking modules; names BNP Paribas, mBank, Pekao SA, National Bank of Kuwait and Arab Bank.",
+    "source": "https://www.finanteq.com/about-us",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "PL"
+   ],
+   "offices": "One office in Lublin; clients in Poland and the Middle East.",
+   "clutch": {
+    "rating": 4.7,
+    "reviews": 7,
+    "rate": "$100–149/hr",
+    "min": "$75,000+",
+    "source": "https://clutch.co/profile/finanteq",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "mBank",
+    "BNP Paribas",
+    "Pekao SA",
+    "Santander Bank Polska",
+    "National Bank of Kuwait",
+    "Arab Bank"
+   ],
+   "certs": [],
+   "pos": {
+    "x": 10,
+    "y": 7,
+    "why": "Sells only to banks. Builds whole mobile apps with its own teams and licenses its own modules; no staff augmentation offer."
+   },
+   "strengths": [
+    "Long mobile banking record with mBank (since 2011), BNP Paribas, NBK and Arab Bank",
+    "Own modules (Mobile Token, SuperWallet, Pocket Branch) shorten bank projects",
+    "Backed by Senacor, a DACH banking-platform firm with 1,000+ staff"
+   ],
+   "weaknesses": [
+    "Narrow: the mobile channel, not core, payments back end or data platforms",
+    "One office in Lublin and no visible UK or Nordic clients",
+    "Revenue not public"
+   ],
+   "howWeWin": [
+    "Full-stack scope: back end, payments, data and integration as well as the app",
+    "UK, DACH and Nordic fintech references",
+    "Code the client owns, with no module licences"
+   ],
+   "questions": [
+    "Will the work go beyond the mobile app into the back end, payments or data?",
+    "Do you want to own the code, or license a supplier's modules?",
+    "Who will run delivery: the Lublin team or the German parent?"
+   ],
+   "quickDismiss": "Finanteq is strong on mobile apps for large banks. If you need the whole platform built and owned by one team, from back end to payments and data, that is our work.",
+   "moves": [
+    {
+     "date": "2023-10-30",
+     "type": "ma_sold",
+     "headline": "Acquired by Senacor Technologies AG, a German banking and insurance platform firm (older than 24 months)",
+     "source": "https://senacor.com/en/senacor-acquires-finanteq/",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "A DACH group can now sell Polish mobile banking teams to German banks, which meets our DACH banking pitch."
+    },
+    {
+     "date": "2025-10-13",
+     "type": "offer",
+     "headline": "Promotes Extentum AI, a GenAI platform for banks and other regulated firms",
+     "source": "https://www.finanteq.com/blog-posts/the-next-leap-embedding-ai-into-the-dna-of-your-business",
+     "grade": "official",
+     "impact": 1
+    }
+   ],
+   "key": "finanteq",
+   "reference": false,
+   "fitNote": "A Polish mobile banking specialist, now German-owned; strong in the app, not the platform."
+  },
+  {
+   "name": "GFT Poland",
+   "url": "https://www.gft.com/pl/pl/",
+   "origin": "EU",
+   "plDelivery": true,
+   "aliases": [
+    "GFT Technologies",
+    "GFT Technologies Poland",
+    "GFT Poland Sp. z o.o."
+   ],
+   "hq": "Stuttgart (GFT Technologies SE); GFT Poland offices in Łódź, Warsaw, Kraków and Poznań",
+   "archetype": "Global banking and insurance IT group with large Polish delivery centres",
+   "founded": "1987 (group, per Clutch); Polish start year not found on GFT pages",
+   "ownership": {
+    "value": "Polish subsidiary (GFT Poland Sp. z o.o.) of GFT Technologies SE, a listed group that pays a per-share dividend; shareholder split not checked",
+    "source": "https://www.gft.com/dam/jcr:bd63a5be-a2b8-4a86-bce2-1c50dac9405f/gft-pr-gfts-ai-centric-strategy-delivers-en.pdf",
+    "asOf": "2026-03",
+    "grade": "estimate"
+   },
+   "headcount": {
+    "value": "1,400 experts (GFT Poland careers page; scope not stated, likely Poland). Reported about 1,300 in Poland in Dec 2024. Group: 11,805 FTE at 30 June 2026",
+    "n": 1400,
+    "source": "https://jobs.gft.com/Poland/go/poland/4413301",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "GFT Poland PLN 440.2m in 2025 (2024: PLN 446.0m), down 1%; ITwiz BEST100 rank 62. Group: EUR 888m in 2025 (2024: EUR 871m)",
+    "trend": "flat",
+    "source": "https://itwiz.pl/najwieksze-firmy-it-w-polsce-w-roku-2025-ranking-itwiz-best100/",
+    "asOf": "2026-07",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "Others create hype. We create impact.",
+    "source": "https://www.gft.com/pl/pl/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Polish arm of the German GFT group, with about 1,400 people delivering core banking, cloud and AI modernisation for Deutsche Bank-scale clients, now selling its own agentic AI platform, Wynxx.",
+   "relevance": "Competes for the same bank modernisation budgets with Polish engineers, but at tier 1 scale and programme size.",
+   "services": [
+    "Core banking modernisation",
+    "AI modernisation with the Wynxx agentic AI platform",
+    "Generative and agentic AI",
+    "Cloud engineering",
+    "Data and analytics",
+    "Capital markets platforms",
+    "Insurance modernisation",
+    "Compliance (GFT Governance Operating System)",
+    "Blockchain and DLT"
+   ],
+   "models": [
+    "Consulting-led transformation programmes",
+    "Core banking implementation with platform partners",
+    "Platform-led delivery (Wynxx)",
+    "Nearshore delivery teams from Polish centres"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 3,
+    "value": "Sells its own agentic AI platform, Wynxx (113 enterprise clients, EUR 24.4m influenced revenue in H1 2026); calls itself AI-centric and runs Claude Code and GitHub Copilot centres of excellence.",
+    "source": "https://www.gft.com/uk/en/about-us/newsroom/press-and-news/2026/financial-news/gft-technologies-confirms-full-year-guidance-after-a-solid-first-half",
+    "asOf": "2026-08",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 3,
+    "note": "Banking is the main sector, insurance second; Clutch shows 60% financial services and 90% enterprise clients. Partners include Thought Machine, Mambu, Infosys Finacle and Guidewire; IDC named it a leader in cloud-native core banking implementation.",
+    "source": "https://www.gft.com/pl/pl/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "UK",
+    "DACH",
+    "PL",
+    "US"
+   ],
+   "offices": "Kraków (ul. Tischnera 8), Łódź (ul. Kilińskiego 66), Poznań (ul. Wierzbięcice 1A) and Warsaw (ul. Towarowa 28); group in more than 20 countries.",
+   "clutch": {
+    "rating": null,
+    "reviews": 0,
+    "rate": "Undisclosed",
+    "min": "Undisclosed",
+    "source": "https://clutch.co/profile/gft",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "Deutsche Bank",
+    "LBBW",
+    "VP Bank",
+    "Salt Bank",
+    "Citibank",
+    "HSBC",
+    "Mox",
+    "Trust Bank",
+    "Bradesco Seguros",
+    "MAPFRE"
+   ],
+   "certs": [],
+   "pos": {
+    "x": 8,
+    "y": 8,
+    "why": "Banking and insurance lead its positioning and Clutch work, though industry clients are growing. Sells transformation programmes, core banking implementations and its own AI platform rather than people by the month."
+   },
+   "strengths": [
+    "Tier 1 bank references (Deutsche Bank, Citibank, HSBC) and core banking platform partnerships",
+    "Its own agentic AI platform, Wynxx, with measurable revenue",
+    "About 1,400 people in four Polish cities, so it can staff large programmes fast"
+   ],
+   "weaknesses": [
+    "Banking revenue fell 2% in 2025 and UK revenue fell 25%; GFT Poland revenue was down 1%",
+    "No Clutch reviews; little proof of fit for mid-sized banks or fintechs",
+    "Large-group overheads and programme minimums"
+   ],
+   "howWeWin": [
+    "Mid-sized banks, fintechs and insurers that want a senior team, not a large programme",
+    "Speed: a team that starts in weeks, with responsibility for an agreed scope",
+    "Direct access to engineers and leadership, without layers of account management"
+   ],
+   "questions": [
+    "How many people on your supplier's team have worked on a bank of your size, rather than a tier 1 bank?",
+    "Who decides the team's make-up after the first quarter: you or the supplier's programme office?",
+    "Is the AI platform priced into the contract, and can you leave it without rewriting the delivery?"
+   ],
+   "quickDismiss": "GFT is the right choice for a multi-year programme at a very large bank. If you need a senior team that owns an agreed scope and starts quickly, that is what we do.",
+   "moves": [
+    {
+     "date": "2026-09-16",
+     "type": "leadership",
+     "headline": "Appoints Krzysztof Uryn, former CTO of Santander US and Accenture Polska financial services technology lead, as CEO of GFT Technologies Poland",
+     "source": "https://itwiz.pl/krzysztof-uryn-nowym-prezesem-gft-technologies-poland/",
+     "grade": "reported",
+     "impact": 2,
+     "sowhat": "His mandate is to make GFT Poland the first-choice partner for financial sector transformation with AI and modernisation. Expect harder selling to Polish banks, where we also compete."
+    },
+    {
+     "date": "2026-08-06",
+     "type": "client",
+     "headline": "Wins a next-generation core banking programme in Poland, reported with H1 2026 results",
+     "source": "https://www.gft.com/uk/en/about-us/newsroom/press-and-news/2026/financial-news/gft-technologies-confirms-full-year-guidance-after-a-solid-first-half",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "GFT is taking core banking work in Polish banks. Those banks will need surrounding channel, integration and data teams, where a smaller supplier can win the work."
+    },
+    {
+     "date": "2026-03-05",
+     "type": "offer",
+     "headline": "Reports Wynxx agentic AI platform at 92 clients and launches Claude Code and GitHub Copilot centres of excellence",
+     "source": "https://www.gft.com/dam/jcr:bd63a5be-a2b8-4a86-bce2-1c50dac9405f/gft-pr-gfts-ai-centric-strategy-delivers-en.pdf",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "A tier 1 rival now sells AI-accelerated modernisation as a product. We need our own AI delivery story and proof, with numbers, for bank buyers."
+    },
+    {
+     "date": "2026-03-05",
+     "type": "results",
+     "headline": "2025 group revenue EUR 888m (+2%); banking down 2%, UK down 25%",
+     "source": "https://www.gft.com/dam/jcr:bd63a5be-a2b8-4a86-bce2-1c50dac9405f/gft-pr-gfts-ai-centric-strategy-delivers-en.pdf",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "GFT is shrinking in the UK and flat in banking. UK and DACH banks that are re-tendering may be open to a smaller supplier."
+    },
+    {
+     "date": "2026-07-10",
+     "type": "results",
+     "headline": "ITwiz BEST100: GFT Poland revenue PLN 440.2m in 2025, down 1%, rank 62",
+     "source": "https://itwiz.pl/najwieksze-firmy-it-w-polsce-w-roku-2025-ranking-itwiz-best100/",
+     "grade": "reported",
+     "impact": 1,
+     "sowhat": ""
+    }
+   ],
+   "key": "gft-poland",
+   "reference": false,
+   "fitNote": "Tier 1 group with large Polish delivery; we meet it at banks, but its sweet spot is bigger programmes than ours."
+  },
+  {
+   "name": "Merixstudio",
+   "url": "https://www.merixstudio.com/",
+   "origin": "PL",
+   "hq": "Poznań; partner office in Dubai",
+   "archetype": "AI-augmented product engineering studio",
+   "founded": "1999",
+   "ownership": {
+    "value": "Independent as far as found: no sale or merger reported. Founder Adam Śledzikowski became Executive Chairman in June 2023, when Marcin Staszak took over as CEO. Shareholders not found.",
+    "source": "https://www.merixstudio.com/insights/marcin-staszak-announced-new-ceo-merixstudio",
+    "asOf": "2026-11",
+    "grade": "estimate"
+   },
+   "headcount": {
+    "value": "About 100 (“~100 expert-level talents” on its About page; Clutch still shows a 50–249 band)",
+    "n": 100,
+    "source": "https://www.merixstudio.com/about",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found (not in the ITwiz BEST100 2025 list)",
+    "trend": "unknown",
+    "source": "https://itwiz.pl/najwieksze-firmy-it-w-polsce-w-roku-2025-ranking-itwiz-best100/",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "Tech advantage built around your business DNA, accelerated by AI",
+    "source": "https://www.merixstudio.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Poznań product engineering studio of about 100 people that now sells AI-augmented delivery, with smart city, IoT and theme park clients; finance is one of six industries.",
+   "relevance": "Overlaps with us on AI-accelerated delivery and European fintech product work, but finance is a side line.",
+   "services": [
+    "Enterprise software development",
+    "Web and mobile development",
+    "Custom software for IoT",
+    "AI integration",
+    "Software modernisation",
+    "Cloud engineering and DevOps",
+    "Business process digitalisation",
+    "Product discovery and design",
+    "User-facing app development"
+   ],
+   "models": [
+    "Projects that start with discovery",
+    "AI-augmented delivery with a live DORA metrics dashboard",
+    "Scoping and discovery workshops"
+   ],
+   "offers": [
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 3,
+    "value": "Hero says “accelerated by AI”; sells “AI-augmented delivery” as its model, with a live dashboard of DORA metrics on each project, and an AI integration service.",
+    "source": "https://www.merixstudio.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 1,
+    "note": "Finance is one of six industries on the homepage and 10% of Clutch focus; finance and insurance stories for MoneyFarm, Facta, Genuine Impact, Millward, Emrit and Autium. No banks named.",
+    "source": "https://www.merixstudio.com/clients/finance",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "DACH",
+    "US"
+   ],
+   "offices": "Poznań HQ; Dubai through its onsite partner Solutions21.",
+   "clutch": {
+    "rating": 4.8,
+    "reviews": 97,
+    "rate": "$50–99/hr",
+    "min": "$25,000+",
+    "source": "https://clutch.co/profile/merixstudio",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "Six Flags",
+    "Expo City Dubai",
+    "Juilliard School",
+    "Toshiba",
+    "HYDAC",
+    "RP Group",
+    "Biocore",
+    "MoneyFarm"
+   ],
+   "certs": [
+    "ISO 27001:2022",
+    "ISO 9001:2015"
+   ],
+   "pos": {
+    "x": 2,
+    "y": 7,
+    "why": "Generalist across six industries, finance one of them; sells discovery-led product work with delivery responsibility and AI-augmented delivery, not people by the month."
+   },
+   "strengths": [
+    "Top Clutch profile: 4.8 from 97 reviews, and first software company in the Clutch 1000 for 2024",
+    "A worked-out AI delivery story, with live DORA metrics on each project",
+    "Strong design and discovery, with named discovery formats"
+   ],
+   "weaknesses": [
+    "Small (about 100 people), below the 151–200 that Clutch lists for its HQ",
+    "Finance is a side line, with no bank names",
+    "Its push into smart cities, IoT and the UAE takes it away from financial services"
+   ],
+   "howWeWin": [
+    "Financial services depth: bank, payments and insurer references in the UK, DACH and the Nordics",
+    "Scale: a larger bench for teams that must grow quickly",
+    "We match their AI-accelerated delivery story and add regulated-industry experience"
+   ],
+   "questions": [
+    "Which banks or regulated financial firms has your supplier delivered for, and in which countries?",
+    "If the team has to double in three months, where do the people come from?",
+    "How does your supplier's AI-assisted delivery meet your security and EU DORA requirements?"
+   ],
+   "quickDismiss": "They are a strong design-led studio with a good AI delivery story. For regulated financial work that needs bank references and a team that can scale, we bring more.",
+   "entryOffer": "Scoping recon (one session), scoping session (1–2 sessions of 4–6 hours) and product discovery and scoping (2–3 weeks)",
+   "moves": [
+    {
+     "date": "2024-12-20",
+     "type": "award",
+     "headline": "Ranked first software company and fifth overall in the Clutch 1000 for 2024",
+     "source": "https://www.merixstudio.com/insights/merixstudio-first-software-company-clutch-2024-top-1000",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2025-11-07",
+     "type": "positioning",
+     "headline": "Publishes how it built AI into its delivery process; the hero now reads “accelerated by AI”",
+     "source": "https://www.merixstudio.com/insights/how-we-integrate-ai-into-software-development-process-in-merixstudio",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "They sell the same AI-accelerated delivery story as us, with live DORA dashboards as proof; we need our own numbers to answer it."
+    },
+    {
+     "date": "2026-05-18",
+     "type": "award",
+     "headline": "Named a Dribbble Select Trendsetter Agency for 2026",
+     "source": "https://www.merixstudio.com/insights/merixstudio-named-a-dribbble-select-trendsetter-agency-for-2026",
+     "grade": "official",
+     "impact": 1
+    }
+   ],
+   "key": "merixstudio",
+   "reference": false,
+   "fitNote": "Design-led product studio with an AI delivery pitch; meets us on fintech product work, not on banking."
+  },
+  {
+   "name": "Sigma Software",
+   "url": "https://sigma.software/",
+   "origin": "UA",
+   "plDelivery": true,
+   "aliases": [
+    "Sigma Software Group",
+    "Sigma Ukraine"
+   ],
+   "hq": "Ukraine (Clutch lists Lviv as headquarters); member of the Nordic Sigma Group",
+   "archetype": "Ukrainian-Nordic multi-industry engineering group",
+   "founded": "2002",
+   "ownership": {
+    "value": "Part of Sigma Group since 2006; the site names Danir AB as the Sigma Group owner",
+    "source": "https://sigma.software/about",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "headcount": {
+    "value": "2,000+ IT experts; 43 offices in 21 countries",
+    "n": 2000,
+    "source": "https://sigma.software/about/history-and-mission",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found",
+    "trend": "unknown",
+    "source": null,
+    "asOf": "2026-11",
+    "grade": null
+   },
+   "hero": {
+    "value": "You’ve got the strategy. We turn it into working solutions. AI-ready, resilient, built to last",
+    "source": "https://sigma.software/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Ukrainian engineering group of 2,000+ inside the Nordic Sigma Group, selling to eight industries led by adtech, automotive and healthcare, with a growing AI offer.",
+   "relevance": "Meets us in the Nordics and Poland, but finance is a small part of its work.",
+   "services": [
+    "AI-powered SDLC",
+    "AI Compass transformation framework",
+    "Sovereign AI governance platform",
+    "Data engineering",
+    "Cloud and infrastructure",
+    "Cybersecurity and regulatory compliance",
+    "Embedded and IoT",
+    "Legacy modernisation and migration",
+    "Product development and experience design",
+    "Defence consulting"
+   ],
+   "models": [
+    "Full-lifecycle product development",
+    "Dedicated teams",
+    "Managed services, support and maintenance",
+    "IT and digital transformation consulting",
+    "Fixed-price implementation of its AI governance platform"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 3,
+    "value": "Hero promises “AI-ready” solutions and leads into its AI Compass framework; sells its own Sovereign AI Governance Platform and an AI-powered SDLC service; Claude and OpenAI Select partner.",
+    "source": "https://sigma.software/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 1,
+    "note": "Finance and Banking is one of eight industries and 10% of Clutch focus; cases include FUIB debt collection and mobile payments for an unnamed European bank.",
+    "source": "https://sigma.software/industries/financial-services-technology-consulting",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "Nordics",
+    "UK",
+    "DACH",
+    "US"
+   ],
+   "offices": "43 offices in 21 countries. In Poland since 2014, with offices in Krakow, Poznan and Warsaw; delivery mainly from Ukraine and Poland; local companies in Sweden, the US, Canada, Singapore and the UAE.",
+   "clutch": {
+    "rating": 4.8,
+    "reviews": 37,
+    "rate": "$50–99/hr",
+    "min": "$50,000+",
+    "source": "https://clutch.co/profile/sigma-software-group",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "SAS",
+    "Siemens Healthineers",
+    "TecAlliance",
+    "Formpipe",
+    "CGM",
+    "Verizon Media",
+    "FUIB",
+    "BAE Systems"
+   ],
+   "certs": [
+    "ISO 9001",
+    "ISO/IEC 27001",
+    "ISO 13485:2016",
+    "TISAX",
+    "OpenAI Select Partner",
+    "Anthropic Claude Partner Network Select Partner"
+   ],
+   "pos": {
+    "x": 2,
+    "y": 6,
+    "why": "Finance is one of eight industries and 10% of Clutch focus. Leads with product development, modernisation and managed services, plus its own AI platform; dedicated teams are a second line."
+   },
+   "strengths": [
+    "Nordic ownership and Swedish clients such as SAS",
+    "Delivery from Ukraine and Poland with ISO 27001 and TISAX",
+    "A broad AI offer, including its own AI governance platform"
+   ],
+   "weaknesses": [
+    "Finance is a small share (10% on Clutch) with few named banks",
+    "Spread across eight industries and several group brands",
+    "Revenue not published"
+   ],
+   "howWeWin": [
+    "Financial services is our focus, with named fintech and banking references",
+    "Teams that know DORA, PSD2 and payments from delivered work",
+    "A smaller senior team with one point of accountability"
+   ],
+   "questions": [
+    "How many banking or payments projects has the proposed team delivered?",
+    "What share of the team would work from Ukraine, and what is the continuity plan?",
+    "Which group company would sign the contract and own delivery?"
+   ],
+   "quickDismiss": "Sigma is a capable general engineering group with Nordic roots. For banking and payments work, we bring a team that does mostly financial services.",
+   "moves": [
+    {
+     "date": "2026-10-19",
+     "type": "vertical",
+     "headline": "Launches Defence Consulting for Ukrainian and international defence companies",
+     "source": "https://sigma.software/about/media/sigma-software-group-launches-defense-consulting-to-help-defense-companies-build-operate-and-scale",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2026-10-14",
+     "type": "offer",
+     "headline": "Launches a Swedish voice AI model with Respeecher for enterprises and the public sector",
+     "source": "https://sigma.software/about/media/sigma-software-group-and-respeecher-launch-swedish-voice-ai-for-enterprises-and-the-public-sector",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2026-10-06",
+     "type": "partner",
+     "headline": "Gains Select Partner status in Anthropic's Claude Partner Network",
+     "source": "https://sigma.software/about/media/sigma-software-achieves-select-partner-status-in-the-claude-partner-network",
+     "grade": "official",
+     "impact": 1
+    },
+    {
+     "date": "2025-12-29",
+     "type": "leadership",
+     "headline": "Reports that Katherine Tuluzova became CEO of Sigma Software in 2025, with Valery Krasovsky moving to lead the group",
+     "source": "https://sigma.software/about/media/sigma-softwares-2025-highlights-and-impact",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "A new CEO tasked with scaling worldwide operations; watch for more selling in the Nordics and the UK, where we meet them, though finance is not their stated priority."
+    },
+    {
+     "date": "2025-12-29",
+     "type": "ma_buy",
+     "headline": "Reports the 2025 acquisition of A Society Group (US), now Sigma Software Vertex",
+     "source": "https://sigma.software/about/media/sigma-softwares-2025-highlights-and-impact",
+     "grade": "official",
+     "impact": 1
+    }
+   ],
+   "key": "sigma-software",
+   "reference": false,
+   "fitNote": "A Nordic-owned generalist with Polish delivery; we meet it in Swedish deals more than in finance."
+  },
+  {
+   "name": "SoftServe",
+   "url": "https://www.softserveinc.com/",
+   "origin": "UA",
+   "plDelivery": true,
+   "hq": "Austin, Texas (global HQ); Ukrainian-rooted delivery",
+   "archetype": "Large digital engineering and AI services group",
+   "founded": "1993",
+   "ownership": {
+    "value": "Private; Forbes Ukraine names Taras Kytsmei, Yaroslav Liubynets, Taras Verheha and others as owners, with no shareholdings given",
+    "source": "https://forbes.ua/ru/profile/softserve-306",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "headcount": {
+    "value": "More than 10,000 people across 15 countries (July 2026); 10,254 associates in the 2025 Sustainability Report. Poland: about 1,400 (July 2024, older than 18 months)",
+    "n": 10000,
+    "source": "https://www.softserveinc.com/en-us/news/softserve-acquires-newvision",
+    "asOf": "2026-07",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not disclosed in dollars; the company reports revenue up 6% in 2025. Forbes Ukraine puts 2024 revenue at UAH 21–26bn.",
+    "trend": "up",
+    "source": "https://www.softserveinc.com/en-us/corporate-social-responsibility/csr-report-2025",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "hero": {
+    "value": "Technology Elevated",
+    "source": "https://www.softserveinc.com/en-us",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Ukrainian-founded, Austin-headquartered engineering group of about 10,000 people that sells data, cloud, AI and robotics work across six industries, with five delivery offices in Poland.",
+   "relevance": "A scale benchmark: it appears in larger bank and insurer shortlists where we compete on focus, seniority and cost.",
+   "services": [
+    "AI enablement, consultancy, solution development and governance",
+    "Data and analytics",
+    "Cloud and DevOps",
+    "Robotics, IoT and XR",
+    "Financial services modernisation, KYC/AML automation and regulatory readiness",
+    "Agentic assurance and managed services (via NewVision)"
+   ],
+   "models": [
+    "Consulting and solution projects",
+    "Dedicated delivery teams from development centres",
+    "Fixed-length pilots and sprints",
+    "Managed services"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "entryOffer": "Agentic MVP Sprint, 4–6 weeks: one focused agent or copilot with an evaluation harness and guardrails.",
+   "ai": {
+    "score": 3,
+    "value": "Calls itself “a global AI and technology services company”; sells its own AI accelerators (Agents4Everything, SoftServe Delivery Assistant, Multimodal Insights Engine; GAIDEX for financial services) and an Agentic MVP Sprint; NVIDIA Elite partner.",
+    "source": "https://www.softserveinc.com/en-us/services/artificial-intelligence",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 1,
+    "note": "Financial services is listed first of six industries, with its own page (banking, insurance, fintech, payments) and four named cases (Regnology, Quavo, Powerlytics, Tax Systems); no bank names, and no financial services on its Clutch profile.",
+    "source": "https://www.softserveinc.com/en-us/industries/financial-services",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "US",
+    "UK",
+    "DACH",
+    "Nordics",
+    "PL"
+   ],
+   "offices": "54 offices in 17 countries; London; Berlin, Frankfurt and Munich; Stockholm and Stavanger; in Poland Wrocław, Kraków, Warsaw, Gdańsk and Białystok; US offices in Austin, Chicago, Atlanta, Fort Myers and Lehi.",
+   "clutch": {
+    "rating": 4.8,
+    "reviews": 3,
+    "rate": "$100–149/hr",
+    "min": "$50,000+",
+    "source": "https://clutch.co/profile/softserve",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "Regnology",
+    "Quavo",
+    "Powerlytics",
+    "Tax Systems",
+    "Zenoss",
+    "Krones",
+    "Zebra Technologies",
+    "Montblanc"
+   ],
+   "certs": [
+    "ISO 27001",
+    "ISO 27701",
+    "ISO 20000-1",
+    "ISO 9001",
+    "ISO 14001",
+    "ISO 45001",
+    "SOC 2 Type 2",
+    "SOC 3",
+    "AWS Premier Tier Partner",
+    "Google Cloud Premier Partner",
+    "NVIDIA Elite Partner"
+   ],
+   "pos": {
+    "x": 2,
+    "y": 7,
+    "why": "Generalist across six industries, with financial services as one of them; sells consulting-led solution projects, accelerators and managed services, with dedicated teams behind them."
+   },
+   "strengths": [
+    "Scale: about 10,000 people and seven development centres, so it can staff large programmes fast",
+    "Top-tier AWS, Google Cloud and NVIDIA partnerships and a full ISO and SOC 2 set, which procurement teams at big banks tick off",
+    "Own AI accelerators and local offices in London, Germany and the Nordics"
+   ],
+   "weaknesses": [
+    "Financial services is one industry of six; the named FS cases are fintech and regtech, not banks",
+    "Higher price and entry point: $100–149/hr and $50,000+ minimum on Clutch",
+    "New CEO since 1 October 2026, and only three Clutch reviews"
+   ],
+   "howWeWin": [
+    "Financial services is half of our reviewed work, so the team knows banking, payments and insurance from day one",
+    "Senior people named before the start, and direct access to our leadership, which a 10,000-person group rarely gives a mid-sized account",
+    "Lower rates and smaller minimums for a scoped first phase"
+   ],
+   "questions": [
+    "Which of the people in the proposal have built banking or payments systems before?",
+    "How senior is your account on their list, and who do you call when something goes wrong?",
+    "Would they start with a small, scoped first phase at the same rates?"
+   ],
+   "quickDismiss": "SoftServe is a good choice when you need hundreds of engineers across many industries. When you want a senior team that already knows financial services, and a smaller first phase, that is what we do.",
+   "moves": [
+    {
+     "date": "2026-09-21",
+     "type": "leadership",
+     "headline": "Names COO and CFO Andriy Stytsyuk as CEO from 1 October 2026; Harry Propper retires at the end of 2026",
+     "source": "https://news.outsourceaccelerator.com/softserve-names-stytsyuk-ceo/",
+     "grade": "reported",
+     "impact": 1
+    },
+    {
+     "date": "2026-07-14",
+     "type": "ma_buy",
+     "headline": "Buys NewVision Software, an Indian firm in agentic assurance, product engineering and managed services",
+     "source": "https://www.softserveinc.com/en-us/news/softserve-acquires-newvision",
+     "grade": "official",
+     "impact": 1
+    }
+   ],
+   "key": "softserve",
+   "reference": true,
+   "fitNote": "A scale benchmark with Polish delivery; we win on financial-services focus, seniority and a smaller first step."
+  },
+  {
+   "name": "Ulam Labs",
+   "url": "https://ulam.io/",
+   "origin": "PL",
+   "aliases": [
+    "ULAM LABS"
+   ],
+   "hq": "Wrocław, Poland",
+   "archetype": "MedTech software house (formerly fintech and blockchain)",
+   "founded": "2016 (Clutch); site says it has worked with clients since 2017",
+   "ownership": {
+    "value": "Private; led by CEO Barbara Trybulińska, CTO Rafał Nowicki and COO Michał Korzeniowski; shareholders not found",
+    "source": "https://ulam.io/about-us",
+    "asOf": "2026-11",
+    "grade": "estimate"
+   },
+   "headcount": {
+    "value": "40+ team members (About page); Clutch band 50–249 looks out of date",
+    "n": 40,
+    "source": "https://ulam.io/about-us",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found",
+    "trend": "unknown",
+    "source": null,
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "Custom software development for MedTech— built to scale your business and connect operations",
+    "source": "https://ulam.io/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Small Wrocław software house that has moved from fintech and blockchain to MedTech, selling discovery workshops, fixed-price MVPs and NHS-ready builds to UK, EU and US clients.",
+   "relevance": "Low: it now sells to MedTech, not financial services. It still meets us on UK start-up MVPs and fixed-price builds.",
+   "services": [
+    "Discovery workshops",
+    "Product development (MVPs and proofs of concept)",
+    "Healthcare integrations (FHIR, HL7, DICOM, EHR)",
+    "Infrastructure and security (GDPR, HIPAA, DSPT)",
+    "MVP and vibe-coding rescue",
+    "Maintenance and growth"
+   ],
+   "models": [
+    "Fixed-length discovery workshop",
+    "Fixed-price MVP and integrations",
+    "Dedicated team by the month",
+    "Maintenance retainer",
+    "Free code audit before rescue work"
+   ],
+   "offers": [
+    "team",
+    "product"
+   ],
+   "entryOffer": {
+    "value": "Discovery Workshop, 1–2 weeks, from £5,000; a free code audit comes before rescue work",
+    "source": "https://ulam.io/software-services/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "ai": {
+    "score": 1,
+    "value": "No AI service line. Rescues AI-generated ('vibe-coded') MVPs built with Cursor, Bolt, Lovable or Replit, connects AI models in integrations, and shows one AI-powered app case study.",
+    "source": "https://ulam.io/software-services/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 1,
+    "note": "Fintech is now listed as 'adjacent'. One crypto lending case study (Lendingblock); Clutch shows 20% financial services against 30% medical.",
+    "source": "https://ulam.io/software-services/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "UK",
+    "US"
+   ],
+   "offices": "Wrocław head office (Grabiszyńska 163/502); Clutch also lists Warsaw. Works with clients in the UK, US and EU.",
+   "clutch": {
+    "rating": 4.8,
+    "reviews": 13,
+    "rate": "$50–99/hr",
+    "min": "$10,000+",
+    "source": "https://clutch.co/profile/ulam-labs",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "MediShout",
+    "Replant World",
+    "Lendingblock",
+    "Holm Security",
+    "Bennett Data Science"
+   ],
+   "certs": [
+    "Cyber Essentials"
+   ],
+   "pos": {
+    "x": 1,
+    "y": 6,
+    "why": "A MedTech specialist; financial services is a past line. Sells discovery, fixed-price MVPs and product builds, with a monthly dedicated team as a second line."
+   },
+   "strengths": [
+    "Published prices and fixed-length first steps (discovery from £5,000, MVP from £22,000)",
+    "A long UK reference (MediShout, five years, 200+ hospitals)",
+    "Clutch 4.8 from 13 reviews"
+   ],
+   "weaknesses": [
+    "Small (40+ people)",
+    "Newest Clutch review is from October 2023",
+    "Little current financial services proof"
+   ],
+   "howWeWin": [
+    "Current bank, fintech and insurer references",
+    "A larger senior team that can grow beyond an MVP",
+    "Financial services compliance experience (DORA, PSD2) rather than healthcare rules"
+   ],
+   "questions": [
+    "Has your supplier delivered for a regulated financial services firm in the last two years?",
+    "Who would join your team if it had to double in size next quarter?"
+   ],
+   "quickDismiss": "Ulam Labs now focuses on MedTech. For a bank, fintech or insurer, we bring current financial services references and a bigger senior team.",
+   "moves": [
+    {
+     "date": "2026-11-02",
+     "type": "partner",
+     "headline": "Becomes the sole software development partner in the Guided Solutions MedTech executive search network",
+     "source": "https://ulam.io/blog/guided-solutions-partnership/",
+     "grade": "official",
+     "impact": 1,
+     "sowhat": ""
+    },
+    {
+     "date": "2026-11",
+     "type": "vertical",
+     "headline": "Homepage and services now lead with MedTech; fintech is listed as an adjacent area (date of change not found)",
+     "source": "https://ulam.io/",
+     "grade": "official",
+     "impact": 1,
+     "sowhat": ""
+    }
+   ],
+   "key": "ulam-labs",
+   "reference": false,
+   "fitNote": "Former Polish fintech and blockchain shop now focused on MedTech; rarely a rival for financial services work."
+  },
+  {
+   "name": "Vacuumlabs",
+   "url": "https://vacuumlabs.com/",
+   "origin": "EU",
+   "plDelivery": false,
+   "hq": "Bratislava, Slovakia",
+   "archetype": "Banking and wealth product engineering",
+   "founded": "2012",
+   "ownership": {
+    "value": "Founding member of Vacuum Group, which invests in new ventures; CEO Tomas Masek; shareholders not found",
+    "source": "https://vacuumlabs.com/about",
+    "asOf": "2026-11",
+    "grade": "estimate"
+   },
+   "headcount": {
+    "value": "200+ people (About page); homepage says 100+ engineers, architects and specialists; Clutch band 250–999 looks out of date",
+    "n": 200,
+    "source": "https://vacuumlabs.com/about",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "revenue": {
+    "value": "Not found",
+    "trend": "unknown",
+    "source": null,
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "hero": {
+    "value": "The tech partner banks need",
+    "source": "https://vacuumlabs.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "oneLiner": "Slovak banking and wealth engineering firm that builds digital banks (Afin, Mox) and modernises cores with Thought Machine and SaaScada, now adding AI services for banks.",
+   "relevance": "Same buyers (banks, wealth platforms, UK fintechs) and a similar product-team model, from Central European delivery outside Poland.",
+   "services": [
+    "New bank builds",
+    "Core banking modernisation",
+    "Payment solutions",
+    "Mobile and super apps",
+    "Customer onboarding",
+    "Product strategy and discovery (Spark)",
+    "AI automation and AI transformation",
+    "Fraud detection",
+    "Blockchain consulting and smart contract audits"
+   ],
+   "models": [
+    "Autonomous product squads with full-cycle delivery",
+    "Team augmentation inside the client's team",
+    "Hybrid squads with client staff",
+    "Joint delivery with core banking vendors"
+   ],
+   "offers": [
+    "team",
+    "product",
+    "ai"
+   ],
+   "ai": {
+    "score": 2,
+    "value": "Named AI service lines with their own pages (AI Automation, AI Transformation, Fraud Detection, AI-powered Spark discovery), one AI case study (Moneyhoon) and whitepapers on AI in bank back offices; the hero leads with banking, not AI.",
+    "source": "https://vacuumlabs.com/services/ai-transformation/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "fs": {
+    "score": 3,
+    "note": "Hero is 'The tech partner banks need'; industries are banking, wealthtech and digital assets. Names Erste, Raiffeisen Bank, Tatra Banka, 365 Bank, Afin Bank and Mox by Standard Chartered; partners with Thought Machine and SaaScada.",
+    "source": "https://vacuumlabs.com/",
+    "asOf": "2026-11",
+    "grade": "official"
+   },
+   "markets": [
+    "UK"
+   ],
+   "offices": "Bratislava, Košice, Prague, Brno and Budapest, plus remote; clients in 20 countries.",
+   "clutch": {
+    "rating": null,
+    "reviews": 0,
+    "rate": "$50–99/hr",
+    "min": "$25,000+",
+    "source": "https://clutch.co/profile/vacuumlabs",
+    "asOf": "2026-11",
+    "grade": "reported"
+   },
+   "clients": [
+    "Erste",
+    "Raiffeisen Bank",
+    "Tatra Banka",
+    "365 Bank",
+    "Afin Bank",
+    "Mox by Standard Chartered",
+    "Twisto",
+    "Cledara",
+    "BDSwiss",
+    "Thredd"
+   ],
+   "certs": [
+    "ISO 27001",
+    "ISO 9001"
+   ],
+   "pos": {
+    "x": 9,
+    "y": 6,
+    "why": "Only banks, wealth and digital assets in its positioning. Leads with product squads that own delivery from discovery to production; team augmentation is offered as a second option."
+   },
+   "strengths": [
+    "Built licensed digital banks end to end (Afin Bank in the UK, Mox in Hong Kong)",
+    "Core banking partnerships with Thought Machine and SaaScada",
+    "ISO 27001 and ISO 9001"
+   ],
+   "weaknesses": [
+    "Smaller than before: 200+ people on its site against a Clutch band of 250–999",
+    "No Clutch reviews",
+    "Crypto and blockchain past (wallets, NFTs) can worry conservative banks"
+   ],
+   "howWeWin": [
+    "Polish delivery and Polish bank context for buyers in Poland",
+    "Wider industry proof (insurers, payments, marketplaces) for groups that need more than banking",
+    "Flexible mix of staff augmentation and agreed-scope delivery"
+   ],
+   "questions": [
+    "How much of your supplier's recent work has been for regulated banks, rather than crypto or start-up projects?",
+    "How big is the team that would be available to you next quarter?",
+    "If the core banking vendor changes, does your delivery partner stay?"
+   ],
+   "quickDismiss": "Vacuumlabs builds new digital banks well. If you need a larger bench, Polish delivery, or a partner that is not tied to one core banking vendor, that is where we fit.",
+   "moves": [
+    {
+     "date": "2026-03-02",
+     "type": "partner",
+     "headline": "Partners with SaaScada to deliver end-to-end core banking transformation in the UK, Nordics, Baltics, CEE and Middle East",
+     "source": "https://vacuumlabs.com/press/vacuumlabs-saascada-partnership/",
+     "grade": "official",
+     "impact": 2,
+     "sowhat": "Vacuumlabs now sells a joint core-plus-delivery package to banks in the UK and Nordics. Expect it in bank tenders where we bid on the layers around the core."
+    }
+   ],
+   "key": "vacuumlabs",
+   "reference": false,
+   "fitNote": "Banking specialist with a product-team model like ours, delivering from Slovakia, Czechia and Hungary."
   }
  ],
  "market": {
