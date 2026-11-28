@@ -327,3 +327,15 @@ export function Meter({ used, cap, unit = "", warn = 0.8 }: { used: number; cap:
     </div>
   );
 }
+
+/** The one account tier (backend ri/tiers.py): lead-list fit crossed with timing. Same on Accounts, Buying signals, Today and the account page.
+ *  The number and label are shown; the reason ("P1 on your lead list · warm buying signals") is the title and, with `withWhy`, a line below. */
+export type AccountTierInfo = { n: number; label: string; fit: string; timing: string; why: string };
+export function AccountTier({ t, withWhy = false, onNavy = false }: { t?: AccountTierInfo | null; withWhy?: boolean; onNavy?: boolean }) {
+  if (!t) return null;
+  const why = t.why.split(" · ").map((x) => tr(x)).join(" · ");
+  return <span className={`tier-badge tier-${t.n}${onNavy ? " on-navy" : ""}`} title={why}>
+    <b>{tr("Tier {}", t.n)}</b><span>{tr(t.label)}</span>
+    {withWhy && <small>{why}</small>}
+  </span>;
+}

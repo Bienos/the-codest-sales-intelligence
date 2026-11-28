@@ -2,7 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, api, fmtDate, fmtDateTime, post, trackSourceOpened } from "../api";
 import { counted, getLanguage, number, tr } from "../locale";
-import { Empty, Err, Skeleton, safeHref } from "../components/ui";
+import { AccountTier, Empty, Err, Skeleton, safeHref } from "../components/ui";
+import type { AccountTierInfo } from "../components/ui";
 import { CompanyAvatar, ListRank, ago, useMedia } from "../components/Findings";
 import { FAMILIES, FAMILY, familyName, familyOf, signalName } from "../components/Signals";
 import { Feedback } from "../components/Feedback";
@@ -35,7 +36,7 @@ type Fit = { key: string | null; name: string; reason: string | null; level: "st
 /** A person to talk to. The email and LinkedIn are yes or no only: no address reaches the page. */
 type Contact = { id: string; name: string; title: string | null; email: boolean; linkedin: boolean };
 type Org = { id: string; name: string; country: string | null; region: string; segment: string | null; domain: string | null; logo_url?: string | null;
-  list_priority: string | null; list_score: number | null; people: number; people_with_email: number; best_fit?: Fit | null;
+  list_priority: string | null; list_score: number | null; people: number; people_with_email: number; best_fit?: Fit | null; tier?: AccountTierInfo | null;
   /** Only sent to people who may read contacts: up to three, best title first, and how many there are in all. */
   contacts?: Contact[]; contacts_total?: number };
 type Tender = { deadline: string | null; url: string | null; title: string | null; scope?: string | null; buyer?: string | null; value?: number | null; currency?: string | null;
@@ -663,7 +664,7 @@ function TableRow({ c, kinds, cols, showFit, canPeople, canCampaign, focus, onKe
         <div className="bs-co-line">
           <CompanyAvatar name={org.name} small logo={org.logo_url} />
           <div className="bs-co-text">
-            <Link className="bs-co-name" to={`/accounts/${org.id}?event=${top.event_id}`}>{org.name}</Link>
+            <Link className="bs-co-name" to={`/accounts/${org.id}?event=${top.event_id}`}>{org.name}</Link> <AccountTier t={org.tier} />
             <span className="bs-co-sub">{countryName(org.country) ?? tr("Country unknown")}
               {org.list_priority && /^P[123]$/.test(org.list_priority) && <span className={`acc-p acc-${org.list_priority.toLowerCase()}`} title={tr("Lead list priority {}", org.list_priority)}>{org.list_priority}</span>}</span>
           </div>
@@ -818,7 +819,7 @@ function SignalCard({ c, kinds, canPeople, canCampaign }: { c: Company; kinds: M
     <Link className="bs-card-h" to={link} aria-label={tr("Open company {}", org.name)}>
       <CompanyAvatar name={org.name} logo={org.logo_url} />
       <span className="bs-card-co">
-        <span className="bs-co-name">{org.name}</span>
+        <span className="bs-co-name">{org.name} <AccountTier t={org.tier} /></span>
         <span className="bs-co-sub">{place}
           {org.list_priority && /^P[123]$/.test(org.list_priority) && <span className={`acc-p acc-${org.list_priority.toLowerCase()}`} title={tr("Lead list priority {}", org.list_priority)}>{org.list_priority}</span>}</span>
       </span>

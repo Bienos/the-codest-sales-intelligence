@@ -1,0 +1,12 @@
+/* The one account tier (components/ui.tsx AccountTier). Tier 1 carries the pink action colour; the rest step down to quiet outlines. */
+.tier-badge { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; padding: 2px 8px; border: 1px solid var(--line); background: var(--white);
+  color: var(--navy); font-size: var(--fs-xs); line-height: 1.5; white-space: nowrap; }
+.tier-badge b { font-family: var(--font-head); font-weight: 800; letter-spacing: .02em; }
+.tier-badge small { flex-basis: 100%; white-space: normal; color: var(--muted); font-size: var(--fs-xs); }
+.tier-badge.tier-1 { border-color: var(--pink-solid); background: var(--tint-3); }
+.tier-badge.tier-1 b { color: var(--pink-solid); }
+.tier-badge.tier-2 { border-color: var(--purple); background: var(--tint-2); }
+.tier-badge.tier-4 { color: var(--muted); }
+.tier-badge.on-navy { background: transparent; color: var(--white); border-color: var(--navy-line-strong); }
+.tier-badge.on-navy b { color: var(--white); }
+.tier-badge.on-navy small { color: var(--on-navy-muted); }

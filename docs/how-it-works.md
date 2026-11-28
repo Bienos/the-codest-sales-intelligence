@@ -14,7 +14,7 @@ The registry holds 98 sources. On 26 Nov 2026, 70 were live. The rest are intern
 | News and trade press | About 35 news feeds. A cheap word check skips off-topic articles; the AI reads the rest. | Daily, some every two days | AI tokens |
 | Regulators, vendors, integrators | About 29 single pages (their news pages), compared with last time. | Daily or every two days | AI tokens, only when a page changes |
 | Job ads | Open job APIs for Sweden and Germany, Austria and Switzerland. Company career pages through the company website checks. | Daily | Free |
-| Company websites | An account's own news, careers and supplier pages. The top 25 accounts daily, starred accounts weekly, every other target account in rotation (about 20 accounts a day, so each roughly every six weeks), and any account on request. | As described | Free; the AI reads changed pages |
+| Company websites | An account's own news, careers and supplier pages. The top 25 accounts daily, starred accounts weekly, every other target account in rotation (about 20 accounts a day, so each roughly every six weeks; P1 and P2 accounts never checked go first, at up to 60 a day until all have been checked), and any account on request. | As described | Free; the AI reads changed pages |
 | Web search (Exa) | Saved searches, and searches for target accounts that have had no finding for 90 days. Finds pages about companies that no feed covers. Every hit is only a lead: it is queued as a page check. | Daily run | Paid, capped (see below) |
 | Page checks | One page, when a seller presses a button or web search finds it. | On request | AI tokens |
 | Account lists | The lead-list workbooks (upload, or Google Sheets sync when set up). | On request | Free |
@@ -22,7 +22,7 @@ The registry holds 98 sources. On 26 Nov 2026, 70 were live. The rest are intern
 
 Rules for every page: robots.txt and AI content signals are obeyed, no login is ever used, social networks are not read, and a site that blocks the app is skipped, never worked around. Blocked or broken feeds are listed as such in Data health.
 
-**Pipedrive is not connected.** Without it there is no ownership data and no CRM changes can be made. Nothing about it is shown in the app.
+**Pipedrive** deals are read into the app (another round connected it). Every hour, an account linked to a Pipedrive organisation gets its relationship with us from its deals: client, past client, in talks, or a prospect with lost deals. A relationship a person set is never changed.
 
 ## What starts what
 
@@ -35,6 +35,7 @@ Rules for every page: robots.txt and AI content signals are obeyed, no login is 
 | Web search | Once a day, when the Exa key and a monthly cap are set | Yes |
 | Read a page, keep only quoted claims | Every source run and page check | Yes |
 | Finding, signal, programme, card, score | Every verified finding, straight away | Yes |
+| Company research for P1 and P2 | Scheduler, every hour: Exa research for two P1 accounts without a profile (then P2), at most 12 a day, while automatic web search is under 60% of the month's Exa budget; it pauses after three failures in a row | Yes |
 | Find hard-to-fill roles | Scheduler, once a day: engineering ads at our accounts still open after 60 days, or posted again after an earlier ad for the same role closed (rule CAP-03) | Yes |
 | Expire old signals, move programmes on | Scheduler | Yes |
 | Daily digest to Slack | Scheduler, only if a Slack webhook is set | If set |
@@ -57,6 +58,9 @@ The pages behind a supplier or a happening are also queued as ordinary page chec
 
 ## Email rules by country
 Before anyone is added to a Lemlist campaign, the company's country is checked against `backend/rules/email_rules.yaml`. Cold email is allowed with an opt-out in the UK and Sweden. Germany, Austria, Switzerland, Denmark, the Netherlands and Poland need the person's prior consent, and Finland and Norway need it for a personal address. A seller records consent on the person's page, with how and when it was given. A country the file does not list, or a company with no country, is held back until it is added. The file is a summary of public guidance, not legal advice: sales leadership changes it after counsel confirms. Replies to someone who wrote to us are not checked.
+
+## One account tier
+Every account carries one tier, the same on Today, Accounts, Buying signals and its own page. It crosses the lead list's priority (P1, P2, P3) with timing: hot signals or being in talks with us is "now", warm signals "soon", a weak signal "watch". Tier 1 is "Act now" (P1 or P2 with timing now, or P1 with warm signals), 2 "Work this month", 3 "Keep warm", 4 "Monitor". An account with a reason to stop or wait is tier 4. The reason is shown with the badge. It orders work and is not a win probability.
 
 ## Was this useful?
 Every buying signal and tender on Today and Buying signals has "Was this useful?" under its evidence. "No" asks why (wrong company, out of date, not our kind of work, job ad not real, already talking to them, no real need). The answer never hides the item. Library, Signals shows per rule how often sellers found it useful and the reasons against it, for tuning the rules. Replies and meetings count for more than these answers.

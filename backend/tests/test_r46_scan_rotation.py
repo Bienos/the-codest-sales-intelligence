@@ -19,12 +19,14 @@ NOW = datetime(2026, 11, 26, 10, 2, tzinfo=timezone.utc)
 BIG = Limits(per_day=100, per_run=100, max_queued=100)       # no limit in the way: the test is about order and skips
 
 
-def target(conn, name, *, website=True, eligibility="Eligible", master=False, score=None, stopped=False, checked=None, endpoint_read=None):
+def target(conn, name, *, website=True, eligibility="Eligible", master=False, score=None, stopped=False, checked=None, endpoint_read=None, priority=None):
     """A target account (the lead list marks it Eligible). `checked`: when its coverage record was written; `endpoint_read`: when one of its pages was last read."""
     slug = name.lower().replace(" ", "")
     oid = str(conn.execute(
         "insert into organizations(display_name, canonical_domain, country_code, segment, entity_type, company_ownership, in_master_list, list_eligibility) "
         "values (%s,%s,'GB','Banking','company','unknown',%s,%s) returning id", (name, f"{slug}.example" if website else None, master, eligibility)).fetchone()["id"])
+    if priority:
+        conn.execute("update organizations set list_priority=%s where id=%s", (priority, oid))
     if score is not None or stopped:
         conn.execute("insert into account_scores(organization_id, score, band, stopped) values (%s,%s,'none',%s)", (oid, score or 0, stopped))
     if checked:
@@ -311,7 +313,7 @@ def test_the_lane_runs_hourly_records_its_progress_and_waits_for_the_next_hour(c
     assert out["scan_rotation_queued"] == 2 and out["scan_rotation_targets_total"] == 6 and out["scan_rotation_targets_checked"] == 1
     row = conn.execute("select * from scheduler_lanes where lane='scan_rotation'").fetchone()
     assert row["runs"] == 1 and row["last_error"] is None
-    assert row["last_result"] == {"queued": 2, "queued_today": 2, "targets_checked": 1, "targets_total": 6, "targets_without_website": 1}
+    assert row["last_result"] == {"queued": 2, "queued_today": 2, "targets_checked": 1, "targets_total": 6, "targets_without_website": 1, "sprint_left": 0}
     assert "scan_rotation_queued" not in run_maintenance(conn, NOW + timedelta(minutes=5))      # hourly: the next tick waits
     out3 = run_maintenance(conn, NOW + timedelta(minutes=60))
     assert out3["scan_rotation_queued"] == 2 and len(queued(conn)) == 4 and a not in queued(conn)
@@ -425,3 +427,34 @@ def test_a_job_queued_before_the_ai_reserve_was_reached_still_reads_pages_but_do
     assert conn.execute("select count(*) c from events where subject_org_id=%s and event_type='vendor_selected'", (oid,)).fetchone()["c"] == 0      # the news page waits for the AI
     assert conn.execute("select count(*) c from source_documents where raw_meta->>'pending_extraction'='true'").fetchone()["c"] >= 1
     assert conn.execute("select count(*) c from account_source_coverage where organization_id=%s", (oid,)).fetchone()["c"] == 3     # but the account is checked
+
+
+# ------------------------------------------------------------------ the coverage sprint (P1 and P2 first)
+def test_among_never_checked_the_lead_lists_p1_then_p2_come_first(conn):
+    target(conn, "Master Bank", master=True, score=90)
+    target(conn, "P3 Bank", priority="P3")
+    target(conn, "P2 Bank", priority="P2")
+    target(conn, "P1 Bank", priority="P1")
+    target(conn, "Checked P1 Bank", priority="P1", checked=NOW - timedelta(days=30))     # already checked once: waits its turn by date
+    schedule(conn, NOW, BIG)
+    assert names(conn, queued(conn))[:4] == ["P1 Bank", "P2 Bank", "P3 Bank", "Master Bank"]
+
+
+def test_while_p1_and_p2_wait_for_a_first_check_the_lane_runs_faster_and_then_slows_down_by_itself(conn):
+    for i in range(8):
+        target(conn, f"Sprint Bank {i}", priority="P1" if i < 4 else "P2")
+    target(conn, "Other Bank")
+    normal = Limits(per_day=20, per_run=2, max_queued=6)
+    out = schedule(conn, NOW, normal)
+    assert out["sprint_left"] == 8 and out["queued"] == scan_rotation.SPRINT_PER_RUN          # 5 an hour instead of 2
+    conn.execute("update jobs set status='completed'")
+    for oid in [r["organization_id"] for r in conn.execute("select id as organization_id from organizations where list_priority in ('P1','P2')")]:
+        conn.execute("insert into account_source_coverage(organization_id, source_family, coverage_state, updated_at) values (%s,'newsroom','source_not_found',%s)", (oid, NOW))
+    later = schedule(conn, NOW + timedelta(hours=1), normal)
+    assert later["sprint_left"] == 0 and later["queued"] == 1                                 # only "Other Bank" is left, at the normal pace
+
+
+def test_the_sprint_never_raises_a_paused_lane(conn):
+    target(conn, "P1 Bank", priority="P1")
+    out = schedule(conn, NOW, Limits(per_day=0, per_run=2, max_queued=6))
+    assert out["queued"] == 0 and out["sprint_left"] == 1

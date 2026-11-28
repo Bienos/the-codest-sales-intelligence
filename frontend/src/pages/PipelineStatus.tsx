@@ -615,16 +615,24 @@ const LANE_UNIT: Record<string, [string, string]> = {
 };
 const HELD_BY: Record<string, string> = {
   ai_budget: "paused: the AI limit for this month is nearly used", daily_limit: "today's limit is reached", queue_busy: "waiting for earlier checks to finish",
+  exa_budget: "paused: automatic research has used its share of this month's Exa budget", not_set_up: "Exa research is not set up",
+  repeated_failures: "paused: the last three researches failed, check Usage before it continues",
 };
 const laneResult = (key: string, r: Record<string, unknown>): string => {
   if (key === "scan_rotation" && typeof r?.targets_total === "number") {          // progress through the target accounts, not bare counters
     const bits = [tr("{} of {} target accounts have had their own pages checked", number(Number(r.targets_checked ?? 0)), number(r.targets_total))];
+    if (typeof r.sprint_left === "number" && r.sprint_left > 0) bits.push(tr("P1 and P2 first: {} still to check", number(r.sprint_left)));
     if (typeof r.queued_today === "number") bits.push(tr("{} queued today", number(r.queued_today)));
     if (typeof r.held_by === "string" && HELD_BY[r.held_by]) bits.push(tr(HELD_BY[r.held_by]));
     return bits.join(" · ");
   }
   if (key === "deadlines_pinned" && typeof r?.accounts_pinned === "number") {      // the regulatory calendar: accounts and deadlines, not bare counters
     return tr("{} accounts pinned to {} deadlines", number(r.accounts_pinned), number(Number(r.deadlines_pinned ?? 0)));
+  }
+  if (key === "research_sprint" && typeof r?.p1_left === "number") {                 // research sprint: how many P1 and P2 accounts still wait
+    const bits = [tr("{} P1 and {} P2 accounts still without a profile", number(r.p1_left), number(Number(r.p2_left ?? 0))), tr("{} queued today", number(Number(r.queued_today ?? 0)))];
+    if (typeof r.held_by === "string" && HELD_BY[r.held_by]) bits.push(tr(HELD_BY[r.held_by]));
+    return bits.join(" · ");
   }
   if (key === "hard_to_fill_roles" && typeof r?.hard_to_fill_events === "number") {   // hard-to-fill roles: ads found and the signals they made
     return tr("{} hard-to-fill roles found, {} became buying signals", number(r.hard_to_fill_events), number(Number(r.hard_to_fill_signals ?? 0)));
