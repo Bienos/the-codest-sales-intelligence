@@ -157,6 +157,35 @@ def indicators(comps: list[dict[str, Any]], moves_by_key: dict[str, list[dict[st
     return out
 
 
+MEASURES: list[tuple[str, str, float | None]] = [          # (key, label, fixed maximum or None for "largest seen")
+    ("headcount", "Headcount", None), ("reviews", "Clutch reviews", None), ("rating", "Clutch rating", 5), ("fs", "Financial-services focus", 3),
+    ("ai", "AI in the offer", 3), ("markets", "Our four markets covered", 4), ("proof", "Proof points shown", 4), ("roles", "Open roles on justjoin.it", None),
+    ("moves", "Moves in the last 12 months", None)]
+PROOF = (("security", "ISO 27001, SOC 2 or DORA"), ("entry", "Named fixed-length first step"), ("beyond_hours", "Sells more than hours"),
+         ("ai_badge", "AI vendor partner badge"))
+
+
+def scorecard(c: dict[str, Any], moves: list[dict[str, Any]], as_of: str) -> dict[str, Any]:
+    """The numbers every comparison on the page is drawn from. None means not found, never zero."""
+    num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) else None    # noqa: E731
+    cl = c.get("clutch") or {}
+    flags = {k: bool(RULES[k][1](c)) for k, _ in PROOF}
+    cut = f"{int(as_of[:4]) - 1}{as_of[4:10]}" if len(as_of) >= 7 else ""
+    return {"headcount": _n(c), "reviews": num(cl.get("reviews")), "rating": num(cl.get("rating")), "fs": num((c.get("fs") or {}).get("score")),
+            "ai": num((c.get("ai") or {}).get("score")), "markets": len([m for m in OUR_MARKETS if m in (c.get("markets") or [])]),
+            "proof": sum(flags.values()), "flags": flags, "roles": num((c.get("jobs") or {}).get("n")),
+            "moves": len([m for m in moves if str(m.get("happened_on") or m.get("date") or "") >= cut]) if cut else None}
+
+
+def measure_stats(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out = []
+    for key, label, fixed in MEASURES:
+        vals = sorted(v for v in (x.get(key) for x in cards) if isinstance(v, (int, float)))
+        out.append({"key": key, "label": label, "max": fixed, "t1": {"n": len(vals), "min": vals[0] if vals else None, "max": vals[-1] if vals else None,
+                                                                   "median": _median(vals)}})
+    return out
+
+
 def _median(vals: list[Any]) -> float | None:
     v = [x for x in vals if isinstance(x, (int, float))]
     return statistics.median(v) if v else None
@@ -316,12 +345,14 @@ def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = 
         c["moves"] = [_move_out(m) for m in by_key.get(c["key"], [])]
         c["presence"] = {"accounts": len(pres[c["key"]]["accounts"]), "awards": len(pres[c["key"]]["awards"])}
         c["h2h"] = h2h["by_competitor"].get(c["key"])
+        c["score"] = scorecard(c, by_key.get(c["key"], []), as_of)
         if c["tier"] == 1:
             o = c["overlap"]
             c["tierWhy"] = ((c.get("fitNote") or "").strip() + f" Overlap {o['total']} of 100 (buyers {o['buyers']}/30, way of selling {o['selling']}/30, "
                             f"markets {o['markets']}/20, size {o['size']}/20).").strip()
     us["tier"] = 0
     us["moves"] = [_move_out(m) for m in by_key.get(us["key"], [])]
+    us["score"] = {**scorecard(us, by_key.get(us["key"], []), as_of), "moves": None}        # our own moves are not tracked here
     ind = indicators(comps, by_key, meta.get("asOf") or as_of)
     t1 = [c for c in comps if c["tier"] == 1]
     subs = {k: f"{v['count']} of {v['of']}" for k, v in ind.items()}
@@ -343,6 +374,7 @@ def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = 
             "landscapeNotes": copy.get("landscapeNotes") or [], "patterns": patterns, "indicators": ind, "standing": standing(us, t1),
             "bellwethers": market.get("bellwethers") or [], "alternatives": market.get("alternatives") or [], "buyers": market.get("buyers") or [],
             "deals": market.get("deals") or [], "rates": market.get("rates") or [], "method": docs.get("method") or {}, "headToHead": h2h,
+            "measures": measure_stats([c["score"] for c in comps if c["tier"] == 1]), "proofLabels": dict(PROOF),
             "watch": watch_status(conn)}
 
 
