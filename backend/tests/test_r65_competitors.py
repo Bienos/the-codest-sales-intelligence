@@ -33,7 +33,7 @@ def _vendor_intel(conn, org_id, vendors):
 # ------------------------------------------------------------------ the seed
 def test_seed_loads_once_and_never_overwrites_a_persons_edit(conn):
     first = ct.load_seed(conn)
-    assert first["competitors"] == 37 and first["moves"] >= 60 and first["market"] == 4         # 36 firms plus our own row
+    assert first["competitors"] == 49 and first["moves"] >= 90 and first["market"] == 4         # 48 firms plus our own row
     assert ct.load_seed(conn)["moves"] == 0                                                     # nothing new the second time
     ct.update_profile(conn, "neontri", {"oneLiner": "Edited by hand."}, "mkt@x")
     conn.commit()
@@ -153,7 +153,7 @@ def test_api_reading_and_access(api):
     c, h = api
     assert c.get("/api/competitors", headers=h("comp")).status_code == 403
     d = c.get("/api/competitors", headers=h("bdm")).json()
-    assert len(d["competitors"]) == 36 and d["us"]["name"] == "The Codest" and d["can"] == {"manage": False, "record": True} and "waiting" not in d
+    assert len(d["competitors"]) == 48 and d["us"]["name"] == "The Codest" and d["can"] == {"manage": False, "record": True} and "waiting" not in d
     assert c.get("/api/competitors", headers=h("mkt")).json()["can"]["manage"] is True
     assert c.get("/api/competitors/software-mind/presence", headers=h("bdm")).json() == {"accounts": [], "awards": []}
     assert c.get("/api/competitors/nobody/presence", headers=h("bdm")).status_code == 404

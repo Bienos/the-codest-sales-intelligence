@@ -236,6 +236,16 @@ vendors:
   - {name: Billennium, category: engineering_partner}
   - {name: Monterail, category: engineering_partner}
   - {name: Polcode, category: engineering_partner}
+  - {name: Apptension, category: engineering_partner}
+  - {name: DataArt, category: engineering_partner}
+  - {name: Droids On Roids, category: engineering_partner}
+  - {name: Exadel, category: engineering_partner, aliases: [Codete, Codete GmbH, Exadel Poland]}
+  - {name: Finanteq, category: engineering_partner, aliases: [FINANTEQ S.A.]}
+  - {name: GFT Poland, category: engineering_partner, aliases: [GFT Technologies, GFT Technologies Poland, GFT Poland Sp. z o.o.]}
+  - {name: Merixstudio, category: engineering_partner}
+  - {name: Sigma Software, category: engineering_partner, aliases: [Sigma Software Group, Sigma Ukraine]}
+  - {name: Ulam Labs, category: engineering_partner, aliases: [ULAM LABS]}
+  - {name: Vacuumlabs, category: engineering_partner}
   - {name: Ailleron, category: engineering_partner}
   - {name: Scalefocus, category: engineering_partner}
   - {name: Infinum, category: engineering_partner}
