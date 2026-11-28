@@ -2,7 +2,7 @@
 only they change the assumptions. Team-wide totals, so not offered to roles that see only their own accounts."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Request
 from pydantic import BaseModel, Field, field_validator
@@ -31,6 +31,14 @@ class ForecastSettingsIn(BaseModel):
     deal_from_positive: float | None = Field(None, ge=0, le=100)
     inbound_per_month: float | None = Field(None, ge=0, le=1e5)
     fx_to_eur: dict[str, float] | None = None                          # 1 unit of each currency in EUR
+    contract_months: float | None = Field(None, ge=1, le=120)
+    start_lag_days: float | None = Field(None, ge=0, le=365)
+    renewal_rate: float | None = Field(None, ge=0, le=100)
+    open_role_win_rate: float | None = Field(None, ge=0, le=100)
+    delivery_pipeline_names: list[str] | None = Field(None, max_length=10)
+    delivery_open_stage_names: list[str] | None = Field(None, max_length=20)
+    delivery_hold_stage_names: list[str] | None = Field(None, max_length=20)
+    delivery_value_means: Literal["total", "monthly"] | None = None
 
     @field_validator("fx_to_eur")
     @classmethod
@@ -54,7 +62,7 @@ class ForecastSettingsIn(BaseModel):
             raise ValueError("stage durations are days between 1 and 1000, keyed by stage id")
         return v
 
-    @field_validator("parking_stage_names", "won_stage_names")
+    @field_validator("parking_stage_names", "won_stage_names", "delivery_pipeline_names", "delivery_open_stage_names", "delivery_hold_stage_names")
     @classmethod
     def _names(cls, v: list[str] | None) -> list[str] | None:
         if v is not None and any(len(x) > 120 for x in v):
@@ -72,6 +80,25 @@ def register(app: FastAPI) -> None:
         with request.app.state.db.tx() as conn:          # fresh: recalculate now instead of using the last 10 minutes' result
             out = build(conn, request.app.state.settings, use_cache=not fresh)
             return {**out, "can": {"manage": p.can("forecast.manage"), "sync": p.can("admin.jobs") or p.role == "sales_manager"}}
+
+    @app.post("/api/forecast/pipedrive-fields")
+    def setup_fields(request: Request, p: Principal = Depends(require("forecast.manage"))):
+        """Create (or find) the forecast's deal and organisation fields in Pipedrive. Adds fields only; never changes or removes one."""
+        from fastapi import HTTPException
+
+        from ..crm.fields import ensure_fields
+        from ..crm.pipedrive import PipedriveReader
+        from ..sheets.client import ConnectorBlocked
+        s = request.app.state.settings
+        try:
+            reader = PipedriveReader(s.pipedrive_domain, s.pipedrive_api_token)
+            with request.app.state.db.tx() as conn:
+                out = ensure_fields(conn, reader, create=True)
+                audit(conn, actor=p.email, operation="pipedrive_fields_set_up", record_type="crm_field_map", record_id="forecast", before=None, after=None,
+                      detail={k: out[k] for k in ("created", "found")})
+                return out
+        except ConnectorBlocked as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @app.put("/api/forecast/settings")
     def put_settings(body: ForecastSettingsIn, request: Request, p: Principal = Depends(require("forecast.manage"))):

@@ -4,6 +4,7 @@ import { tr } from "../locale";
 import { Badge, Err, PageHeader, Skeleton, Tabs } from "../components/ui";
 import "../styles/forecast.css";
 import { ArrivalsChart, FlowStrip, Predictor } from "./ForecastFlow";
+import { Categories, Quality, Revenue } from "./ForecastRevenue";
 
 // Revenue forecast (backend: ri/forecast). Every number on the page comes from GET /api/forecast; managers change the assumptions here.
 
@@ -153,6 +154,9 @@ function draftFrom(d: any): Draft {
     outbound_entry_stage_id: String(d.inputs.outbound_entry.stage_id), inbound_entry_stage_id: String(d.inputs.inbound_entry.stage_id),
     parking: (s.parking_stage_names || []).join(", "), won: (s.won_stage_names || []).join(", "),
     fx: Object.entries(d.inputs.fx_to_eur || {}).filter(([k]) => k !== "EUR").map(([k, v]) => `${k}=${v}`).join(", "),
+    contract_months: s.contract_months ?? 12, start_lag_days: s.start_lag_days ?? 30, renewal_rate: s.renewal_rate ?? 60, open_role_win_rate: s.open_role_win_rate ?? 50,
+    delivery_value_means: s.delivery_value_means || "total", delivery: (s.delivery_pipeline_names || []).join(", "),
+    open_roles: (s.delivery_open_stage_names || []).join(", "), hold: (s.delivery_hold_stage_names || []).join(", "),
     conv: Object.fromEntries(st.map((x) => [String(x.id), x.prior.conv])), days: Object.fromEntries(st.map((x) => [String(x.id), x.prior.days])),
   };
 }
@@ -164,6 +168,7 @@ function Assumptions({ d, onSaved }: { d: any; onSaved: (x: any) => void }) {
   const set = (k: string, v: any) => { setSaved(false); setF((o) => ({ ...o, [k]: v })); };
   const num = (v: any) => (v === "" || v == null ? null : Number(v));
   const st = d.inputs.stages as any[];
+  const list = (v: any) => String(v).split(",").map((x) => x.trim()).filter(Boolean);
   const save = async () => {
     setBusy(true); setErr(null);
     const clear: string[] = [];
@@ -171,6 +176,8 @@ function Assumptions({ d, onSaved }: { d: any; onSaved: (x: any) => void }) {
       target: num(f.target) ?? 0, deal_value: num(f.deal_value), reply_rate: num(f.reply_rate), positive_share: num(f.positive_share), deal_from_positive: num(f.deal_from_positive),
       prior_strength: num(f.prior_strength), prior_conv: Object.fromEntries(Object.entries(f.conv).map(([k, v]) => [k, Number(v)])),
       prior_days: Object.fromEntries(Object.entries(f.days).map(([k, v]) => [k, Number(v)])),
+      contract_months: num(f.contract_months), start_lag_days: num(f.start_lag_days), renewal_rate: num(f.renewal_rate), open_role_win_rate: num(f.open_role_win_rate),
+      delivery_value_means: f.delivery_value_means, delivery_pipeline_names: list(f.delivery), delivery_open_stage_names: list(f.open_roles), delivery_hold_stage_names: list(f.hold),
       parking_stage_names: String(f.parking).split(",").map((x) => x.trim()).filter(Boolean), won_stage_names: String(f.won).split(",").map((x) => x.trim()).filter(Boolean),
       fx_to_eur: { EUR: 1, ...Object.fromEntries(String(f.fx).split(",").map((x) => x.split("=").map((y) => y.trim())).filter(([k, v]) => /^[A-Za-z]{3}$/.test(k ?? "") && Number(v) > 0).map(([k, v]) => [k.toUpperCase(), Number(v)])) },
     };
@@ -200,6 +207,15 @@ function Assumptions({ d, onSaved }: { d: any; onSaved: (x: any) => void }) {
         </>}
         <label className="fc-field"><span>{tr("Parking stages (not part of the funnel)")}</span><input id="fc-parking" type="text" value={f.parking} onChange={(e) => set("parking", e.target.value)} /></label>
         <label className="fc-field"><span>{tr("Stages that mean won")}</span><input id="fc-won" type="text" value={f.won} onChange={(e) => set("won", e.target.value)} /></label>
+        {field("contract_months", tr("Contract length, months"), tr("When a deal has no duration or products"), "1")}
+        {field("start_lag_days", tr("Days from signing to first invoice"), undefined, "1")}
+        {field("renewal_rate", tr("Contracts that continue after their end, %"), undefined, "1")}
+        {field("open_role_win_rate", tr("Open roles that get filled, % (prior)"), d.revenue?.assumptions ? tr("measured from {} decided roles", d.revenue.assumptions.open_role_win_rate.n) : undefined, "1")}
+        <label className="fc-field"><span>{tr("Pipeline of running client work")}</span><input id="fc-delivery" type="text" value={f.delivery} onChange={(e) => set("delivery", e.target.value)} /></label>
+        <label className="fc-field"><span>{tr("Its open-role stages")}</span><input id="fc-roles" type="text" value={f.open_roles} onChange={(e) => set("open_roles", e.target.value)} /></label>
+        <label className="fc-field"><span>{tr("Its on-hold stages")}</span><input id="fc-hold" type="text" value={f.hold} onChange={(e) => set("hold", e.target.value)} /></label>
+        <label className="fc-field"><span>{tr("A client deal's value is")}</span><select id="fc-vmeans" value={f.delivery_value_means} onChange={(e) => set("delivery_value_means", e.target.value)}>
+          <option value="total">{tr("the whole contract")}</option><option value="monthly">{tr("one month")}</option></select></label>
         <label className="fc-field"><span>{tr("Exchange rates: 1 unit in EUR")}</span><input id="fc-fx" type="text" placeholder="PLN=0.235, GBP=1.17" value={f.fx} onChange={(e) => set("fx", e.target.value)} /><small className="muted">{tr("Deal values in other currencies are converted with these rates")}</small></label>
       </div>
       <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Stage assumptions")}>
@@ -306,7 +322,7 @@ function BySource({ d }: { d: any }) {
 
 export default function Forecast({ canManage }: { canManage: boolean }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [retry, setRetry] = useState(0);
-  const [tab, setTab] = useState("quarters"); const [busy, setBusy] = useState(""); const [note, setNote] = useState("");
+  const [tab, setTab] = useState("revenue"); const [busy, setBusy] = useState(""); const [note, setNote] = useState("");
   const load = (fresh = false) => api(`/api/forecast${fresh ? "?fresh=true" : ""}`).then((x) => { setD(x); setErr(null); }).catch(setErr);
   useEffect(() => { void load(); }, [retry]);   // eslint-disable-line react-hooks/exhaustive-deps
   const recalc = async () => { setBusy("recalc"); setNote(""); await load(true); setBusy(""); setNote(tr("Recalculated with the latest data.")); };
@@ -319,7 +335,8 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
   const y = d.result.year, chance = d.result.chance_of_target, h = d.health;
   const b = d.result.buckets.slice(1) as any[];
   const openShare = y.mean > 0 ? b.reduce((a: number, q: any) => a + q.open, 0) / y.mean : 0;
-  const tabs = [{ key: "quarters", label: tr("By quarter") }, { key: "funnel", label: tr("Funnel") }, { key: "drivers", label: tr("What moves it") },
+  const tabs = [{ key: "revenue", label: tr("Revenue by month") }, { key: "quarters", label: tr("Deals won by quarter") },
+    { key: "categories", label: tr("Forecast categories") }, { key: "quality", label: tr("Data quality") }, { key: "funnel", label: tr("Funnel") }, { key: "drivers", label: tr("What moves it") },
     { key: "sources", label: tr("Sources") }, { key: "outbound", label: tr("Outbound") }, { key: "deals", label: tr("Deals and history") }, { key: "assumptions", label: tr("Assumptions") }];
   return (
     <>
@@ -354,6 +371,9 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
 
       <div className="card fc-tabs">
         <Tabs label="Forecast details" items={tabs} value={tab} onChange={setTab}>
+          {tab === "revenue" && <Revenue d={d} onEdit={canManage ? () => setTab("assumptions") : undefined} />}
+          {tab === "categories" && <Categories d={d} canManage={canManage} reload={() => void load(true)} />}
+          {tab === "quality" && <Quality d={d} canManage={canManage} reload={() => void load(true)} />}
           {tab === "quarters" && <>
             <div className="fc-legend">
               <span><i className="fc-sw fc-open-sw" />{tr("Open pipeline today")}</span><span><i className="fc-sw fc-new-sw" />{tr("Deals not yet created")}</span>

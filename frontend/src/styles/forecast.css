@@ -202,3 +202,16 @@
 .fc-sb .tr i.open { background: var(--navy); } .fc-sb .tr i.new { background: var(--purple); }
 .fc-sb b { text-align: right; color: var(--navy); font-variant-numeric: tabular-nums; } .fc-sb .sh { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) { .fc-sb { grid-template-columns: minmax(0, 1fr) 64px 44px; } .fc-sb .tr { grid-column: 1 / -1; grid-row: 2; } }
+
+/* invoiced revenue by month: navy family for today's clients, purple family for what sales still has to win */
+.rv-l1 { fill: #0D124C; background: #0D124C; } .rv-l2 { fill: #3E4380; background: #3E4380; } .rv-l3 { fill: #7A7EB0; background: #7A7EB0; }
+.rv-l4 { fill: #8A4FE0; background: #8A4FE0; } .rv-l5 { fill: #B87DFF; background: #B87DFF; }
+.rv-tip div { display: flex; align-items: center; gap: 6px; } .rv-tip .muted-inv { opacity: .75; margin-top: 2px; }
+.rv-kv { margin-bottom: 4px; }
+.rv-checks { display: grid; gap: 6px; margin: 10px 0 14px; max-width: 720px; }
+.rv-check { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr) 44px 56px; gap: 10px; align-items: center; font-size: var(--fs-sm); }
+.rv-check b { text-align: right; color: var(--navy); font-variant-numeric: tabular-nums; } .rv-check small { text-align: right; font-variant-numeric: tabular-nums; }
+.rv-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; } .rv-chips .badge { white-space: nowrap; }
+.rv-setup { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; }
+@media (max-width: 520px) { .rv-check { grid-template-columns: minmax(0, 1fr) 44px 48px; } .rv-check .fc-src-bar { grid-column: 1 / -1; grid-row: 2; } }
+.rv-table td:not(:first-child) { white-space: nowrap; }

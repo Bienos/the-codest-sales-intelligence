@@ -29,6 +29,9 @@ class Inputs:
     open_age: list[float]                   # days already spent in the current stage
     streams: list[tuple[float, int]]        # new deals: (deals per month, stage index they enter at)
     deal_value: float                       # average value of a new deal
+    lag_days: float = 30.0                  # from signing to the first invoiced day
+    open_months: list[float] | None = None  # open deals: months the contract runs (None: new_months)
+    new_months: float = 12.0                # months a new deal's value is invoiced over
 
 
 @dataclass
@@ -47,6 +50,14 @@ class Calendar:
             months.append(((m - self.today).days, (nxt - m).days))
             m = nxt
         self.months = np.array(months, dtype=float).reshape(-1, 2)
+        # invoicing months for the revenue view: this month through December of the forecast year, as day offsets from today
+        rev, m = [], date(self.today.year, self.today.month, 1)
+        while m.year <= y:
+            nxt = date(m.year + (m.month // 12), m.month % 12 + 1, 1)
+            rev.append((m, (m - self.today).days, (nxt - self.today).days))
+            m = nxt
+        self.rev_months = [r[0] for r in rev]
+        self.rev_edges = np.array([(a, b) for _, a, b in rev], dtype=float).reshape(-1, 2)
 
     def bucket(self, t: np.ndarray) -> np.ndarray:
         return np.searchsorted(self.edges, t, side="right")          # 0 before the year, 1..4 quarters, 5 after
@@ -108,12 +119,29 @@ def _walk(start: np.ndarray, t0: np.ndarray, age: np.ndarray, u_pass: np.ndarray
     return alive, t
 
 
+MONTH_DAYS = 30.44
+
+
+def _spread(rev: np.ndarray, runs: np.ndarray, close: np.ndarray, val: np.ndarray, months: np.ndarray, lag: float, edges: np.ndarray) -> None:
+    """Add each won deal's value to the months it is invoiced in: evenly per day from close + lag for `months` months."""
+    if not len(close) or not len(edges):
+        return
+    dur = np.maximum(months, 0.5) * MONTH_DAYS
+    s = close + lag
+    e = s + dur
+    ov = np.clip(np.minimum(e[:, None], edges[None, :, 1]) - np.maximum(s[:, None], edges[None, :, 0]), 0, None)
+    np.add.at(rev, runs, val[:, None] * ov / dur[:, None])
+
+
 def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> dict:
     conv, days = np.asarray(inp.conv, dtype=float), np.asarray(inp.days, dtype=float)
     R, NB = dr.runs, 6
     rev_open = np.zeros((R, NB))
     rev_new = np.zeros((R, NB))
     wins = np.zeros((R, NB))
+    NM = len(cal.rev_edges)
+    inv_open, inv_new = np.zeros((R, NM)), np.zeros((R, NM))
+    win_by_deal = np.zeros(0)
     if len(inp.open_stage):
         st = np.asarray(inp.open_stage)[None, :]
         won, t = _walk(st, np.zeros(1), np.asarray(inp.open_age, dtype=float)[None, :], dr.o_pass, dr.o_dur, conv, days)
@@ -124,6 +152,11 @@ def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> d
         wins += np.bincount(idx, minlength=R * NB).reshape(R, NB)
         in_year = won & (b >= 1) & (b <= 4)
         open_by_deal = (val * in_year).sum(axis=0) / R            # each open deal's average contribution to the year
+        win_by_deal = won.mean(axis=0)
+        if detail:
+            ri, di = np.nonzero(won)
+            om = np.asarray(inp.open_months if inp.open_months is not None else [inp.new_months] * len(inp.open_stage), dtype=float)
+            _spread(inv_open, ri, t[won], val[won], om[di], inp.lag_days, cal.rev_edges)
     else:
         open_by_deal = np.zeros(0)
     stream_year = [0.0] * len(inp.streams)
@@ -144,6 +177,9 @@ def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> d
             rev_new += np.bincount(idx, weights=val[ok], minlength=R * NB).reshape(R, NB)
             wins += np.bincount(idx, minlength=R * NB).reshape(R, NB)
             stream_year[s] = float((val * (ok & (b >= 1) & (b <= 4))).sum() / R)
+            if detail:
+                ri = np.nonzero(ok)[0]
+                _spread(inv_new, ri, t[ok], val[ok], np.full(len(ri), inp.new_months), inp.lag_days, cal.rev_edges)
     total = rev_open + rev_new
     year = total[:, 1:5].sum(axis=1)
     out = {"mean": float(year.mean()), "wins": float(wins[:, 1:5].sum(axis=1).mean())}
@@ -157,6 +193,12 @@ def simulate(inp: Inputs, cal: Calendar, dr: Draws, *, detail: bool = True) -> d
         out["_year_samples"] = year
         out["_open_by_deal"] = [float(x) for x in open_by_deal]
         out["stream_year"] = stream_year
+        out["_win_by_deal"] = [float(x) for x in win_by_deal]
+        inv = inv_open + inv_new
+        in_year = np.array([m.year == cal.year for m in cal.rev_months], dtype=bool)
+        out["invoiced"] = {"months": [m.isoformat() for m in cal.rev_months], "open": inv_open.mean(axis=0).tolist(), "new": inv_new.mean(axis=0).tolist(),
+                           "p10": np.percentile(inv, 10, axis=0).tolist() if NM else [], "p90": np.percentile(inv, 90, axis=0).tolist() if NM else [],
+                           "year": pct(inv[:, in_year].sum(axis=1)) if NM else pct(np.zeros(R))}
     return out
 
 
