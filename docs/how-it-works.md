@@ -35,7 +35,7 @@ Rules for every page: robots.txt and AI content signals are obeyed, no login is 
 | Web search | Once a day, when the Exa key and a monthly cap are set | Yes |
 | Read a page, keep only quoted claims | Every source run and page check | Yes |
 | Finding, signal, programme, card, score | Every verified finding, straight away | Yes |
-| Company research for P1 and P2 | Scheduler, every hour: Exa research for two P1 accounts without a profile (then P2), at most 12 a day, while automatic web search is under 60% of the month's Exa budget; it pauses after three failures in a row | Yes |
+| Company research for P1 and P2 | Scheduler, every hour: Exa research for up to three P1 accounts without a profile (then P2), at most 40 a day (`RI_RESEARCH_SPRINT_PER_DAY`), while automatic web search is under 60% of the month's Exa budget; it pauses after three failures in a row | Yes |
 | Find hard-to-fill roles | Scheduler, once a day: engineering ads at our accounts still open after 60 days, or posted again after an earlier ad for the same role closed (rule CAP-03) | Yes |
 | Expire old signals, move programmes on | Scheduler | Yes |
 | Daily digest to Slack | Scheduler, only if a Slack webhook is set | If set |
@@ -67,7 +67,7 @@ Every buying signal and tender on Today and Buying signals has "Was this useful?
 
 ## Limits on the parts that cost money
 - **Exa: $20 a month.** Automatic searches stop at 60% of it ($12). The rest is kept for sellers pressing "Research with Exa" or "Find suppliers with Exa", so those buttons always work.
-- **AI: 30 million tokens a month.** Background reading stops at 70%. Sellers' own checks keep the last 30%.
+- **AI: 60 million tokens a month.** Background reading stops at 70%. Sellers' own checks keep the last 30%.
 - **Apollo:** subscription credits only. The platform never buys more.
 - Every paid call is recorded with what it was for (Administration, Usage). Feeds, tender APIs, company pages and job APIs cost nothing to read.
 

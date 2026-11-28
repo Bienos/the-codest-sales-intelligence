@@ -27,16 +27,17 @@ def budget(conn, provider, cap, spent, unit):
     conn.execute("insert into provider_budgets(provider, kind, period, cap, spent, reserved, unit) values (%s,'monthly','2026-11',%s,%s,0,%s)", (provider, cap, spent, unit))
 
 
-def test_p1_comes_before_p2_and_each_run_queues_two_jobs(conn):
+def test_p1_comes_before_p2_and_each_run_queues_up_to_three_jobs(conn):
     acct(conn, "Beta P2 Bank", "P2", score=99)
     acct(conn, "Alpha P1 Bank", "P1", score=10)
     acct(conn, "Gamma P1 Bank", "P1", score=80)
     acct(conn, "Plain Bank", None)
     acct(conn, "No Site P1 Bank", "P1", website=False)
+    acct(conn, "Delta P1 Bank", "P1", score=5)
     out = sprint.schedule(conn, NOW, READY)
-    assert out["queued"] == 2 and set(queued(conn)) == {"Alpha P1 Bank", "Gamma P1 Bank"}        # both P1s before the higher-scored P2
-    assert (out["p1_left"], out["p2_left"]) == (2, 1)           # counted before this run queued them
-    assert q1(conn, "select count(*) n from jobs where kind='account_profile'")["n"] == 2
+    assert out["queued"] == 3 and set(queued(conn)) == {"Alpha P1 Bank", "Gamma P1 Bank", "Delta P1 Bank"}   # all P1s before the higher-scored P2
+    assert (out["p1_left"], out["p2_left"]) == (3, 1)           # counted before this run queued them
+    assert q1(conn, "select count(*) n from jobs where kind='account_profile'")["n"] == 3
     assert sprint.left(conn, NOW) == {"p1_left": 0, "p2_left": 1}
 
 
@@ -64,12 +65,12 @@ def test_it_holds_when_not_set_up_over_the_exa_share_or_the_ai_reserve(conn):
 
 
 def test_three_failures_in_a_row_stop_it_and_the_day_has_a_limit(conn):
-    for i in range(20):
+    for i in range(50):
         acct(conn, f"Bank {i:02d}", "P1")
-    for h in range(8):
-        sprint.schedule(conn, NOW + timedelta(minutes=10 * h), READY)
+    for h in range(16):
+        sprint.schedule(conn, NOW + timedelta(minutes=5 * h), READY)
         conn.execute("update account_profiles set status='done', finished_at=now() where requested_by='research-sprint' and status='queued'")
-    assert len(queued(conn)) == sprint.PER_DAY and sprint.schedule(conn, NOW + timedelta(hours=2), READY)["held_by"] == "daily_limit"
+    assert len(queued(conn)) == sprint.PER_DAY == 40 and sprint.schedule(conn, NOW + timedelta(hours=2), READY)["held_by"] == "daily_limit"
     conn.execute("update account_profiles set status='failed', finished_at=now() + interval '1 hour' where id in "
                  "(select id from account_profiles where requested_by='research-sprint' order by created_at desc limit 3)")
     assert sprint.schedule(conn, NOW + timedelta(days=1), READY)["held_by"] == "repeated_failures"
@@ -83,3 +84,16 @@ def test_the_lane_is_hourly_pausable_and_runs_in_the_scheduler(conn, monkeypatch
     run_maintenance(conn, NOW)
     row = q1(conn, "select last_result, last_error from scheduler_lanes where lane='research_sprint'")
     assert row["last_error"] is None and row["last_result"]["queued"] == 1
+
+
+def test_the_daily_limit_can_be_set_from_the_environment(monkeypatch):
+    monkeypatch.setenv("RI_RESEARCH_SPRINT_PER_DAY", "25")
+    assert sprint.per_day() == 25
+    monkeypatch.setenv("RI_RESEARCH_SPRINT_PER_DAY", "500")
+    assert sprint.per_day() == sprint.MAX_DAY == 72          # three an hour is the most the hourly lane can queue
+    monkeypatch.setenv("RI_RESEARCH_SPRINT_PER_DAY", "0")
+    assert sprint.per_day() == 0
+    monkeypatch.setenv("RI_RESEARCH_SPRINT_PER_DAY", "lots")
+    assert sprint.per_day() == sprint.PER_DAY
+    monkeypatch.delenv("RI_RESEARCH_SPRINT_PER_DAY")
+    assert sprint.per_day() == sprint.PER_DAY

@@ -5865,7 +5865,7 @@
   "Exa research is not set up": "Badania Exa nie są skonfigurowane",
   "paused: the last three researches failed, check Usage before it continues": "wstrzymane: trzy ostatnie badania się nie udały, sprawdź Zużycie, zanim ruszy dalej",
   "Company research for P1 and P2 accounts": "Badanie firm P1 i P2",
-  "Every hour, queues Exa company research for two P1 accounts without a profile (then P2), at most 12 a day, while automatic web search is under 60% of this month's Exa budget.": "Co godzinę zleca badanie Exa dla dwóch firm P1 bez profilu (potem P2), najwyżej 12 dziennie, dopóki automatyczne wyszukiwanie nie przekroczy 60% miesięcznego budżetu Exa.",
+  "Every hour, queues Exa company research for up to three P1 accounts without a profile (then P2), at most 40 a day, while automatic web search is under 60% of this month's Exa budget.": "Co godzinę zleca badanie Exa dla najwyżej trzech firm P1 bez profilu (potem P2), najwyżej 40 dziennie, dopóki automatyczne wyszukiwanie nie przekroczy 60% miesięcznego budżetu Exa.",
   "From Pipedrive, updated {}": "Z Pipedrive, aktualizacja {}",
   "Relationship from Pipedrive": "Relacja z Pipedrive",
   "Every hour, sets each linked account's relationship with us from its Pipedrive deals (client, past client, in talks, or a prospect with lost deals). Never changes one a person set.": "Co godzinę ustawia relację z nami dla każdej połączonej firmy na podstawie jej szans w Pipedrive (klient, były klient, w rozmowach albo prospekt z przegranymi szansami). Nigdy nie zmienia relacji ustawionej przez człowieka.",
