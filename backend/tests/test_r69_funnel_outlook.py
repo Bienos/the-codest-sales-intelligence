@@ -60,3 +60,11 @@ def test_build_adds_the_outlook_with_actuals(conn, history):  # noqa: F811
     assert o["actuals"]["counts"][0][aug] == 3 and sum(o["actuals"]["counts"][0]) == 3      # deals 1, 2 and 4 entered MQL 100 days before NOW
     assert sum(o["actuals"]["counts"][1]) == 3                                               # Discovery: deals 1, 2 and 3
     assert o["stages"][2]["arrivals"]["total"]["p90"] >= o["stages"][2]["arrivals"]["total"]["p10"]
+
+
+def test_a_deal_stuck_far_longer_than_usual_is_less_likely_to_move():
+    fresh = outlook.project([0.8, 0.8], [10, 10], open_stage=[0] * 50, open_age=[1] * 50, streams=[], runs=400)
+    stuck = outlook.project([0.8, 0.8], [10, 10], open_stage=[0] * 50, open_age=[60] * 50, streams=[], runs=400)
+    a, b = fresh["stages"][1]["total"]["mean"], stuck["stages"][1]["total"]["mean"]
+    assert a == pytest.approx(40, rel=0.05) and b == pytest.approx(10, rel=0.15)        # 6x the median: a quarter of the chance
+    assert list(outlook.stale_factor(outlook.np.array([5.0, 25.0, 50.0]), outlook.np.array([10.0, 10.0, 10.0]))) == [1.0, 0.5, 0.25]

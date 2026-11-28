@@ -2,6 +2,14 @@
 
 Status, 2026-11-27: steps 2 to 5 of the build order (section 11) are **built and tested, not deployed**. See "Switching it on" below. Numbers marked **observed** come from a live lemlist read today or from this repo. Numbers marked **benchmark** are third-party and unverified. Anything marked **assumption** is a placeholder until your Pipedrive history replaces it.
 
+## Funnel outlook (MQL to SQL and onwards)
+
+`backend/src/ri/forecast/outlook.py`, shown on the Forecast page under "What is coming through the funnel":
+- **Per stage:** deals open now, the share that moves on (the rate in use, the measured rate with an 80% Wilson interval and how many deals decided it, and the last 12 months when at least 5 deals decided), median days in the stage.
+- **Next 90 days:** 2,000 simulated runs of the open deals plus the expected new deals, through the same rates and times as the revenue forecast, counting when each deal enters each stage. Shown as a range (8 in 10 runs) per 30-day window. A deal already in a stage does not count as arriving there. A deal stuck longer than twice its stage's median time has half its chance of moving on, longer than four times a quarter, so months-old deals do not all "arrive" next week.
+- **Predict between two stages:** chance and typical time from any stage to any later one (default Webform MQL to SQL), what today's open deals should produce, and arrivals per 30 days.
+- **Month by month:** the deals that entered each stage for the first time in each of the last 12 months, next to the expected next three 30-day windows, so a prediction that keeps missing is visible.
+
 ## Switching it on
 
 What exists in the code:

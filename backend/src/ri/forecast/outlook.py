@@ -3,7 +3,8 @@ any stage to any later one, and what actually arrived in each stage month by mon
 
 The projection plays the open deals and the expected new deals through the same stage rates and durations the revenue forecast uses
 (ri/forecast/engine.py), 2,000 times, and records when each simulated deal enters each stage. A deal already sitting in a stage does not
-count as arriving there again. Measured rates come with an 80% interval (Wilson) so a rate from six deals reads as the guess it is."""
+count as arriving there again. A deal that has sat in its stage much longer than usual is less likely to move on: past twice the stage's
+median time its chance is halved, past four times it is quartered (STALE). Without this, months-old deals would all "arrive" next week. Measured rates come with an 80% interval (Wilson) so a rate from six deals reads as the guess it is."""
 from __future__ import annotations
 
 import calendar
@@ -17,6 +18,7 @@ from ..db import Conn, qa
 from .engine import MIN_LEFT, SIG, _poisson_ppf
 
 RUNS = 2000
+STALE = ((4.0, 0.25), (2.0, 0.5))          # (times the stage's median time already spent, factor on the chance of moving on)
 WINDOWS = (30, 60, 90)
 Z80 = 1.2816
 
@@ -49,9 +51,18 @@ def reach(conv: list[float], days: list[float]) -> list[list[dict[str, float] | 
     return out
 
 
+def stale_factor(age: np.ndarray, median_days: np.ndarray) -> np.ndarray:
+    ratio = age / np.maximum(1.0, median_days)
+    f = np.ones_like(ratio, dtype=float)
+    for times, factor in sorted(STALE):                 # ascending, so the larger threshold wins
+        f = np.where(ratio > times, factor, f)
+    return f
+
+
 def _entries(start: np.ndarray, t0: np.ndarray, age: np.ndarray, u: np.ndarray, z: np.ndarray, conv: np.ndarray, days: np.ndarray) -> np.ndarray:
-    """Time each simulated deal enters each stage (last column: won), NaN when it never does. Shapes broadcast as in engine._walk."""
-    S = len(conv)
+    """Time each simulated deal enters each stage (last column: won), NaN when it never does. Shapes broadcast as in engine._walk;
+    `conv` is per stage, or per deal and stage (its last axis is the stage)."""
+    S = len(days)
     shape = u.shape[:-1]
     t = np.broadcast_to(t0, shape).astype(float).copy()
     alive = np.ones(shape, dtype=bool)
@@ -62,7 +73,7 @@ def _entries(start: np.ndarray, t0: np.ndarray, age: np.ndarray, u: np.ndarray, 
         d = days[i] * np.exp(SIG * z[..., i])
         d = np.where(start == i, np.maximum(MIN_LEFT, d - age), d)
         t = t + np.where(here & alive, d, 0.0)
-        alive &= ~(here & (u[..., i] >= conv[i]))
+        alive &= ~(here & (u[..., i] >= conv[..., i]))
     ent[..., S] = np.where(alive, t, np.nan)
     return ent
 
@@ -85,7 +96,10 @@ def project(conv: list[float], days: list[float], open_stage: list[int], open_ag
     if open_stage:
         st = np.asarray(open_stage)[None, :]
         n = len(open_stage)
-        ent = _entries(st, np.zeros(1), np.asarray(open_age, dtype=float)[None, :], rng.random((runs, n, S)), rng.standard_normal((runs, n, S)), cv, dy)
+        age = np.asarray(open_age, dtype=float)
+        cv_open = np.tile(cv, (n, 1))
+        cv_open[np.arange(n), st[0]] *= stale_factor(age, dy[st[0]])
+        ent = _entries(st, np.zeros(1), age[None, :], rng.random((runs, n, S)), rng.standard_normal((runs, n, S)), cv_open[None, :, :], dy)
         cols = np.arange(S + 1)[None, None, :]
         ent = np.where(cols == st[..., None], np.nan, ent)          # already in that stage: not an arrival
         add(ent)
@@ -173,7 +187,7 @@ def build(conn: Conn, inp: dict[str, Any], open_deals: list[dict[str, Any]], str
                        "recent": rr, "recent_decided": r.resolved if r is not None else 0, "prior": s["prior"]["conv"] / 100,
                        "arrivals": proj["stages"][i]})
     src, dst = default_pair([s["name"] for s in st])
-    return {"as_of": now.isoformat(), "runs": RUNS, "windows": proj["windows"], "stages": stages, "won": {"arrivals": proj["stages"][-1]},
+    return {"as_of": now.isoformat(), "runs": RUNS, "stale_rule": [{"over_times_median": t, "factor": f} for t, f in STALE], "windows": proj["windows"], "stages": stages, "won": {"arrivals": proj["stages"][-1]},
             "reach": reach(conv, days), "pair": {"from": src, "to": dst},
             "new_per_month": [{"entry": e, "per_month": lam} for lam, e in streams],
             "actuals": monthly_actuals(conn, [s["id"] for s in st], won_ids, now)}
