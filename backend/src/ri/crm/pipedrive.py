@@ -151,6 +151,8 @@ def upsert_org(conn: Conn, o: dict[str, Any]) -> str:
         "raw=EXCLUDED.raw, organization_id=COALESCE(crm_organizations.organization_id, EXCLUDED.organization_id), "
         "link_status=CASE WHEN crm_organizations.organization_id IS NOT NULL THEN 'linked' ELSE EXCLUDED.link_status END, synced_at=now()",
         (o["id"], org_id, o["name"], o.get("owner_id"), o.get("open_deals_count"), addr, jb({k: v for k, v in o.items() if k != "custom_fields"}), status))
+    from .fields import apply_org_fields
+    apply_org_fields(conn, o)              # client status, contract end, people at the client (fields the app set up)
     return status
 
 
@@ -267,6 +269,8 @@ def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = N
          _ts(d.get("add_time")), _ts(d.get("stage_change_time")), _ts(d.get("won_time")), _ts(d.get("lost_time")), (d.get("lost_reason") or None),
          _day(d.get("expected_close_date")), str(origin)[:80] if origin not in (None, "") else None, str(channel)[:80] if channel not in (None, "") else None))
     record_deal_change(conn, d, prev, source)
+    from .fields import apply_deal_fields
+    apply_deal_fields(conn, d)             # deal type, billing model, forecast category, start, duration, people, qualification, skills
     src_field = os.environ.get("RI_PIPEDRIVE_SOURCE_FIELD")         # the key of the deal field that says where the deal came from
     if src_field:
         raw = d.get(src_field, (d.get("custom_fields") or {}).get(src_field))
@@ -391,15 +395,28 @@ def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, s
             raise
         except Exception as exc:  # noqa: BLE001
             out["field_options_error"] = f"{type(exc).__name__}: {exc}"[:200]
+    from . import fields as pdf
+    for name, fn in (("fields", lambda: pdf.ensure_fields(conn, reader)), ("users", lambda: pdf.sync_users(conn, reader)),
+                     ("pipelines", lambda: pdf.sync_pipelines(conn, reader))):
+        try:      # the forecast's own Pipedrive fields (created once, then only looked up) and user names; never stops the mirror
+            with conn.transaction():
+                res = fn()
+            conn.commit()
+            if name != "fields" or res.get("created") or res.get("missing"):
+                out[name] = res
+        except Exception as exc:  # noqa: BLE001  (a token that may not edit fields or list users still syncs deals)
+            out[f"{name}_error"] = f"{type(exc).__name__}: {exc}"[:200]
     if stages is None:
         stages = {r["crm_id"]: r["name"] for r in qa(conn, "SELECT crm_id, name FROM crm_stages")}
+    open_seen: list[int] = []
     for entity, path, fn in (("organizations", "/organizations", upsert_org), ("persons", "/persons", upsert_person),
-                             ("deals", "/deals", lambda c, r: upsert_deal(c, r, stages))):
+                             ("deals", "/deals", lambda c, r: (upsert_deal(c, r, stages), r.get("status") == "open" and not r.get("is_deleted") and open_seen.append(r["id"])))):
         wm = q1(conn, "SELECT watermark FROM sync_state WHERE system='pipedrive' AND entity=%s", (entity,))
         newest = wm["watermark"] if wm else None
         since = newest
         # A deal field we start reading (source, competitor) is filled in on deals that may never change again: read every deal once.
-        fields_mark = "deals_fields:" + ",".join(sorted(k for k in (os.environ.get("RI_PIPEDRIVE_SOURCE_FIELD"), os.environ.get("RI_PIPEDRIVE_COMPETITOR_FIELD")) if k))
+        mapped = [r["field_key"] for r in qa(conn, "SELECT field_key FROM crm_field_map WHERE entity='deal'")]
+        fields_mark = "deals_fields:" + ",".join(sorted(k for k in (os.environ.get("RI_PIPEDRIVE_SOURCE_FIELD"), os.environ.get("RI_PIPEDRIVE_COMPETITOR_FIELD"), *mapped) if k))
         full_pass = entity == "deals" and fields_mark != "deals_fields:" and not q1(conn, "SELECT 1 FROM sync_state WHERE system='pipedrive' AND entity=%s", (fields_mark,))
         if full_pass:
             since = None
@@ -413,6 +430,15 @@ def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, s
         if full_pass:
             conn.execute("INSERT INTO sync_state(system, entity, watermark) VALUES ('pipedrive',%s,'done') ON CONFLICT DO NOTHING", (fields_mark,))
         conn.commit()
+    if open_seen:
+        try:      # roles, people, monthly rate and billing start, when sellers price deals with products
+            with conn.transaction():
+                out["deal_products"] = pdf.sync_deal_products(conn, reader, sorted(set(open_seen)))
+            conn.commit()
+        except ConnectorBlocked:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            out["deal_products_error"] = f"{type(exc).__name__}: {exc}"[:200]
     return out
 
 

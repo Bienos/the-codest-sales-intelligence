@@ -178,3 +178,35 @@ Podpisaną umowę oznaczamy w Pipedrive jako **Won**. Realizacja idzie do Delive
 - Retencja przychodu:
   - [McKinsey](https://www.mckinsey.com/industries/technology-media-and-telecommunications/our-insights/the-net-revenue-retention-advantage-driving-success-in-b2b-tech)
   - [Certinia](https://certinia.com/blog/new-public-market-pulse-report-shows-impact-of-customer-success-and-net-revenue-retention-on-enterprise-psos/)
+
+## 6. Co już działa w aplikacji (28.11.2026)
+
+- **Pola w Pipedrive**:
+  - Przy pierwszej godzinnej synchronizacji aplikacja zakłada brakujące pola dealu: Deal type, Billing model, Forecast category, Planned start, Duration (months), People (FTE), Monthly value, cztery pola Qualification i Skills.
+  - Zakłada też pola organizacji: Client status, Contract end, People at client (FTE).
+  - Pole o tej samej nazwie, które już istnieje, jest używane zamiast tworzenia nowego.
+  - Później tylko je odczytuje: pola usuniętego celowo nie odtworzy. Wyjątkiem jest przycisk „Załóż pola w Pipedrive” (dla managerów), który tworzy brakujące pola ponownie.
+  - Kod: `backend/src/ri/crm/fields.py`.
+- **Produkty dealu** z cyklem rozliczeń (`/deals/products`): z nich brana jest stawka miesięczna, start, liczba miesięcy i liczba osób.
+- **Prognoza → „Przychód miesięcznie”**: przychód fakturowany od bieżącego miesiąca do grudnia roku prognozy, w pięciu warstwach:
+  - obecne umowy,
+  - przedłużenia,
+  - otwarte role u klientów,
+  - otwarte deale sprzedażowe,
+  - deale jeszcze nieutworzone.
+
+  Pod wykresem: umowy kończące się w 90 dni, otwarte role, lista tego, co fakturujemy teraz, oraz udział największego klienta. Kod: `forecast/revenue.py`.
+- **Delivery Clients**:
+  - Pipeline jest szukany po nazwie.
+  - Etapy „OPEN ROLES” to rozszerzenia; „On hold” nie jest liczony.
+  - Wartość dealu domyślnie oznacza całą umowę; w Założeniach można zmienić na „jeden miesiąc”.
+  - Podpisany deal sprzedażowy klienta prowadzonego w Delivery Clients nie jest liczony drugi raz.
+- **„Kategorie prognozy”**: suma Commit / Best case / Pipeline obok szansy z modelu oraz lista rozbieżności (Commit z niską szansą; późny etap z wysoką szansą bez Commit).
+- **„Jakość danych”**:
+  - wypełnienie pól wymaganych od danego etapu, liczone dla handlowca i dla każdego dealu;
+  - deale, które utknęły;
+  - przegrane bez powodu z ostatnich 90 dni.
+- **Rzeczy do zrobienia ręcznie w Pipedrive**, bo API ich nie obsługuje:
+  - lista powodów przegranej;
+  - pola wymagane per etap;
+  - przebudowa etapów Delivery Clients na proces.

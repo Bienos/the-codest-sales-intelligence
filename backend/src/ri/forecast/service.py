@@ -14,7 +14,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from ..db import Conn, jb, q1, qa
-from . import engine, outlook
+from . import engine, outlook, quality, revenue
 from .history import History, load_funnel, measure
 
 DEFAULT_CONV = [55, 55, 50, 55, 65]
@@ -38,6 +38,15 @@ DEFAULTS: dict[str, Any] = {
     "positive_share": 25,
     "deal_from_positive": 60,
     "inbound_per_month": None,         # None: measured from deals created at the inbound stage, else 4
+    # invoiced revenue (forecast/revenue.py)
+    "contract_months": 12,             # how long a contract is invoiced when the deal does not say
+    "start_lag_days": 30,              # from signing to the first invoiced day
+    "renewal_rate": 60,                # % chance a contract continues after its end
+    "open_role_win_rate": 50,          # prior, in %: an open role at an existing client gets filled
+    "delivery_pipeline_names": ["Delivery Clients"],
+    "delivery_open_stage_names": ["OPEN ROLES"],
+    "delivery_hold_stage_names": ["On hold"],
+    "delivery_value_means": "total",   # Delivery Clients deal value: 'total' (spread over the contract) or 'monthly'
 }
 RUNS = 1000
 SENS_STEP = 0.2
@@ -94,13 +103,7 @@ def outbound_actuals(conn: Conn, days: int = 90) -> dict[str, Any]:
             "campaigns": [{**c, "first_sent": c["first_sent"].isoformat() if c["first_sent"] else None} for c in camps]}
 
 
-def _resolve(conn: Conn, s: dict[str, Any], app_settings: Any, now: datetime) -> tuple[dict[str, Any], History, dict[str, Any]]:
-    year = int(s["year"] or (now.year + 1 if now.month >= 10 else now.year))
-    pipeline_id = s["pipeline_id"] if s["pipeline_id"] is not None else getattr(app_settings, "pipedrive_pipeline_id", None)
-    funnel = load_funnel(conn, pipeline_id, s["parking_stage_names"] or [], s["won_stage_names"] or [])
-    currency = (s["currency"] or "EUR").upper()
-    fx = {k.upper(): float(v) for k, v in (s["fx_to_eur"] or {}).items() if v}
-
+def make_convert(currency: str, fx: dict[str, float]):
     def convert(value: Any, cur: Any) -> float | None:
         c = str(cur or currency).upper()
         if c == currency:
@@ -108,6 +111,28 @@ def _resolve(conn: Conn, s: dict[str, Any], app_settings: Any, now: datetime) ->
         if c not in fx or currency not in fx:
             return None
         return float(value) * fx[c] / fx[currency]
+    return convert
+
+
+def _open_months(conn: Conn, h: History, default: float) -> list[float]:
+    """Months each open deal's contract runs, when the deal says (products, Duration), else the default contract length."""
+    rows = {r["crm_id"]: r for r in qa(conn, "SELECT crm_id, duration_months, products FROM crm_deals WHERE crm_id = ANY(%s)", ([o["crm_id"] for o in h.open_deals],))}
+    out = []
+    for o in h.open_deals:
+        r = rows.get(o["crm_id"]) or {}
+        p = r.get("products") or {}
+        out.append(float(p.get("months") or r.get("duration_months") or default))
+    return out
+
+
+def _resolve(conn: Conn, s: dict[str, Any], app_settings: Any, now: datetime) -> tuple[dict[str, Any], History, dict[str, Any]]:
+    year = int(s["year"] or (now.year + 1 if now.month >= 10 else now.year))
+    pipeline_id = s["pipeline_id"] if s["pipeline_id"] is not None else getattr(app_settings, "pipedrive_pipeline_id", None)
+    funnel = load_funnel(conn, pipeline_id, s["parking_stage_names"] or [], s["won_stage_names"] or [])
+    currency = (s["currency"] or "EUR").upper()
+    fx = {k.upper(): float(v) for k, v in (s["fx_to_eur"] or {}).items() if v}
+
+    convert = make_convert(currency, fx)
     h = measure(conn, funnel, now=now, year=year, convert=convert)
     out = outbound_actuals(conn)
     k = float(s["prior_strength"] or 0)
@@ -158,13 +183,14 @@ def _resolve(conn: Conn, s: dict[str, Any], app_settings: Any, now: datetime) ->
     return inputs, h, out
 
 
-def _engine_inputs(inp: dict[str, Any], h: History) -> engine.Inputs:
+def _engine_inputs(inp: dict[str, Any], h: History, open_months: list[float] | None = None, s: dict[str, Any] | None = None) -> engine.Inputs:
     out_lam = inp["leads_per_month"]["used"] * inp["reply_rate"]["used"] / 100 * inp["positive_share"]["used"] / 100 * inp["deal_from_positive"]["used"] / 100
     return engine.Inputs(conv=[min(1.0, max(0.0, st["used"]["conv"] / 100)) for st in inp["stages"]], days=[max(1.0, st["used"]["days"]) for st in inp["stages"]],
                          open_stage=[o["stage_index"] for o in h.open_deals], open_value=[o["value"] for o in h.open_deals],
                          open_age=[o["days_in_stage"] for o in h.open_deals],
                          streams=[(out_lam, inp["outbound_entry"]["index"]), (inp["inbound_per_month"]["used"], inp["inbound_entry"]["index"])],
-                         deal_value=inp["deal_value"]["used"])
+                         deal_value=inp["deal_value"]["used"], lag_days=float((s or DEFAULTS)["start_lag_days"] or 0),
+                         open_months=open_months, new_months=float((s or DEFAULTS)["contract_months"] or 12))
 
 
 def _variants(base: engine.Inputs, inp: dict[str, Any]) -> list[tuple[str, str, Any]]:
@@ -211,14 +237,15 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
             return hit[1]
     inp, h, out = _resolve(conn, s, app_settings, now)
     cal = engine.Calendar(now.date(), inp["year"])
-    base = _engine_inputs(inp, h)
+    base = _engine_inputs(inp, h, _open_months(conn, h, float(s["contract_months"] or 12)), s)
     variants = _variants(base, inp)
     max_lam = max([lam for lam, _ in base.streams] + [0.0]) * (1 + SENS_STEP) * 1.05
     dr = engine.Draws(RUNS, len(base.open_stage), len(base.conv), len(base.streams), len(cal.months), max_lam)
     res = engine.simulate(base, cal, dr)
     chance = engine.chance_at_least(res, inp["target"])
     res.pop("_year_samples", None)
-    by_source = sources_view(conn, h, res.pop("_open_by_deal", []), res.get("stream_year") or [])
+    open_by_deal, win_by_deal = res.pop("_open_by_deal", []), res.pop("_win_by_deal", [])
+    by_source = sources_view(conn, h, open_by_deal, res.get("stream_year") or [])
     sens = []
     if res["mean"] > 0:
         for key_, label, fn in variants:
@@ -262,6 +289,16 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
         "sources": data_sources(conn, app_settings),
         "settings": {k: v for k, v in s.items()}, "log": forecast_log(conn, inp["year"]),
     }
+    names = [st["name"] for st in inp["stages"]]
+    for key_, fn in (("revenue", lambda: revenue.build(conn, s, now=now, year=inp["year"], won_stage_ids=h.funnel.won_ids, funnel_pipeline_id=inp["pipeline_id"],
+                                                         convert=make_convert(inp["currency"], inp["fx_to_eur"]), sim=res, open_deals=h.open_deals)),
+                     ("categories", lambda: quality.categories(conn, h.open_deals, names, win_by_deal, open_by_deal)),
+                     ("quality", lambda: quality.quality(conn, h.open_deals, names, [st["used"]["days"] for st in inp["stages"]], inp["pipeline_id"], now))):
+        try:      # each view stands alone: one failing never takes the forecast down
+            payload[key_] = fn()
+        except Exception as exc:  # noqa: BLE001
+            payload[key_] = {"error": f"{type(exc).__name__}: {exc}"[:200]}
+    payload["result"].pop("invoiced", None)
     try:      # the funnel outlook never takes the revenue forecast down with it
         recent = measure(conn, h.funnel, now=now, lookback_days=365, year=inp["year"])
         payload["outlook"] = outlook.build(conn, inp, h.open_deals, base.streams, sorted(h.funnel.won_ids), recent, now)
