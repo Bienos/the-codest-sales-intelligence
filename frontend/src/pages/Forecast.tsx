@@ -360,7 +360,7 @@ export default function Forecast({ canManage }: { canManage: boolean }) {
         </div>
         <div className="fc-tiles3">
           <div className="fc-tile"><div className="fc-label">{tr("Chance of hitting the target")}</div>
-            {chance != null ? <><div className="fc-val">{pct(chance * 100)}</div><div className="fc-meter"><i style={{ width: `${chance * 100}%` }} /></div><div className="fc-note">{tr("Target {} {}", money(d.target), d.currency)}</div></>
+            {chance != null ? <><div className="fc-val">{pct(chance * 100)}</div><div className="fc-meter"><i style={{ width: `${chance * 100}%` }} /></div><div className="fc-note">{d.won_so_far.value > 0 && d.year === new Date().getFullYear() ? tr("Target {} {}, of which {} already won", money(d.target), d.currency, money(d.won_so_far.value)) : tr("Target {} {}", money(d.target), d.currency)}</div></>
               : <><div className="fc-val muted">–</div><div className="fc-note">{canManage ? <button type="button" className="linklike" onClick={() => setTab("assumptions")}>{tr("Set a target")}</button> : tr("No target set yet.")}</div></>}</div>
           <div className="fc-tile"><div className="fc-label">{tr("Deals we expect to win")}</div><div className="fc-val">{d.result.wins.toFixed(1)}</div><div className="fc-note">{tr("in {}; {} won so far this year", d.year, d.won_so_far.n)}</div></div>
           <div className="fc-tile"><div className="fc-label">{tr("Open pipeline, weighted")}</div><div className="fc-val">{money(d.pipeline.weighted)}</div><div className="fc-note">{tr("{} open deals worth {} in total", d.pipeline.deals, money(d.pipeline.open_value))}</div></div>

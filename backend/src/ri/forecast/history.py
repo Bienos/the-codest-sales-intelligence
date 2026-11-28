@@ -189,7 +189,8 @@ def measure(conn: Conn, funnel: Funnel, *, now: datetime | None = None, lookback
         for i in range(entry, top):
             stats[i].passed += 1
         if won_at is not None:
-            stats[top].passed += 1
+            for i in range(top, S):                  # a deal won from an earlier stage skipped the later ones: it got past each of them
+                stats[i].passed += 1
         elif lost_at is not None or parked_now:
             stats[top].lost += 1
         else:

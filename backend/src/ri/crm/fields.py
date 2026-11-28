@@ -9,6 +9,8 @@ or a number, date -> 'YYYY-MM-DD', double -> number, text/varchar -> string. API
 """
 from __future__ import annotations
 
+import re
+
 from datetime import date
 from typing import Any
 
@@ -203,6 +205,20 @@ PER_MONTH = {"monthly": 1.0, "weekly": 52 / 12, "quarterly": 1 / 3, "semi-annual
 MONTHS_PER_CYCLE = {"monthly": 1.0, "weekly": 12 / 52, "quarterly": 3.0, "semi-annually": 6.0, "semi_annually": 6.0, "annually": 12.0}
 
 
+HOURS_PER_FTE_MONTH = 160.0
+MAX_PEOPLE_PER_LINE = 31.0           # a monthly quantity above this is hours, not people: no single line staffs that many
+_HOURLY = re.compile(r"\b(hours?|hrs?|godz\w*|man-?hours?|roboczogodz\w*)\b|/\s*h\b|per\s+hour", re.I)
+
+
+def _line_fte(qty: float, freq: str, name: str) -> float:
+    """People on one recurring line. Quantity is people, unless the line is priced by the hour (its name says so, or the monthly
+    quantity is too large to be people): then hours a month / 160."""
+    per_month = qty * PER_MONTH[freq]
+    if _HOURLY.search(name or "") or per_month > MAX_PEOPLE_PER_LINE:
+        return per_month / HOURS_PER_FTE_MONTH
+    return qty
+
+
 def summarize_products(items: list[dict[str, Any]]) -> dict[str, Any] | None:
     """One deal's products -> {monthly, total, start, months, fte, n}. A recurring line bills price x quantity each cycle, for its number
     of cycles from its start date; a one-time line adds to the total only."""
@@ -223,7 +239,7 @@ def summarize_products(items: list[dict[str, Any]]) -> dict[str, Any] | None:
         cycles = _num(p.get("billing_frequency_cycles"))
         if freq in PER_MONTH:
             monthly += line * PER_MONTH[freq]
-            fte += qty
+            fte += _line_fte(qty, freq, str(p.get("name") or ""))
             if cycles:
                 months.append(cycles * MONTHS_PER_CYCLE[freq])
                 total += line * cycles
@@ -233,7 +249,7 @@ def summarize_products(items: list[dict[str, Any]]) -> dict[str, Any] | None:
         else:
             total += line
     return {"monthly": round(monthly, 2), "total": round(total, 2), "start": min(starts).isoformat() if starts else None,
-            "months": max(months) if months else None, "fte": fte or None, "n": len(items)}
+            "months": max(months) if months else None, "fte": round(fte, 2) or None, "n": len(items)}
 
 
 def sync_deal_products(conn: Conn, reader: Any, deal_ids: list[int]) -> int:

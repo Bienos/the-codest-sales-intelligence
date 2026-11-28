@@ -5785,6 +5785,7 @@
   "Sync Pipedrive": "Synchronizuj Pipedrive",
   "Synced {}": "Zsynchronizowano {}",
   "Target {} {}": "Cel {} {}",
+  "Target {} {}, of which {} already won": "Cel {} {}, z czego {} już wygrano",
   "Up to date": "Aktualne",
   "Waiting for a change": "Czeka na zmianę",
   "What moves it": "Co zmienia wynik",
