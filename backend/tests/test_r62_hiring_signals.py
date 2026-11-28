@@ -46,6 +46,7 @@ def test_the_lane_turns_long_open_and_reposted_roles_into_signals_once(conn, org
     ad(conn, org, "5", "Platform Engineer", posted_days=90, seen_days=12)                                     # no longer listed
     ad(conn, org, "6", "Talent Pool Software Engineering", posted_days=200)                                   # always open by design
     ad(conn, org, "7", "HR Business Partner", posted_days=200)                                                 # not an engineering role
+    ad(conn, org, "9", "Senior Java Engineer, Core", posted_days=900)                                         # open 2.5 years: a standing ad
     conn.execute("insert into job_postings(provider, board, job_id, employer_name, title, posted_at, first_seen_at, last_seen_at) "
                  "values ('greenhouse','other','8','Unknown Co','Java Engineer',%s,%s,%s)", (NOW - timedelta(days=90), NOW - timedelta(days=90), NOW))   # no account
     conn.commit()

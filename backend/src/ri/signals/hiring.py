@@ -2,7 +2,8 @@
 
 Read from ``job_postings``, which the job board readers keep current; nothing is fetched here. An open ad at a known company counts when
 it is still listed (the reader saw it in the last few days) and either
-  * it has been open for ``OPEN_DAYS`` days or more, counted from the earlier of its posting date and the day we first saw it, or
+  * it has been open for ``OPEN_DAYS`` days or more, counted from the earlier of its posting date and the day we first saw it, but not
+    more than ``EVERGREEN_DAYS`` (an ad left open for over a year is a standing ad, not a search that is failing), or
   * the same role was advertised before and that ad closed in the last ``REPOST_DAYS`` days (titles compared without gender tags,
     punctuation or case), which means the first search did not fill it.
 Each ad gives at most one ``job_hard_to_fill`` event (keyed on the ad), and the CAP-03 rule then judges it like any other event, so
@@ -19,6 +20,7 @@ from ..events.classify import engineering_relevant
 from ..events.store import add_claim, store_event
 
 OPEN_DAYS = 60
+EVERGREEN_DAYS = 365
 SEEN_WITHIN_DAYS = 3
 REPOST_DAYS = 180
 EVENT_TYPE = "job_hard_to_fill"
@@ -64,7 +66,7 @@ def find(conn: Conn, now: datetime, limit: int = 200) -> list[dict[str, Any]]:
         seen = _when(r["first_seen_at"])
         earlier = [d for d in closed.get((str(r["organization_id"]), norm_title(r["title"])), []) if d <= seen and d >= seen - timedelta(days=REPOST_DAYS)]
         reposted = bool(earlier)
-        if days_open >= OPEN_DAYS or reposted:
+        if OPEN_DAYS <= days_open <= EVERGREEN_DAYS or reposted:
             out.append({**r, "days_open": days_open, "reposted": reposted, "previous_closed_at": max(earlier) if earlier else None})
         if len(out) >= limit:
             break
