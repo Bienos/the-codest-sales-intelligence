@@ -31,6 +31,34 @@ def watch_status(conn: Conn) -> dict[str, Any]:
     return ws(conn)
 
 SEED_PATH = Path(__file__).resolve().parents[2] / "rules" / "competitors_seed.json"
+PL_PATH = Path(__file__).resolve().parents[2] / "rules" / "competitors_pl.json"     # English text of the seed -> Polish, for the Polish UI
+# Values that are names, quotes, links or codes: never translated (a homepage headline is quoted word for word).
+NO_TRANSLATE = {"name", "names", "aliases", "certs", "clients", "hero", "url", "source", "key", "id", "origin", "grade", "type", "status", "verdict",
+                "date", "asOf", "seedAsOf", "trend", "strength", "markets", "edited_by", "added_by", "defaultCompare", "watch", "overlap", "can", "updated_at"}
+_PL: dict[str, str] | None = None
+
+
+def _pl() -> dict[str, str]:
+    global _PL
+    if _PL is None:
+        try:
+            _PL = json.loads(PL_PATH.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            _PL = {}
+    return _PL
+
+
+def translate(x: Any, lang: str, _key: str | None = None) -> Any:
+    """Swap every known English string for its Polish version; anything not in the dictionary (a fact a person typed) stays as it is."""
+    if lang != "pl":
+        return x
+    if isinstance(x, str):
+        return _pl().get(x, x)
+    if isinstance(x, dict):
+        return {k: (v if k in NO_TRANSLATE else translate(v, lang, k)) for k, v in x.items()}
+    if isinstance(x, list):
+        return [translate(v, lang, _key) for v in x]
+    return x
 MOVE_TYPES = ("positioning", "offer", "pricing", "vertical", "market", "ma_buy", "ma_sold", "capital", "leadership", "hiring", "partner", "client", "content",
               "results", "award")
 GRADES = ("official", "reported", "estimate")
@@ -289,7 +317,7 @@ def _move_out(m: dict[str, Any]) -> dict[str, Any]:
             "source": m["source_url"], "grade": m["grade"], "impact": m["impact"], "status": m["status"], "added_by": m["added_by"]}
 
 
-def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = None) -> dict[str, Any]:
+def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = None, lang: str = "en") -> dict[str, Any]:
     docs = {r["name"]: r["content"] for r in qa(conn, "SELECT name, content FROM competitor_market")}
     rows = qa(conn, "SELECT key, name, is_us, reference, origin, profile, updated_by, updated_at FROM competitors WHERE retired_at IS NULL ORDER BY name")
     if not rows:
@@ -318,17 +346,21 @@ def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = 
         c["h2h"] = h2h["by_competitor"].get(c["key"])
         if c["tier"] == 1:
             o = c["overlap"]
-            c["tierWhy"] = ((c.get("fitNote") or "").strip() + f" Overlap {o['total']} of 100 (buyers {o['buyers']}/30, way of selling {o['selling']}/30, "
-                            f"markets {o['markets']}/20, size {o['size']}/20).").strip()
+            fit = translate((c.get("fitNote") or "").strip(), lang)
+            if lang == "pl":
+                why = f"Zbieżność {o['total']} na 100 (klienci {o['buyers']}/30, sposób sprzedaży {o['selling']}/30, rynki {o['markets']}/20, wielkość {o['size']}/20)."
+            else:
+                why = f"Overlap {o['total']} of 100 (buyers {o['buyers']}/30, way of selling {o['selling']}/30, markets {o['markets']}/20, size {o['size']}/20)."
+            c["tierWhy"] = f"{fit} {why}".strip()
     us["tier"] = 0
     us["moves"] = [_move_out(m) for m in by_key.get(us["key"], [])]
     ind = indicators(comps, by_key, meta.get("asOf") or as_of)
     t1 = [c for c in comps if c["tier"] == 1]
-    subs = {k: f"{v['count']} of {v['of']}" for k, v in ind.items()}
+    subs = {k: f"{v['count']} {'z' if lang == 'pl' else 'of'} {v['of']}" for k, v in ind.items()}
     subs["N"] = str(len(comps))
     m = _median([(c.get("clutch") or {}).get("reviews") for c in t1])
-    subs["t1_reviews"] = f"{m:g}" if m is not None else "unknown"
-    copy = docs.get("copy") or {}
+    subs["t1_reviews"] = f"{m:g}" if m is not None else ("brak danych" if lang == "pl" else "unknown")
+    copy = translate(docs.get("copy") or {}, lang)          # templates are translated before their numbers go in
     patterns = []
     for p in copy.get("patterns") or []:
         p = dict(p)
@@ -337,13 +369,13 @@ def tracker(conn: Conn, scope_sql: str = "TRUE", scope_args: list[Any] | None = 
             p["indicator"] = ind.get(k) or {"label": k, "count": 0, "of": 0}
         patterns.append(p)
     market = docs.get("market") or {}
-    return {"asOf": as_of, "seedAsOf": meta.get("asOf"), "moveTypes": meta.get("moveTypes") or {t: {"label": t} for t in MOVE_TYPES},
+    return translate({"asOf": as_of, "seedAsOf": meta.get("asOf"), "moveTypes": meta.get("moveTypes") or {t: {"label": t} for t in MOVE_TYPES},
             "defaultCompare": [k for k in meta.get("defaultCompare") or [] if k in tiers][:4], "us": us, "competitors": comps,
             "lede": fill(copy.get("lede") or "", subs), "briefing": [{k: fill(v, subs) for k, v in b.items()} for b in copy.get("briefing") or []],
             "landscapeNotes": copy.get("landscapeNotes") or [], "patterns": patterns, "indicators": ind, "standing": standing(us, t1),
             "bellwethers": market.get("bellwethers") or [], "alternatives": market.get("alternatives") or [], "buyers": market.get("buyers") or [],
             "deals": market.get("deals") or [], "rates": market.get("rates") or [], "method": docs.get("method") or {}, "headToHead": h2h,
-            "watch": watch_status(conn)}
+            "watch": watch_status(conn)}, lang)
 
 
 # ------------------------------------------------------------------ changes people make

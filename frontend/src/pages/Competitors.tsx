@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, NavLink, useNavigate, useParams } from "react-router-dom";
 import { api, patch, post, put } from "../api";
-import { tr } from "../locale";
+import { tr, useLanguage } from "../locale";
 import { Err, Skeleton } from "../components/ui";
 import "../styles/competitors.css";
 
@@ -56,7 +56,8 @@ export default function Competitors() {
   const [err, setErr] = useState<unknown>(null);
   const [n, setN] = useState(0);
   const reload = () => setN((x) => x + 1);
-  useEffect(() => { setErr(null); api("/api/competitors").then(setD).catch(setErr); }, [n]);
+  const lang = useLanguage();          // the text is translated on the server; switching language fetches it again
+  useEffect(() => { setErr(null); api(`/api/competitors?lang=${lang}`).then(setD).catch(setErr); }, [n, lang]);
   if (err) return <Err e={err} onRetry={reload} />;
   if (!d) return <Skeleton rows={6} />;
   if (d.empty) return <div className="empty"><b>{tr("No competitors loaded yet")}</b>{tr("The research seed loads when the server starts (ri seed). Ask an administrator to run it.")}</div>;
