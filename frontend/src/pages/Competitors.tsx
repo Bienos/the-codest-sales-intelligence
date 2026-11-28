@@ -47,6 +47,7 @@ const Dot = ({ c }: { c: Comp }) => <i className={`ct-dot o-${c.origin}`} title=
 const Meter = ({ n, max = 3 }: { n: number; max?: number }) => <span className="ct-meter" role="img" aria-label={tr("{} of {}", n, max)}>{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? "on" : ""} />)}</span>;
 function Imp({ n }: { n: number }) { const t = n === 3 ? "High" : n === 2 ? "Medium" : "Low"; return <span className={`ct-imp i${n}`} title={tr("Impact on The Codest: {}", tr(t))}>{n === 3 ? "▲▲" : n === 2 ? "▲" : "·"} {tr(t)}</span>; }
 function Markets({ c }: { c: Comp }) { const m = new Set(c.markets || []); return <span className="ct-mk">{MARKETS.map((k) => <span key={k} className={m.has(k) ? "on" : ""}>{k}</span>)}</span>; }
+const Chips = ({ a }: { a?: string[] }) => (a && a.length ? <span className="ct-chips">{a.map((x, i) => <span key={i} className="ct-chip">{x}</span>)}</span> : <p className="small muted">{tr("Not found")}</p>);
 const TierChip = ({ c }: { c: Comp }) => <span className={`ct-chip t${c.tier}`}>{tr(TIER[c.tier] || "")}</span>;
 
 export default function Competitors() {
@@ -101,47 +102,82 @@ type Ctx = { d: any; all: Comp[]; byKey: Record<string, Comp>; reload: () => voi
 const ProfileLink = ({ c, children }: { c: Comp; children?: ReactNode }) => <Link to={`/competitors/profile/${c.key}`}>{children ?? c.name}</Link>;
 
 /* ------------------------------------------------------------------ Briefing */
+const TREND: Record<string, [string, string]> = { up: ["▲", "Growing"], down: ["▼", "Shrinking"], flat: ["■", "Flat"] };
+function Trend({ t }: { t?: string }) { const x = t ? TREND[t] : null; return x ? <span className={`ct-trend ${t}`}>{x[0]} {tr(x[1])}</span> : <span className="ct-trend none">{tr("Not known")}</span>; }
+function Overlap({ o, big }: { o: any; big?: boolean }) {
+  if (!o) return null;
+  const parts: [string, number, number, string][] = [["k1", o.buyers, 30, "Same buyers"], ["k2", o.selling, 30, "Same way of selling"], ["k3", o.markets, 20, "Same markets"], ["k4", o.size, 20, "Similar size"]];
+  const label = tr("Overlap {} of 100", o.total) + ": " + parts.map(([, v, m, l]) => `${tr(l)} ${v}/${m}`).join(", ");
+  return <span className={`ct-olap${big ? " big" : ""}`} role="img" aria-label={label} title={label}>
+    <span className="bar">{parts.map(([k, v]) => <i key={k} className={k} style={{ width: `${v}%` }} />)}</span>
+    {big && <span className="parts">{parts.map(([k, v, m, l]) => <span key={k}><i className={`ct-dot ${k}`} />{tr(l)} <b>{v}</b>/{m}</span>)}</span>}
+  </span>;
+}
+
 function Briefing({ d, asOf }: Ctx) {
-  const recent = d.competitors.flatMap((c: Comp) => c.moves.map((m: Move) => ({ ...m, c }))).filter((m: any) => (monthsOld(m.date, asOf) ?? 99) <= 12)
-    .sort((a: any, b: any) => b.impact - a.impact || String(b.date).localeCompare(String(a.date))).slice(0, 6);
+  const [open, setOpen] = useState<number | null>(null);
+  const moves12 = d.competitors.flatMap((c: Comp) => c.moves.map((m: Move) => ({ ...m, c }))).filter((m: any) => (monthsOld(m.date, asOf) ?? 99) <= 12);
+  const recent = moves12.slice().sort((a: any, b: any) => b.impact - a.impact || String(b.date).localeCompare(String(a.date))).slice(0, 6);
   const t1 = d.competitors.filter((c: Comp) => c.tier === 1).sort((a: Comp, b: Comp) => b.overlap.total - a.overlap.total);
-  const TREND: Record<string, string> = { up: "▲ Growing", down: "▼ Shrinking", flat: "■ Flat" };
+  const col = (v: string) => (v === "behind" ? "behind" : v === "ahead" ? "ahead" : "level");
+  const stand: Record<string, any[]> = { behind: [], level: [], ahead: [] };
+  d.standing.forEach((x: any) => stand[col(x.verdict)].push(x));
+  const COLS: [string, string, string][] = [["behind", "Behind them", "Fix first"], ["level", "Level", "No edge either way"], ["ahead", "Ahead of them", "Say it out loud"]];
   return (
     <section className="ct-view">
-      <div className="ct-brief">
-        <div className="card"><h3 className="ct-h">{tr("What the evidence says")}</h3>
-          {d.briefing.map((b: any, i: number) => <div key={i} className="ct-insight"><span className="n">{i + 1}</span><h4>{b.title}</h4><p className="small">{b.text}</p><p className="ct-act"><b>{tr("For us:")}</b> {b.action}</p></div>)}
-        </div>
-        <div className="ct-stack">
-          <div className="card"><h3 className="ct-h">{tr("Where we stand")}</h3>
-            <p className="xs muted">{tr("The Codest against the median of the {} direct competitors (tier 1). Only things we can measure from public data.", t1.length)}</p>
-            <div className="ct-scroll"><table className="ct-stand"><thead><tr><th>{tr("Measure")}</th><th>{tr("Us")}</th><th>{tr("Tier 1")}</th><th /></tr></thead><tbody>
-              {d.standing.map((s: any) => <tr key={s.what}><td><b>{s.what}</b><div className="xs muted">{s.basis}</div></td><td className="num">{s.us}</td><td className="num">{s.them}</td>
-                <td><span className={`ct-verdict ${s.verdict}`}>{tr(s.label || ({ ahead: "Ahead", behind: "Behind", level: "Level" } as any)[s.verdict])}</span></td></tr>)}
-            </tbody></table></div></div>
-          <div className="card"><h3 className="ct-h">{tr("Tier 1 at a glance")}</h3>
-            <p className="xs muted">{tr("The seven firms most likely to meet us in a deal, by overlap score.")}</p>
-            <div className="ct-scroll"><table className="ct-stand"><thead><tr><th>{tr("Firm")}</th><th>{tr("Overlap")}</th><th>{tr("Revenue")}</th><th>{tr("Latest move")}</th></tr></thead><tbody>
-              {t1.map((c: Comp) => { const last = c.moves[0]; return <tr key={c.key}><td><ProfileLink c={c}><Dot c={c} /> {c.name}</ProfileLink><div className="xs muted">{c.archetype}</div></td>
-                <td className="num">{c.overlap.total}</td><td className="xs nowrap">{TREND[c.revenue?.trend] ? tr(TREND[c.revenue.trend]) : <span className="muted">{tr("Not known")}</span>}</td>
-                <td className="xs">{last ? <><span className="ct-age">{fmtD(last.date)}</span> {last.headline}</> : <span className="muted">{tr("No dated move")}</span>}</td></tr>; })}
-            </tbody></table></div></div>
-        </div>
+      <div className="ct-kpis">
+        <div className="ct-kpi"><span className="ct-label">{tr("Firms tracked")}</span><b>{d.competitors.length}</b><span className="xs muted">{tr("{} in tier 1", t1.length)}</span></div>
+        <div className="ct-kpi"><span className="ct-label">{tr("High-impact moves")}</span><b>{moves12.filter((m: any) => m.impact === 3).length}</b><span className="xs muted">{tr("in the last 12 months")}</span></div>
+        <div className="ct-kpi"><span className="ct-label">{tr("Where we stand")}</span>
+          <span className="ct-tally"><span className="behind">{stand.behind.length}</span><span className="level">{stand.level.length}</span><span className="ahead">{stand.ahead.length}</span></span>
+          <span className="xs muted">{tr("behind · level · ahead, on {} measures", d.standing.length)}</span></div>
+        <div className="ct-kpi"><span className="ct-label">{tr("Closest rival")}</span><b className="nm">{t1[0] ? <ProfileLink c={t1[0]} /> : "–"}</b><span className="xs muted">{t1[0] ? tr("overlap {} of 100", t1[0].overlap.total) : ""}</span></div>
       </div>
-      <div className="card"><h3 className="ct-h">{tr("Biggest moves in the last 12 months")}</h3>
-        {recent.map((m: any) => <MoveRow key={m.id} m={m} c={m.c} asOf={asOf} />)}
-        <p className="small"><Link to="/competitors/moves">{tr("All moves")}</Link></p>
+
+      <div className="card"><h3 className="ct-h">{tr("Where we stand")}</h3>
+        <p className="xs muted">{tr("The Codest against the median of the {} direct competitors (tier 1). Only things we can measure from public data.", t1.length)}</p>
+        <div className="ct-board">{COLS.map(([k, title, hint]) => <div key={k} className={`ct-col ${k}`}>
+          <div className="ct-colh"><b>{tr(title)}</b><span>{stand[k].length}</span></div><p className="xs muted ct-hint">{tr(hint)}</p>
+          {stand[k].length === 0 && <p className="xs muted">{tr("Nothing here")}</p>}
+          {stand[k].map((x: any) => <div key={x.what} className="ct-meas"><div className="t">{x.what}</div>
+            <div className="vs"><span><small>{tr("Us")}</small><b>{x.us}</b></span><span className="sep">vs</span><span><small>{tr("Tier 1")}</small><b>{x.them}</b></span></div>
+            <div className="xs muted">{x.basis}</div></div>)}
+        </div>)}</div>
+      </div>
+
+      <div className="card"><h3 className="ct-h">{tr("What the evidence says")}</h3>
+        <div className="ct-insights">{d.briefing.map((x: any, i: number) => <article key={i} className="ct-ins">
+          <div className="ct-ins-h"><span className="n">{i + 1}</span><h4>{x.title}</h4></div>
+          <p className="ct-ins-act"><b>{tr("For us:")}</b> {x.action}</p>
+          <button type="button" className="ct-more" aria-expanded={open === i} onClick={() => setOpen(open === i ? null : i)}>{open === i ? tr("Hide the evidence") : tr("Show the evidence")}</button>
+          {open === i && <p className="small ct-ins-ev">{x.text}</p>}
+        </article>)}</div>
+      </div>
+
+      <div className="card"><div className="ct-row spread"><h3 className="ct-h">{tr("Tier 1 at a glance")}</h3><Link className="small" to="/competitors/compare">{tr("Compare side by side")}</Link></div>
+        <p className="xs muted">{tr("The seven firms most likely to meet us in a deal, by overlap score.")}</p>
+        <div className="ct-t1">{t1.map((c: Comp) => { const last = c.moves[0]; return <Link key={c.key} to={`/competitors/profile/${c.key}`} className="ct-t1c">
+          <div className="ct-row spread"><span className="nm"><Dot c={c} /> {c.name}</span><b className="sc">{c.overlap.total}</b></div>
+          <Overlap o={c.overlap} />
+          <div className="xs muted ct-arch">{c.archetype}</div>
+          <div className="ct-row"><Trend t={c.revenue?.trend} /></div>
+          <div className="ct-last">{last ? <><span className="ct-age">{fmtD(last.date)}</span><span className="h">{last.headline}</span></> : <span className="xs muted">{tr("No dated move")}</span>}</div>
+        </Link>; })}</div>
+      </div>
+
+      <div className="card"><div className="ct-row spread"><h3 className="ct-h">{tr("Biggest moves in the last 12 months")}</h3><Link className="small" to="/competitors/moves">{tr("All moves")}</Link></div>
+        <div className="ct-tl">{recent.map((m: any) => <MoveRow key={m.id} m={m} c={m.c} asOf={asOf} />)}</div>
       </div>
     </section>
   );
 }
 
 function MoveRow({ m, c, asOf, types }: { m: Move; c?: Comp; asOf: string; types?: Record<string, any> }) {
-  return <div className="ct-mv"><span className="when">{fmtD(m.date)}</span><div>
+  return <div className={`ct-mv imp${m.impact}`}><span className="when">{fmtD(m.date)}</span><div className="body">
     <div className="ct-row">{c && <><Dot c={c} /><ProfileLink c={c}><b>{c.name}</b></ProfileLink></>}<Imp n={m.impact} />{types && <span className="ct-chip">{tr(types[m.type]?.label || m.type)}</span>}</div>
     <div className="what">{m.headline}</div>
-    {m.detail && <p className="small">{m.detail}</p>}
     {m.sowhat && <p className="ct-so"><b>{tr("So what:")}</b> {m.sowhat}</p>}
+    {m.detail && <details className="ct-det"><summary>{tr("Details")}</summary><p className="small">{m.detail}</p></details>}
     <Src f={{ source: m.source, grade: m.grade }} asOf={asOf} />
   </div></div>;
 }
@@ -302,9 +338,10 @@ function Profile({ c, d, asOf, reload }: { c: Comp; d: any; asOf: string; reload
           <h2>{c.name}</h2>
           <p className="small"><a href={c.url} target="_blank" rel="noopener noreferrer">{host(c.url)}</a> · {c.hq}{c.founded ? ` · ${tr("founded")} ${c.founded}` : ""}</p>
         </div>{c.overlap && <div className="ct-score"><span className="ct-label">{tr("Overlap with us")}</span><b>{c.overlap.total}</b><span className="xs muted">{tr("out of 100")}</span></div>}</div>
+        {c.overlap && <Overlap o={c.overlap} big />}
         <p className="ct-one">{c.oneLiner}</p>
         {c.relevance && <p className="small muted">{c.relevance}</p>}
-        {c.tierWhy && <p className="small"><b>{tr("Why tier 1:")}</b> {c.tierWhy}</p>}
+        {c.tierWhy && <details className="ct-det"><summary>{tr("Why this tier")}</summary><p className="small">{c.tierWhy}</p></details>}
         {c.edited_by && <p className="xs muted">{tr("Last changed by {}", c.edited_by)}</p>}
         {c.hero?.value && <div className="mt-2"><div className="ct-label">{tr("Homepage headline, word for word")}</div><blockquote className="ct-hero">“{c.hero.value}”</blockquote><Src f={c.hero} asOf={asOf} /></div>}
       </div>
@@ -312,17 +349,29 @@ function Profile({ c, d, asOf, reload }: { c: Comp; d: any; asOf: string; reload
         {fact("Clutch", c.clutch ? { value: `${c.clutch.rating ?? "–"} · ${tr("{} reviews", c.clutch.reviews ?? "–")} · ${c.clutch.rate || ""}`, source: c.clutch.source, asOf: c.clutch.asOf, grade: c.clutch.grade } : null)}
         {fact("Open roles on justjoin.it", c.jobs || { value: tr("Not counted") })}</div>
       {d.can?.manage && c.tier !== 0 && <EditFacts c={c} reload={reload} />}
+      {c.tier !== 0 && hasCard && <div className="card"><h3 className="ct-h">{tr("Battlecard")}</h3>
+        {c.quickDismiss && <div className="ct-kill"><div className="ct-label">{tr("If the buyer mentions them, say")}</div><p>{c.quickDismiss}</p></div>}
+        <div className="ct-bc4">
+          <div className="q pick"><div className="ct-label">{tr("Why buyers pick them")}</div>{ul(c.strengths)}</div><div className="q weak"><div className="ct-label">{tr("Where they are weaker")}</div>{ul(c.weaknesses)}</div>
+          <div className="q win"><div className="ct-label">{tr("How we compete")}</div>{ul(c.howWeWin)}</div><div className="q ask"><div className="ct-label">{tr("Questions to ask the buyer")}</div>{ul(c.questions)}</div>
+        </div>
+        <div className="ct-label mt-2">{tr("Track record against them")}</div>
+        <p className="small">{!h ? tr("No Pipedrive deal names them yet. Record it on the Head-to-head tab.") : h.win_rate == null
+          ? tr("Met in {} deals: {} won, {} lost. A win rate shows after {} decided deals.", h.met, h.won, h.lost, d.headToHead.min_decided)
+          : tr("Met in {} deals: {} won, {} lost, win rate {}%.", h.met, h.won, h.lost, Math.round(h.win_rate * 100))}</p>
+        <p className="ct-note">{tr("Internal draft for sellers. Before any of this reaches a prospect, check it against the brand claims register: only cleared claims, no client names, no unapproved numbers.")}</p>
+      </div>}
       <div className="ct-g2">
         <div className="card"><h3 className="ct-h">{tr("Offer")}</h3>
-          <div className="ct-label">{tr("Services")}</div><p className="small">{(c.services || []).join(", ") || tr("Not found")}</p>
-          <div className="ct-label">{tr("Engagement models")}</div><p className="small">{(c.models || []).join(", ") || tr("Not found")}</p>
+          <div className="ct-label">{tr("Services")}</div><Chips a={c.services} />
+          <div className="ct-label">{tr("Engagement models")}</div><Chips a={c.models} />
           {c.entryOffer && <><div className="ct-label">{tr("First step they sell")}</div><p className="small">{c.entryOffer}</p></>}
           <div className="ct-label">{tr("AI")} <Meter n={c.ai?.score ?? 0} /></div><p className="small">{c.ai?.value || tr("Not found")}</p><Src f={c.ai} asOf={asOf} /></div>
         <div className="card"><h3 className="ct-h">{tr("Focus")}</h3>
           <div className="ct-label">{tr("Financial services")} <Meter n={c.fs?.score ?? 0} /></div><p className="small">{c.fs?.note || tr("Not found")}</p><Src f={c.fs} asOf={asOf} />
           <div className="ct-label mt-2">{tr("Markets")}</div><Markets c={c} />{c.offices && <p className="small">{c.offices}</p>}
-          <div className="ct-label">{tr("Named clients")}</div><p className="small">{(c.clients || []).join(", ") || tr("Not found")}</p>
-          <div className="ct-label">{tr("Certifications and partners")}</div><p className="small">{(c.certs || []).join(", ") || tr("Not found")}</p></div>
+          <div className="ct-label">{tr("Named clients")}</div><Chips a={c.clients} />
+          <div className="ct-label">{tr("Certifications and partners")}</div><Chips a={c.certs} /></div>
       </div>
       {c.tier !== 0 && <div className="card"><h3 className="ct-h">{tr("Where we meet them")}</h3>
         {!pres ? <Skeleton rows={2} /> : pres.error ? <p className="small muted">{tr("Could not load this list.")}</p> : <>
@@ -335,18 +384,6 @@ function Profile({ c, d, asOf, reload }: { c: Comp; d: any; asOf: string; reload
             {pres.awards.slice(0, 20).map((a: any) => <tr key={a.notice_id}><td className="small">{a.url ? <a href={a.url} target="_blank" rel="noopener noreferrer">{a.buyer}</a> : a.buyer} ({a.country})</td><td className="small">{fmtD(a.awarded_on)}</td>
               <td className="small">{fmtD(a.expected_end)}{a.end_basis === "assumed" ? ` (${tr("estimate")})` : ""}</td></tr>)}</tbody></table>}
         </>}
-      </div>}
-      {c.tier !== 0 && hasCard && <div className="card"><h3 className="ct-h">{tr("Battlecard")}</h3>
-        {c.quickDismiss && <><div className="ct-label">{tr("If the buyer mentions them")}</div><p className="ct-so">{c.quickDismiss}</p></>}
-        <div className="ct-bc">
-          <div><div className="ct-label">{tr("Why buyers pick them")}</div>{ul(c.strengths)}</div><div><div className="ct-label">{tr("Where they are weaker")}</div>{ul(c.weaknesses)}</div>
-          <div className="win"><div className="ct-label">{tr("How we compete")}</div>{ul(c.howWeWin)}</div><div><div className="ct-label">{tr("Questions to ask the buyer")}</div>{ul(c.questions)}</div>
-        </div>
-        <div className="ct-label mt-2">{tr("Track record against them")}</div>
-        <p className="small">{!h ? tr("No Pipedrive deal names them yet. Record it on the Head-to-head tab.") : h.win_rate == null
-          ? tr("Met in {} deals: {} won, {} lost. A win rate shows after {} decided deals.", h.met, h.won, h.lost, d.headToHead.min_decided)
-          : tr("Met in {} deals: {} won, {} lost, win rate {}%.", h.met, h.won, h.lost, Math.round(h.win_rate * 100))}</p>
-        <p className="ct-note">{tr("Internal draft for sellers. Before any of this reaches a prospect, check it against the brand claims register: only cleared claims, no client names, no unapproved numbers.")}</p>
       </div>}
       <div className="card"><h3 className="ct-h">{tr("Moves")}</h3>
         {c.moves.length ? c.moves.map((m: Move) => <MoveRow key={m.id} m={m} asOf={asOf} types={d.moveTypes} />) : <p className="small muted">{tr("No dated moves found in the last 18 months.")}</p>}

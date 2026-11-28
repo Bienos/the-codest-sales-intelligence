@@ -258,12 +258,37 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
                  "cycle_days": sum(st["used"]["days"] for st in inp["stages"][inp["inbound_entry"]["index"]:])},
         "won_so_far": h.won_in_year, "outbound": out,
         "health": {**h.health, "first_event_at": h.health["first_event_at"].isoformat() if h.health["first_event_at"] else None},
+        "sources": data_sources(conn, app_settings),
         "settings": {k: v for k, v in s.items()}, "log": forecast_log(conn, inp["year"]),
     }
     with _LOCK:
         _CACHE.clear()
         _CACHE[key] = (time.time(), payload)
     return payload
+
+
+def _iso(v: Any) -> str | None:
+    return v.isoformat() if v else None
+
+
+def data_sources(conn: Conn, app_settings: Any) -> dict[str, Any]:
+    """Is the forecast fed? When Pipedrive and lemlist last delivered, how far the history backfill is, whether webhooks arrive."""
+    r = q1(conn, """SELECT (SELECT max(synced_at) FROM crm_deals) deals_synced, (SELECT count(*) FROM crm_deals) deals,
+                           (SELECT count(*) FROM crm_deals WHERE history_backfilled_at IS NOT NULL) backfilled,
+                           (SELECT count(*) FROM deal_stage_transitions) transitions,
+                           (SELECT max(received_at) FROM crm_webhook_inbox) hook_last,
+                           (SELECT count(*) FROM crm_webhook_inbox WHERE received_at > now() - interval '7 days') hook_week,
+                           (SELECT count(*) FROM crm_webhook_inbox WHERE status='quarantined' AND received_at > now() - interval '7 days') hook_bad,
+                           (SELECT count(*) FROM crm_webhook_inbox WHERE status='received') hook_waiting,
+                           (SELECT max(received_at) FROM lemlist_activities) lemlist_last,
+                           (SELECT max(made_at) FROM forecast_log) logged_last""") or {}
+    return {"pipedrive": {"configured": bool(getattr(app_settings, "pipedrive_api_token", None) and getattr(app_settings, "pipedrive_domain", None)),
+                          "last_sync": _iso(r.get("deals_synced")), "deals": int(r.get("deals") or 0)},
+            "history": {"deals": int(r.get("deals") or 0), "read": int(r.get("backfilled") or 0), "changes": int(r.get("transitions") or 0)},
+            "webhook": {"last_event": _iso(r.get("hook_last")), "last_7_days": int(r.get("hook_week") or 0), "failed_7_days": int(r.get("hook_bad") or 0),
+                        "waiting": int(r.get("hook_waiting") or 0)},
+            "lemlist": {"configured": bool(getattr(app_settings, "lemlist_api_key", None)), "last_activity": _iso(r.get("lemlist_last"))},
+            "last_saved_forecast": _iso(r.get("logged_last"))}
 
 
 def forecast_log(conn: Conn, year: int, limit: int = 60) -> list[dict[str, Any]]:

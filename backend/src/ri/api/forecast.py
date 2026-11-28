@@ -67,10 +67,11 @@ CLEARABLE = {"year", "currency", "pipeline_id", "outbound_entry_stage_id", "inbo
 
 def register(app: FastAPI) -> None:
     @app.get("/api/forecast")
-    def get_forecast(request: Request, p: Principal = Depends(require("forecast.read"))):
+    def get_forecast(request: Request, fresh: bool = False, p: Principal = Depends(require("forecast.read"))):
         from ..forecast.service import build
-        with request.app.state.db.tx() as conn:
-            return build(conn, request.app.state.settings)
+        with request.app.state.db.tx() as conn:          # fresh: recalculate now instead of using the last 10 minutes' result
+            out = build(conn, request.app.state.settings, use_cache=not fresh)
+            return {**out, "can": {"manage": p.can("forecast.manage"), "sync": p.can("admin.jobs") or p.role == "sales_manager"}}
 
     @app.put("/api/forecast/settings")
     def put_settings(body: ForecastSettingsIn, request: Request, p: Principal = Depends(require("forecast.manage"))):
@@ -87,4 +88,4 @@ def register(app: FastAPI) -> None:
                   detail={"changed": sorted(k for k in after if after.get(k) != before.get(k))})
             payload = build(conn, request.app.state.settings, use_cache=False)
             log_forecast(conn, payload, "settings_saved")
-            return payload
+            return {**payload, "can": {"manage": True, "sync": p.can("admin.jobs") or p.role == "sales_manager"}}

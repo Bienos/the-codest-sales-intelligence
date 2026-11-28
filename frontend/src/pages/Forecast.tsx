@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, fmtDate, put } from "../api";
+import { api, fmtDate, post, put } from "../api";
 import { tr } from "../locale";
-import { Badge, Err, PageHeader, Skeleton } from "../components/ui";
+import { Badge, Err, PageHeader, Skeleton, Tabs } from "../components/ui";
 import "../styles/forecast.css";
 
 // Revenue forecast (backend: ri/forecast). Every number on the page comes from GET /api/forecast; managers change the assumptions here.
@@ -33,7 +33,7 @@ function niceStep(v: number) { const e = Math.pow(10, Math.floor(Math.log10(v)))
 function QuarterChart({ d }: { d: any }) {
   const [ref, w] = useWidth<HTMLDivElement>();
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
-  const b = d.result.buckets as any[]; const labels = d.buckets.map((x: any) => x.label);
+  const b = d.result.buckets as any[]; const labels = d.buckets.map((x: any, i: number) => (i === 0 ? tr("Before {}", d.year) : x.label));
   const showBefore = b[0].mean > 0.5;
   const idx = showBefore ? [0, 1, 2, 3, 4] : [1, 2, 3, 4];
   const h = 300, ml = 52, mr = 12, mt = 20, mb = 34, iw = Math.max(200, w) - ml - mr, ih = h - mt - mb;
@@ -71,19 +71,6 @@ function QuarterChart({ d }: { d: any }) {
       {tip && <div className="fc-tip" role="tooltip" style={{ left: Math.min(tip.x + 12, window.innerWidth - 280), top: Math.max(8, tip.y - 70) }}>{tip.text}</div>}
     </div>
   );
-}
-
-function Tiles({ d }: { d: any }) {
-  const p = d.pipeline;
-  const tiles: [string, string, string][] = [
-    [tr("Expected deals won"), d.result.wins.toFixed(1), tr("Average of the simulated years")],
-    [tr("Open pipeline"), `${money(p.open_value)} ${d.currency}`, `${p.deals} ${tr("open deals")}${p.without_value ? ` · ${tr("{} valued at the average", p.without_value)}` : ""}${p.coverage != null ? ` · ${p.coverage.toFixed(1)}× ${tr("target")}` : ""}`],
-    [tr("Weighted open pipeline"), `${money(p.weighted)} ${d.currency}`, p.weighted_share_of_target != null ? tr("{} of target; the rest must come from new deals", pct(p.weighted_share_of_target * 100)) : tr("Each deal times its chance of winning")],
-    [tr("Sales cycle"), `${Math.round(d.flow.cycle_days)} ${tr("days")}`, tr("Sum of stage medians, first stage to won")],
-    [tr("New deals per month"), (d.flow.outbound_deals_per_month + d.flow.inbound_deals_per_month).toFixed(1), tr("{} from outbound, {} inbound", d.flow.outbound_deals_per_month.toFixed(1), d.flow.inbound_deals_per_month.toFixed(1))],
-    [tr("Won so far in {}", d.year), `${money(d.won_so_far.value)} ${d.currency}`, `${d.won_so_far.n} ${tr("deals marked won in Pipedrive")}`],
-  ];
-  return <div className="fc-kpis">{tiles.map(([l, v, n]) => <div className="fc-tile" key={l}><div className="fc-label">{l}</div><div className="fc-val">{v}</div><div className="fc-note">{n}</div></div>)}</div>;
 }
 
 function Funnel({ d }: { d: any }) {
@@ -232,84 +219,128 @@ function Assumptions({ d, onSaved }: { d: any; onSaved: (x: any) => void }) {
   );
 }
 
+function ago(iso?: string | null): string {
+  if (!iso) return tr("never");
+  const m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  return m < 1 ? tr("just now") : m < 60 ? tr("{} min ago", m) : m < 48 * 60 ? tr("{} h ago", Math.round(m / 60)) : tr("{} days ago", Math.round(m / 1440));
+}
+const hoursSince = (iso?: string | null) => (iso ? (Date.now() - new Date(iso).getTime()) / 3600000 : Infinity);
+
+/** Is the forecast fed? One card per source: a status dot, what happened last, and what to do when it is not fine. */
+function Sources({ d }: { d: any }) {
+  const s = d.sources; if (!s) return null;
+  const pdOk = s.pipedrive.configured && hoursSince(s.pipedrive.last_sync) < 2;
+  const hist = s.history, done = hist.deals > 0 && hist.read >= hist.deals;
+  const cards: { k: string; title: string; kind: string; status: string; main: string; sub: string; bar?: number }[] = [
+    { k: "pd", title: tr("Pipedrive"), kind: !s.pipedrive.configured ? "bad" : pdOk ? "ok" : "warn", status: !s.pipedrive.configured ? tr("Not connected") : pdOk ? tr("Up to date") : tr("Late"),
+      main: s.pipedrive.configured ? tr("Synced {}", ago(s.pipedrive.last_sync)) : tr("Add PIPEDRIVE_API_TOKEN in Render"), sub: tr("{} deals mirrored; syncs every hour", s.pipedrive.deals.toLocaleString()) },
+    { k: "hist", title: tr("Stage history"), kind: done ? "ok" : hist.deals ? "info" : "warn", status: done ? tr("Complete") : hist.deals ? tr("Reading") : tr("Waiting"),
+      main: tr("{} of {} deals read", hist.read.toLocaleString(), hist.deals.toLocaleString()), sub: tr("{} stage changes recorded", hist.changes.toLocaleString()), bar: hist.deals ? hist.read / hist.deals : 0 },
+    { k: "hook", title: tr("Live updates"), kind: s.webhook.failed_7_days ? "bad" : s.webhook.last_event ? "ok" : "info", status: s.webhook.failed_7_days ? tr("{} failed", s.webhook.failed_7_days) : s.webhook.last_event ? tr("Working") : tr("Waiting for a change"),
+      main: s.webhook.last_event ? tr("Last deal change {}", ago(s.webhook.last_event)) : tr("No deal has changed since it was switched on"), sub: tr("{} changes in 7 days", s.webhook.last_7_days) },
+    { k: "lem", title: "lemlist", kind: !s.lemlist.configured ? "bad" : hoursSince(s.lemlist.last_activity) < 26 ? "ok" : "warn", status: !s.lemlist.configured ? tr("Not connected") : hoursSince(s.lemlist.last_activity) < 26 ? tr("Up to date") : tr("Quiet"),
+      main: tr("Last activity {}", ago(s.lemlist.last_activity)), sub: tr("Sends, replies and bounces, read every hour") },
+  ];
+  return (
+    <section className="fc-sources" aria-label={tr("Where the numbers come from")}>
+      {cards.map((c) => <div key={c.k} className={`fc-src ${c.kind}`}>
+        <div className="fc-src-h"><span>{c.title}</span><Badge kind={c.kind}>{c.status}</Badge></div>
+        <div className="fc-src-m">{c.main}</div>
+        {c.bar != null && <div className="fc-src-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(c.bar * 100)}><i style={{ width: `${c.bar * 100}%` }} /></div>}
+        <div className="fc-src-s">{c.sub}</div>
+      </div>)}
+    </section>
+  );
+}
+
 export default function Forecast({ canManage }: { canManage: boolean }) {
   const [d, setD] = useState<any>(null); const [err, setErr] = useState<unknown>(null); const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    const req = new AbortController(); setErr(null);
-    api("/api/forecast", { signal: req.signal }).then(setD).catch((e) => { if (!req.signal.aborted) setErr(e); });
-    return () => req.abort();
-  }, [retry]);
-  if (err) return <><PageHeader eyebrow="Revenue" title="Forecast" /><Err e={err} onRetry={() => setRetry((n) => n + 1)} /></>;
+  const [tab, setTab] = useState("quarters"); const [busy, setBusy] = useState(""); const [note, setNote] = useState("");
+  const load = (fresh = false) => api(`/api/forecast${fresh ? "?fresh=true" : ""}`).then((x) => { setD(x); setErr(null); }).catch(setErr);
+  useEffect(() => { void load(); }, [retry]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const recalc = async () => { setBusy("recalc"); setNote(""); await load(true); setBusy(""); setNote(tr("Recalculated with the latest data.")); };
+  const sync = async () => {
+    setBusy("sync"); setNote("");
+    try { await post("/api/people/sync/pipedrive"); setNote(tr("Pipedrive sync started. It takes a minute or two; then press Recalculate.")); } catch (e) { setErr(e); } finally { setBusy(""); }
+  };
+  if (err && !d) return <><PageHeader eyebrow="Revenue" title="Forecast" /><Err e={err} onRetry={() => setRetry((n) => n + 1)} /></>;
   if (!d) return <><PageHeader eyebrow="Revenue" title="Forecast" /><Skeleton rows={6} /></>;
   const y = d.result.year, chance = d.result.chance_of_target, h = d.health;
+  const b = d.result.buckets.slice(1) as any[];
+  const openShare = y.mean > 0 ? b.reduce((a: number, q: any) => a + q.open, 0) / y.mean : 0;
+  const tabs = [{ key: "quarters", label: tr("By quarter") }, { key: "funnel", label: tr("Funnel") }, { key: "drivers", label: tr("What moves it") },
+    { key: "outbound", label: tr("Outbound") }, { key: "deals", label: tr("Deals and history") }, { key: "assumptions", label: tr("Assumptions") }];
   return (
     <>
-      <PageHeader eyebrow="Revenue" title="Forecast" sub={tr("Closed-won revenue for {}, simulated {} times from the open Pipedrive pipeline and the deals outbound and inbound are expected to create.", d.year, d.runs.toLocaleString())} />
+      <PageHeader eyebrow="Revenue" title="Forecast" sub={tr("Closed-won revenue for {}: the open Pipedrive pipeline plus the deals outbound and inbound should bring, played out {} times.", d.year, String(d.runs))}
+        right={<div className="row fc-actions">
+          <button type="button" onClick={() => void recalc()} disabled={!!busy}>{busy === "recalc" ? tr("Recalculating") : tr("Recalculate now")}</button>
+          {d.can?.sync && <button type="button" onClick={() => void sync()} disabled={!!busy || !d.sources?.pipedrive?.configured} title={d.sources?.pipedrive?.configured ? undefined : tr("Pipedrive is not connected")}>{busy === "sync" ? tr("Starting") : tr("Sync Pipedrive")}</button>}
+        </div>} />
+      {note && <p className="small fc-note-line" role="status">{note}</p>}
+      <Sources d={d} />
       {h.warnings.length > 0 && <div className="callout fc-warn">{h.warnings.map((w: string) => <p key={w} className="m-0">{tr(w)}</p>)}</div>}
-      <div className="fc-top">
-        <section className="card fc-hero" aria-labelledby="fc-hero-l">
-          <div className="fc-label" id="fc-hero-l">{tr("Likely closed-won revenue in {} (median)", d.year)}</div>
+
+      <section className="fc-summary" aria-labelledby="fc-hero-l">
+        <div className="card fc-hero">
+          <div className="fc-label" id="fc-hero-l">{tr("Most likely closed-won revenue in {}", d.year)}</div>
           <div className="fc-big">{money(y.p50)}<small>{d.currency}</small></div>
-          <p className="small m-0">{tr("8 in 10 simulated years land between {} and {}. Average {}.", money(y.p10), money(y.p90), money(y.mean))}</p>
-          {chance != null ? <>
-            <div className="fc-meter" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(chance * 100)} aria-label={tr("Chance of reaching the target")}><i style={{ width: `${chance * 100}%` }} /></div>
-            <p className="small m-0">{tr("Chance of reaching the {} target: {}", money(d.target), pct(chance * 100))}</p>
-          </> : <p className="small muted">{canManage ? tr("Set a target under Assumptions to see the chance of reaching it.") : tr("No target set yet.")}</p>}
-          {d.stages_source === "placeholder" && <p className="small mt-2 mb-0"><Badge kind="warn">{tr("Placeholder stages")}</Badge></p>}
-        </section>
-        <Tiles d={d} />
-      </div>
-
-      <section className="card" aria-labelledby="fc-q">
-        <div className="row spread"><h2 id="fc-q" className="h-sub m-0">{tr("Closed-won revenue by quarter")}</h2><span className="small muted">{tr("As of {}", fmtDate(d.as_of))}</span></div>
-        <div className="fc-legend">
-          <span><i className="fc-sw fc-open-sw" />{tr("Open pipeline today")}</span><span><i className="fc-sw fc-new-sw" />{tr("Deals not yet created")}</span>
-          <span><svg width="12" height="14" aria-hidden="true"><path className="fc-whisk" d="M6,1V13M2,1H10M2,13H10" /></svg>{tr("8 in 10 years fall in this range")}</span>
-          {d.target > 0 && <span><svg width="18" height="10" aria-hidden="true"><line className="fc-pace" x1="0" x2="18" y1="5" y2="5" /></svg>{tr("Even pace to target ({} a quarter)", money(d.target / 4))}</span>}
-        </div>
-        <QuarterChart d={d} />
-        <details className="mt-2"><summary className="small">{tr("Table view")}</summary>
-          <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Revenue by quarter")}>
-            <table className="fc-table"><thead><tr><th>{tr("Period")}</th><th>{tr("Average")}</th><th>{tr("Open pipeline")}</th><th>{tr("New deals")}</th><th>P10</th><th>{tr("Median")}</th><th>P90</th></tr></thead>
-              <tbody>{d.result.buckets.map((q: any, i: number) => <tr key={i}><td>{d.buckets[i].label}{i === 0 ? ` (${tr("not in the year total")})` : ""}</td><td>{money(q.mean)}</td><td>{money(q.open)}</td><td>{money(q.new)}</td><td>{money(q.p10)}</td><td>{money(q.p50)}</td><td>{money(q.p90)}</td></tr>)}</tbody>
-              <tfoot><tr><td>{d.year}</td><td>{money(y.mean)}</td><td /><td /><td>{money(y.p10)}</td><td>{money(y.p50)}</td><td>{money(y.p90)}</td></tr></tfoot></table>
+          <div className="fc-range" aria-label={tr("Range")}>
+            <span>{money(y.p10)}</span><span className="fc-range-bar"><i style={{ left: `${y.p90 ? (y.p10 / y.p90) * 100 : 0}%`, right: 0 }} /><b style={{ left: `${y.p90 ? (y.p50 / y.p90) * 100 : 0}%` }} /></span><span>{money(y.p90)}</span>
           </div>
-          <p className="small muted">{tr("Quarter ranges do not add up to the year's range: a bad quarter and a good one rarely fall in the same simulated year. Currency: {}.", d.currency)}</p>
-        </details>
+          <p className="fc-plain">{tr("8 in 10 simulated years land between {} and {}. About {} of it comes from deals already open; the rest from deals not created yet.", money(y.p10), money(y.p90), pct(openShare * 100))}</p>
+        </div>
+        <div className="fc-tiles3">
+          <div className="fc-tile"><div className="fc-label">{tr("Chance of hitting the target")}</div>
+            {chance != null ? <><div className="fc-val">{pct(chance * 100)}</div><div className="fc-meter"><i style={{ width: `${chance * 100}%` }} /></div><div className="fc-note">{tr("Target {} {}", money(d.target), d.currency)}</div></>
+              : <><div className="fc-val muted">–</div><div className="fc-note">{canManage ? <button type="button" className="linklike" onClick={() => setTab("assumptions")}>{tr("Set a target")}</button> : tr("No target set yet.")}</div></>}</div>
+          <div className="fc-tile"><div className="fc-label">{tr("Deals we expect to win")}</div><div className="fc-val">{d.result.wins.toFixed(1)}</div><div className="fc-note">{tr("in {}; {} won so far this year", d.year, d.won_so_far.n)}</div></div>
+          <div className="fc-tile"><div className="fc-label">{tr("Open pipeline, weighted")}</div><div className="fc-val">{money(d.pipeline.weighted)}</div><div className="fc-note">{tr("{} open deals worth {} in total", d.pipeline.deals, money(d.pipeline.open_value))}</div></div>
+        </div>
       </section>
 
-      <div className="fc-two">
-        <section className="card" aria-labelledby="fc-f">
-          <h2 id="fc-f" className="h-sub mt-0">{tr("Where deals drop out")}</h2>
-          <p className="small muted mt-0">{tr("Twelve months of new deals at the rates in use. The rate in use blends what Pipedrive history measured with the prior, weighted by how many deals were decided.")}</p>
-          <Funnel d={d} />
-        </section>
-        <section className="card" aria-labelledby="fc-s">
-          <h2 id="fc-s" className="h-sub mt-0">{tr("What moves the number")}</h2>
-          <p className="small muted mt-0">{tr("Change in average revenue for the year when one input is 20% lower or higher.")} <i className="fc-sw fc-up-sw" /> {tr("raises it")} <i className="fc-sw fc-down-sw" /> {tr("lowers it")}</p>
-          <Sensitivity d={d} />
-        </section>
+      <div className="card fc-tabs">
+        <Tabs label="Forecast details" items={tabs} value={tab} onChange={setTab}>
+          {tab === "quarters" && <>
+            <div className="fc-legend">
+              <span><i className="fc-sw fc-open-sw" />{tr("Open pipeline today")}</span><span><i className="fc-sw fc-new-sw" />{tr("Deals not yet created")}</span>
+              <span><svg width="12" height="14" aria-hidden="true"><path className="fc-whisk" d="M6,1V13M2,1H10M2,13H10" /></svg>{tr("8 in 10 years fall in this range")}</span>
+              {d.target > 0 && <span><svg width="18" height="10" aria-hidden="true"><line className="fc-pace" x1="0" x2="18" y1="5" y2="5" /></svg>{tr("Even pace to target ({} a quarter)", money(d.target / 4))}</span>}
+            </div>
+            <QuarterChart d={d} />
+            <div className="table-wrap mt-2" tabIndex={0} role="region" aria-label={tr("Revenue by quarter")}>
+              <table className="fc-table"><thead><tr><th>{tr("Period")}</th><th>{tr("Average")}</th><th>{tr("Open pipeline")}</th><th>{tr("New deals")}</th><th>P10</th><th>{tr("Median")}</th><th>P90</th></tr></thead>
+                <tbody>{d.result.buckets.map((q: any, i: number) => <tr key={i}><td>{i === 0 ? `${tr("Before {}", d.year)} (${tr("not in the year total")})` : d.buckets[i].label}</td><td>{money(q.mean)}</td><td>{money(q.open)}</td><td>{money(q.new)}</td><td>{money(q.p10)}</td><td>{money(q.p50)}</td><td>{money(q.p90)}</td></tr>)}</tbody>
+                <tfoot><tr><td>{d.year}</td><td>{money(y.mean)}</td><td /><td /><td>{money(y.p10)}</td><td>{money(y.p50)}</td><td>{money(y.p90)}</td></tr></tfoot></table>
+            </div>
+            <p className="small muted">{tr("Quarter ranges do not add up to the year's range: a bad quarter and a good one rarely fall in the same simulated year. Currency: {}.", d.currency)}</p>
+          </>}
+          {tab === "funnel" && <>
+            <div className="fc-kv"><span><b>{(d.flow.outbound_deals_per_month + d.flow.inbound_deals_per_month).toFixed(1)}</b> {tr("new deals a month")}</span>
+              <span><b>{Math.round(d.flow.cycle_days)}</b> {tr("days from first stage to won")}</span><span><b>{d.pipeline.parked.n}</b> {tr("parked deals, not counted")}</span></div>
+            <p className="small muted mt-0">{tr("Twelve months of new deals at the rates in use. The rate in use blends what Pipedrive history measured with the prior, weighted by how many deals were decided.")}</p>
+            <Funnel d={d} />
+          </>}
+          {tab === "drivers" && <>
+            <p className="small muted mt-0">{tr("Change in average revenue for the year when one input is 20% lower or higher.")} <i className="fc-sw fc-up-sw" /> {tr("raises it")} <i className="fc-sw fc-down-sw" /> {tr("lowers it")}</p>
+            <Sensitivity d={d} />
+          </>}
+          {tab === "outbound" && <Outbound d={d} />}
+          {tab === "deals" && <div className="fc-two">
+            <div><h3 className="fc-h3 mt-0">{tr("Deals taking longer than usual")}</h3>
+              {d.pipeline.aging.length === 0 ? <p className="small muted">{tr("No open deal has been in its stage for more than 1.5 times the usual time.")}</p> :
+                <ul className="fc-aging">{d.pipeline.aging.map((a: any) => <li key={a.crm_id}><b>{a.title}</b><span className="small muted">{a.stage} · {tr("{} days", a.days)} · {money(a.value)}</span></li>)}</ul>}</div>
+            <div><h3 className="fc-h3 mt-0">{tr("Earlier forecasts for {}", d.year)}</h3>
+              {d.log.length === 0 ? <p className="small muted">{tr("The first forecast is saved tonight; from then on each day's forecast is kept so it can be checked against what closed.")}</p> :
+                <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Earlier forecasts")}><table className="fc-table"><thead><tr><th>{tr("Made on")}</th><th>P10</th><th>{tr("Median")}</th><th>P90</th></tr></thead>
+                  <tbody>{d.log.slice(-10).reverse().map((l: any, i: number) => <tr key={i}><td>{fmtDate(l.made_on)}{l.trigger === "settings_saved" ? ` · ${tr("after a change")}` : ""}</td><td>{money(l.p10)}</td><td>{money(l.p50)}</td><td>{money(l.p90)}</td></tr>)}</tbody></table></div>}</div>
+          </div>}
+          {tab === "assumptions" && <>
+            <p className="small muted mt-0">{tr("Deals in the data: {}, with history: {}, history read from Pipedrive: {}.", h.deals, h.deals_with_history, h.deals_backfilled)} {h.first_event_at && tr("History since {}.", fmtDate(h.first_event_at))}</p>
+            {canManage ? <Assumptions d={d} onSaved={setD} /> : <p className="small">{tr("Sales managers and administrators can change these assumptions.")}</p>}
+          </>}
+        </Tabs>
       </div>
-
-      <div className="fc-two">
-        <section className="card" aria-labelledby="fc-o"><h2 id="fc-o" className="h-sub mt-0">{tr("Outbound")}</h2><Outbound d={d} /></section>
-        <section className="card" aria-labelledby="fc-a">
-          <h2 id="fc-a" className="h-sub mt-0">{tr("Deals taking longer than usual")}</h2>
-          {d.pipeline.aging.length === 0 ? <p className="small muted">{tr("No open deal has been in its stage for more than 1.5 times the usual time.")}</p> :
-            <ul className="fc-aging">{d.pipeline.aging.map((a: any) => <li key={a.crm_id}><b>{a.title}</b><span className="small muted">{a.stage} · {tr("{} days", a.days)} · {money(a.value)}</span></li>)}</ul>}
-          {d.pipeline.parked.n > 0 && <p className="small">{tr("{} deals worth {} are parked and not counted.", d.pipeline.parked.n, money(d.pipeline.parked.value))}</p>}
-          <h3 className="fc-h3">{tr("Earlier forecasts for {}", d.year)}</h3>
-          {d.log.length === 0 ? <p className="small muted">{tr("The first forecast is saved tonight; from then on each day's forecast is kept so it can be checked against what closed.")}</p> :
-            <div className="table-wrap" tabIndex={0} role="region" aria-label={tr("Earlier forecasts")}><table className="fc-table"><thead><tr><th>{tr("Made on")}</th><th>P10</th><th>{tr("Median")}</th><th>P90</th></tr></thead>
-              <tbody>{d.log.slice(-8).reverse().map((l: any, i: number) => <tr key={i}><td>{fmtDate(l.made_on)}{l.trigger === "settings_saved" ? ` · ${tr("after a change")}` : ""}</td><td>{money(l.p10)}</td><td>{money(l.p50)}</td><td>{money(l.p90)}</td></tr>)}</tbody></table></div>}
-        </section>
-      </div>
-
-      <section className="card" aria-labelledby="fc-set">
-        <h2 id="fc-set" className="h-sub mt-0">{tr("Assumptions")}</h2>
-        <p className="small muted mt-0">{tr("Deals in the data: {}, with history: {}, history read from Pipedrive: {}.", h.deals, h.deals_with_history, h.deals_backfilled)} {h.first_event_at && tr("History since {}.", fmtDate(h.first_event_at))}</p>
-        {canManage ? <Assumptions d={d} onSaved={setD} /> : <p className="small">{tr("Sales managers and administrators can change these assumptions.")}</p>}
-      </section>
     </>
   );
 }
