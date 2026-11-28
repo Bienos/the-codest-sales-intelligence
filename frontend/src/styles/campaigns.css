@@ -312,3 +312,11 @@
   .cg-people li .cg-pstate { grid-column: 2 / -1; }
   .cg-people input[type="checkbox"] { inline-size: 44px; block-size: 44px; }
 }
+
+/* Results in Lemlist (pages/CampaignResults.tsx); tiles and tables reuse forecast.css */
+.cr-views { margin-bottom: 16px; }
+.cr-head { gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+.cr-head > p { max-width: 70ch; }
+.cr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0 0 14px; }
+.cr-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cr-table td { vertical-align: top; }
