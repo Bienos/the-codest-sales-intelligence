@@ -4,7 +4,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import jwt
 from fastapi import Depends, HTTPException, Request
@@ -12,7 +13,6 @@ from fastapi import Depends, HTTPException, Request
 from ..access import Principal, principal_from_row
 from ..config import Settings
 from ..db import q1
-
 
 SESSION_HOURS = 12
 MAX_SESSION_DAYS = 7          # a session can be renewed, but never beyond this long after the person last signed in with Google
@@ -107,11 +107,37 @@ def make_dev_token(secret: str, email: str, ttl: int = 3600) -> str:
     return jwt.encode({"email": email, "exp": int(time.time()) + ttl}, secret, algorithm="HS256")
 
 
+INTERNAL_PREFIX = "ri-internal."
+INTERNAL_TTL_SECONDS = 300
+
+
+def issue_internal(key: bytes, email: str, via: str) -> str:
+    """A short-lived token the assistant tools use to read the app's own API AS an already-authenticated person (same role, same row scope).
+    Signed with a key that exists only in this process's memory: it cannot be minted outside the running server and never leaves it."""
+    tok = jwt.encode({"email": email, "typ": "internal", "via": via, "exp": int(time.time()) + INTERNAL_TTL_SECONDS}, key, algorithm="HS256")
+    return INTERNAL_PREFIX + tok
+
+
+def internal_email(request: Request, token: str) -> str | None:
+    key = getattr(request.app.state, "internal_key", None)
+    if not key or not token.startswith(INTERNAL_PREFIX):
+        return None
+    try:
+        claims = jwt.decode(token[len(INTERNAL_PREFIX):], key, algorithms=["HS256"], options={"require": ["exp", "email", "typ"]})
+    except jwt.PyJWTError as exc:
+        raise HTTPException(401, "invalid or expired internal token") from exc
+    if claims.get("typ") != "internal":
+        raise HTTPException(401, "invalid internal token")
+    if request.method != "GET":          # the assistants only ever read: no change, no session swap, no export through this door
+        raise HTTPException(403, "the assistant can only read")
+    return str(claims["email"]).lower()
+
+
 def principal_dep(request: Request) -> Principal:
     auth = request.headers.get("authorization", "")
     if not auth.lower().startswith("bearer "):
         raise HTTPException(401, "missing bearer token")
-    email = request.app.state.verifier.email_for(auth[7:])
+    email = internal_email(request, auth[7:]) or request.app.state.verifier.email_for(auth[7:])
     with request.app.state.db.tx() as conn:
         u = q1(conn, "SELECT * FROM users WHERE lower(email)=%s AND active", (email,))
         if not u:
