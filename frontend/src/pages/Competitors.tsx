@@ -341,6 +341,12 @@ function Compare({ d, byKey, asOf }: Ctx) {
 const FragmentCells = ({ children }: { children: ReactNode }) => <>{children}</>;
 const FragmentRows = ({ group, n, children }: { group?: string; n: number; children: ReactNode }) => <>{group && <tr className="grp"><th colSpan={n}>{tr(group)}</th></tr>}{children}</>;
 
+const SOURCE_LABEL: Record<string, string> = { "collector:news": "Exa news", "collector:gdelt": "GDELT news", "collector:awards": "Public tenders won",
+  "collector:homepage": "Homepage headlines", "collector:sitemap": "New pages on their sites", "collector:feed": "Their blogs and news", "collector:clutch": "Clutch",
+  "collector:careers": "Job ads", "collector:jobs": "justjoin.it", "collector:krs": "Polish register", "collector:companies_house": "Companies House",
+  "collector:aws": "AWS partner finder", "collector:partners": "Vendor partner pages" };
+const srcLabel = (s: string) => tr(SOURCE_LABEL[s] || s);
+
 /* ------------------------------------------------------------------ how one firm is tracked */
 const CHECKS: [string, string, (c: Comp) => boolean][] = [
   ["homepage", "Homepage headline", (c) => !!c.url], ["sitemap", "New pages on their site", (c) => !!c.url], ["feed", "Their blog and news feed", (c) => !!c.url],
@@ -666,7 +672,12 @@ function RecordDeals({ d, reload }: { d: any; reload: () => void }) {
 function Review({ d, reload }: Ctx) {
   const [items, setItems] = useState<any[] | null>(null); const [err, setErr] = useState<unknown>(null); const [n, setN] = useState(0);
   const [sw, setSw] = useState<Record<string, string>>({}); const [msg, setMsg] = useState<Record<string, string>>({});
-  useEffect(() => { api("/api/competitors/moves/waiting").then((r) => setItems(r.items)).catch(setErr); }, [n]);
+  const [bySource, setBySource] = useState<{ source: string; n: number }[]>([]);
+  useEffect(() => { api("/api/competitors/moves/waiting").then((r) => { setItems(r.items); setBySource(r.bySource || []); }).catch(setErr); }, [n]);
+  const dismissAll = (source: string, count: number) => {
+    if (!window.confirm(tr("Dismiss all {} waiting items from {}? Confirmed moves are not touched.", count, srcLabel(source)))) return;
+    post("/api/competitors/moves/dismiss", { source }).then(() => { setN((x) => x + 1); reload(); }).catch((e) => setMsg({ ...msg, _bulk: errText(e) }));
+  };
   const act = (m: any, status: string) => post(`/api/competitors/moves/${m.id}/review`, { status, sowhat: sw[m.id] ?? m.sowhat ?? null })
     .then(() => { setN((x) => x + 1); reload(); }).catch((e) => setMsg({ ...msg, [m.id]: errText(e) }));
   return (
@@ -676,6 +687,11 @@ function Review({ d, reload }: Ctx) {
         ["sitemap", "new site pages"], ["feed", "own blogs"], ["gdelt", "GDELT news"], ["news", "Exa news"], ["clutch", "Clutch"], ["krs", "Polish register"], ["ch", "Companies House"],
         ["aws", "AWS partner finder"], ["partners", "vendor partner pages"]].map(([k, l]) => {
         const w = d.watch?.[k]; return <span key={k} className="ct-chip dim">{tr(l)}: {w?.last_run ? fmtD(w.last_run.slice(0, 10)) : tr("not yet")}{w?.errors ? ` · ${tr("{} failed", w.errors)}` : ""}</span>; })}</p>
+      {bySource.length > 0 && <div className="card ct-bulk"><div className="ct-label">{tr("Waiting, by where it came from")}</div>
+        <ul>{bySource.map((b) => <li key={b.source}><b>{b.n}</b><span>{srcLabel(b.source)}</span>
+          {b.n > 1 && <button type="button" className="linkish" onClick={() => dismissAll(b.source, b.n)}>{tr("Dismiss all {}", b.n)}</button>}</li>)}</ul>
+        {msg._bulk && <p className="small err">{msg._bulk}</p>}
+        <p className="xs muted">{tr("The list below shows the newest 200. Clear a backlog from one source in one go; anything worth keeping, confirm first.")}</p></div>}
       {err ? <Err e={err} /> : !items ? <Skeleton /> : items.length === 0 ? <div className="empty"><b>{tr("Nothing waiting")}</b>{tr("New suggestions appear here.")}</div> :
         <div className="card">{items.map((m) => <div key={m.id} className="ct-mv"><span className="when">{fmtD(m.date)}</span><div>
           <div className="ct-row"><b>{m.name}</b><Imp n={m.impact} /><span className="ct-chip">{tr(d.moveTypes[m.type]?.label || m.type)}</span><span className="xs muted">{tr("from {}", m.added_by)}</span></div>

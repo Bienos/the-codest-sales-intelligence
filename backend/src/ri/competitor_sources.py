@@ -43,6 +43,7 @@ DAYS = {"sitemap": {1: 7, 2: 7, 3: 30}, "feed": {1: 7, 2: 7, 3: 30}, "gdelt": {1
         "aws": {1: 30, 2: 30, 3: 30}}
 PER_RUN = {"sitemap": 10, "feed": 15, "clutch": 15, "careers": 15, "nfj": 15, "krs": 10, "ch": 10, "aws": 15}
 GDELT_GAP_S = 5.5
+GDELT_ON = lambda: os.environ.get("RI_GDELT_ENABLED", "").lower() in ("1", "true", "yes")      # noqa: E731  (off: GDELT refuses cloud servers; Exa covers news)
 GDELT_PER_QUERY = 6
 MAX_SITEMAP_URLS = 25_000
 MAX_CHILD_SITEMAPS = 12
@@ -772,7 +773,7 @@ def partner_pages(conn: Conn, comps: list[dict[str, Any]], fetch: Fetch, now: da
 def run_all(conn: Conn, comps: list[dict[str, Any]], *, fetch: Fetch, post: Post | None, now: datetime, sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for step in (lambda: tenders(conn, comps, fetch, now, sleep), lambda: sitemaps(conn, comps, fetch, now), lambda: feeds(conn, comps, fetch, now),
-                 lambda: gdelt(conn, comps, fetch, now, sleep), lambda: clutch(conn, comps, fetch, now), lambda: careers(conn, comps, fetch, post, now),
+                 lambda: gdelt(conn, comps, fetch, now, sleep) if GDELT_ON() else {}, lambda: clutch(conn, comps, fetch, now), lambda: careers(conn, comps, fetch, post, now),
                  lambda: registers(conn, comps, fetch, now), lambda: aws(conn, comps, fetch, now, sleep), lambda: partner_pages(conn, comps, fetch, now)):
         try:
             out.update(step())

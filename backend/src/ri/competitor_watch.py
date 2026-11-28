@@ -33,6 +33,7 @@ EVERY_DAYS = {1: 7, 2: 7, 3: 30}             # homepage check per tier
 NEWS_DAYS = {1: 7, 2: 30}                    # news search per tier; tier 3 has none
 HOMEPAGES_PER_RUN = 12
 SEARCHES_PER_RUN = 10
+NEWS_PER_FIRM = 3                            # at most this many news candidates per firm per search
 OUR_COUNTRIES = {"GB", "DE", "AT", "CH", "SE", "DK", "NO", "FI", "PL"}
 Fetch = Callable[[str], str]
 
@@ -265,14 +266,21 @@ def news(conn: Conn, comps: list[dict[str, Any]], search: Callable[[str, dict[st
         variants = sorted(ct.name_keys(c)) + [c["name"]]
         own = urlparse(c.get("url") or "").hostname or ""
         own = own.removeprefix("www.")
+        kept = 0
         for p in pages:
-            text = f"{p.get('title') or ''} {p.get('text') or ''}"
-            if not p.get("url", "").startswith("https://") or not on_page(variants, text):
-                continue                      # a page that does not name the firm is not about it
+            title, text = p.get("title") or "", f"{p.get('title') or ''} {p.get('text') or ''}"
+            if kept >= NEWS_PER_FIRM or not p.get("url", "").startswith("https://") or not on_page(variants, title):
+                continue                      # the headline must name the firm: a passing mention in the text is not news about it
             host = (urlparse(p["url"]).hostname or "").removeprefix("www.")
-            made += candidate(conn, c["key"], day=(p.get("published") or now.date().isoformat())[:10], kind=guess_type(text[:600]),
-                              headline=p.get("title") or "", source=p["url"], grade="official" if own and host.endswith(own) else "reported",
-                              impact=1, actor="collector:news", detail=(p.get("text") or "")[:400] or None)
+            ours = bool(own and host.endswith(own))
+            kind = guess_type(text[:600])
+            if kind == "content" and not ours:
+                continue                      # blog posts and opinion pieces elsewhere say nothing about what the firm did
+            got = candidate(conn, c["key"], day=(p.get("published") or now.date().isoformat())[:10], kind=kind,
+                            headline=title, source=p["url"], grade="official" if ours else "reported",
+                            impact=1, actor="collector:news", detail=(p.get("text") or "")[:400] or None)
+            made += got
+            kept += got
         remember(conn, c["key"], "news", {"pages": len(pages)}, now)
     return {"news_searches": done, "news_candidates": made}
 

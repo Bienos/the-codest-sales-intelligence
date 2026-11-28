@@ -234,4 +234,17 @@ def test_the_daily_job_runs_every_source_and_one_broken_source_never_stops_the_r
     out = cw.run(conn, fetch=pages({}), now=NOW, post=lambda u, b: "{}", sleep=lambda s: None)
     assert any("boom" in e for e in out["errors"]) and "feeds_checked" in out and "tenders" not in out and "bzp_notices" in out and "krs_checked" in out
     names = {r["check_name"] for r in conn.execute("SELECT DISTINCT check_name FROM competitor_watch").fetchall()}
-    assert {"feed", "gdelt", "tenders", "partners"} <= names
+    assert {"feed", "tenders", "partners"} <= names and "gdelt" not in names           # GDELT is off unless RI_GDELT_ENABLED is set
+
+
+def test_bulk_dismiss_clears_one_source_and_leaves_the_rest(conn):
+    ct.load_seed(conn)
+    f = firm(conn)
+    for i in range(3):
+        cw.candidate(conn, f["key"], day="2026-11-2" + str(i), kind="content", headline=f"News item number {i}", source=f"https://news.example/{i}",
+                     grade="reported", impact=1, actor="collector:news")
+    cw.candidate(conn, f["key"], day="2026-11-20", kind="client", headline="Wins a public IT contract", source="https://ted.europa.eu/x",
+                 grade="official", impact=1, actor="collector:awards")
+    assert {r["source"]: r["n"] for r in ct.waiting_by_source(conn)} == {"collector:news": 3, "collector:awards": 1}
+    assert ct.dismiss_from_source(conn, "collector:news", "mkt@x") == 3
+    assert ct.waiting_by_source(conn) == [{"source": "collector:awards", "n": 1}]

@@ -6268,5 +6268,15 @@
   "Companies House": "Companies House",
   "vendor partner pages": "strony partnerów dostawców",
   "AWS partner": "Partner AWS",
-  "Roles on their own job system": "Oferty w ich systemie rekrutacyjnym"
+  "Roles on their own job system": "Oferty w ich systemie rekrutacyjnym",
+  "Dismiss all {} waiting items from {}? Confirmed moves are not touched.": "Odrzucić wszystkie {} oczekujące pozycje ze źródła {}? Potwierdzone ruchy pozostaną bez zmian.",
+  "Waiting, by where it came from": "Oczekujące, według źródła",
+  "Dismiss all {}": "Odrzuć wszystkie ({})",
+  "The list below shows the newest 200. Clear a backlog from one source in one go; anything worth keeping, confirm first.": "Poniżej 200 najnowszych. Zaległości z jednego źródła można odrzucić jednym kliknięciem; to, co warto zachować, najpierw potwierdź.",
+  "Public tenders won": "Wygrane przetargi",
+  "Homepage headlines": "Nagłówki stron głównych",
+  "New pages on their sites": "Nowe strony na ich witrynach",
+  "Their blogs and news": "Ich blogi i aktualności",
+  "justjoin.it": "justjoin.it",
+  "Vendor partner pages": "Strony partnerów dostawców"
 }

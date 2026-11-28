@@ -508,6 +508,19 @@ def moves_queue(conn: Conn) -> list[dict[str, Any]]:
         conn, "SELECT m.*, c.name FROM competitor_moves m JOIN competitors c ON c.key=m.competitor_key WHERE m.status='candidate' ORDER BY m.created_at DESC LIMIT 200")]
 
 
+def waiting_by_source(conn: Conn) -> list[dict[str, Any]]:
+    """How many candidates wait from each source (a collector or the person who suggested them), largest first."""
+    return [{"source": r["added_by"], "n": r["n"]} for r in qa(
+        conn, "SELECT added_by, count(*) AS n FROM competitor_moves WHERE status='candidate' GROUP BY added_by ORDER BY n DESC, added_by")]
+
+
+def dismiss_from_source(conn: Conn, source: str, actor: str) -> int:
+    """Dismisses every waiting candidate from one source in one go (e.g. a backlog of news). Confirmed moves are never touched."""
+    rows = conn.execute("UPDATE competitor_moves SET status='dismissed', reviewed_by=%s, reviewed_at=now() WHERE status='candidate' AND added_by=%s RETURNING id",
+                        (actor, source)).fetchall()
+    return len(rows)
+
+
 def record_deal_competitor(conn: Conn, crm_deal_id: int, key: str, role: str, reason: str | None, actor: str) -> None:
     if role not in ROLES:
         raise InvalidChange("unknown role")

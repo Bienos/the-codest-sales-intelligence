@@ -465,3 +465,8 @@
 .ct-checks li.ok i { background: var(--dot-ok); } .ct-checks li.err i { background: var(--pink); } .ct-checks li.wait i { background: var(--purple); }
 .ct-checks li b { font-size: var(--fs-sm); color: var(--navy); } .ct-checks li .xs { grid-column: 2; }
 .ct-checks li.off b { color: var(--muted); font-weight: 600; }
+
+/* review: waiting by source, with bulk dismiss */
+.ct-bulk ul { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.ct-bulk li { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); background: var(--white); font-size: var(--fs-sm); }
+.ct-bulk li b { font: 900 var(--fs-md)/1 var(--font-head); color: var(--navy); }

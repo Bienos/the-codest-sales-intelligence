@@ -35,6 +35,10 @@ class ReviewIn(BaseModel):
     sowhat: str | None = Field(None, max_length=1000)
 
 
+class DismissIn(BaseModel):
+    source: str = Field(min_length=3, max_length=200)
+
+
 class DealCompetitorIn(BaseModel):
     competitor: str = Field(pattern=r"^[a-z0-9][a-z0-9-]{1,59}$")
     role: str = Field("unknown", pattern="^(" + "|".join(ct.ROLES) + ")$")
@@ -116,7 +120,16 @@ def register(app: FastAPI) -> None:
     @app.get("/api/competitors/moves/waiting")
     def waiting(request: Request, p: Principal = Depends(require("competitors.manage"))):
         with tx(request) as conn:
-            return {"items": ct.moves_queue(conn)}
+            return {"items": ct.moves_queue(conn), "bySource": ct.waiting_by_source(conn)}
+
+    @app.post("/api/competitors/moves/dismiss")
+    def dismiss_all(body: DismissIn, request: Request, p: Principal = Depends(require("competitors.manage"))):
+        """Clears a backlog: every waiting candidate from one source is dismissed. Audited with the count."""
+        with tx(request) as conn:
+            n = ct.dismiss_from_source(conn, body.source, p.email)
+            audit(conn, actor=p.email, operation="competitor_moves_dismissed", record_type="competitor_move", record_id=body.source[:100],
+                  after={"source": body.source, "dismissed": n})
+        return {"dismissed": n}
 
     @app.post("/api/competitors/moves/{move_id}/review")
     def review(move_id: str, body: ReviewIn, request: Request, p: Principal = Depends(require("competitors.manage"))):
