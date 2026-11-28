@@ -218,6 +218,7 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
     res = engine.simulate(base, cal, dr)
     chance = engine.chance_at_least(res, inp["target"])
     res.pop("_year_samples", None)
+    by_source = sources_view(conn, h, res.pop("_open_by_deal", []), res.get("stream_year") or [])
     sens = []
     if res["mean"] > 0:
         for key_, label, fn in variants:
@@ -256,7 +257,7 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
                                if o["days_in_stage"] > 1.5 * inp["stages"][o["stage_index"]]["used"]["days"]][:15]},
         "flow": {"outbound_deals_per_month": lam_out, "inbound_deals_per_month": base.streams[1][0], "funnel": funnel_counts, "won_per_year": won_per_year,
                  "cycle_days": sum(st["used"]["days"] for st in inp["stages"][inp["inbound_entry"]["index"]:])},
-        "won_so_far": h.won_in_year, "outbound": out,
+        "won_so_far": h.won_in_year, "outbound": out, "by_source": by_source,
         "health": {**h.health, "first_event_at": h.health["first_event_at"].isoformat() if h.health["first_event_at"] else None},
         "sources": data_sources(conn, app_settings),
         "settings": {k: v for k, v in s.items()}, "log": forecast_log(conn, inp["year"]),
@@ -265,6 +266,64 @@ def build(conn: Conn, app_settings: Any, *, now: datetime | None = None, use_cac
         _CACHE.clear()
         _CACHE[key] = (time.time(), payload)
     return payload
+
+
+# When a deal has no Lead source, Pipedrive's own "Source origin" can still say where it came from.
+ORIGIN_SOURCE = {"WebForms": "Marketing", "Chatbot": "Marketing", "LiveChat": "Marketing", "WebVisitors": "Marketing", "Campaigns": "Marketing",
+                 "Marketplace": "Marketing", "MessagingInbox": "Marketing", "Prospector": "Sales outbound", "LeadSuggestion": "Sales outbound"}
+NOT_SET = "Not set"
+
+
+def sources_view(conn: Conn, h: History, open_by_deal: list[float], stream_year: list[float]) -> dict[str, Any]:
+    """Per source: what is open now and what it should bring this year, and how deals from it went in the last two years."""
+    import os
+    import statistics
+    key = os.environ.get("RI_PIPEDRIVE_SOURCE_FIELD")
+    labels = {r["option_id"]: r["label"] for r in qa(conn, "SELECT option_id, label FROM crm_field_options WHERE field_key=%s", (key,))} if key else {}
+
+    def src(d: dict[str, Any]) -> tuple[str, bool]:
+        raw = d.get("lead_source_raw")
+        if raw:
+            return labels.get(str(raw), f"Option {raw}"), False
+        if d.get("origin") in ORIGIN_SOURCE:
+            return ORIGIN_SOURCE[d["origin"]], True
+        return NOT_SET, False
+
+    rows: dict[str, dict[str, Any]] = {}
+
+    def row(name: str) -> dict[str, Any]:
+        return rows.setdefault(name, {"source": name, "open": 0, "open_value": 0.0, "expected": 0.0, "deals": 0, "won": 0, "lost": 0, "inferred": 0,
+                                      "_won_values": [], "_days": []})
+    for o, contrib in zip(h.open_deals, open_by_deal, strict=False):
+        r = row(src(o)[0])
+        r["open"] += 1
+        r["open_value"] += o["value"] or 0
+        r["expected"] += contrib
+    tagged = 0
+    for d in h.deal_rows:
+        name, inferred = src(d)
+        tagged += 1 if d.get("lead_source_raw") else 0
+        r = row(name)
+        r["deals"] += 1
+        r["inferred"] += int(inferred)
+        if d["status"] == "won":
+            r["won"] += 1
+            if d["value"]:
+                r["_won_values"].append(d["value"])
+            if d["won_time"] and d["add_time"]:
+                r["_days"].append((d["won_time"] - d["add_time"]).total_seconds() / 86400)
+        elif d["status"] == "lost":
+            r["lost"] += 1
+    out = []
+    for r in rows.values():
+        wv, days = r.pop("_won_values"), r.pop("_days")
+        decided = r["won"] + r["lost"]
+        out.append({**r, "win_rate": (r["won"] / decided) if decided else None, "avg_won_value": (sum(wv) / len(wv)) if wv else None,
+                    "median_days_to_win": statistics.median(days) if days else None})
+    out.sort(key=lambda x: (-x["expected"], -x["deals"]))
+    new = [{"stream": "outbound", "expected": stream_year[0] if stream_year else 0.0}, {"stream": "inbound", "expected": stream_year[1] if len(stream_year) > 1 else 0.0}]
+    return {"field_configured": bool(key), "labels_known": bool(labels), "deals_in_window": len(h.deal_rows), "tagged": tagged,
+            "tagged_share": (tagged / len(h.deal_rows)) if h.deal_rows else None, "rows": out, "new_deals": new}
 
 
 def _iso(v: Any) -> str | None:

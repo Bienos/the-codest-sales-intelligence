@@ -375,3 +375,45 @@ def test_forecast_reports_where_its_data_comes_from_and_can_recalculate_now(api,
     src = r["sources"]
     assert src["history"] == {"deals": 1, "read": 1, "changes": 1} and src["pipedrive"]["last_sync"] and src["webhook"]["waiting"] == 0
     assert r["can"] == {"manage": True, "sync": True}
+
+
+# ------------------------------------------------------------------ sources
+SRC = "3525dd4a697d7a0f0d9c5bcb5d698d27d74c2203"
+
+
+def test_deal_source_is_stored_labels_sync_and_every_deal_is_read_once(conn, monkeypatch):
+    monkeypatch.setenv("RI_PIPEDRIVE_SOURCE_FIELD", SRC)
+    pd.upsert_deal(conn, {**deal(70, 10, add=NOW - timedelta(days=5)), "custom_fields": {SRC: 93}})
+    pd.upsert_deal(conn, {**deal(71, 10, add=NOW - timedelta(days=5)), SRC: {"id": 92, "label": "Marketing"}})
+    assert {r["crm_id"]: r["lead_source_raw"] for r in conn.execute("select crm_id, lead_source_raw from crm_deals where crm_id in (70,71)")} == {70: "93", 71: "92"}
+    seen = []
+
+    def handler(req):
+        last = req.url.path.rsplit("/", 1)[-1]
+        if last == "dealFields":
+            return httpx.Response(200, json={"success": True, "data": [{"key": SRC, "options": [{"id": 92, "label": "Marketing"}, {"id": 93, "label": "Sales outbound"}]}]})
+        seen.append((last, req.url.params.get("updated_since")))
+        return httpx.Response(200, json={"success": True, "data": [], "additional_data": {}})
+    reader = pd.PipedriveReader("example", "tok", http=httpx.Client(transport=httpx.MockTransport(handler)))
+    conn.execute("insert into sync_state(system, entity, watermark) values ('pipedrive','deals','2026-11-27T00:00:00Z')")
+    out = pd.sync_incremental(conn, reader)
+    assert out["field_options"] == 2 and out.get("deals_full_pass") is True and ("deals", None) in seen       # new field: every deal once
+    seen.clear()
+    out = pd.sync_incremental(conn, reader)
+    assert "deals_full_pass" not in out and ("deals", "2026-11-27T00:00:00Z") in seen                          # then incremental again
+    assert conn.execute("select label from crm_field_options where field_key=%s and option_id='93'", (SRC,)).fetchone()["label"] == "Sales outbound"
+
+
+def test_forecast_splits_the_year_by_source_and_infers_from_origin(conn, history, monkeypatch):
+    monkeypatch.setenv("RI_PIPEDRIVE_SOURCE_FIELD", SRC)
+    conn.execute("insert into crm_field_options(field_key, option_id, label) values (%s,'93','Sales outbound'), (%s,'92','Marketing')", (SRC, SRC))
+    conn.execute("update crm_deals set lead_source_raw='93' where crm_id in (1,3)")
+    conn.execute("update crm_deals set origin='WebForms' where crm_id=2")
+    p = service.build(conn, Settings(pipedrive_pipeline_id=2, pipedrive_stage_id=7), now=NOW, use_cache=False)
+    bs = p["by_source"]
+    rows = {r["source"]: r for r in bs["rows"]}
+    assert rows["Sales outbound"]["open"] == 1 and rows["Sales outbound"]["won"] == 1 and rows["Sales outbound"]["win_rate"] == 1.0
+    assert rows["Marketing"]["lost"] == 1 and rows["Marketing"]["inferred"] == 1                                 # deal 2: Web Forms origin
+    assert rows["Not set"]["deals"] == 1 and bs["tagged"] == 2 and bs["tagged_share"] == 0.5
+    total = sum(r["expected"] for r in bs["rows"]) + sum(x["expected"] for x in bs["new_deals"])
+    assert total == pytest.approx(p["result"]["mean"], rel=1e-6)                                                # the parts add up to the year

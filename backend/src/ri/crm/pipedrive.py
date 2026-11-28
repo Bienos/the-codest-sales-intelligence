@@ -267,10 +267,30 @@ def upsert_deal(conn: Conn, d: dict[str, Any], stages: dict[int, str] | None = N
          _ts(d.get("add_time")), _ts(d.get("stage_change_time")), _ts(d.get("won_time")), _ts(d.get("lost_time")), (d.get("lost_reason") or None),
          _day(d.get("expected_close_date")), str(origin)[:80] if origin not in (None, "") else None, str(channel)[:80] if channel not in (None, "") else None))
     record_deal_change(conn, d, prev, source)
+    src_field = os.environ.get("RI_PIPEDRIVE_SOURCE_FIELD")         # the key of the deal field that says where the deal came from
+    if src_field:
+        raw = d.get(src_field, (d.get("custom_fields") or {}).get(src_field))
+        if isinstance(raw, dict):
+            raw = raw.get("id", raw.get("value"))
+        if raw is not None or src_field in d or src_field in (d.get("custom_fields") or {}):
+            conn.execute("UPDATE crm_deals SET lead_source_raw=%s WHERE crm_id=%s", (None if raw in (None, "") else str(raw)[:80], d["id"]))
     field = os.environ.get("RI_PIPEDRIVE_COMPETITOR_FIELD")         # the key of a text field where sellers name the competitors on the deal
     if field and (d.get(field) or (d.get("custom_fields") or {}).get(field)):
         from ..competitors import from_pipedrive_deal
         from_pipedrive_deal(conn, d, field)
+
+
+def sync_field_options(conn: Conn, reader: PipedriveReader, keys: list[str]) -> int:
+    """Labels of the option fields we read (e.g. Lead source: 92 -> Marketing). Deal fields are listed by API v1."""
+    want, n = set(keys), 0
+    body = reader._get_url(f"{reader.base.replace('/api/v2', '/api/v1')}/dealFields", {"start": 0, "limit": 500})
+    for f in body.get("data") or []:
+        if f.get("key") in want:
+            for o in f.get("options") or []:
+                conn.execute("INSERT INTO crm_field_options(field_key, option_id, label, synced_at) VALUES (%s,%s,%s,now()) "
+                             "ON CONFLICT (field_key, option_id) DO UPDATE SET label=EXCLUDED.label, synced_at=now()", (f["key"], str(o.get("id")), str(o.get("label") or "")))
+                n += 1
+    return n
 
 
 def sync_stages(conn: Conn, reader: PipedriveReader) -> int:
@@ -362,18 +382,36 @@ def sync_incremental(conn: Conn, reader: PipedriveReader, *, stages: dict[int, s
         raise
     except Exception as exc:  # noqa: BLE001
         out["stages_error"] = f"{type(exc).__name__}: {exc}"[:200]
+    if os.environ.get("RI_PIPEDRIVE_SOURCE_FIELD"):
+        try:
+            with conn.transaction():
+                out["field_options"] = sync_field_options(conn, reader, [os.environ["RI_PIPEDRIVE_SOURCE_FIELD"]])
+            conn.commit()
+        except ConnectorBlocked:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            out["field_options_error"] = f"{type(exc).__name__}: {exc}"[:200]
     if stages is None:
         stages = {r["crm_id"]: r["name"] for r in qa(conn, "SELECT crm_id, name FROM crm_stages")}
     for entity, path, fn in (("organizations", "/organizations", upsert_org), ("persons", "/persons", upsert_person),
                              ("deals", "/deals", lambda c, r: upsert_deal(c, r, stages))):
         wm = q1(conn, "SELECT watermark FROM sync_state WHERE system='pipedrive' AND entity=%s", (entity,))
         newest = wm["watermark"] if wm else None
-        for rec in reader.paged(path, updated_since=newest):
+        since = newest
+        # A deal field we start reading (source, competitor) is filled in on deals that may never change again: read every deal once.
+        fields_mark = "deals_fields:" + ",".join(sorted(k for k in (os.environ.get("RI_PIPEDRIVE_SOURCE_FIELD"), os.environ.get("RI_PIPEDRIVE_COMPETITOR_FIELD")) if k))
+        full_pass = entity == "deals" and fields_mark != "deals_fields:" and not q1(conn, "SELECT 1 FROM sync_state WHERE system='pipedrive' AND entity=%s", (fields_mark,))
+        if full_pass:
+            since = None
+            out["deals_full_pass"] = True
+        for rec in reader.paged(path, updated_since=since):
             fn(conn, rec)
             out[entity] += 1
             if rec.get("update_time") and (newest is None or rec["update_time"] > newest):
                 newest = rec["update_time"]
         conn.execute("INSERT INTO sync_state(system, entity, watermark) VALUES ('pipedrive',%s,%s) ON CONFLICT (system, entity) DO UPDATE SET watermark=EXCLUDED.watermark", (entity, newest))
+        if full_pass:
+            conn.execute("INSERT INTO sync_state(system, entity, watermark) VALUES ('pipedrive',%s,'done') ON CONFLICT DO NOTHING", (fields_mark,))
         conn.commit()
     return out
 
