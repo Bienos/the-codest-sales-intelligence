@@ -113,6 +113,14 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:  # noqa: BLE001  (the self-test must never stop scheduling)
                 conn.rollback()
                 res["canary_error"] = f"{type(exc).__name__}: {exc}"[:200]
+            try:      # Monday competitor digest to Slack and/or email; once per recipient per week
+                from .competitor_digest import email_sink, weekly_step as competitor_digest_step
+                from .notify.digest import SlackWebhookSink
+                res.update(competitor_digest_step(conn, base_url=s.public_url, slack=SlackWebhookSink(s.slack_webhook_url) if s.slack_webhook_url else None, email=email_sink()))
+                conn.commit()
+            except Exception as exc:  # noqa: BLE001  (a notification failure must never stop scheduling)
+                conn.rollback()
+                res["competitor_digest_error"] = f"{type(exc).__name__}: {exc}"[:200]
             if s.slack_webhook_url and os.environ.get("RI_BASE_URL") and os.environ.get("RI_LINK_SECRET"):     # the digest dedupes by material change, so calling it each tick is safe
                 try:
                     from .notify.digest import SlackWebhookSink, send_digest

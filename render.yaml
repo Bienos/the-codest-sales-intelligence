@@ -14,7 +14,8 @@ envVarGroups:
       - {key: LEMLIST_API_KEY, sync: false}              # set later: signal campaigns are pushed (not launched) and activity is read back hourly
       - {key: RI_LEMLIST_WEBHOOK_SECRET, sync: false}    # set later: long random string; register https://<app>/webhooks/lemlist/<secret> in Lemlist
       - {key: APOLLO_API_KEY, sync: false}               # set later: find decision makers; reveals need RI_PAID_ENRICHMENT_ENABLED, a price and approval
-      - {key: SLACK_WEBHOOK_URL, sync: false}            # optional daily digest
+      - {key: SLACK_WEBHOOK_URL, sync: false}            # optional daily digest; also gets the Monday competitor digest
+      - {key: RI_SMTP_PASSWORD, sync: false}             # optional: Monday competitor digest by email (with RI_SMTP_HOST, RI_SMTP_USER, RI_SMTP_FROM)
 services:
   - type: web
     name: ri-api
@@ -33,6 +34,7 @@ services:
       - {key: RI_GOOGLE_REQUIRE_WORKSPACE, value: "false"}   # set "true" once confirmed that everyone signs in with a thecodest.co Google Workspace account
       - {key: RI_API_RATE_PER_MINUTE, value: "600"}           # per-caller API ceiling
       - {key: PIPEDRIVE_DOMAIN, value: thecodestltd}
+      - {key: RI_PUBLIC_URL, value: "https://ri-api-oust.onrender.com"}   # links in digests (the scheduler has no address of its own)
       - {key: RI_EXA_MONTHLY_CAP_USD, value: "20"}                 # hard monthly cap for Exa (USD)
       - {key: RI_ANTHROPIC_MONTHLY_TOKEN_CAP, value: "10000000"}   # hard monthly cap on model tokens (about $1.60 at Haiku list price); raise deliberately
       - {key: RI_ANTHROPIC_MODEL, value: "claude-haiku-5-5"}      # model that reads pages; claude-sonnet-5-5 is more accurate at about 20x the price
